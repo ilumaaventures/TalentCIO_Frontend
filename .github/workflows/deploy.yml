@@ -11,29 +11,29 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Build project
         run: npm run build
-      
+
       - name: Copy build to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "dist/"
+          source: "dist/*"               # ✅ Copy contents of dist, not the folder itself
           target: "/var/www/talentcio/frontend/"
-          strip_components: 0
-          # overwrite: true
-      
+          strip_components: 1            # ✅ Flatten the contents
+          overwrite: true                # ✅ Replace existing files
+
       - name: Fix permissions and reload Nginx
         uses: appleboy/ssh-action@v0.1.10
         with:
@@ -41,6 +41,9 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            sudo chown -R www-data:www-data /var/www/talentcio/frontend
-            sudo chmod -R 755 /var/www/talentcio/frontend
+            # Keep files owned by deploy (so future deploys can write)
+            # But ensure they are readable by www-data (Nginx)
+            sudo chown -R deploy:deploy /var/www/talentcio/frontend
+            sudo find /var/www/talentcio/frontend -type d -exec chmod 755 {} \;
+            sudo find /var/www/talentcio/frontend -type f -exec chmod 644 {} \;
             sudo systemctl reload nginx
