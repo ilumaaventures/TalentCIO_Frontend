@@ -4,7 +4,7 @@ import api from '../api/axios';
 import Skeleton from '../components/Skeleton';
 import Button from '../components/Button';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, Users, Clock, Calendar, Search, Bell, Menu, ChevronDown, Shield, Building, Briefcase, UserCheck, UserX, AlertCircle, ArrowUpRight, TrendingUp, MapPin } from 'lucide-react';
+import { LogOut, Users, Clock, Calendar, Search, Bell, Menu, ChevronDown, Shield, Building, Briefcase, UserCheck, UserX, AlertCircle, ArrowUpRight, TrendingUp, MapPin, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -67,12 +67,8 @@ const Dashboard = () => {
     const [projects, setProjects] = useState([]);
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
-    const initialFetchDoneRef = useRef(false);
 
     useEffect(() => {
-        if (initialFetchDoneRef.current) return;
-        initialFetchDoneRef.current = true;
-
         // Cache key: date-scoped so it auto-invalidates at midnight
         const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}`;
 
@@ -85,6 +81,7 @@ const Dashboard = () => {
             }
             return parsed;
         };
+
 
         const writeCache = (data, fingerprint) => {
             try {
@@ -144,6 +141,7 @@ const Dashboard = () => {
                 if (isCacheFresh(cached, DASHBOARD_CACHE_TTL_MS)) return;
             }
 
+
             // 2. Always fetch fresh data in background
             try {
                 const res = await api.get('/dashboard');
@@ -171,11 +169,21 @@ const Dashboard = () => {
         // Initial fetch
         fetchDashboardData();
 
-        // 3. Continuously hit API for real-time updates (Polling every 10s)
-        // Pass true to skip setting cache to UI again during interval
-        const pollInterval = setInterval(() => fetchDashboardData(true), 10000);
+        // 3. Update when tab becomes active / focused
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                fetchDashboardData(true);
+            }
+        };
+        const handleFocus = () => fetchDashboardData(true);
 
-        return () => clearInterval(pollInterval);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, []);
 
     return (
