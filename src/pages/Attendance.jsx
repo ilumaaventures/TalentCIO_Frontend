@@ -37,6 +37,7 @@ const Attendance = () => {
     const [weeklyOffs, setWeeklyOffs] = useState(['Saturday', 'Sunday']);
     const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize'
 
+
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
