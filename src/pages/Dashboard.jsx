@@ -141,6 +141,7 @@ const Dashboard = () => {
                 if (isCacheFresh(cached, DASHBOARD_CACHE_TTL_MS)) return;
             }
 
+
             // 2. Always fetch fresh data in background
             try {
                 const res = await api.get('/dashboard');
