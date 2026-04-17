@@ -82,6 +82,7 @@ const Dashboard = () => {
             return parsed;
         };
 
+
         const writeCache = (data, fingerprint) => {
             try {
                 // Minimal data for caching
