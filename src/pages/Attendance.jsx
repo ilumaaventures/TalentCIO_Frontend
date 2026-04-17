@@ -21,6 +21,7 @@ const Attendance = () => {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
+
     const [holidays, setHolidays] = useState([]);
     const [approvedLeaves, setApprovedLeaves] = useState([]);
     const [usersList, setUsersList] = useState(user?.directReports || []);
