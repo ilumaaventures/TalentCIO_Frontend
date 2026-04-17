@@ -40,7 +40,8 @@ const Attendance = () => {
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        if (tab && ['history', 'tasks', 'regularize'].includes(tab)) {
+        if
+            (tab && ['history', 'tasks', 'regularize'].includes(tab)) {
             setActiveTab(tab);
         }
 
