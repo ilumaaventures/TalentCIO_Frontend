@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, subDays, startOfDay } from 'date-fns';
+import AttendanceAttachmentsView from '../components/AttendanceAttachmentsView';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
@@ -35,7 +36,9 @@ const Attendance = () => {
     const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
     const [loggingTaskId, setLoggingTaskId] = useState(null);
     const [weeklyOffs, setWeeklyOffs] = useState(['Saturday', 'Sunday']);
-    const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize'
+    const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize', 'documents'
+    const [attendanceAttachments, setAttendanceAttachments] = useState({ files: [] });
+    const [loadingAttachments, setLoadingAttachments] = useState(false);
 
 
     useEffect(() => {
@@ -43,7 +46,7 @@ const Attendance = () => {
         const tab = params.get('tab');
         if
 
-            (tab && ['history', 'tasks', 'regularize'].includes(tab)) {
+            (tab && ['history', 'tasks', 'regularize', 'documents'].includes(tab)) {
             setActiveTab(tab);
         }
 
@@ -93,8 +96,10 @@ const Attendance = () => {
     useEffect(() => {
         if (activeTab === 'regularize') {
             fetchRegularizations();
+        } else if (activeTab === 'documents') {
+            fetchAttendanceAttachments();
         }
-    }, [activeTab]);
+    }, [activeTab, calendarDate, selectedUserId]);
 
     // Fetch Users List for Dropdown (Admin/Manager)
     const [loadingUsers, setLoadingUsers] = useState(false);
@@ -268,6 +273,54 @@ const Attendance = () => {
             toast.error(error.response?.data?.message || 'Error processing request');
         } finally {
             setProcessingRegId(null);
+        }
+    };
+
+    const fetchAttendanceAttachments = async () => {
+        if (!selectedUserId) return;
+        setLoadingAttachments(true);
+        try {
+            const currentMonth = format(calendarDate, 'yyyy-MM');
+            const res = await api.get(`/attendance/attachments/${selectedUserId}/${currentMonth}`);
+            setAttendanceAttachments(res.data);
+        } catch (error) {
+            console.error('Error fetching attachments', error);
+        } finally {
+            setLoadingAttachments(false);
+        }
+    };
+
+    const handleUploadAttachment = async (file) => {
+        if (!file || !selectedUserId) return;
+        const currentMonth = format(calendarDate, 'yyyy-MM');
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const loadingToast = toast.loading('Uploading document...');
+        try {
+            const res = await api.post(`/attendance/attachments/${selectedUserId}/${currentMonth}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setAttendanceAttachments(res.data);
+            toast.success('Document uploaded successfully', { id: loadingToast });
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to upload document', { id: loadingToast });
+        }
+    };
+
+    const handleDeleteAttachment = async (fileId) => {
+        if (!selectedUserId || !fileId) return;
+        const currentMonth = format(calendarDate, 'yyyy-MM');
+        const confirmDelete = window.confirm('Are you sure you want to delete this document?');
+        if (!confirmDelete) return;
+
+        const loadingToast = toast.loading('Deleting document...');
+        try {
+            const res = await api.delete(`/attendance/attachments/${selectedUserId}/${currentMonth}/${fileId}`);
+            setAttendanceAttachments(res.data);
+            toast.success('Document deleted successfully', { id: loadingToast });
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete document', { id: loadingToast });
         }
     };
 
@@ -1700,6 +1753,14 @@ const Attendance = () => {
                                     <Briefcase size={16} /> Assigned to Me {assignedTasks.length > 0 && <span className="bg-slate-100 text-slate-600 text-xs py-0.5 px-2 rounded-full ml-1">{assignedTasks.length}</span>}
                                 </button>
                             )}
+                            {user?.company?.settings?.timesheet?.requireAttachment && (
+                                <button
+                                    onClick={() => setActiveTab('documents')}
+                                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'documents' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    <Download size={16} /> Documents
+                                </button>
+                            )}
                         </div>
 
                         {/* Scrollable Content Area */}
@@ -1724,6 +1785,15 @@ const Attendance = () => {
                                     onProcess={processRegularization}
                                     processingId={processingRegId}
                                     currentUser={user}
+                                />
+                            ) : activeTab === 'documents' ? (
+                                <AttendanceAttachmentsView
+                                    attachments={attendanceAttachments}
+                                    loading={loadingAttachments}
+                                    onUpload={handleUploadAttachment}
+                                    onDelete={handleDeleteAttachment}
+                                    isReadOnly={selectedUserId !== user?._id && !isAdmin}
+                                    monthName={format(calendarDate, 'MMMM yyyy')}
                                 />
                             ) : (
                                 <AssignedTasksView
@@ -2212,5 +2282,6 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
         </div>
     );
 };
+
 
 export default Attendance;

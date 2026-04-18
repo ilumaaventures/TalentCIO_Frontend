@@ -796,7 +796,7 @@ const Users = () => {
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="Search employees..."
-                                    className="pl-9 pr-4 py-1.5 w-64 bg-white border border-slate-200 rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="pl-9 pr-4 py-2.5 w-72 bg-white border border-slate-200 rounded-lg text-sm outline-none transition-all shadow-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
                                 />
                             </div>
                         </div>
