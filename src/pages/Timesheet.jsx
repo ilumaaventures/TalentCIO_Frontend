@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText, Paperclip, Trash2, Upload, Loader2 } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import { format, startOfWeek, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import AttendanceAttachmentsView from '../components/AttendanceAttachmentsView';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
@@ -28,11 +29,22 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [holidays, setHolidays] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
+
+    // Identification for Manager/Admin View
+    const queryParams = new URLSearchParams(window.location.search);
+    const targetUserId = propUserId || queryParams.get('userId');
+    const targetUserName = propUserName || queryParams.get('name');
+    const effectiveUserId = targetUserId || user?._id;
+
     const lastFetchKeyRef = useRef('');
     // Approval Logic
     const [activeTab, setActiveTab] = useState(initialTab || 'timesheet');
     const [pendingApprovals, setPendingApprovals] = useState([]);
     const [loadingApprovals, setLoadingApprovals] = useState(false);
+
+    // Document Management state
+    const [attachments, setAttachments] = useState({ files: [] });
+    const [loadingAttachments, setLoadingAttachments] = useState(false);
 
     const canApprove = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
         user?.permissions?.includes('*') ||
@@ -44,6 +56,122 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('attendance.update_self') ||
         user?.permissions?.includes('attendance.update_others');
+
+    // Permission to update others (Manager/Admin)
+    const canUpdateAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('attendance.update_others');
+
+    const canUpdateTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('timesheet.update_others');
+
+    const canViewAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('attendance.view') ||
+        user?.permissions?.includes('attendance.update_others');
+
+    const canViewTimesheets = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('timesheet.view') ||
+        user?.permissions?.includes('timesheet.update_others');
+
+    const isEditableTimesheetStatus = !timesheet || timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED';
+
+    const formatTime = (isoString, istString) => {
+        if (istString) return istString.split(',')[1]?.trim() || istString;
+        if (!isoString) return '-';
+        return format(new Date(isoString), 'hh:mm a');
+    };
+
+    const calculateDuration = (inTime, outTime) => {
+        if (!inTime || !outTime) return '-';
+        const start = new Date(inTime);
+        const end = new Date(outTime);
+        const diff = (end - start) / 3600000;
+        return diff > 0 ? `${diff.toFixed(2)}h` : '-';
+    };
+
+    const handleExportAttendance = async () => {
+        try {
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Attendance Report');
+            const exportUser = viewUser || user;
+
+            // Header Info
+            sheet.mergeCells('A1:C1');
+            sheet.getCell('A1').value = `User Name: ${exportUser.firstName} ${exportUser.lastName || ''}`;
+            sheet.getCell('A1').font = { bold: true, size: 14 };
+
+            sheet.mergeCells('A2:C2');
+            sheet.getCell('A2').value = `Report Month: ${format(viewDate, 'MMMM yyyy')}`;
+
+            sheet.addRow([]);
+
+            // Table Header
+            const headerRow = sheet.addRow(['Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration']);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+            headerRow.alignment = { horizontal: 'center' };
+
+            // Data
+            const start = startOfMonth(viewDate);
+            const end = endOfMonth(viewDate);
+            const days = eachDayOfInterval({ start, end });
+
+            days.forEach(day => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateStr);
+                const dayName = format(day, 'EEEE');
+                const isWeeklyOff = weeklyOffs.includes(dayName);
+
+                let status = 'Absent';
+                let rowColor = 'FFF2DCDB'; // Red
+
+                if (day > new Date()) {
+                    status = '-';
+                    rowColor = 'FFFFFFFF';
+                } else if (log) {
+                    status = 'Present';
+                    rowColor = 'FFEBF1DE'; // Green
+                } else if (isWeeklyOff) {
+                    status = 'Weekoff';
+                    rowColor = 'FFF2F2F2'; // Gray
+                }
+
+                // Simplified holiday/leave check for Timesheet view
+                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+                if (holiday) {
+                    status = holiday.name;
+                    rowColor = 'FFD1F2EB';
+                }
+
+                const row = sheet.addRow([
+                    format(day, 'dd-MMM-yyyy'),
+                    dayName,
+                    status,
+                    log ? formatTime(log.clockIn, log.clockInIST) : '-',
+                    log ? formatTime(log.clockOut, log.clockOutIST) : '-',
+                    log ? calculateDuration(log.clockIn, log.clockOut) : '-'
+                ]);
+
+                row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                row.alignment = { horizontal: 'center' };
+            });
+
+            sheet.columns = [
+                { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }
+            ];
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Attendance_${format(viewDate, 'MMM_yyyy')}_${exportUser.firstName}.xlsx`;
+            saveAs(new Blob([buffer]), fileName);
+            toast.success('Attendance Report Exported');
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to export report');
+        }
+    };
 
     // Rejection Modal State
     const [showRejectModal, setShowRejectModal] = useState(false);
@@ -299,25 +427,25 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 toast.success('Entry updated');
             }
             setEntryToEdit(null);
-            
+
             // Local Sync for immediate UI feedback
             if (entryToEdit.type === 'ATTENDANCE' || entryToEdit.type === 'ATTENDANCE_CREATE') {
                 const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
                 const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}:00`) : null;
                 const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}:00`) : null;
-                
+
                 if (entryToEdit.type === 'ATTENDANCE') {
-                    setAttendanceLogs(prev => prev.map(l => 
+                    setAttendanceLogs(prev => prev.map(l =>
                         l._id === entryToEdit._id ? { ...l, clockIn: inTime?.toISOString(), clockOut: outTime?.toISOString() } : l
                     ));
                 } else {
                     // Create local placeholder for new attendance
-                    const newLog = { 
+                    const newLog = {
                         _id: Date.now().toString(), // temporary id
-                        date: entryToEdit.date, 
-                        clockIn: inTime?.toISOString(), 
+                        date: entryToEdit.date,
+                        clockIn: inTime?.toISOString(),
                         clockOut: outTime?.toISOString(),
-                        status: 'Present' 
+                        status: 'Present'
                     };
                     setAttendanceLogs(prev => [...prev, newLog]);
                 }
@@ -377,11 +505,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     }, [activeTab, canApprove]);
 
 
-    // Check for userId in URL (for Manager view)
-    const queryParams = new URLSearchParams(window.location.search);
-    const targetUserId = propUserId || queryParams.get('userId');
-    const targetUserName = propUserName || queryParams.get('name');
-    const effectiveUserId = targetUserId || user?._id;
+    // Identification already handled at the top
 
     const getCurrentTimesheetCacheKey = () => {
         const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
@@ -625,6 +749,57 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
     };
 
+    const fetchAttachments = useCallback(async () => {
+        if (activeTab !== 'attendance_documents') return;
+        try {
+            setLoadingAttachments(true);
+            const formattedMonth = format(viewDate, 'yyyy-MM');
+            const res = await api.get(`/attendance/attachments/${effectiveUserId}/${formattedMonth}`);
+            setAttachments(res.data || { files: [] });
+        } catch (error) {
+            console.error('Failed to fetch attachments:', error);
+            toast.error('Failed to load documents');
+        } finally {
+            setLoadingAttachments(false);
+        }
+    }, [activeTab, effectiveUserId, viewDate]);
+
+    useEffect(() => {
+        fetchAttachments();
+    }, [fetchAttachments]);
+
+    const handleUploadAttachment = async (file) => {
+        try {
+            const loadingToast = toast.loading('Uploading document...');
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('month', format(viewDate, 'yyyy-MM'));
+            if (targetUserId) {
+                formData.append('userId', targetUserId);
+            }
+
+            await api.post(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            toast.success('Document uploaded successfully', { id: loadingToast });
+            fetchAttachments();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to upload document');
+        }
+    };
+
+    const handleDeleteAttachment = async (fileId) => {
+        if (!window.confirm('Are you sure you want to delete this document?')) return;
+        try {
+            const loadingToast = toast.loading('Deleting document...');
+            await api.delete(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}`);
+            toast.success('Document deleted', { id: loadingToast });
+            fetchAttachments();
+        } catch (error) {
+            toast.error('Failed to delete document');
+        }
+    };
+
     const handleUserChange = (e) => {
         const selectedId = e.target.value;
         if (!selectedId) return;
@@ -692,144 +867,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         setSelectedCell(prev => prev ? { ...prev, logs: refreshedLogs } : prev);
     }, [selectedCell, timesheet]);
 
-    const handleExportAttendance = async () => {
-        // Use the component-level targetUserId which already accounts for propUserId or query params
-        const exportUserId = targetUserId || user?._id;
-
-        if (!exportUserId) {
-            toast.error('User not identified');
-            return;
-        }
-
-        const toastId = toast.loading('Generating Attendance Report...');
-        try {
-            // Fetch User Details
-            let userDetails;
-            if (exportUserId === user._id) {
-                // Fetch self details using profile endpoint
-                const res = await api.get('/auth/profile');
-                userDetails = res.data;
-            } else {
-                // Fetch other user details (Admin/Manager)
-                const res = await api.get(`/admin/users/${exportUserId}`);
-                userDetails = res.data;
-            }
-
-            const workbook = new ExcelJS.Workbook();
-            const sheet = workbook.addWorksheet('Attendance Report');
-
-            // Header Info
-            sheet.mergeCells('A1:C1');
-            sheet.getCell('A1').value = `User Name: ${userDetails.firstName} ${userDetails.lastName || ''}`;
-            sheet.getCell('A1').font = { bold: true, size: 14 };
-
-            sheet.mergeCells('A2:C2');
-            sheet.getCell('A2').value = `Joining Date: ${userDetails.joiningDate ? new Date(userDetails.joiningDate).toLocaleDateString() : 'N/A'}`;
-
-            sheet.mergeCells('A3:C3');
-            const managers = userDetails.reportingManagers || [];
-            const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
-            sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
-
-            sheet.addRow([]);
-
-            // Table Header
-            const headerRow = sheet.addRow(['Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration']);
-            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
-            headerRow.alignment = { horizontal: 'center' };
-
-            const start = startOfMonth(viewDate);
-            const end = endOfMonth(viewDate);
-            const days = eachDayOfInterval({ start, end });
-
-            // Helpers
-            const formatTime = (dateString) => {
-                if (!dateString) return '--:--';
-                return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-            };
-            const calculateDuration = (start, end, recordDate) => {
-                if (!start) return '--';
-                const s = new Date(start);
-                let e;
-
-                if (end) {
-                    e = new Date(end);
-                } else {
-                    const today = new Date();
-                    const rDate = recordDate ? new Date(recordDate) : today;
-                    const isToday = rDate.toDateString() === today.toDateString();
-
-                    if (isToday) {
-                        e = new Date(); // Live time for today
-                    } else {
-                        // Auto-checkout at midnight for past dates
-                        e = new Date(rDate);
-                        e.setHours(23, 59, 59, 999);
-                    }
-                }
-
-                if (e < s) return '0h 0m';
-                const diff = Math.abs(e - s);
-                const h = Math.floor(diff / (1000 * 60 * 60));
-                const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                return `${h}h ${m}m`;
-            };
-
-            days.forEach(day => {
-                const dateStr = format(day, 'yyyy-MM-dd');
-                const record = attendanceLogs.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                const isSunday = day.getDay() === 0;
-                const isFuture = day > new Date();
-
-                let status = 'Absent';
-                let rowColor = 'FFF2DCDB'; // Red
-
-                const joiningDate = userDetails.joiningDate ? new Date(userDetails.joiningDate) : null;
-                if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
-                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-
-                if (joiningDate && day < joiningDate) {
-                    status = 'Not Applicable';
-                    rowColor = 'FFFFFFFF';
-                } else if (isFuture) {
-                    status = '-';
-                    rowColor = 'FFFFFFFF';
-                } else if (holiday) {
-                    status = holiday.name;
-                    rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
-                } else if (record) {
-                    status = 'Present';
-                    rowColor = 'FFEBF1DE';
-                } else if (isSunday) {
-                    status = 'Weekoff';
-                    rowColor = 'FFF2F2F2';
-                }
-
-                const row = sheet.addRow([
-                    format(day, 'dd-MMM-yyyy'),
-                    format(day, 'EEEE'),
-                    status,
-                    record ? formatTime(record.clockIn, record.clockInIST) : '-',
-                    record ? formatTime(record.clockOut, record.clockOutIST) : '-',
-                    record ? calculateDuration(record.clockIn, record.clockOut, day) : '-'
-                ]);
-                row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
-                row.alignment = { horizontal: 'center' };
-            });
-
-            sheet.columns = [{ width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }];
-
-            const exportUserName = userDetails.firstName || 'User';
-            const buffer = await workbook.xlsx.writeBuffer();
-            const fileName = `Attendance_${format(start, 'MMMM_yyyy')}_${exportUserName}.xlsx`;
-            saveAs(new Blob([buffer]), fileName);
-            toast.success('Downloaded', { id: toastId });
-        } catch (error) {
-            console.error(error);
-            toast.error('Export Failed', { id: toastId });
-        }
-    };
 
     // Group entries by Project
     const getEntriesByProject = () => {
@@ -882,6 +919,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     const handleSubmit = async () => {
+
         if (!window.confirm('Are you sure you want to submit this timesheet for approval? You cannot edit it afterwards.')) {
             return;
         }
@@ -1094,23 +1132,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         saveAs(new Blob([buffer]), fileName);
     };
 
-    const canViewAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
-        user?.permissions?.includes('*') ||
-        user?.permissions?.includes('attendance.view') ||
-        user?.permissions?.includes('attendance.update_others');
-    const canViewTimesheets = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
-        user?.permissions?.includes('*') ||
-        user?.permissions?.includes('timesheet.view') ||
-        user?.permissions?.includes('timesheet.update_others');
-
-    const canUpdateAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
-        user?.permissions?.includes('*') ||
-        user?.permissions?.includes('attendance.update_others');
-
-    const canUpdateTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
-        user?.permissions?.includes('*') ||
-        user?.permissions?.includes('timesheet.update_others');
-    const isEditableTimesheetStatus = !timesheet || timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED';
 
     const getResolvedTimesheetEntryStatus = (status) => {
         if (timesheet?.status === 'APPROVED') return 'APPROVED';
@@ -1296,8 +1317,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         </div>
 
                                         <div className="flex space-x-3 items-center">
-
-
                                             <Button
                                                 onClick={() => {
                                                     const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
@@ -1341,6 +1360,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             )}
                                         </div>
                                     </div>
+
 
                                     {/* Rejection Feedback */}
                                     {timesheet?.status === 'REJECTED' && (
@@ -1425,7 +1445,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     {ts.submittedAt ? (
                                                         <div>
                                                             <div className="text-slate-700 font-medium">{format(new Date(ts.submittedAt), 'dd MMM yyyy')}</div>
-                                                            <div className="text-xs text-slate-400 mt-0.5">{format(new Date(ts.submittedAt), 'hh:mm a')}</div>
+                                                            <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                                                                {format(new Date(ts.submittedAt), 'hh:mm a')}
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         <span className="text-slate-400">—</span>
@@ -2247,7 +2269,17 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 {activeTab === 'attendance' && (
                     <div className="bg-white rounded-lg shadow-sm border border-slate-200">
                         <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-700">Attendance Log</h3>
+                            <div className="flex items-center gap-4">
+                                <h3 className="font-bold text-slate-700">Attendance Log</h3>
+                                {user?.company?.settings?.timesheet?.requireAttachment && (
+                                    <button
+                                        onClick={() => setActiveTab('attendance_documents')}
+                                        className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors"
+                                    >
+                                        <Paperclip size={14} /> Documents
+                                    </button>
+                                )}
+                            </div>
                             <Button
                                 onClick={handleExportAttendance}
                                 className="flex items-center space-x-2 text-sm bg-green-600 hover:bg-green-700 active:bg-green-800 px-4 py-2 rounded-lg shadow-sm transition-all text-white border-transparent"
@@ -2272,6 +2304,27 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 isPrivileged={canUpdateAttendance}
                             />
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'attendance_documents' && (
+                    <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm min-h-[400px]">
+                        <div className="mb-4 flex items-center">
+                            <button
+                                onClick={() => setActiveTab('attendance')}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200 hover:bg-slate-200 transition-colors"
+                            >
+                                <ChevronLeft size={14} /> Back to Log
+                            </button>
+                        </div>
+                        <AttendanceAttachmentsView
+                            attachments={attachments}
+                            loading={loadingAttachments}
+                            onUpload={handleUploadAttachment}
+                            onDelete={handleDeleteAttachment}
+                            isReadOnly={effectiveUserId !== user?._id && !(user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || user?.permissions?.includes('*'))}
+                            monthName={format(viewDate, 'MMMM yyyy')}
+                        />
                     </div>
                 )}
 

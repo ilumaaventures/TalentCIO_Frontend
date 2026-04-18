@@ -298,7 +298,11 @@ const HelpDesk = () => {
             setAllQueries(data.allQueries || []);
             setEscalatedQueries(data.escalatedQueries || []);
             setTabLoading(false);
-            loadedTabs.current = new Set(['my-queries', ...(isResolverRole ? ['assigned'] : []), ...(isAdmin ? ['escalated'] : [])]);
+            loadedTabs.current = new Set([
+                'my-queries', 
+                ...(isResolverRole || (data.assignedQueries && data.assignedQueries.length > 0) ? ['assigned'] : []), 
+                ...(isAdmin ? ['escalated'] : [])
+            ]);
         }
 
         try {
@@ -343,7 +347,11 @@ const HelpDesk = () => {
             ].join('##');
 
             sessionStorage.setItem(CACHE_KEY, JSON.stringify(createCachePayload(nextData, fp)));
-            loadedTabs.current = new Set(['my-queries', ...(isResolverRole ? ['assigned'] : []), ...(isAdmin ? ['escalated'] : [])]);
+            loadedTabs.current = new Set([
+                'my-queries', 
+                ...(isResolverRole || payload.assignedQueries.length > 0 ? ['assigned'] : []), 
+                ...(isAdmin ? ['escalated'] : [])
+            ]);
         } catch (error) {
             console.error(error);
             if (!silent) toast.error('Failed to load helpdesk queries');
@@ -390,7 +398,7 @@ const HelpDesk = () => {
     useEffect(() => {
         const alreadyFetched =
             activeTab === 'my-queries' ||
-            (activeTab === 'assigned' && isResolverRole) ||
+            (activeTab === 'assigned' && (isResolverRole || assignedQueries.length > 0)) ||
             (activeTab === 'escalated' && isAdmin);
         if (!alreadyFetched) {
             fetchTabData(activeTab);

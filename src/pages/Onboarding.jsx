@@ -1191,7 +1191,7 @@ const Onboarding = () => {
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
                 <button type="button" onClick={() => setShowAddModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>Cancel</button>
                 <button type="submit" style={{ padding: '10px 24px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Send size={16} /> Add & Send Credentials</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Send size={16} /> Add Candidate</span>
                 </button>
               </div>
             </form>

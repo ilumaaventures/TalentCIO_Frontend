@@ -68,10 +68,9 @@
   }
 
   .zoho-input {
-    @apply w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm outline-none transition-all;
+    @apply w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none transition-all shadow-sm;
     &:focus {
-      border-color: var(--primary-color);
-      box-shadow: 0 0 0 1px var(--primary-color);
+      @apply border-indigo-500 ring-4 ring-indigo-500/10;
     }
   }
 
