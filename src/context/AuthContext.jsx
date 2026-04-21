@@ -142,6 +142,31 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.clear();
   };
 
+  // Re-fetch the current user's profile from the server.
+  // Call this after any admin action that may change roles/permissions.
+  const refreshProfile = async () => {
+    try {
+      const response = await api.get('/auth/profile');
+      const freshUser = response.data;
+      const normalisedUser = {
+        ...freshUser,
+        roles: freshUser.roleNames || (Array.isArray(freshUser.roles)
+          ? freshUser.roles.map(r => r.name || r)
+          : [])
+      };
+      setUser(normalisedUser);
+      localStorage.setItem('user', JSON.stringify(normalisedUser));
+      return normalisedUser;
+    } catch (err) {
+      console.error('refreshProfile error:', err);
+      // If the token was invalidated (e.g. role change bumped tokenVersion), log out
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        logout();
+      }
+      throw err;
+    }
+  };
+
   if (loading) {
     return (
       <div style={{
@@ -168,7 +193,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, hasModule, loading, workspace }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, refreshProfile, hasModule, loading, workspace }}>
       {children}
     </AuthContext.Provider>
   );
