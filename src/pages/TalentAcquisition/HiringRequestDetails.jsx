@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
-import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Construction, Loader, FileText, Paperclip } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
-import Button from '../../components/Button'; // Assuming Button component exists
 import CandidateList from './CandidateList';
 import LegacyApplicationsView from './LegacyApplicationsView';
 import Skeleton from '../../components/Skeleton';
+import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '../../utils/taCache';
 
 const DetailRow = ({ label, value }) => (
     <div className="flex justify-between py-2 border-b border-slate-50 last:border-0">
@@ -35,10 +35,10 @@ const HiringRequestDetails = () => {
         }
     }, [searchParams]);
 
-    const fetchRequest = useCallback(async () => {
+    const fetchRequest = useCallback(async ({ force = false } = {}) => {
         try {
             setLoading(true);
-            const res = await api.get(`/ta/hiring-request/${id}`);
+            const res = await api.get(`/ta/hiring-request/${id}`, force ? createNoCacheRequestConfig() : undefined);
             setRequest(res.data);
         } catch (error) {
             console.error(error);
@@ -49,7 +49,7 @@ const HiringRequestDetails = () => {
     }, [id]);
 
     useEffect(() => {
-        fetchRequest();
+        fetchRequest({ force: true });
     }, [fetchRequest]);
 
     const isDynamic = request?.approvalChain && request?.approvalChain?.length > 0;
@@ -88,15 +88,23 @@ const HiringRequestDetails = () => {
             }
 
             if (action === 'APPROVE') {
-                await api.patch(`/ta/hiring-request/${id}/approve`, payload);
+                const response = await api.patch(`/ta/hiring-request/${id}/approve`, payload);
+                const updatedRequest = response.data;
+                setRequest(updatedRequest);
                 toast.success('Approved successfully');
+                invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
             } else {
-                await api.patch(`/ta/hiring-request/${id}/reject`, payload);
+                const response = await api.patch(`/ta/hiring-request/${id}/reject`, payload);
+                const updatedRequest = response.data;
+                setRequest(updatedRequest);
                 toast.success('Rejected successfully');
+                invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
             }
 
             setApprovalComment('');
-            fetchRequest(); // Refresh
+            refreshTAClientsCache().catch((cacheError) => {
+                console.error('Failed to refresh TA client cache after approval action:', cacheError);
+            });
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Action failed');
@@ -109,9 +117,14 @@ const HiringRequestDetails = () => {
         if (!window.confirm('Are you sure you want to close this hiring request?')) return;
         try {
             setActionLoading(true);
-            await api.patch(`/ta/hiring-request/${id}/close`);
+            const response = await api.patch(`/ta/hiring-request/${id}/close`);
+            const updatedRequest = response.data;
+            setRequest(updatedRequest);
             toast.success('Request closed successfully');
-            fetchRequest();
+            invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
+            refreshTAClientsCache().catch((cacheError) => {
+                console.error('Failed to refresh TA client cache after close:', cacheError);
+            });
         } catch (error) {
             console.error(error);
             toast.error('Failed to close request');

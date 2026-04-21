@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, Search, Filter, Briefcase, Clock, CheckCircle, XCircle, AlertCircle, Settings, TrendingUp, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Plus, Filter, Settings, TrendingUp, ChevronRight, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
+import { createNoCacheRequestConfig } from '../../utils/taCache';
 
 const HiringRequestList = () => {
     const { user } = useAuth();
@@ -22,14 +23,14 @@ const HiringRequestList = () => {
             setLoading(true);
             const [reqRes, clientRes] = await Promise.all([
                 api.get('/ta/hiring-request', {
-                    params: {
+                    ...createNoCacheRequestConfig({
                         status: filterStatus === 'All' ? '' : filterStatus,
                         page,
                         limit: 10,
                         client: clientName ? decodeURIComponent(clientName) : ''
-                    }
+                    })
                 }),
-                api.get('/projects/clients')
+                api.get('/projects/clients', createNoCacheRequestConfig())
             ]);
             // Backend now returns an object with requests and totalPages
             setRequests(reqRes.data.requests ? reqRes.data.requests : reqRes.data);

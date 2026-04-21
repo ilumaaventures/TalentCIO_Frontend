@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import api from '../../api/axios';
-import { Users, Briefcase, ChevronRight, Search, Clock, CheckCircle, TrendingUp, XCircle } from 'lucide-react';
+import { Users, Briefcase, ChevronRight, Search, Clock, CheckCircle, TrendingUp } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../../utils/cache';
+import { isCacheFresh } from '../../utils/cache';
+import { readTAClientsCache, refreshTAClientsCache } from '../../utils/taCache';
 
 const ClientSelection = () => {
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const navigate = useNavigate();
-    const CLIENT_CACHE_KEY = 'ta_client_selection_v1';
     const CLIENT_CACHE_TTL_MS = 60 * 1000;
 
     const filteredClients = clients.filter(client => 
@@ -19,7 +18,7 @@ const ClientSelection = () => {
 
     useEffect(() => {
         const fetchClients = async () => {
-            const cached = readSessionCache(CLIENT_CACHE_KEY);
+            const cached = readTAClientsCache();
             if (cached) {
                 setClients(cached.data || []);
                 setLoading(false);
@@ -28,10 +27,8 @@ const ClientSelection = () => {
 
             try {
                 if (!cached) setLoading(true);
-                const response = await api.get('/ta/clients');
-                setClients(response.data);
-                const fingerprint = (response.data || []).map(client => `${client.name}:${client.activePositions}:${client.pendingPositions}:${client.closedPositions}`).join('|');
-                sessionStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(createCachePayload(response.data, fingerprint)));
+                const freshClients = await refreshTAClientsCache();
+                setClients(freshClients);
             } catch (error) {
                 console.error('Error fetching TA clients:', error);
             } finally {
@@ -39,7 +36,7 @@ const ClientSelection = () => {
             }
         };
         fetchClients();
-    }, [CLIENT_CACHE_KEY, CLIENT_CACHE_TTL_MS]);
+    }, [CLIENT_CACHE_TTL_MS]);
 
     const totalActive = clients.reduce((sum, c) => sum + (c.activePositions || 0), 0);
     const totalPending = clients.reduce((sum, c) => sum + (c.pendingPositions || 0), 0);
