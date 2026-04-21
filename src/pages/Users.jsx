@@ -634,7 +634,9 @@ const Users = () => {
                 await api.post('/admin/users', formData);
                 toast.success('User Created Successfully');
             }
+            // Clear all related caches for instant reflection
             sessionStorage.removeItem(`user_data_${user?._id}`);
+            sessionStorage.removeItem(`role_data_${user?._id}`);
             setShowModal(false);
             fetchData();
         } catch (error) {

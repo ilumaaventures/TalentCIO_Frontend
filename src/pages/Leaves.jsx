@@ -181,8 +181,14 @@ const Leaves = () => {
 
         // 2. Fetch fresh data
         try {
+            // Cache-bust browser HTTP cache when skipCache=true
             const res = await api.get('/leaves/bootstrap', {
-                params: { page, limit: 10 }
+                params: {
+                    page,
+                    limit: 10,
+                    ...(skipCache ? { _t: Date.now() } : {})
+                },
+                ...(skipCache ? { headers: { 'Cache-Control': 'no-cache' } } : {})
             });
 
             const payload = res.data;
@@ -301,7 +307,10 @@ const Leaves = () => {
             setShowModal(false);
             setFormData({ leaveType: '', startDate: '', endDate: '', isHalfDay: false, halfDaySession: 'First Half', reason: '' });
             setProofFile(null);
-            fetchData(1);
+            // Clear cache so fresh data is fetched
+            const CACHE_KEY = `leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`;
+            sessionStorage.removeItem(CACHE_KEY);
+            fetchData(1, true);
         } catch (err) {
             toast.error(err.response?.data?.message || 'Application failed');
         } finally {
@@ -320,7 +329,11 @@ const Leaves = () => {
         try {
             await api.put(`/leaves/approve/${id}`, { status, rejectionReason });
             toast.success(`Request ${status}`);
+            // Clear cache so team view and my-leaves both reflect changes
+            const CACHE_KEY = `leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`;
+            sessionStorage.removeItem(CACHE_KEY);
             fetchApprovals(true); // Force refresh after action
+            fetchData(1, true);  // Also refresh balances/requests
         } catch (err) { toast.error(err.response?.data?.message || 'Action failed'); }
         finally { setProcessingId(null); }
     };
@@ -331,7 +344,10 @@ const Leaves = () => {
         try {
             await api.put(`/leaves/cancel/${id}`);
             toast.success('Leave cancelled');
-            fetchData(requestsPagination.page);
+            // Clear cache so fresh data is fetched
+            const CACHE_KEY = `leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`;
+            sessionStorage.removeItem(CACHE_KEY);
+            fetchData(requestsPagination.page, true);
         } catch (err) { toast.error(err.response?.data?.message || 'Failed to cancel'); }
         finally { setCancellingId(null); }
     };

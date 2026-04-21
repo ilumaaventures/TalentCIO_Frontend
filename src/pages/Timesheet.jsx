@@ -800,6 +800,45 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
     };
 
+    const handleSubmitAttachment = async (fileId) => {
+        try {
+            const loadingToast = toast.loading('Submitting document...');
+            await api.put(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}/submit`);
+            toast.success('Document submitted for approval', { id: loadingToast });
+            fetchAttachments();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to submit document');
+        }
+    };
+
+    const handleReviewAttachment = async (fileId, status, reason = '') => {
+        try {
+            const action = status === 'Approved' ? 'Approving' : 'Rejecting';
+            const loadingToast = toast.loading(`${action} document...`);
+            await api.put(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}/review`, { status, reason });
+            toast.success(`Document ${status.toLowerCase()}`, { id: loadingToast });
+            fetchAttachments();
+        } catch (error) {
+            toast.error(error.response?.data?.message || `Failed to ${status.toLowerCase()} document`);
+        }
+    };
+
+    const handleReplaceAttachment = async (fileId, newFile) => {
+        try {
+            const formData = new FormData();
+            formData.append('file', newFile);
+
+            const loadingToast = toast.loading('Replacing document...');
+            await api.put(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}/replace`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            toast.success('Document replaced successfully', { id: loadingToast });
+            fetchAttachments();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to replace document', { id: loadingToast });
+        }
+    };
+
     const handleUserChange = (e) => {
         const selectedId = e.target.value;
         if (!selectedId) return;
@@ -2324,6 +2363,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                             onDelete={handleDeleteAttachment}
                             isReadOnly={effectiveUserId !== user?._id && !(user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || user?.permissions?.includes('*'))}
                             monthName={format(viewDate, 'MMMM yyyy')}
+                            onSubmit={handleSubmitAttachment}
+                            onApprove={(id) => handleReviewAttachment(id, 'Approved')}
+                            onReject={(id, reason) => handleReviewAttachment(id, 'Rejected', reason)}
+                            onReplace={handleReplaceAttachment}
+                            canApprove={canApprove}
                         />
                     </div>
                 )}

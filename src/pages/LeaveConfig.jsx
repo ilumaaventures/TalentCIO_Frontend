@@ -26,16 +26,21 @@ const LeaveConfig = () => {
 
     const fetchPolicies = useCallback(async ({ force = false } = {}) => {
         try {
-            const cachedData = readSessionCache(cacheKey);
+            // When force=true, skip session cache entirely
+            const cachedData = force ? null : readSessionCache(cacheKey);
 
             if (cachedData) {
                 const data = cachedData.data || cachedData;
                 setPolicies(data.policies || []);
                 setLoading(false);
-                if (!force && isCacheFresh(cachedData, LEAVE_CONFIG_CACHE_TTL_MS)) return;
+                if (isCacheFresh(cachedData, LEAVE_CONFIG_CACHE_TTL_MS)) return;
             }
 
-            const res = await api.get('/leaves/config');
+            // Cache-bust browser HTTP cache when force=true
+            const res = await api.get('/leaves/config', force ? {
+                headers: { 'Cache-Control': 'no-cache' },
+                params: { _t: Date.now() }
+            } : undefined);
             const policiesData = res.data;
 
             const newFingerprint = JSON.stringify({ l: policiesData.length, lp: policiesData[0]?._id });
@@ -121,6 +126,8 @@ const LeaveConfig = () => {
             await api.delete(`/leaves/config/${id}`);
             toast.success('Policy Deleted');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
+            // Also clear leaves page cache since balances depend on policies
+            sessionStorage.removeItem(`leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`);
             fetchPolicies({ force: true });
         } catch {
             toast.error('Failed to delete policy');
@@ -165,6 +172,8 @@ const LeaveConfig = () => {
             await api.post('/leaves/config', formData);
             toast.success('Policy Updated Successfully');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
+            // Also clear leaves page cache since balances depend on policies
+            sessionStorage.removeItem(`leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`);
             setShowModal(false);
             fetchPolicies({ force: true });
         } catch (error) {
@@ -178,6 +187,8 @@ const LeaveConfig = () => {
             await api.post('/leaves/config/seed');
             toast.success('Defaults Seeded');
             sessionStorage.removeItem(`leave_config_data_${user?._id}`);
+            // Also clear leaves page cache since balances depend on policies
+            sessionStorage.removeItem(`leaves_${user?._id}_${new Date().toISOString().slice(0, 10)}`);
             fetchPolicies({ force: true });
         } catch {
             toast.error('Seed Failed');

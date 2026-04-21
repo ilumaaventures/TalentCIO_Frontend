@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const Roles = () => {
-    const { user } = useAuth();
+    const { user, refreshProfile } = useAuth();
     const [roles, setRoles] = useState([]);
     const [permissions, setPermissions] = useState({}); // Grouped permissions
     const [showModal, setShowModal] = useState(false);
@@ -22,27 +22,32 @@ const Roles = () => {
 
     const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
-            const cachedData = readSessionCache(cacheKey);
+            // When force=true, skip session cache entirely
+            const cachedData = force ? null : readSessionCache(cacheKey);
 
             if (cachedData) {
                 const data = cachedData.data || cachedData;
                 setRoles(data.roles || []);
                 setPermissions(data.permissions || {});
                 setLoading(false);
-                if (!force && isCacheFresh(cachedData, ROLE_CACHE_TTL_MS)) return;
+                if (isCacheFresh(cachedData, ROLE_CACHE_TTL_MS)) return;
             }
 
-            const bootstrapRes = await api.get('/admin/roles/bootstrap');
+            // Cache-bust browser HTTP cache when force=true (backend sets max-age=45)
+            const bootstrapRes = await api.get('/admin/roles/bootstrap', force ? {
+                headers: { 'Cache-Control': 'no-cache' },
+                params: { _t: Date.now() }
+            } : undefined);
             const rolesData = bootstrapRes.data?.roles || [];
             const permsData = bootstrapRes.data?.permissions || {};
 
             // Fingerprint check - include total number of permissions (sum across all modules)
             const totalPerms = Object.values(permsData).reduce((sum, modulePerms) => sum + modulePerms.length, 0);
-            const newFingerprint = JSON.stringify({ 
-                r: rolesData.length, 
-                p: Object.keys(permsData).length, 
+            const newFingerprint = JSON.stringify({
+                r: rolesData.length,
+                p: Object.keys(permsData).length,
                 tp: totalPerms,
-                lr: rolesData[0]?._id 
+                lr: rolesData[0]?._id
             });
             const oldFingerprint = cachedData?.fingerprint || null;
 
@@ -175,11 +180,22 @@ const Roles = () => {
                 });
                 toast.success('Role Created Successfully');
             }
+
+            // 1. Clear ALL related session caches so stale data is never served
             sessionStorage.removeItem(`role_data_${user?._id}`);
+            sessionStorage.removeItem(`user_data_${user?._id}`);
+
+            // 2. Refresh the current user's auth profile (permissions may have changed)
+            if (refreshProfile) {
+                refreshProfile().catch(() => {});
+            }
+
             setShowModal(false);
             setRoleName('');
             setSelectedPerms([]);
             setEditingId(null);
+
+            // 3. Force re-fetch from server (bypasses both session + HTTP cache)
             fetchData({ force: true });
         } catch (error) {
             toast.error(error.response?.data?.message || (editingId ? 'Failed to update role' : 'Failed to create role'));

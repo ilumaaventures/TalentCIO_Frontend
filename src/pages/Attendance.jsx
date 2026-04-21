@@ -324,6 +324,51 @@ const Attendance = () => {
         }
     };
 
+    const handleSubmitAttachment = async (fileId) => {
+        if (!selectedUserId || !fileId) return;
+        const currentMonth = format(calendarDate, 'yyyy-MM');
+        try {
+            const loadingToast = toast.loading('Submitting document...');
+            await api.put(`/attendance/attachments/${selectedUserId}/${currentMonth}/${fileId}/submit`);
+            toast.success('Document submitted for approval', { id: loadingToast });
+            fetchAttendanceAttachments();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to submit document');
+        }
+    };
+
+    const handleReviewAttachment = async (fileId, status, reason = '') => {
+        if (!selectedUserId || !fileId) return;
+        const currentMonth = format(calendarDate, 'yyyy-MM');
+        try {
+            const action = status === 'Approved' ? 'Approving' : 'Rejecting';
+            const loadingToast = toast.loading(`${action} document...`);
+            await api.put(`/attendance/attachments/${selectedUserId}/${currentMonth}/${fileId}/review`, { status, reason });
+            toast.success(`Document ${status.toLowerCase()}`, { id: loadingToast });
+            fetchAttendanceAttachments();
+        } catch (error) {
+            toast.error(error.response?.data?.message || `Failed to ${status.toLowerCase()} document`);
+        }
+    };
+
+    const handleReplaceAttachment = async (fileId, newFile) => {
+        if (!selectedUserId || !fileId || !newFile) return;
+        const currentMonth = format(calendarDate, 'yyyy-MM');
+        const formData = new FormData();
+        formData.append('file', newFile);
+
+        const loadingToast = toast.loading('Replacing document...');
+        try {
+            await api.put(`/attendance/attachments/${selectedUserId}/${currentMonth}/${fileId}/replace`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            toast.success('Document replaced successfully', { id: loadingToast });
+            fetchAttendanceAttachments();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to replace document', { id: loadingToast });
+        }
+    };
+
     const fetchTodayStatus = async () => {
         try {
             const res = await api.get('/attendance/today');
@@ -1794,6 +1839,11 @@ const Attendance = () => {
                                     onDelete={handleDeleteAttachment}
                                     isReadOnly={selectedUserId !== user?._id && !isAdmin}
                                     monthName={format(calendarDate, 'MMMM yyyy')}
+                                    onSubmit={handleSubmitAttachment}
+                                    onApprove={(id) => handleReviewAttachment(id, 'Approved')}
+                                    onReject={(id, reason) => handleReviewAttachment(id, 'Rejected', reason)}
+                                    onReplace={handleReplaceAttachment}
+                                    canApprove={isAdmin}
                                 />
                             ) : (
                                 <AssignedTasksView

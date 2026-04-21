@@ -68,6 +68,11 @@ const Dashboard = () => {
     const [recentActivity, setRecentActivity] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    const attendanceSettings = user?.company?.settings?.attendance || {};
+    const showLocation = attendanceSettings.requireLocationCheckIn || 
+                       attendanceSettings.requireLocationCheckOut || 
+                       attendanceSettings.locationCheck;
+
     useEffect(() => {
         // Cache key: date-scoped so it auto-invalidates at midnight
         const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}`;
@@ -315,13 +320,15 @@ const Dashboard = () => {
                                                 <th className="px-5 py-2.5 text-left text-[9px] font-black text-slate-500 uppercase tracking-widest">Employee</th>
                                                 <th className="px-5 py-2.5 text-left text-[9px] font-black text-slate-500 uppercase tracking-widest">Clock In</th>
                                                 <th className="px-5 py-2.5 text-left text-[9px] font-black text-slate-500 uppercase tracking-widest">Type</th>
-                                                <th className="px-5 py-2.5 text-right text-[9px] font-black text-slate-500 uppercase tracking-widest">Location</th>
+                                                {showLocation && (
+                                                    <th className="px-5 py-2.5 text-right text-[9px] font-black text-slate-500 uppercase tracking-widest">Location</th>
+                                                )}
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-50">
+                                        <tbody>
                                             {loading ? (
                                                 [1, 2, 3, 4, 5].map(i => (
-                                                    <tr key={i}><td colSpan="4" className="px-5 py-2.5"><Skeleton className="h-10 w-full" /></td></tr>
+                                                    <tr key={i}><td colSpan={showLocation ? 4 : 3} className="px-5 py-2.5"><Skeleton className="h-10 w-full" /></td></tr>
                                                 ))
                                             ) : recentActivity.filter(r => r.status === 'PRESENT').length > 0 ? (
                                                 recentActivity.filter(r => r.status === 'PRESENT').map((record) => (
@@ -350,14 +357,16 @@ const Dashboard = () => {
                                                                 {record.user.employmentType || 'FT'}
                                                             </span>
                                                         </td>
-                                                        <td className="px-5 py-3 text-right">
-                                                            <LocationLink location={record.location} />
-                                                        </td>
+                                                        {showLocation && (
+                                                            <td className="px-5 py-3 text-right">
+                                                                <LocationLink location={record.location} />
+                                                            </td>
+                                                        )}
                                                     </tr>
                                                 ))
                                             ) : (
                                                 <tr>
-                                                    <td colSpan="4" className="px-6 py-10 text-center">
+                                                    <td colSpan={showLocation ? 4 : 3} className="px-6 py-10 text-center">
                                                         <div className="flex flex-col items-center gap-2 text-slate-400">
                                                             <AlertCircle size={24} strokeWidth={1.5} />
                                                             <p className="text-xs font-medium italic">No attendance records found for today.</p>
