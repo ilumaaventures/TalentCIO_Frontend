@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X, Loader, Upload, Paperclip } from 'lucide-react';
 import toast from 'react-hot-toast';
 import WorkflowSettings from './WorkflowSettings';
+import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '../../utils/taCache';
 
 const Section = ({ title, icon: Icon, children, fullWidth = false }) => (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
@@ -157,9 +158,9 @@ const CreateHiringRequest = () => {
     const fetchWorkflowsData = async () => {
         try {
             const [wfRes, intWfRes, clientRes] = await Promise.all([
-                api.get('/workflows'),
-                api.get('/ta/interview-workflows'),
-                api.get('/projects/clients')
+                api.get('/workflows', createNoCacheRequestConfig()),
+                api.get('/ta/interview-workflows', createNoCacheRequestConfig()),
+                api.get('/projects/clients', createNoCacheRequestConfig())
             ]);
             setWorkflows(wfRes.data.filter(w => w.isActive));
             setInterviewWorkflows(intWfRes.data.filter(w => w.isActive));
@@ -178,7 +179,7 @@ const CreateHiringRequest = () => {
             const fetchRequest = async () => {
                 try {
                     setLoading(true);
-                    const res = await api.get(`/ta/hiring-request/${id || reopenFrom}`);
+                    const res = await api.get(`/ta/hiring-request/${id || reopenFrom}`, createNoCacheRequestConfig());
                     const data = res.data;
 
                     setFormData({
@@ -343,14 +344,27 @@ const CreateHiringRequest = () => {
                 jobDescriptionFile: formData.jobDescriptionFile
             };
 
+            let response;
+
             if (id) {
                 // Update existing
-                await api.put(`/ta/hiring-request/${id}?submit=${!isDraft}`, payload);
+                response = await api.put(`/ta/hiring-request/${id}?submit=${!isDraft}`, payload);
                 toast.success(isDraft ? 'Draft updated successfully' : 'Request updated and submitted');
             } else {
                 // Create new
-                await api.post(`/ta/hiring-request?submit=${!isDraft}`, payload);
+                response = await api.post(`/ta/hiring-request?submit=${!isDraft}`, payload);
                 toast.success(isDraft ? 'Draft saved successfully' : 'Requisition submitted for approval');
+            }
+
+            const savedRequest = response?.data;
+            invalidateTACaches({
+                requestId: savedRequest?._id || id,
+                client: savedRequest?.client || formData.client
+            });
+            try {
+                await refreshTAClientsCache();
+            } catch (cacheError) {
+                console.error('Failed to refresh TA client cache after save:', cacheError);
             }
 
             navigate('/ta');
