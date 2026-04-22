@@ -224,6 +224,22 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             worksheet.eachRow((row, rowNumber) => {
                 if (rowNumber === 1 || (isTwoTier && rowNumber === 2)) return; // Skip headers
 
+                // Helper to safely extract a primitive from any ExcelJS cell value
+                const sanitizeCellValue = (val) => {
+                    if (val === null || val === undefined) return null;
+                    if (val instanceof Date) return val;
+                    if (typeof val !== 'object') return val;
+                    // ExcelJS rich-text object: { richText: [{ text: '...' }, ...] }
+                    if (Array.isArray(val.richText)) {
+                        return val.richText.map(r => r.text || '').join('') || null;
+                    }
+                    // Formula result or hyperlink
+                    if (val.result !== undefined) return val.result;
+                    if (val.text !== undefined) return val.text;
+                    // Last resort – stringify so React never receives a raw object
+                    try { return JSON.stringify(val); } catch { return String(val); }
+                };
+
                 const getCellValue = (keys) => {
                     if (!keys || !Array.isArray(keys)) return null;
                     // 1. Try exact matches first
@@ -233,11 +249,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             const cell = row.getCell(colIndex);
                             const val = cell.value;
                             if (val === null || val === undefined) continue;
-                            if (val instanceof Date) return val;
-                            if (typeof val === 'object') {
-                                return val.result !== undefined ? val.result : (val.text || val.richText?.[0]?.text || null);
-                            }
-                            return val;
+                            return sanitizeCellValue(val);
                         }
                     }
 
@@ -247,8 +259,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                             h.includes('shortlisted') || (h.includes('profile') && h.includes('yes/no'))
                         );
                         if (fuzzyKey) {
-                            const val = row.getCell(headers[fuzzyKey]).value;
-                            return val && typeof val === 'object' ? (val.result || val.text || null) : val;
+                            return sanitizeCellValue(row.getCell(headers[fuzzyKey]).value);
                         }
                     }
 
@@ -260,34 +271,37 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                         if (nameHeader) {
                             const colIndex = headers[nameHeader];
                             const cell = row.getCell(colIndex);
-                            return cell.value && typeof cell.value === 'object' ? (cell.value.result || cell.value.text || null) : cell.value;
+                            return sanitizeCellValue(cell.value);
                         }
                     }
                     return null;
                 };
 
+                // Ensure text fields are always strings (Excel can return numbers, booleans, etc.)
+                const toStr = (v) => (v != null ? String(v) : null);
+
                 const mappedRow = {
-                    candidateName: getCellValue(columnMapping.candidateName),
-                    email: getCellValue(columnMapping.email),
-                    mobile: getCellValue(columnMapping.mobile)?.toString(),
-                    qualification: getCellValue(columnMapping.qualification),
-                    currentLocation: getCellValue(columnMapping.currentLocation),
-                    preferredLocation: getCellValue(columnMapping.preferredLocation),
+                    candidateName: toStr(getCellValue(columnMapping.candidateName)),
+                    email: toStr(getCellValue(columnMapping.email)),
+                    mobile: toStr(getCellValue(columnMapping.mobile)),
+                    qualification: toStr(getCellValue(columnMapping.qualification)),
+                    currentLocation: toStr(getCellValue(columnMapping.currentLocation)),
+                    preferredLocation: toStr(getCellValue(columnMapping.preferredLocation)),
                     source: mapSource(getCellValue(columnMapping.source)),
-                    profilePulledBy: getCellValue(columnMapping.profilePulledBy),
-                    calledBy: getCellValue(columnMapping.calledBy),
+                    profilePulledBy: toStr(getCellValue(columnMapping.profilePulledBy)),
+                    calledBy: toStr(getCellValue(columnMapping.calledBy)),
                     rate: extractNumeric(getCellValue(columnMapping.rate)),
                     totalExperience: extractNumeric(getCellValue(columnMapping.totalExperience)),
-                    currentCompany: getCellValue(columnMapping.currentCompany),
+                    currentCompany: toStr(getCellValue(columnMapping.currentCompany)),
                     currentCTC: extractNumeric(getCellValue(columnMapping.currentCTC)),
                     expectedCTC: extractNumeric(getCellValue(columnMapping.expectedCTC)),
                     noticePeriod: extractNumeric(getCellValue(columnMapping.noticePeriod)),
                     tatToJoin: extractNumeric(getCellValue(columnMapping.tatToJoin)),
-                    inHandOffer: getCellValue(columnMapping.inHandOffer)?.toString().toLowerCase() === 'yes',
-                    status: getCellValue(columnMapping.status) || '',
+                    inHandOffer: toStr(getCellValue(columnMapping.inHandOffer))?.toLowerCase() === 'yes',
+                    status: toStr(getCellValue(columnMapping.status)) || '',
 
-                    remark: getCellValue(columnMapping.remark),
-                    offerCompany: getCellValue(columnMapping.offerCompany),
+                    remark: toStr(getCellValue(columnMapping.remark)),
+                    offerCompany: toStr(getCellValue(columnMapping.offerCompany)),
                     lastWorkingDay: getCellValue(columnMapping.lastWorkingDay),
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
@@ -358,8 +372,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                 };
                             }
 
-                            const subHeader = row2.getCell(colIdx).value?.toString().trim();
-                            const val = row.getCell(colIdx).value;
+                            const subHeader = sanitizeCellValue(row2.getCell(colIdx).value)?.toString().trim();
+                            const val = sanitizeCellValue(row.getCell(colIdx).value);
                             const lowerSub = subHeader?.toLowerCase();
 
                             if (lowerSub === 'interviewer feedback' || lowerSub === 'remarks') {
