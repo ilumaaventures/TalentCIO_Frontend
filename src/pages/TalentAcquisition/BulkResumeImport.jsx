@@ -38,8 +38,8 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
     const checkIsExisting = (email, mobile) => {
         if (!email && !mobile) return false;
         return existingCandidates.some(c => 
-            (email && c.email?.toLowerCase() === email.toLowerCase().trim()) || 
-            (mobile && c.mobile?.trim() === (typeof mobile === 'string' ? mobile.trim() : mobile))
+            (email && String(c.email || '').toLowerCase() === String(email || '').toLowerCase().trim()) || 
+            (mobile && String(c.mobile || '').trim() === String(mobile || '').trim())
         );
     };
 

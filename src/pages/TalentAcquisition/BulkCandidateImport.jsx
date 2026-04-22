@@ -110,7 +110,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
     const mapSource = (source) => {
         if (!source) return 'Other';
-        const s = source.toLowerCase().trim();
+        const s = String(source).toLowerCase().trim();
         if (s.includes('naukri')) return 'Job Portal';
         if (s.includes('referral')) return 'Referral';
         if (s.includes('linkedin')) return 'LinkedIn';
@@ -483,8 +483,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 // Removed Experience check - defaults to 0 if missing
 
                 const isExisting = existingCandidates.some(c =>
-                    (mappedRow.email && c.email.toLowerCase() === mappedRow.email?.toLowerCase()) ||
-                    (mappedRow.mobile && c.mobile === mappedRow.mobile)
+                    (mappedRow.email && String(c.email || '').toLowerCase() === String(mappedRow.email || '').toLowerCase()) ||
+                    (mappedRow.mobile && String(c.mobile || '') === String(mappedRow.mobile || ''))
                 );
 
                 rows.push({
