@@ -12,6 +12,8 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
         return Array.from({ length: days }, (_, i) => new Date(year, month, i + 1));
     };
 
+
+    
     const normalizeDate = (d) => new Date(d).toDateString();
 
     const days = getDaysInMonth(currentDate);
