@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
-import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip, Globe } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import CandidateList from './CandidateList';
 import LegacyApplicationsView from './LegacyApplicationsView';
+import PublicApplicationsView from './PublicApplicationsView';
 import Skeleton from '../../components/Skeleton';
 import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '../../utils/taCache';
 
@@ -26,6 +27,7 @@ const HiringRequestDetails = () => {
     const [loading, setLoading] = useState(true);
     const [approvalComment, setApprovalComment] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [togglingVisibility, setTogglingVisibility] = useState(false);
     const [activeTab, setActiveTab] = useState('overview'); // overview, applications, reviews
 
     useEffect(() => {
@@ -59,6 +61,7 @@ const HiringRequestDetails = () => {
         : null;
 
     const hasSuperApprove = user?.permissions?.includes('ta.super_approve') || user?.permissions?.includes('*');
+    const canManageVisibility = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
 
     const canApprove = request && isDynamic
         ? (
@@ -137,6 +140,27 @@ const HiringRequestDetails = () => {
         navigate(`/ta/edit-request/${id}`);
     };
 
+    const handleTogglePublic = async () => {
+        if (!request) return;
+        const newValue = !request.isPublic;
+        const confirmMsg = newValue
+            ? 'Publish this job to talentcio.in/jobs? It will be visible to the public.'
+            : 'Unpublish this job? It will no longer appear on talentcio.in/jobs.';
+        if (!window.confirm(confirmMsg)) return;
+
+        try {
+            setTogglingVisibility(true);
+            const res = await api.patch(`/ta/hiring-request/${id}/visibility`, { isPublic: newValue });
+            setRequest((prev) => ({ ...prev, ...res.data.job }));
+            toast.success(res.data.message);
+            invalidateTACaches({ requestId: id, client: res.data?.job?.client || request?.client });
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to update visibility');
+        } finally {
+            setTogglingVisibility(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-50 pb-12">
@@ -203,7 +227,7 @@ const HiringRequestDetails = () => {
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
+                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...((request.status === 'Approved') && request.isPublic ? ['public applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -513,6 +537,39 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
+                            {false && canManageVisibility && request.status === 'Approved' && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                    <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">
+                                        <div className={`p-1.5 rounded-md ${request.isPublic ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
+                                            <Globe size={14} />
+                                        </div>
+                                        Job Board Visibility
+                                    </h3>
+                                    <div className="space-y-3">
+                                        <div className={`rounded-xl border px-3 py-3 ${request.isPublic ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                                            <p className={`text-xs font-bold uppercase tracking-wider ${request.isPublic ? 'text-emerald-700' : 'text-slate-600'}`}>
+                                                {request.isPublic ? 'Public on Job Board ✓' : 'Private (not listed)'}
+                                            </p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Public jobs appear on `talentcio.in/jobs` once the requisition is approved.
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            onClick={handleTogglePublic}
+                                            disabled={togglingVisibility}
+                                            className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${request.isPublic
+                                                ? 'bg-white border border-slate-200 text-slate-700 hover:border-red-200 hover:text-red-600 hover:bg-red-50'
+                                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
+                                                }`}
+                                        >
+                                            {togglingVisibility ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
+                                            {request.isPublic ? 'Unpublish from Job Board' : 'Publish to Job Board'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Actions Card */}
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                 <h3 className="text-sm font-bold text-slate-800 mb-3">Actions</h3>
@@ -523,6 +580,25 @@ const HiringRequestDetails = () => {
                                     >
                                         <Edit size={16} /> Edit Request
                                     </button>
+
+                                    {(request.status === 'Approved') && canManageVisibility && (
+                                        <button
+                                            onClick={handleTogglePublic}
+                                            disabled={togglingVisibility}
+                                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border shadow-sm ${
+                                                request.isPublic
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                        >
+                                            {togglingVisibility
+                                                ? <Loader size={14} className="animate-spin" />
+                                                : request.isPublic
+                                                    ? <><Globe size={14} /> Public on Job Board</>
+                                                    : <><Globe size={14} /> Publish to Job Board</>
+                                            }
+                                        </button>
+                                    )}
 
                                     {request.status !== 'Closed' && (
                                         <button
@@ -599,6 +675,10 @@ const HiringRequestDetails = () => {
 
                 {activeTab === 'applications' && (
                     <CandidateList hiringRequestId={id} positionName={request?.positionName} hiringRequestStatus={request?.status} />
+                )}
+
+                {activeTab === 'public applications' && (
+                    <PublicApplicationsView hiringRequestId={id} />
                 )}
 
                 {activeTab === 'legacy applications' && request.previousRequestId && (
