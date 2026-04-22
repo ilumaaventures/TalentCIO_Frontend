@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import api from '../api/axios';
 import { connectSocket, disconnectSocket } from '../api/socket';
 import InvalidWorkspace from '../pages/InvalidWorkspace';
@@ -124,6 +124,24 @@ export const AuthProvider = ({ children }) => {
     return response.data;
   };
 
+  const loginWithToken = useCallback((newToken, userData) => {
+    const normalisedUser = {
+      ...userData,
+      roles: userData?.roleNames || (Array.isArray(userData?.roles)
+        ? userData.roles.map((role) => role.name || role)
+        : [])
+    };
+
+    setToken(newToken);
+    setUser(normalisedUser);
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(normalisedUser));
+
+    if (normalisedUser?._id) {
+      connectSocket(normalisedUser._id);
+    }
+  }, []);
+
   const register = async (data) => {
     const response = await api.post('/auth/register-company', data);
     const { token: newToken, ...userData } = response.data;
@@ -193,7 +211,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, refreshProfile, hasModule, loading, workspace }}>
+    <AuthContext.Provider value={{ user, token, login, loginWithToken, register, logout, refreshProfile, hasModule, loading, workspace }}>
       {children}
     </AuthContext.Provider>
   );

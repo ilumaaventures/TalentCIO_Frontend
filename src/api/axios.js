@@ -50,11 +50,12 @@ api.interceptors.request.use(
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
     const parts = hostname.split('.');
+    const storedTenant = localStorage.getItem('tenant') || '';
 
     // Infra identifiers that are never tenant slugs
     const NON_TENANT_IDS = new Set(['www', 'api', 'talentcio', 'talentcio-be']);
     // Root domains we own — their subdomains are tenants
-    const OWN_ROOTS = ['talentcio.com', 'telentcio.com'];
+    const OWN_ROOTS = ['talentcio.in', 'telentcio.in', 'talentcio.com', 'telentcio.com'];
 
     let detectedSubdomain = '';
 
@@ -85,11 +86,12 @@ api.interceptors.request.use(
       // If isOwnRoot (talentcio.com itself) → no tenant
     }
 
-    // Query param overrides everything
-    let targetTenant = urlParams.get('tenant') || detectedSubdomain;
+    // Query param overrides everything; on plain localhost we can also reuse the stored tenant.
+    const isPlainLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+    let targetTenant = urlParams.get('tenant') || detectedSubdomain || (isPlainLocalhost ? storedTenant : '');
 
     // Strip non-tenant infra names
-    if (NON_TENANT_IDS.has(targetTenant.toLowerCase())) {
+    if (targetTenant && NON_TENANT_IDS.has(targetTenant.toLowerCase())) {
       targetTenant = '';
     }
 

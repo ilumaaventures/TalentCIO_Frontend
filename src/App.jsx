@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
+import HandoffLogin from './pages/HandoffLogin';
 import OTPReset from './pages/OTPReset';
 import Unauthorized from './pages/Unauthorized';
 
@@ -58,6 +59,7 @@ function App() {
         <ErrorBoundary>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/auth/handoff" element={<HandoffLogin />} />
             <Route path="/reset-password" element={<OTPReset />} />
             <Route path="/pre-onboarding/login" element={<PreOnboardingLogin />} />
             <Route path="/pre-onboarding/portal" element={<PreOnboardingPortal />} />
