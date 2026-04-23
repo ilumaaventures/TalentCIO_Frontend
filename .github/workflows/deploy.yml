@@ -43,7 +43,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            sudo chown -R deploy:deploy /var/www/talentcio/frontend
-            sudo find /var/www/talentcio/frontend -type d -exec chmod 755 {} \;
-            sudo find /var/www/talentcio/frontend -type f -exec chmod 644 {} \;
+            sudo chown -R deploy:deploy /var/www/talentcio/frontend/dist
+            sudo find /var/www/talentcio/frontend/dist -type d -exec chmod 755 {} \;
+            sudo find /var/www/talentcio/frontend/dist -type f -exec chmod 644 {} \;
             sudo systemctl reload nginx
