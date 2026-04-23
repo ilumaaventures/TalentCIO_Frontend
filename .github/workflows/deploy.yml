@@ -32,7 +32,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: "dist/*"
-          target: "/var/www/talentcio/frontend/"
+          target: "/var/www/talentcio/frontend/dist/"
           strip_components: 1
           overwrite: true
 
