@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Users, Briefcase, ChevronRight, Search, Clock, CheckCircle, TrendingUp } from 'lucide-react';
+import { Users, Briefcase, ChevronRight, Search, Clock, CheckCircle, TrendingUp, Plus } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
+import { useAuth } from '../../context/AuthContext';
 import { isCacheFresh } from '../../utils/cache';
 import { readTAClientsCache, refreshTAClientsCache } from '../../utils/taCache';
 
 const ClientSelection = () => {
+    const { user } = useAuth();
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -52,12 +54,20 @@ const ClientSelection = () => {
                         <p className="text-sm text-slate-500 font-medium text-slate-400">Manage client hiring requests and pipelines</p>
                     </div>
                     <div className="flex gap-3">
-                         <Link
+                        <Link
                             to="/ta/analysis"
                             className="bg-white border border-slate-300 hover:bg-blue-50 text-slate-700 hover:text-blue-700 hover:border-blue-200 px-4 py-2 rounded-lg flex items-center gap-2 transition-all font-bold text-xs uppercase tracking-wider shadow-sm"
                         >
                             <TrendingUp size={16} className="text-blue-600" /> Global Analysis
                         </Link>
+                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                            <Link
+                                to="/ta/create-request"
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-bold text-xs uppercase tracking-wider shadow-sm"
+                            >
+                                <Plus size={16} /> Raising Requisition
+                            </Link>
+                        )}
                     </div>
                 </div>
             </div>
