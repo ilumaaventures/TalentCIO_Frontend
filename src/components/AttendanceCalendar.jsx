@@ -109,7 +109,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
             {/* Calendar Rows */}
             <div className="grid grid-cols-7 text-xs">
                 {blanks.map((b) => (
-                    <div key={`blank-${b}`} className="min-h-[100px] border-b border-r border-slate-100 bg-white"></div>
+                    <div key={`blank-${b}`} className="min-h-25 border-b border-r border-slate-100 bg-white"></div>
                 ))}
 
                 {days.map((day) => {
@@ -138,7 +138,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                     return (
                         <div
                             key={day.toISOString()}
-                            className={`min-h-[100px] border-b border-r border-slate-100 px-2 py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : 'bg-white'} ${isWeeklyOff ? 'bg-slate-50/40' : ''}`}
+                            className={`min-h-25 border-b border-r border-slate-100 px-2 py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : 'bg-white'} ${isWeeklyOff ? 'bg-slate-50/40' : ''}`}
                         >
                             <div className={`text-right mb-2 font-medium text-[11px] ${isToday ? 'text-blue-600' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400')}`}>
                                 {day.getDate()}

@@ -51,7 +51,7 @@ const ClientSelection = () => {
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                     <div>
                         <h1 className="text-xl font-bold text-slate-800">Talent Acquisition</h1>
-                        <p className="text-sm text-slate-500 font-medium text-slate-400">Manage client hiring requests and pipelines</p>
+                        <p className="text-sm text-slate-500 font-medium">Manage client hiring requests and pipelines</p>
                     </div>
                     <div className="flex gap-3">
                         <Link
