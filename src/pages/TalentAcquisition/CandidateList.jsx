@@ -12,6 +12,16 @@ import { saveAs } from 'file-saver';
 import BulkCandidateImport from './BulkCandidateImport';
 import BulkResumeImport from './BulkResumeImport';
 import CandidateDetails from './CandidateDetails';
+import { ProfileReviewModal } from './PublicApplicationsView';
+
+const hasReviewableApplicantProfile = (item) => Boolean(
+    item &&
+    (
+        (item.applicantId && typeof item.applicantId === 'object') ||
+        item.profileSnapshot ||
+        item.publicApplicationId
+    )
+);
 
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hiringRequestStatus }) => {
     const { user } = useAuth();
@@ -39,6 +49,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
     const [activePhase, setActivePhase] = useState(1);
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
+    const [profileTarget, setProfileTarget] = useState(null);
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
 
@@ -1573,6 +1584,19 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                                         Transferred
                                                                     </span>
                                                                 )}
+                                                                {hasReviewableApplicantProfile(candidate) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setProfileTarget(candidate);
+                                                                        }}
+                                                                        className="mt-1 flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                                                                    >
+                                                                        <Eye size={11} />
+                                                                        Review Complete Profile
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </td>
                                                         {!selectedCandidateId && (
@@ -1731,6 +1755,19 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                                         View Details
                                                                     </button>
 
+                                                                    {hasReviewableApplicantProfile(candidate) && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setProfileTarget(candidate);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
+                                                                        >
+                                                                            <Eye size={16} className="text-blue-500" />
+                                                                            Review Complete Profile
+                                                                        </button>
+                                                                    )}
+
                                                                     {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
                                                                         <a
                                                                             href={candidate.resumeUrl}
@@ -1882,9 +1919,15 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                     onImportSuccess={fetchCandidates}
                 />
             )}
+
+            {profileTarget && (
+                <ProfileReviewModal
+                    application={profileTarget}
+                    onClose={() => setProfileTarget(null)}
+                />
+            )}
         </div>
     );
 };
 
 export default CandidateList;
-

@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, CheckCircle2, Eye, EyeOff, Sparkles, Shield, BarChart3 } from 'lucide-react';
 
 const MotionDiv = motion.div;
+const normalizeEmail = (value) => value.trim().toLowerCase();
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -21,7 +22,7 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const data = await login(email, password);
+      const data = await login(normalizeEmail(email), password);
 
       if (data?.passwordResetRequired) {
         toast.success("Identity verification required");

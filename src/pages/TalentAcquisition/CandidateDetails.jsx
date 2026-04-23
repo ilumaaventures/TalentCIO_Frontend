@@ -3,9 +3,19 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2 } from 'lucide-react';
+import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
+import { ProfileReviewModal } from './PublicApplicationsView';
+
+const hasReviewableApplicantProfile = (item) => Boolean(
+    item &&
+    (
+        (item.applicantId && typeof item.applicantId === 'object') ||
+        item.profileSnapshot ||
+        item.publicApplicationId
+    )
+);
 
 const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propHiringRequestId, isSidePanel, onUpdate, isSidePanelMaximized, onToggleMaximize }) => {
     const { user } = useAuth();
@@ -50,6 +60,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [roles, setRoles] = useState([]);
     const [selectedRoleForRound, setSelectedRoleForRound] = useState('');
     const [isResumeFullView, setIsResumeFullView] = useState(false);
+    const [isProfileReviewOpen, setIsProfileReviewOpen] = useState(false);
 
     const toggleFullScreen = () => {
         if (isSidePanel && onToggleMaximize) {
@@ -380,6 +391,15 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             </div>
                         </div>
                         <div className="flex gap-3 flex-wrap">
+                            {hasReviewableApplicantProfile(candidate) && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsProfileReviewOpen(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors border border-blue-600"
+                                >
+                                    <Eye size={18} /> Review Complete Profile
+                                </button>
+                            )}
                             {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
                                 <a
                                     href={candidate.resumeUrl}
@@ -407,14 +427,25 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         <h1 className="text-lg font-bold text-slate-800">{candidate.candidateName}</h1>
                         <p className="text-xs text-slate-500">{candidate.email} • {candidate.mobile}</p>
                     </div>
-                    {canManageRounds && (
-                        <button
-                            onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
-                            className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm"
-                        >
-                            <Edit2 size={16} /> Edit Profile
-                        </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {hasReviewableApplicantProfile(candidate) && (
+                            <button
+                                type="button"
+                                onClick={() => setIsProfileReviewOpen(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+                            >
+                                <Eye size={16} /> Review Complete Profile
+                            </button>
+                        )}
+                        {canManageRounds && (
+                            <button
+                                onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
+                                className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm"
+                            >
+                                <Edit2 size={16} /> Edit Profile
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -1349,6 +1380,13 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     </div>
                 </div>
             </div>
+
+            {isProfileReviewOpen && (
+                <ProfileReviewModal
+                    application={candidate}
+                    onClose={() => setIsProfileReviewOpen(false)}
+                />
+            )}
         </div>
     );
 };
