@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, CheckCircle2, Eye, EyeOff, Sparkles, Shield, BarChart3 } from 'lucide-react';
 
 const MotionDiv = motion.div;
+const normalizeEmail = (value) => value.trim().toLowerCase();
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -21,7 +22,7 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const data = await login(email, password);
+      const data = await login(normalizeEmail(email), password);
 
       if (data?.passwordResetRequired) {
         toast.success("Identity verification required");
@@ -90,10 +91,7 @@ const Login = () => {
             className="mb-14"
           >
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/30">
-                <span className="text-lg font-black text-white tracking-tight">T</span>
-              </div>
-              <span className="text-xl font-bold text-white tracking-tight">TalentCIO</span>
+              <img src="/dark-logo-full.png" alt="TalentCIO" className="h-25 w-auto max-w-[320px] object-contain" />
             </div>
           </MotionDiv>
 
@@ -155,10 +153,7 @@ const Login = () => {
         >
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2.5 mb-10">
-            <div className="h-9 w-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
-              <span className="text-base font-black text-white">T</span>
-            </div>
-            <span className="text-lg font-bold text-slate-900 tracking-tight">TalentCIO</span>
+            <img src="/talentcio-logo.png" alt="TalentCIO" className="h-11 w-auto max-w-[250px] object-contain" />
           </div>
 
           {/* Heading */}

@@ -4,6 +4,7 @@ import { connectSocket, disconnectSocket } from '../api/socket';
 import InvalidWorkspace from '../pages/InvalidWorkspace';
 
 const AuthContext = createContext(null);
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -89,7 +90,7 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const login = async (email, password, companyId = null) => {
-    const loginData = { email, password };
+    const loginData = { email: normalizeEmail(email), password };
 
     // Priority: 1. Explicit selection, 2. Auto-detected from domain, 3. Empty (discovers via email)
     const targetCompanyId = companyId || workspace?.id;

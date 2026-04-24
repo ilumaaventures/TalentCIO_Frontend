@@ -3,14 +3,25 @@ import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import {
     ArrowRight,
+    Award,
+    Briefcase,
     CheckCircle,
     Clock,
+    Eye,
     FileText,
     Globe,
+    GraduationCap,
+    Languages,
+    Link as LinkIcon,
     Loader,
+    Mail,
     MoreVertical,
+    MapPin,
+    Phone,
     RefreshCw,
     Search,
+    UserRound,
+    X,
     XCircle
 } from 'lucide-react';
 import api from '../../api/axios';
@@ -59,6 +70,299 @@ const MetricCard = ({ label, val, icon, color, onClick }) => {
     );
 };
 
+const getApplicantProfile = (application) => {
+    if (application?.applicantId && typeof application.applicantId === 'object') {
+        return application.applicantId;
+    }
+
+    return application?.profileSnapshot || {};
+};
+
+const formatValue = (value, fallback = 'Not added') => {
+    if (value === undefined || value === null || value === '') {
+        return fallback;
+    }
+
+    return value;
+};
+
+const formatMonthYear = (month, year) => {
+    if (!year) return '';
+
+    if (!month) return String(year);
+
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    return format(date, 'MMM yyyy');
+};
+
+const joinLocation = (profile) => (
+    [profile.currentCity, profile.currentState, profile.currentCountry].filter(Boolean).join(', ') || 'Not added'
+);
+
+const ChipList = ({ items = [], renderItem = (item) => item }) => {
+    const values = Array.isArray(items) ? items.filter(Boolean) : [];
+
+    if (!values.length) {
+        return <p className="text-sm text-slate-400">Not added</p>;
+    }
+
+    return (
+        <div className="flex flex-wrap gap-2">
+            {values.map((item, index) => (
+                <span key={`${renderItem(item)}-${index}`} className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                    {renderItem(item)}
+                </span>
+            ))}
+        </div>
+    );
+};
+
+const InfoItem = ({ label, value, icon: Icon }) => (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+            {Icon && <Icon size={13} />}
+            {label}
+        </div>
+        <p className="mt-2 text-sm font-semibold text-slate-800">{formatValue(value)}</p>
+    </div>
+);
+
+const ProfileSection = ({ title, icon: Icon, children }) => (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+            {Icon && <Icon size={18} className="text-blue-600" />}
+            <h4 className="text-sm font-black uppercase tracking-widest text-slate-700">{title}</h4>
+        </div>
+        {children}
+    </section>
+);
+
+export const ProfileReviewModal = ({ application, onClose }) => {
+    if (!application) return null;
+
+    const profile = getApplicantProfile(application);
+    const fullName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || application.candidateName;
+    const skills = Array.isArray(profile.skills)
+        ? profile.skills.map((skill) => (typeof skill === 'string' ? { name: skill } : skill)).filter((skill) => skill?.name)
+        : [];
+    const workExperience = Array.isArray(profile.workExperience) ? profile.workExperience : [];
+    const education = Array.isArray(profile.education) ? profile.education : [];
+    const certifications = Array.isArray(profile.certifications) ? profile.certifications : [];
+    const languages = Array.isArray(profile.languages) ? profile.languages : [];
+    const otherLinks = Array.isArray(profile.otherLinks) ? profile.otherLinks : [];
+    const resumeUrl = profile.resumeUrl || application.resumeUrl;
+    const submittedAt = application.createdAt || application.publicApplicationAppliedAt || application.uploadedAt;
+    const reviewStatus = application.reviewStatus || application.publicApplicationReviewStatus || application.status || application.decision;
+    const coverNote = application.coverNote || application.remark;
+
+    return createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
+            <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-slate-50 shadow-2xl border border-white/40">
+                <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-5">
+                    <div className="flex items-center gap-4">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-blue-50 text-xl font-black text-blue-700">
+                            {profile.profilePhotoUrl ? (
+                                <img src={profile.profilePhotoUrl} alt={fullName} className="h-full w-full object-cover" />
+                            ) : (
+                                fullName?.charAt(0)?.toUpperCase() || 'A'
+                            )}
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-600">Public Application Profile Review</p>
+                            <h3 className="mt-1 text-2xl font-black text-slate-900">{fullName}</h3>
+                            <p className="mt-1 text-sm text-slate-500">{profile.headline || coverNote || 'Applicant profile details'}</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="overflow-y-auto px-6 py-6">
+                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+                        <div className="space-y-6">
+                            <ProfileSection title="Basic Profile" icon={UserRound}>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <InfoItem label="Email" value={profile.email || application.email} icon={Mail} />
+                                    <InfoItem label="Mobile" value={profile.mobile || application.mobile} icon={Phone} />
+                                    <InfoItem label="Location" value={joinLocation(profile)} icon={MapPin} />
+                                    <InfoItem label="Job Search" value={profile.jobSearchStatus} />
+                                    <InfoItem label="Willing To Relocate" value={profile.willingToRelocate ? 'Yes' : 'No'} />
+                                    <InfoItem label="Profile Completion" value={profile.profileCompletionScore !== undefined ? `${profile.profileCompletionScore}%` : undefined} />
+                                </div>
+                                {profile.summary && (
+                                    <div className="mt-4 rounded-2xl border border-slate-100 bg-white p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Summary</p>
+                                        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.summary}</p>
+                                    </div>
+                                )}
+                            </ProfileSection>
+
+                            <ProfileSection title="Experience" icon={Briefcase}>
+                                {workExperience.length ? (
+                                    <div className="space-y-3">
+                                        {workExperience.map((item, index) => (
+                                            <div key={item._id || `${item.companyName}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                    <div>
+                                                        <h5 className="font-bold text-slate-900">{item.jobTitle}</h5>
+                                                        <p className="text-sm font-semibold text-blue-700">{item.companyName}</p>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            {[item.employmentType, item.locationType, item.location].filter(Boolean).join(' - ')}
+                                                        </p>
+                                                    </div>
+                                                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">
+                                                        {formatMonthYear(item.startMonth, item.startYear) || 'Start'} - {item.isCurrent ? 'Present' : (formatMonthYear(item.endMonth, item.endYear) || 'End')}
+                                                    </span>
+                                                </div>
+                                                {item.description && <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">{item.description}</p>}
+                                                <div className="mt-3">
+                                                    <ChipList items={item.skills} />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-400">No work experience added.</p>
+                                )}
+                            </ProfileSection>
+
+                            <ProfileSection title="Education" icon={GraduationCap}>
+                                {education.length ? (
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        {education.map((item, index) => (
+                                            <div key={item._id || `${item.institution}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                                <h5 className="font-bold text-slate-900">{item.degree}</h5>
+                                                <p className="text-sm text-slate-600">{item.fieldOfStudy}</p>
+                                                <p className="mt-1 text-sm font-semibold text-blue-700">{item.institution}</p>
+                                                <p className="mt-2 text-xs text-slate-500">
+                                                    {[item.startYear, item.isCurrent ? 'Present' : item.endYear].filter(Boolean).join(' - ')}
+                                                    {item.grade ? ` - ${item.grade}` : ''}
+                                                </p>
+                                                {item.description && <p className="mt-2 text-sm text-slate-600">{item.description}</p>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-400">No education added.</p>
+                                )}
+                            </ProfileSection>
+                        </div>
+
+                        <div className="space-y-6">
+                            <ProfileSection title="Application" icon={FileText}>
+                                <div className="space-y-3">
+                                    <InfoItem label="Applied On" value={submittedAt ? format(new Date(submittedAt), 'MMM dd, yyyy') : undefined} />
+                                    <InfoItem label="Review Status" value={reviewStatus} />
+                                    <InfoItem label="Current CTC" value={application.currentCTC ? `${application.currentCTC} LPA` : profile.currentCTC ? `${profile.currentCTC} LPA` : undefined} />
+                                    <InfoItem label="Expected CTC" value={application.expectedCTC ? `${application.expectedCTC} LPA` : profile.expectedCTC ? `${profile.expectedCTC} LPA` : undefined} />
+                                    <InfoItem label="Notice Period" value={application.noticePeriod !== undefined ? `${application.noticePeriod} days` : profile.noticePeriod !== undefined ? `${profile.noticePeriod} days` : undefined} />
+                                </div>
+                                {coverNote && (
+                                    <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Cover Note</p>
+                                        <p className="mt-2 text-sm leading-6 text-amber-900">{coverNote}</p>
+                                    </div>
+                                )}
+                                {resumeUrl && (
+                                    <a
+                                        href={resumeUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="mt-4 flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
+                                    >
+                                        <FileText size={16} />
+                                        View Resume
+                                    </a>
+                                )}
+                            </ProfileSection>
+
+                            <ProfileSection title="Skills" icon={CheckCircle}>
+                                <ChipList items={skills} renderItem={(skill) => `${skill.name}${skill.level ? ` (${skill.level})` : ''}`} />
+                            </ProfileSection>
+
+                            <ProfileSection title="Preferences" icon={Search}>
+                                <div className="space-y-4">
+                                    <div>
+                                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Preferred Job Types</p>
+                                        <ChipList items={profile.preferredJobTypes} />
+                                    </div>
+                                    <div>
+                                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Preferred Locations</p>
+                                        <ChipList items={profile.preferredLocations} />
+                                    </div>
+                                    <div>
+                                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Preferred Departments</p>
+                                        <ChipList items={profile.preferredDepartments} />
+                                    </div>
+                                </div>
+                            </ProfileSection>
+
+                            <ProfileSection title="Languages" icon={Languages}>
+                                <ChipList items={languages} renderItem={(item) => `${item.language}${item.proficiency ? ` - ${item.proficiency}` : ''}`} />
+                            </ProfileSection>
+
+                            <ProfileSection title="Certifications" icon={Award}>
+                                {certifications.length ? (
+                                    <div className="space-y-3">
+                                        {certifications.map((item, index) => (
+                                            <div key={item._id || `${item.name}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                                <p className="font-bold text-slate-900">{item.name}</p>
+                                                <p className="text-sm text-slate-500">{item.issuingOrganization || 'Organization not added'}</p>
+                                                <p className="mt-1 text-xs text-slate-400">
+                                                    {formatMonthYear(item.issueMonth, item.issueYear) || 'Issue date not added'}
+                                                    {item.doesNotExpire ? ' - No expiry' : item.expiryYear ? ` - Expires ${formatMonthYear(item.expiryMonth, item.expiryYear)}` : ''}
+                                                </p>
+                                                {item.credentialUrl && (
+                                                    <a href={item.credentialUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline">
+                                                        Open Credential <LinkIcon size={12} />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-400">No certifications added.</p>
+                                )}
+                            </ProfileSection>
+
+                            <ProfileSection title="Links" icon={LinkIcon}>
+                                <div className="space-y-2">
+                                    {[
+                                        { label: 'LinkedIn', url: profile.linkedinUrl },
+                                        { label: 'GitHub', url: profile.githubUrl },
+                                        { label: 'Portfolio', url: profile.portfolioUrl },
+                                        ...otherLinks
+                                    ].filter((item) => item.url).map((item, index) => (
+                                        <a
+                                            key={`${item.label}-${index}`}
+                                            href={item.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
+                                        >
+                                            {item.label || 'Link'}
+                                            <LinkIcon size={14} />
+                                        </a>
+                                    ))}
+                                    {!profile.linkedinUrl && !profile.githubUrl && !profile.portfolioUrl && !otherLinks.some((item) => item.url) && (
+                                        <p className="text-sm text-slate-400">No links added.</p>
+                                    )}
+                                </div>
+                            </ProfileSection>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
 const PublicApplicationsView = ({ hiringRequestId }) => {
     const { user } = useAuth();
     const [applications, setApplications] = useState([]);
@@ -71,6 +375,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
     const [transferTarget, setTransferTarget] = useState(null);
     const [activeRequests, setActiveRequests] = useState([]);
     const [selectedTargetId, setSelectedTargetId] = useState(hiringRequestId);
+    const [profileTarget, setProfileTarget] = useState(null);
 
     const canEdit = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
 
@@ -221,7 +526,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                 <div className="flex items-center gap-2">
                     <Globe size={16} className="text-blue-600" />
                     <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest">
-                        Public Job Board Applications — {applications.length} Total
+                        Public Job Board Applications - {applications.length} Total
                     </h3>
                 </div>
                 <button
@@ -310,6 +615,14 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                                 {application.reviewStatus === 'Transferred' && (
                                                     <span className="ml-2 text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">TRANSFERRED</span>
                                                 )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setProfileTarget(application)}
+                                                    className="mt-1 flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                                                >
+                                                    <Eye size={12} />
+                                                    Review Complete Profile
+                                                </button>
                                                 {application.coverNote && (
                                                     <p className="mt-0.5 text-[11px] text-slate-400 truncate max-w-[200px]" title={application.coverNote}>
                                                         "{application.coverNote}"
@@ -328,7 +641,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                                 {application.currentCTC && <div>Current: <span className="font-semibold">{application.currentCTC} LPA</span></div>}
                                                 {application.expectedCTC && <div>Expected: <span className="font-semibold">{application.expectedCTC} LPA</span></div>}
                                                 {application.noticePeriod !== undefined && <div>Notice: <span className="font-semibold">{application.noticePeriod}d</span></div>}
-                                                {!application.currentCTC && !application.expectedCTC && <span className="text-slate-400">—</span>}
+                                                {!application.currentCTC && !application.expectedCTC && <span className="text-slate-400">-</span>}
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
@@ -359,6 +672,17 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                                     style={menuPosition}
                                                     onClick={(event) => event.stopPropagation()}
                                                 >
+                                                    <button
+                                                        onClick={() => {
+                                                            setProfileTarget(application);
+                                                            setActiveMenu(null);
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
+                                                    >
+                                                        <Eye size={15} className="text-blue-500" />
+                                                        Review Complete Profile
+                                                    </button>
+
                                                     {application.resumeUrl && (
                                                         <a
                                                             href={application.resumeUrl}
@@ -445,7 +769,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                         >
                             {activeRequests.map((request) => (
                                 <option key={request._id} value={request._id}>
-                                    {request.roleDetails?.title} — {request.client} ({request.requestId})
+                                    {request.roleDetails?.title} - {request.client} ({request.requestId})
                                     {request._id === hiringRequestId ? ' (This Request)' : ''}
                                 </option>
                             ))}
@@ -471,6 +795,13 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {profileTarget && (
+                <ProfileReviewModal
+                    application={profileTarget}
+                    onClose={() => setProfileTarget(null)}
+                />
             )}
         </div>
     );

@@ -7,6 +7,7 @@ import { KeyRound, ShieldCheck, ArrowRight, Loader2, Lock, RefreshCw, CheckCircl
 import Button from '../components/Button';
 
 const MotionDiv = motion.div;
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 const OTPReset = () => {
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -19,7 +20,7 @@ const OTPReset = () => {
 
     const navigate = useNavigate();
     const location = useLocation();
-    const email = location.state?.email;
+    const email = normalizeEmail(location.state?.email);
 
     useEffect(() => {
         if (!email) {
