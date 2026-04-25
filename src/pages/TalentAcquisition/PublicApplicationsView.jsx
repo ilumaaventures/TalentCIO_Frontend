@@ -154,7 +154,6 @@ export const ProfileReviewModal = ({ application, onClose }) => {
     const submittedAt = application.createdAt || application.publicApplicationAppliedAt || application.uploadedAt;
     const reviewStatus = application.reviewStatus || application.publicApplicationReviewStatus || application.status || application.decision;
     const coverNote = application.coverNote || application.remark;
-
     return createPortal(
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
             <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-slate-50 shadow-2xl border border-white/40">
@@ -514,7 +513,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                 <Globe className="mx-auto text-slate-300 mb-4" size={48} />
                 <h3 className="text-lg font-semibold text-slate-700 mb-1">No Public Applications Yet</h3>
                 <p className="text-slate-400 text-sm">
-                    When this job is published to <strong>talentcio.in/jobs</strong> and candidates apply, they will appear here.
+                    When this job is published and candidates apply, they will appear here.
                 </p>
             </div>
         );
