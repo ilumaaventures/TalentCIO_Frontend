@@ -7,6 +7,16 @@ import toast from 'react-hot-toast';
 import WorkflowSettings from './WorkflowSettings';
 import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '../../utils/taCache';
 
+const SALARY_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR'];
+const parseOptionalNumber = (value) => {
+    if (value === '' || value === null || value === undefined) {
+        return undefined;
+    }
+
+    const numericValue = Number(value);
+    return Number.isNaN(numericValue) ? undefined : numericValue;
+};
+
 const Section = ({ title, icon: Icon, children, fullWidth = false }) => (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
@@ -19,7 +29,7 @@ const Section = ({ title, icon: Icon, children, fullWidth = false }) => (
     </div>
 );
 
-const Input = ({ label, name, value, onChange, type = "text", required, options, placeholder, error, gridCols = 1 }) => (
+const Input = ({ label, name, value, onChange, type = "text", required, options, placeholder, error, gridCols = 1, disabled = false }) => (
     <div className={gridCols === 2 ? "md:col-span-2" : ""}>
         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
             {label} {required && <span className="text-red-500">*</span>}
@@ -29,6 +39,7 @@ const Input = ({ label, name, value, onChange, type = "text", required, options,
                 name={name}
                 value={value}
                 onChange={onChange}
+                disabled={disabled}
                 className={`w-full p-2.5 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all ${error ? 'border-red-500' : 'border-slate-300'}`}
             >
                 <option value="">Select an option</option>
@@ -39,6 +50,7 @@ const Input = ({ label, name, value, onChange, type = "text", required, options,
                 name={name}
                 value={value}
                 onChange={onChange}
+                disabled={disabled}
                 placeholder={placeholder}
                 rows={3}
                 className={`w-full p-2.5 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all ${error ? 'border-red-500' : 'border-slate-300'}`}
@@ -49,6 +61,7 @@ const Input = ({ label, name, value, onChange, type = "text", required, options,
                 name={name}
                 value={value}
                 onChange={onChange}
+                disabled={disabled}
                 placeholder={placeholder}
                 step={type === 'number' ? 'any' : undefined}
                 className={`w-full p-2.5 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all ${error ? 'border-red-500' : 'border-slate-300'}`}
@@ -110,6 +123,7 @@ const CreateHiringRequest = () => {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         client: '', // New field
+        clientConfidential: false,
         workflowId: '', // Workflow selection
         interviewWorkflowId: '', // Interview Workflow template selection
         previousRequestId: '', // For reopening
@@ -140,6 +154,8 @@ const CreateHiringRequest = () => {
         expectedJoiningDate: '',
         budgetMin: '',
         budgetMax: '',
+        budgetCurrency: 'INR',
+        salaryRangeOpen: false,
         priority: 'Medium',
 
         // Job Description
@@ -184,6 +200,7 @@ const CreateHiringRequest = () => {
 
                     setFormData({
                         client: data.client || '',
+                        clientConfidential: Boolean(data.clientConfidential),
                         workflowId: data.workflowId?._id || data.workflowId || '',
                         interviewWorkflowId: data.interviewWorkflowId?._id || data.interviewWorkflowId || '',
                         previousRequestId: reopenFrom ? reopenFrom : '', // Set if reopening
@@ -205,8 +222,10 @@ const CreateHiringRequest = () => {
                         shift: data.requirements.shift,
                         openPositions: data.hiringDetails.openPositions,
                         expectedJoiningDate: data.hiringDetails.expectedJoiningDate ? data.hiringDetails.expectedJoiningDate.split('T')[0] : '', // Format for date input
-                        budgetMin: data.hiringDetails.budgetRange.min,
-                        budgetMax: data.hiringDetails.budgetRange.max,
+                        budgetMin: data.hiringDetails.budgetRange?.min ?? '',
+                        budgetMax: data.hiringDetails.budgetRange?.max ?? '',
+                        budgetCurrency: data.hiringDetails.budgetRange?.currency || 'INR',
+                        salaryRangeOpen: Boolean(data.hiringDetails.budgetRange?.isOpen),
                         priority: data.hiringDetails.priority,
                         jobDescription: data.jobDescription || '',
                         jobDescriptionFile: data.jobDescriptionFile || ''
@@ -224,8 +243,8 @@ const CreateHiringRequest = () => {
     }, [id, reopenFrom, navigate]);
 
     const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     };
 
     const [uploadingFile, setUploadingFile] = useState(false);
@@ -287,7 +306,7 @@ const CreateHiringRequest = () => {
                     setLoading(false);
                     return;
                 }
-                if (Number(formData.budgetMin) > Number(formData.budgetMax)) {
+                if (!formData.salaryRangeOpen && formData.budgetMin !== '' && formData.budgetMax !== '' && Number(formData.budgetMin) > Number(formData.budgetMax)) {
                     toast.error('Min Budget cannot be greater than Max Budget');
                     setLoading(false);
                     return;
@@ -307,6 +326,7 @@ const CreateHiringRequest = () => {
             // Format Data for API
             const payload = {
                 client: formData.client,
+                clientConfidential: Boolean(formData.clientConfidential),
                 workflowId: formData.workflowId, // Send selected workflow ID
                 interviewWorkflowId: formData.interviewWorkflowId || undefined, // Send selected interview workflow
                 previousRequestId: formData.previousRequestId || undefined,
@@ -335,8 +355,10 @@ const CreateHiringRequest = () => {
                     openPositions: formData.openPositions ? Number(formData.openPositions) : 1, // Default to 1 if empty
                     expectedJoiningDate: formData.expectedJoiningDate,
                     budgetRange: {
-                        min: Number(formData.budgetMin),
-                        max: Number(formData.budgetMax)
+                        min: formData.salaryRangeOpen ? undefined : parseOptionalNumber(formData.budgetMin),
+                        max: formData.salaryRangeOpen ? undefined : parseOptionalNumber(formData.budgetMax),
+                        currency: formData.budgetCurrency || 'INR',
+                        isOpen: Boolean(formData.salaryRangeOpen)
                     },
                     priority: formData.priority
                 },
@@ -490,6 +512,24 @@ const CreateHiringRequest = () => {
                         </select>
                     </div>
                     <Input label="Client Name" name="client" value={formData.client} onChange={handleChange} required options={clients.map(c => c.name)} />
+                    <div className="md:col-span-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Client Visibility
+                        </label>
+                        <label className="flex items-start gap-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="clientConfidential"
+                                checked={formData.clientConfidential}
+                                onChange={handleChange}
+                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600"
+                            />
+                            <span>
+                                <span className="block font-semibold text-slate-800">Keep client name confidential</span>
+                                <span className="mt-1 block text-xs text-slate-500">Use this when the client name should be hidden on public job listings.</span>
+                            </span>
+                        </label>
+                    </div>
                     <Input label="Job Title" name="title" value={formData.title} onChange={handleChange} required placeholder="e.g. Senior Frontend Developer" />
                     <Input label="Department" name="department" value={formData.department} onChange={handleChange} required placeholder="e.g. Engineering" />
                     <Input label="Employment Type" name="employmentType" value={formData.employmentType} onChange={handleChange} required options={['Full-time', 'Intern', 'Contract', 'Freelance']} />
@@ -542,8 +582,27 @@ const CreateHiringRequest = () => {
                 <Section title="4. Hiring Details" icon={DollarSign}>
                     <Input label="Number of Openings" name="openPositions" type="number" value={formData.openPositions} onChange={handleChange} />
                     <Input label="Expected Joining Date" name="expectedJoiningDate" type="date" value={formData.expectedJoiningDate} onChange={handleChange} />
-                    <Input label="Min Budget (CTC)" name="budgetMin" type="number" value={formData.budgetMin} onChange={handleChange} />
-                    <Input label="Max Budget (CTC)" name="budgetMax" type="number" value={formData.budgetMax} onChange={handleChange} />
+                    <Input label="Salary Currency" name="budgetCurrency" value={formData.budgetCurrency} onChange={handleChange} options={SALARY_CURRENCIES} />
+                    <div className="md:col-span-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Salary Range
+                        </label>
+                        <label className="flex items-start gap-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="salaryRangeOpen"
+                                checked={formData.salaryRangeOpen}
+                                onChange={handleChange}
+                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600"
+                            />
+                            <span>
+                                <span className="block font-semibold text-slate-800">Keep salary range open</span>
+                                <span className="mt-1 block text-xs text-slate-500">Use this when the compensation should be shown as Open instead of a fixed range.</span>
+                            </span>
+                        </label>
+                    </div>
+                    <Input label="Min Budget (CTC)" name="budgetMin" type="number" value={formData.budgetMin} onChange={handleChange} disabled={formData.salaryRangeOpen} placeholder={formData.salaryRangeOpen ? 'Hidden while range is open' : undefined} />
+                    <Input label="Max Budget (CTC)" name="budgetMax" type="number" value={formData.budgetMax} onChange={handleChange} disabled={formData.salaryRangeOpen} placeholder={formData.salaryRangeOpen ? 'Hidden while range is open' : undefined} />
                     <Input label="Priority" name="priority" value={formData.priority} onChange={handleChange} options={['High', 'Medium', 'Low']} />
                 </Section>
 
