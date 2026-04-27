@@ -18,6 +18,22 @@ const DetailRow = ({ label, value }) => (
     </div>
 );
 
+const formatBudgetLabel = (budgetRange = {}) => {
+    if (budgetRange?.isOpen) {
+        return 'Open';
+    }
+
+    const currency = budgetRange?.currency || 'INR';
+    const min = budgetRange?.min !== undefined && budgetRange?.min !== null
+        ? Number(budgetRange.min).toLocaleString('en-IN')
+        : '-';
+    const max = budgetRange?.max !== undefined && budgetRange?.max !== null
+        ? Number(budgetRange.max).toLocaleString('en-IN')
+        : '-';
+
+    return `${currency} ${min} to ${max}`;
+};
+
 const HiringRequestDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -311,6 +327,9 @@ const HiringRequestDetails = () => {
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Client / Project</h4>
                                         <p className="text-slate-900 font-bold text-base">{request.client}</p>
+                                        {request.clientConfidential ? (
+                                            <p className="mt-1 text-xs font-semibold text-amber-600">Public listing will hide the client name.</p>
+                                        ) : null}
                                     </div>
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Job Title</h4>
@@ -525,9 +544,7 @@ const HiringRequestDetails = () => {
                                     <div className="pt-3 border-t border-slate-50">
                                         <p className="text-xs font-bold text-slate-400 uppercase mb-1.5">Budget Range</p>
                                         <div className="flex items-baseline gap-1">
-                                            <span className="text-sm font-bold text-slate-800">{request.hiringDetails.budgetRange?.min?.toLocaleString()}</span>
-                                            <span className="text-slate-400 text-xs">to</span>
-                                            <span className="text-sm font-bold text-slate-800">{request.hiringDetails.budgetRange?.max?.toLocaleString()}</span>
+                                            <span className="text-sm font-bold text-slate-800">{formatBudgetLabel(request.hiringDetails?.budgetRange)}</span>
                                         </div>
                                     </div>
                                 </div>
