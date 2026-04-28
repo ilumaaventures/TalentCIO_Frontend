@@ -49,6 +49,7 @@ const ProjectDetails = () => {
         try {
             const cacheKey = `project_details_${id}`;
             const cachedData = sessionStorage.getItem(cacheKey);
+            const shouldLoadEmployees = canUpdateProject || canCreateTask || canUpdateTask;
             
             if (cachedData) {
                 const parsed = JSON.parse(cachedData);
@@ -62,7 +63,9 @@ const ProjectDetails = () => {
 
             const [projRes, empRes] = await Promise.all([
                 api.get(`/projects/${id}/hierarchy`),
-                api.get('/projects/employees')
+                shouldLoadEmployees
+                    ? api.get('/projects/employees')
+                    : Promise.resolve({ data: [] })
             ]);
 
             const projData = projRes.data;
@@ -143,7 +146,7 @@ const ProjectDetails = () => {
         } finally {
             setLoading(false);
         }
-    }, [id]);
+    }, [canCreateTask, canUpdateProject, canUpdateTask, id]);
 
     useEffect(() => {
         fetchData();

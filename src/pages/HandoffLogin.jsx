@@ -58,6 +58,20 @@ export default function HandoffLogin() {
         return '/';
     };
 
+    const buildResetPasswordUrl = (subdomain, email) => {
+        const url = new URL('/reset-password', window.location.origin);
+
+        if (isLocalHost(hostname)) {
+            url.searchParams.set('tenant', subdomain);
+        }
+
+        if (email) {
+            url.searchParams.set('email', email);
+        }
+
+        return `${url.pathname}${url.search}`;
+    };
+
     useEffect(() => {
         if (!handoffToken) {
             setStatus('error');
@@ -98,6 +112,12 @@ export default function HandoffLogin() {
             .catch((error) => {
                 if (!active) return;
                 sessionStorage.removeItem(sessionKey);
+                if (error.response?.data?.passwordResetRequired) {
+                    window.location.replace(
+                        buildResetPasswordUrl(subdomain, error.response.data.email)
+                    );
+                    return;
+                }
                 const expired = error.response?.data?.expired;
                 setStatus('error');
                 setErrorMsg(
