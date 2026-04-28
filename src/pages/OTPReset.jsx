@@ -20,7 +20,8 @@ const OTPReset = () => {
 
     const navigate = useNavigate();
     const location = useLocation();
-    const email = normalizeEmail(location.state?.email);
+    const searchParams = new URLSearchParams(location.search);
+    const email = normalizeEmail(location.state?.email || searchParams.get('email'));
 
     useEffect(() => {
         if (!email) {
