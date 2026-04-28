@@ -119,6 +119,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Roles & Permissions</span>
                 </Link>
               )}
+              {(user?.company?.enabledModules?.includes('attendance')) && (user?.roles?.includes('Admin') || user?.permissions?.includes('user.update') || user?.hasAllPermissions) && (
+                <Link to="/attendance-settings" className={isActive('/attendance-settings')} onClick={onClose}>
+                  <Settings size={18} />
+                  <span>Attendance Settings</span>
+                </Link>
+              )}
               {(user?.roles?.includes('Admin') || user?.permissions?.includes('role.read') || user?.hasAllPermissions) && user?.company?.enabledModules?.includes('leaves') && (
                 <Link to="/leave-config" className={isActive('/leave-config')} onClick={onClose}>
                   <Settings size={18} />

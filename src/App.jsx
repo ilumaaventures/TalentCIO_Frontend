@@ -10,6 +10,7 @@ import Unauthorized from './pages/Unauthorized';
 
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
+import AttendanceSettings from './pages/AttendanceSettings';
 import Timesheet from './pages/Timesheet';
 import Users from './pages/Users';
 import Roles from './pages/Roles';
@@ -74,6 +75,11 @@ function App() {
                   </SystemRoute>
                 } />
                 <Route element={<ModuleRoute moduleName="attendance" />}><Route path="/attendance" element={<Attendance />} /></Route>
+                <Route element={<RoleRoute requiredPermissions={['user.update']} requiredRoles={['Admin']} allowAllPermissions={true} />}>
+                  <Route element={<ModuleRoute moduleName="attendance" />}>
+                    <Route path="/attendance-settings" element={<AttendanceSettings />} />
+                  </Route>
+                </Route>
                 <Route element={<ModuleRoute moduleName="timesheet" />}><Route path="/timesheet" element={<Timesheet />} /></Route>
                 <Route element={<ModuleRoute moduleName="leaves" />}><Route path="/leaves" element={<Leaves />} /></Route>
                 <Route element={<ModuleRoute moduleName="employeeDossier" />}><Route path="/dossier/:userId" element={<EmployeeDossier />} /></Route>

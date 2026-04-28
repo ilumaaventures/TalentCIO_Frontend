@@ -824,18 +824,27 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     const handleReplaceAttachment = async (fileId, newFile) => {
+        let loadingToast;
+
         try {
             const formData = new FormData();
             formData.append('file', newFile);
 
-            const loadingToast = toast.loading('Replacing document...');
+            loadingToast = toast.loading('Replacing document...');
             await api.put(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}/replace`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             toast.success('Document replaced successfully', { id: loadingToast });
             fetchAttachments();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to replace document', { id: loadingToast });
+            const message = error.response?.data?.message || 'Failed to replace document';
+
+            if (loadingToast) {
+                toast.error(message, { id: loadingToast });
+                return;
+            }
+
+            toast.error(message);
         }
     };
 
