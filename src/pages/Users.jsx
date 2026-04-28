@@ -10,6 +10,11 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { createCachePayload } from '../utils/cache';
 
+const DEFAULT_ATTENDANCE_SHIFTS = [
+    { code: 'general', name: 'General' },
+    { code: 'any', name: 'Any Time' }
+];
+
 const Users = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -464,7 +469,9 @@ const Users = () => {
         directReports: [],
         reportingManagers: [],
         employmentType: 'Full Time',
-        workLocation: ''
+        workLocation: '',
+        attendanceMode: 'clock_in_out',
+        attendanceShiftCode: 'general'
     });
 
     const fetchData = useCallback(async () => {
@@ -536,6 +543,8 @@ const Users = () => {
                     department: u.department,
                     employmentType: u.employmentType,
                     workLocation: u.workLocation,
+                    attendanceMode: u.attendanceMode,
+                    attendanceShiftCode: u.attendanceShiftCode,
                     isActive: u.isActive,
                     roles: u.roles?.map(r => ({ _id: r._id, name: r.name })),
                     reportingManagers: u.reportingManagers?.map(m => ({ _id: m._id, firstName: m.firstName, lastName: m.lastName, email: m.email }))
@@ -579,6 +588,7 @@ const Users = () => {
     }, [fetchData]);
 
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
+    const attendanceShiftOptions = user?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -600,6 +610,8 @@ const Users = () => {
             joiningDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split('T')[0] : '',
             employmentType: user.employmentType || 'Full Time',
             workLocation: user.workLocation || '',
+            attendanceMode: user.attendanceMode || 'clock_in_out',
+            attendanceShiftCode: user.attendanceShiftCode || 'general',
             directReports: currentReports,
             reportingManagers: user.reportingManagers?.map(rm => rm._id) || []
         });
@@ -619,7 +631,11 @@ const Users = () => {
             employeeCode: '',
             joiningDate: '',
             employmentType: 'Full Time',
-            workLocation: ''
+            workLocation: '',
+            attendanceMode: 'clock_in_out',
+            attendanceShiftCode: 'general',
+            directReports: [],
+            reportingManagers: []
         });
         setShowModal(true);
     };
@@ -943,6 +959,25 @@ const Users = () => {
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Work Location</label>
                                     <input name="workLocation" value={formData.workLocation} onChange={handleChange} placeholder="e.g. Headquarters" className="zoho-input" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Attendance Mode</label>
+                                    <select name="attendanceMode" value={formData.attendanceMode} onChange={handleChange} className="zoho-input">
+                                        <option value="clock_in_out">Clock In / Clock Out</option>
+                                        <option value="present_only">Mark Present Only</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Attendance Shift</label>
+                                    <select name="attendanceShiftCode" value={formData.attendanceShiftCode} onChange={handleChange} className="zoho-input">
+                                        {attendanceShiftOptions.map((shift) => (
+                                            <option key={shift.code} value={shift.code}>
+                                                {shift.name} ({shift.code})
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                             <div>

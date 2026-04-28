@@ -13,6 +13,11 @@ import UserTADashboard from './TalentAcquisition/UserTADashboard';
 import Timesheet from './Timesheet';
 import EmployeeDossier from './EmployeeDossier';
 
+const DEFAULT_ATTENDANCE_SHIFTS = [
+    { code: 'general', name: 'General' },
+    { code: 'any', name: 'Any Time' }
+];
+
 const EmployeeProfile = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -36,6 +41,8 @@ const EmployeeProfile = () => {
         joiningDate: '',
         employmentType: 'Full Time',
         workLocation: '',
+        attendanceMode: 'clock_in_out',
+        attendanceShiftCode: 'general',
         directReports: [],
         reportingManagers: []
     });
@@ -48,6 +55,7 @@ const EmployeeProfile = () => {
 
     const isAuthorizedForTA = (currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read')) && hasTA;
     const isAuthorizedForEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('user.update');
+    const attendanceShiftOptions = currentUser?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
 
     // Reset active tab if it becomes unauthorized or module is disabled
     useEffect(() => {
@@ -77,6 +85,8 @@ const EmployeeProfile = () => {
                 joiningDate: userData.joiningDate ? new Date(userData.joiningDate).toISOString().split('T')[0] : '',
                 employmentType: userData.employmentType || 'Full Time',
                 workLocation: userData.workLocation || '',
+                attendanceMode: userData.attendanceMode || 'clock_in_out',
+                attendanceShiftCode: userData.attendanceShiftCode || 'general',
                 directReports: userData.directReports?.map(u => u._id) || [],
                 reportingManagers: userData.reportingManagers?.map(u => u._id) || []
             });
@@ -454,6 +464,26 @@ const EmployeeProfile = () => {
                                             <option value="">Select Role</option>
                                             {roles.map(r => (
                                                 <option key={r._id} value={r._id}>{r.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Attendance Mode</label>
+                                        <select name="attendanceMode" value={formData.attendanceMode} onChange={handleFormChange} className="zoho-input">
+                                            <option value="clock_in_out">Clock In / Clock Out</option>
+                                            <option value="present_only">Mark Present Only</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Attendance Shift</label>
+                                        <select name="attendanceShiftCode" value={formData.attendanceShiftCode} onChange={handleFormChange} className="zoho-input">
+                                            {attendanceShiftOptions.map((shift) => (
+                                                <option key={shift.code} value={shift.code}>
+                                                    {shift.name} ({shift.code})
+                                                </option>
                                             ))}
                                         </select>
                                     </div>

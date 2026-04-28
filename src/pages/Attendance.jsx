@@ -14,6 +14,24 @@ import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
+const DEFAULT_ATTENDANCE_SHIFTS = [
+    {
+        code: 'general',
+        name: 'General',
+        shiftType: 'general',
+        startTime: '09:00',
+        endTime: '18:00',
+        maxWorkingHours: 9
+    },
+    {
+        code: 'any',
+        name: 'Any Time',
+        shiftType: 'any',
+        startTime: '00:00',
+        endTime: '23:59',
+        maxWorkingHours: 8
+    }
+];
 
 const Attendance = () => {
     const { user, hasModule } = useAuth();
@@ -87,6 +105,43 @@ const Attendance = () => {
     const isManager = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Manager')
         || (user?.directReports && user.directReports.length > 0)
         || user?.role === 'Manager';
+    const attendanceSettings = user?.company?.settings?.attendance || {};
+    const companyShiftOptions = Array.isArray(attendanceSettings.attendanceShifts) && attendanceSettings.attendanceShifts.length > 0
+        ? attendanceSettings.attendanceShifts
+        : DEFAULT_ATTENDANCE_SHIFTS;
+    const activeAttendanceMode = status?.attendanceMode
+        || viewUser?.attendanceMode
+        || user?.attendanceMode
+        || attendanceSettings.defaultAttendanceMode
+        || 'clock_in_out';
+    const activeShiftCode = String(
+        status?.shiftCode
+        || viewUser?.attendanceShiftCode
+        || user?.attendanceShiftCode
+        || attendanceSettings.defaultShiftCode
+        || 'general'
+    ).toLowerCase();
+    const activeShift = companyShiftOptions.find(
+        (shift) => String(shift?.code || '').toLowerCase() === activeShiftCode
+    ) || companyShiftOptions[0] || null;
+    const isPresentOnlyMode = activeAttendanceMode === 'present_only';
+    const isMarkedPresent = isPresentOnlyMode && status?.status === 'PRESENT';
+    const isClockedIn = !isPresentOnlyMode && Boolean(status?.clockIn && !status?.clockOut);
+    const isClockedOut = !isPresentOnlyMode && Boolean(status?.clockIn && status?.clockOut);
+    const isAttendanceActive = isPresentOnlyMode ? isMarkedPresent : isClockedIn;
+    const isViewingOwnAttendance = !selectedUserId || String(selectedUserId) === String(user?._id);
+    const attendanceStartLabel = isPresentOnlyMode ? 'Mark Present' : 'Check In';
+    const attendanceStartActionText = isPresentOnlyMode ? 'mark attendance' : 'clock in';
+    const attendanceStatusLabel = isPresentOnlyMode
+        ? (isMarkedPresent ? 'Present Marked' : 'Not Marked')
+        : (isClockedIn ? 'Clocked In' : isClockedOut ? 'Shift Ended' : 'Not Started');
+    const attendanceStatusColorClass = isAttendanceActive
+        ? 'text-[#08B87B]'
+        : (isClockedOut ? 'text-slate-500' : 'text-slate-700');
+    const activeShiftName = status?.shiftName || activeShift?.name || '--';
+    const activeShiftWindow = (status?.shiftType || activeShift?.shiftType) === 'any'
+        ? `Flexible up to ${status?.maxWorkingHours || activeShift?.maxWorkingHours || attendanceSettings.workingHours || 8} hrs`
+        : `${status?.shiftStartTime || activeShift?.startTime || '--'} - ${status?.shiftEndTime || activeShift?.endTime || '--'}`;
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -543,7 +598,16 @@ const Attendance = () => {
                     clockIn: data.status.clockIn,
                     clockInIST: data.status.clockInIST,
                     clockOut: data.status.clockOut,
-                    clockOutIST: data.status.clockOutIST
+                    clockOutIST: data.status.clockOutIST,
+                    attendanceMode: data.status.attendanceMode,
+                    shiftCode: data.status.shiftCode,
+                    shiftName: data.status.shiftName,
+                    shiftType: data.status.shiftType,
+                    shiftStartTime: data.status.shiftStartTime,
+                    shiftEndTime: data.status.shiftEndTime,
+                    maxWorkingHours: data.status.maxWorkingHours,
+                    autoCheckoutAt: data.status.autoCheckoutAt,
+                    autoCheckoutReason: data.status.autoCheckoutReason
                 } : null;
 
                 const minimalHistory = (data.history || []).map(h => ({
@@ -552,6 +616,15 @@ const Attendance = () => {
                     clockIn: h.clockIn,
                     clockOut: h.clockOut,
                     status: h.status,
+                    attendanceMode: h.attendanceMode,
+                    shiftCode: h.shiftCode,
+                    shiftName: h.shiftName,
+                    shiftType: h.shiftType,
+                    shiftStartTime: h.shiftStartTime,
+                    shiftEndTime: h.shiftEndTime,
+                    maxWorkingHours: h.maxWorkingHours,
+                    autoCheckoutAt: h.autoCheckoutAt,
+                    autoCheckoutReason: h.autoCheckoutReason,
                     lat: h.lat,
                     lng: h.lng
                 }));
@@ -582,7 +655,9 @@ const Attendance = () => {
             const payload = data?.data || data;
             if (!payload) return 'none';
             // Simple string fingerprint based on current status and recent logs
-            const statusStr = payload.status ? `${payload.status.status}|${payload.status.clockInIST}|${payload.status.clockOutIST}` : 'none';
+            const statusStr = payload.status
+                ? `${payload.status.status}|${payload.status.clockInIST}|${payload.status.clockOutIST}|${payload.status.attendanceMode || ''}|${payload.status.shiftCode || ''}`
+                : 'none';
             const logsStr = (payload.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',');
             const historyStr = (payload.history || []).length;
             const leavesStr = (payload.approvedLeaves || []).length;
@@ -653,7 +728,10 @@ const Attendance = () => {
     // Refetch history only when Admin/Manager switches to a different user
     useEffect(() => {
         if (!selectedUserId || !user?._id) return;
-        if (selectedUserId === user._id) return; // own data already fetched above
+        if (selectedUserId === user._id) {
+            fetchTodayStatus();
+            return;
+        }
 
         const controller = new AbortController();
         api.get('/attendance/bootstrap', {
@@ -666,6 +744,7 @@ const Attendance = () => {
             signal: controller.signal
         })
             .then(res => {
+                setStatus(res.data.status ?? null);
                 setHistory(res.data.history || []);
                 setHolidays(res.data.holidays || []);
                 setApprovedLeaves(res.data.approvedLeaves || []);
@@ -710,13 +789,13 @@ const Attendance = () => {
                 const payload = locationData ? { location: locationData } : {};
                 const { data: attendanceRecord } = await api.post('/attendance/clock-in', payload);
                 applyImmediateAttendanceUpdate(attendanceRecord);
-                toast.success('Clocked In Successfully');
+                toast.success(isPresentOnlyMode ? 'Present Marked Successfully' : 'Clocked In Successfully');
                 fetchTodayStatus();
                 if (!selectedUserId || selectedUserId === user?._id) {
                     fetchMonthHistory(calendarDate.getFullYear(), calendarDate.getMonth() + 1, { skipCache: true });
                 }
             } catch (error) {
-                toast.error(error.response?.data?.message || 'Error Clocking In');
+                toast.error(error.response?.data?.message || (isPresentOnlyMode ? 'Error Marking Present' : 'Error Clocking In'));
             } finally {
                 setLoadingLocation(false);
             }
@@ -734,22 +813,19 @@ const Attendance = () => {
                         });
                     },
                     () => {
-                        console.log('Location access denied or failed.');
-                        toast.error('Please enable location permission in your browser to clock in.');
-                        setLoadingLocation(false);
+                        executeClockIn();
                     },
                     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
             } else {
-                toast.error('Geolocation is not supported by your browser.');
-                setLoadingLocation(false);
+                executeClockIn();
             }
             return;
         }
 
         // Strictly required flow
         if (!navigator.geolocation) {
-            toast.error('Geolocation is not supported by your browser. Please use a modern browser.');
+            toast.error(`Geolocation is not supported by your browser. Please use a modern browser to ${attendanceStartActionText}.`);
             return;
         }
 
@@ -767,7 +843,7 @@ const Attendance = () => {
                 });
             },
             () => {
-                toast.error('Please Enable location to proceed with clock-in (Required by your company).');
+                toast.error(`Please enable location to proceed with ${attendanceStartActionText} (required by your company).`);
                 setLoadingLocation(false);
             },
             {
@@ -836,14 +912,12 @@ const Attendance = () => {
                                             accuracy: position.coords.accuracy
                                         }),
                                         () => {
-                                            toast.error('Please enable location permission in your browser to checkout.');
-                                            setLoadingLocation(false);
+                                            executeClockOut();
                                         },
                                         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                                     );
                                 } else {
-                                    toast.error('Geolocation is not supported by your browser.');
-                                    setLoadingLocation(false);
+                                    executeClockOut();
                                 }
                                 return;
                             }
@@ -1505,9 +1579,6 @@ const Attendance = () => {
             </div>
         </div>
     );
-    const isClockedIn = status?.clockIn && !status?.clockOut;
-    const isClockedOut = status?.clockIn && status?.clockOut;
-
     return (
         <div className="h-[calc(100vh-64px)] w-full bg-slate-100 font-sans flex flex-col overflow-hidden">
             {/* Header - Fixed */}
@@ -1567,10 +1638,10 @@ const Attendance = () => {
                         {/* Clock Widget */}
                         <div className="zoho-card p-6 flex flex-col items-center justify-center text-center border-t-4 border-t-blue-500">
                             <div className="mb-6 relative group">
-                                <div className={`h-36 w-36 rounded-full flex items-center justify-center border-[6px] transition-all duration-500 ${isClockedIn ? 'border-[#08B87B] bg-[#EAF7F2] shadow-sm' : 'border-slate-200 bg-white shadow-sm'}`}>
-                                    <Clock size={48} className={isClockedIn ? 'text-[#08B87B]' : 'text-slate-400'} />
+                                <div className={`h-36 w-36 rounded-full flex items-center justify-center border-[6px] transition-all duration-500 ${isAttendanceActive ? 'border-[#08B87B] bg-[#EAF7F2] shadow-sm' : 'border-slate-200 bg-white shadow-sm'}`}>
+                                    <Clock size={48} className={isAttendanceActive ? 'text-[#08B87B]' : 'text-slate-400'} />
                                 </div>
-                                {isClockedIn && (
+                                {isAttendanceActive && (
                                     <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-[#08B87B] text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider shadow-md">
                                         ACTIVE
                                     </div>
@@ -1579,13 +1650,13 @@ const Attendance = () => {
 
                             <div className="space-y-1 mb-6">
                                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Status</div>
-                                <div className={`text-xl font-bold ${isClockedIn ? 'text-[#08B87B]' : isClockedOut ? 'text-slate-500' : 'text-slate-700'}`}>
-                                    {isClockedIn ? 'Clocked In' : isClockedOut ? 'Shift Ended' : 'Not Started'}
+                                <div className={`text-xl font-bold ${attendanceStatusColorClass}`}>
+                                    {attendanceStatusLabel}
                                 </div>
                             </div>
 
                             <div className="w-full space-y-3">
-                                {!isClockedIn && !isClockedOut && (
+                                {isViewingOwnAttendance && !isAttendanceActive && !isClockedOut && (
                                     <button
                                         onClick={handleClockIn}
                                         disabled={loadingLocation}
@@ -1597,7 +1668,7 @@ const Attendance = () => {
                                                 <span>Loading...</span>
                                             </>
                                         ) : (
-                                            <span>Check In</span>
+                                            <span>{attendanceStartLabel}</span>
                                         )}
                                     </button>
                                 )}
@@ -1619,14 +1690,44 @@ const Attendance = () => {
                                     </button>
                                 )}
 
+                                {isPresentOnlyMode && isMarkedPresent && (
+                                    <div className="w-full py-2.5 bg-emerald-50 text-emerald-700 rounded font-medium border border-emerald-200 text-sm text-center">
+                                        Present marked for today
+                                    </div>
+                                )}
+
                                 {isClockedOut && (
                                     <div className="w-full py-2.5 bg-slate-100 text-slate-500 rounded font-medium border border-slate-200 text-sm text-center">
                                         Output Logged
                                     </div>
                                 )}
+
+                                {!isViewingOwnAttendance && (
+                                    <div className="w-full py-2.5 bg-slate-100 text-slate-500 rounded font-medium border border-slate-200 text-sm text-center">
+                                        Actions are available only for your own attendance
+                                    </div>
+                                )}
                             </div>
 
                             <div className="mt-6 w-full bg-slate-50 rounded border border-slate-100 divide-y divide-slate-100">
+                                <div className="flex justify-between p-3 text-sm flex-col sm:flex-row gap-1 sm:gap-0">
+                                    <span className="text-slate-500">Mode</span>
+                                    <span className="font-medium text-slate-700 sm:text-right">
+                                        {isPresentOnlyMode ? 'Present Only' : 'Clock In / Out'}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between p-3 text-sm flex-col sm:flex-row gap-1 sm:gap-0">
+                                    <span className="text-slate-500">Shift</span>
+                                    <span className="font-medium text-slate-700 sm:text-right">
+                                        {activeShiftName}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between p-3 text-sm flex-col sm:flex-row gap-1 sm:gap-0">
+                                    <span className="text-slate-500">Window</span>
+                                    <span className="font-medium text-slate-700 sm:text-right">
+                                        {activeShiftWindow}
+                                    </span>
+                                </div>
                                 <div className="flex justify-between p-3 text-sm flex-col sm:flex-row gap-1 sm:gap-0">
                                     <span className="text-slate-500">In Time</span>
                                     <span className="font-mono font-medium text-slate-700 sm:text-right">
@@ -1685,12 +1786,14 @@ const Attendance = () => {
                             </div>
                         )}
 
-                        {!isClockedIn && hasModule('projectManagement') && (
+                        {!isAttendanceActive && hasModule('projectManagement') && (
                             <div className="zoho-card p-5 opacity-75 mt-6">
                                 <div className="text-center space-y-2">
                                     <Briefcase size={32} className="mx-auto text-slate-300" />
                                     <h4 className="font-medium text-slate-600">Your Tasks</h4>
-                                    <p className="text-xs text-slate-400">Clock in to view and manage your assigned tasks.</p>
+                                    <p className="text-xs text-slate-400">
+                                        {isPresentOnlyMode ? 'Mark present to view and manage your assigned tasks.' : 'Clock in to view and manage your assigned tasks.'}
+                                    </p>
                                 </div>
                             </div>
                         )}
@@ -1848,7 +1951,8 @@ const Attendance = () => {
                             ) : (
                                 <AssignedTasksView
                                     assignedTasks={assignedTasks}
-                                    isClockedIn={isClockedIn}
+                                    canLogWork={isAttendanceActive}
+                                    attendanceActionLabel={isPresentOnlyMode ? 'Mark present' : 'Clock in'}
                                     onLogWork={handleLogWork}
                                     logForm={logForm}
                                     setLogForm={setLogForm}
@@ -1953,7 +2057,8 @@ const Attendance = () => {
 
 const AssignedTasksView = ({
     assignedTasks,
-    isClockedIn,
+    canLogWork,
+    attendanceActionLabel,
     onLogWork,
     logForm,
     setLogForm,
@@ -2100,7 +2205,7 @@ const AssignedTasksView = ({
                     </div>
                     <div className="flex justify-between items-center">
                         <h3 className="text-lg font-bold text-slate-800">Tasks</h3>
-                        {!isClockedIn && <span className="text-xs text-amber-600 font-medium bg-amber-50 px-3 py-1 rounded-full border border-amber-200">⚠️ Clock in to log work</span>}
+                        {!canLogWork && <span className="text-xs text-amber-600 font-medium bg-amber-50 px-3 py-1 rounded-full border border-amber-200">⚠️ {attendanceActionLabel} to log work</span>}
                     </div>
                 </div>
             </div>
@@ -2144,8 +2249,8 @@ const AssignedTasksView = ({
                                         ) : (
                                             <button
                                                 onClick={() => toggleLogForm(task._id)}
-                                                disabled={!isClockedIn}
-                                                className={`flex items-center px-3 py-1.5 rounded text-xs font-medium transition-all ${isClockedIn ? (isExpanded ? 'bg-slate-100 text-slate-600' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm') : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                                disabled={!canLogWork}
+                                                className={`flex items-center px-3 py-1.5 rounded text-xs font-medium transition-all ${canLogWork ? (isExpanded ? 'bg-slate-100 text-slate-600' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm') : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
                                             >
                                                 {isExpanded ? 'Cancel' : 'Log Work'}
                                             </button>
