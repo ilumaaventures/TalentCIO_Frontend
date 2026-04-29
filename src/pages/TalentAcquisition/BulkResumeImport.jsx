@@ -10,7 +10,6 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
     const [isParsing, setIsParsing] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     
-    const [filesQueue, setFilesQueue] = useState([]); // Raw files waiting to be parsed
     const [parsedData, setParsedData] = useState([]); // Results from parsing
     const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'review', 'summary'
     
@@ -99,7 +98,6 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
             }
             
             if (extractedFiles.length > 0) {
-                setFilesQueue(extractedFiles);
                 await startParsing(extractedFiles);
             } else {
                 toast.error('No supported resumes found.');
@@ -196,7 +194,6 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
         setParsedData(newData);
         if (newData.length === 0) {
             setActiveTab('upload');
-            setFilesQueue([]);
         }
     };
 
@@ -270,7 +267,6 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
     };
 
     const resetImport = () => {
-        setFilesQueue([]);
         setParsedData([]);
         setProgress({ current: 0, total: 0, success: 0, failed: 0 });
         setActiveTab('upload');

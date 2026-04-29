@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -13,7 +13,7 @@ const getMarketingLoginUrl = () => {
             const referrerUrl = new URL(document.referrer);
             return new URL('/company/login', referrerUrl.origin).toString();
         }
-    } catch (_) {
+    } catch {
         // Ignore and use configured/default marketing URL.
     }
 
@@ -42,13 +42,26 @@ const getExchangeRequest = (apiBaseUrl, token, subdomain) => {
 export default function HandoffLogin() {
     const [searchParams] = useSearchParams();
     const { loginWithToken } = useAuth();
-    const [status, setStatus] = useState('loading');
-    const [errorMsg, setErrorMsg] = useState('');
     const handoffToken = searchParams.get('token') || '';
     const tenantFromQuery = searchParams.get('tenant') || '';
     const hostname = window.location.hostname.toLowerCase();
 
-    const buildPostLoginUrl = (subdomain) => {
+    const resolvedSubdomain = useMemo(() => {
+        let subdomain = tenantFromQuery?.trim().toLowerCase() || '';
+
+        if (!subdomain) {
+            const hostnameParts = hostname.split('.');
+            subdomain = hostnameParts[0];
+        }
+
+        if (!subdomain || subdomain === 'localhost' || subdomain === '127') {
+            return '';
+        }
+
+        return subdomain;
+    }, [hostname, tenantFromQuery]);
+
+    const buildPostLoginUrl = useCallback((subdomain) => {
         if (isLocalHost(hostname)) {
             const url = new URL('/', window.location.origin);
             url.searchParams.set('tenant', subdomain);
@@ -56,9 +69,9 @@ export default function HandoffLogin() {
         }
 
         return '/';
-    };
+    }, [hostname]);
 
-    const buildResetPasswordUrl = (subdomain, email) => {
+    const buildResetPasswordUrl = useCallback((subdomain, email) => {
         const url = new URL('/reset-password', window.location.origin);
 
         if (isLocalHost(hostname)) {
@@ -70,51 +83,44 @@ export default function HandoffLogin() {
         }
 
         return `${url.pathname}${url.search}`;
-    };
+    }, [hostname]);
+
+    const initialErrorMessage = useMemo(() => {
+        if (!handoffToken) return 'Invalid login link. Please login again.';
+        if (!resolvedSubdomain) return 'Workspace could not be resolved. Please login again.';
+        return '';
+    }, [handoffToken, resolvedSubdomain]);
+    const [status, setStatus] = useState(() => (initialErrorMessage ? 'error' : 'loading'));
+    const [errorMsg, setErrorMsg] = useState(() => initialErrorMessage);
 
     useEffect(() => {
-        if (!handoffToken) {
-            setStatus('error');
-            setErrorMsg('Invalid login link. Please login again.');
-            return;
-        }
-
-        let subdomain = tenantFromQuery?.trim().toLowerCase() || '';
-
-        if (!subdomain) {
-            const hostnameParts = hostname.split('.');
-            subdomain = hostnameParts[0];
-        }
-
-        if (!subdomain || subdomain === 'localhost' || subdomain === '127') {
-            setStatus('error');
-            setErrorMsg('Workspace could not be resolved. Please login again.');
+        if (initialErrorMessage) {
             return;
         }
 
         const sessionKey = getHandoffSessionKey(handoffToken);
         if (sessionStorage.getItem(sessionKey) === 'done' && localStorage.getItem('token')) {
-            window.location.replace(buildPostLoginUrl(subdomain));
+            window.location.replace(buildPostLoginUrl(resolvedSubdomain));
             return;
         }
 
         const apiBaseUrl = import.meta.env.VITE_API_URL || 'https://api.talentcio.in';
         let active = true;
 
-        getExchangeRequest(apiBaseUrl, handoffToken, subdomain)
+        getExchangeRequest(apiBaseUrl, handoffToken, resolvedSubdomain)
             .then((response) => {
                 if (!active) return;
                 sessionStorage.setItem(sessionKey, 'done');
-                localStorage.setItem('tenant', subdomain);
+                localStorage.setItem('tenant', resolvedSubdomain);
                 loginWithToken(response.data.token, response.data.user);
-                window.location.replace(buildPostLoginUrl(subdomain));
+                window.location.replace(buildPostLoginUrl(resolvedSubdomain));
             })
             .catch((error) => {
                 if (!active) return;
                 sessionStorage.removeItem(sessionKey);
                 if (error.response?.data?.passwordResetRequired) {
                     window.location.replace(
-                        buildResetPasswordUrl(subdomain, error.response.data.email)
+                        buildResetPasswordUrl(resolvedSubdomain, error.response.data.email)
                     );
                     return;
                 }
@@ -130,7 +136,7 @@ export default function HandoffLogin() {
         return () => {
             active = false;
         };
-    }, [handoffToken, hostname, loginWithToken, tenantFromQuery]);
+    }, [buildPostLoginUrl, buildResetPasswordUrl, handoffToken, initialErrorMessage, loginWithToken, resolvedSubdomain]);
 
     if (status === 'loading') {
         return (

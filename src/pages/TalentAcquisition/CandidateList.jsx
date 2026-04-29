@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRightLeft, Menu } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -13,6 +13,8 @@ import BulkCandidateImport from './BulkCandidateImport';
 import BulkResumeImport from './BulkResumeImport';
 import CandidateDetails from './CandidateDetails';
 import { ProfileReviewModal } from './PublicApplicationsView';
+import MassMailModal from './MassMailModal';
+import BulkTransferModal from './BulkTransferModal';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -23,7 +25,7 @@ const hasReviewableApplicantProfile = (item) => Boolean(
     )
 );
 
-const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hiringRequestStatus }) => {
+const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
@@ -50,8 +52,16 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
     const [profileTarget, setProfileTarget] = useState(null);
+    const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
+    const [showMassMailModal, setShowMassMailModal] = useState(false);
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const [showToolbarMenu, setShowToolbarMenu] = useState(false);
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
+    const canMassMail = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
+    const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
+    const canManageTemplates = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
 
     const handleSelectCandidate = (candId) => {
         const newParams = new URLSearchParams(searchParams);
@@ -77,7 +87,10 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
 
     // Close menu when clicking outside
     useEffect(() => {
-        const handleClose = () => setActiveMenu(null);
+        const handleClose = () => {
+            setActiveMenu(null);
+            setShowToolbarMenu(false);
+        };
         document.addEventListener('click', handleClose);
         window.addEventListener('scroll', handleClose, true);
         return () => {
@@ -346,6 +359,12 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
     const activeList = activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered;
     const totalPages = Math.ceil(activeList.length / itemsPerPage) || 1;
     const paginatedCandidates = activeList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+    const allVisibleSelected = activeList.length > 0 && activeList.every((candidate) => selectedCandidateIds.includes(candidate._id));
+
+    useEffect(() => {
+        const visibleIds = new Set(activeList.map((candidate) => candidate._id));
+        setSelectedCandidateIds((prev) => prev.filter((id) => visibleIds.has(id)));
+    }, [activeList]);
 
     const fetchCandidates = useCallback(async () => {
         try {
@@ -422,18 +441,32 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
         navigate(`/ta/hiring-request/${hiringRequestId}/add-candidate`);
     }, [navigate, hiringRequestId]);
 
-    const handleTransfer = useCallback(async (candidateId) => {
-        if (!window.confirm("Move this candidate to the newest active requisition? This creates a copy and resets their statuses for a fresh pipeline start.")) return;
+    const toggleCandidateSelection = useCallback((candidateId) => {
+        setSelectedCandidateIds((prev) => (
+            prev.includes(candidateId)
+                ? prev.filter((id) => id !== candidateId)
+                : [...prev, candidateId]
+        ));
+    }, []);
 
-        try {
-            const res = await api.post(`/ta/hiring-request/transfer-candidate/${candidateId}`);
-            toast.success(res.data.message || 'Candidate transferred successfully');
-            fetchCandidates();
-        } catch (error) {
-            console.error('Transfer error:', error);
-            toast.error(error.response?.data?.message || 'Failed to transfer candidate');
-        }
-    }, [fetchCandidates]);
+    const toggleSelectAllVisible = useCallback(() => {
+        setSelectedCandidateIds((prev) => {
+            if (allVisibleSelected) {
+                return prev.filter((id) => !activeList.some((candidate) => candidate._id === id));
+            }
+            const merged = new Set([...prev, ...activeList.map((candidate) => candidate._id)]);
+            return [...merged];
+        });
+    }, [activeList, allVisibleSelected]);
+
+    const openMassMailModal = useCallback(() => {
+        setShowMassMailModal(true);
+    }, []);
+
+    const openTransferModal = useCallback((candidateIds = []) => {
+        setTransferPresetIds(candidateIds);
+        setShowTransferModal(true);
+    }, []);
 
     const handleTransferToOnboarding = useCallback(async (candidateId) => {
         if (!window.confirm("Are you sure you want to transfer this candidate to the onboarding pipeline? This will create a new onboarding record for them.")) return;
@@ -832,16 +865,20 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
         );
     }
 
+    const phaseToggleButtonClass = 'min-w-[84px] rounded-[10px] px-4 py-2.5 text-sm font-semibold transition-all duration-200';
+    const toolbarMenuButtonClass = 'inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50';
+    const toolbarMenuItemClass = 'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50';
+
     return (
         <div className="space-y-4">
             {/* Header */}
-            <div className="flex justify-between items-center mb-2">
-                <div>
-                    <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest leading-loose">Pipeline</h3>
-                </div>
-                <div className="flex gap-2">
-                    {/* Phase Toggle */}
-                    <div className="flex rounded-lg border border-slate-300 overflow-hidden">
+            <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+                        <div className="min-w-fit">
+                            <h3 className="text-[12px] font-bold uppercase tracking-[0.32em] text-slate-500">Pipeline</h3>
+                        </div>
+                        <div className="inline-flex w-fit rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-inner shadow-slate-200/70">
                         <button
                             onClick={() => {
                                 setActivePhase(1);
@@ -852,9 +889,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                 setFilterPreference('All');
                                 setFilterRating('All');
                             }}
-                            className={`px-4 py-2 text-sm font-semibold transition-colors ${activePhase === 1
-                                ? 'bg-slate-800 text-white cursor-default'
-                                : 'bg-white text-slate-600 hover:bg-slate-100'
+                            className={`${phaseToggleButtonClass} ${activePhase === 1
+                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                : 'text-slate-600 hover:bg-white hover:text-slate-900'
                                 }`}
                         >
                             Phase 1
@@ -869,9 +906,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                 setFilterPreference('All');
                                 setFilterRating('All');
                             }}
-                            className={`px-4 py-2 text-sm font-semibold border-l border-slate-300 transition-colors ${activePhase === 2
-                                ? 'bg-slate-800 text-white cursor-default'
-                                : 'bg-white text-slate-600 hover:bg-slate-100'
+                            className={`${phaseToggleButtonClass} ${activePhase === 2
+                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                : 'text-slate-600 hover:bg-white hover:text-slate-900'
                                 }`}
                         >
                             Phase 2
@@ -886,48 +923,154 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                 setFilterPreference('All');
                                 setFilterRating('All');
                             }}
-                            className={`px-4 py-2 text-sm font-semibold border-l border-slate-300 transition-colors ${activePhase === 3
-                                ? 'bg-slate-800 text-white cursor-default'
-                                : 'bg-white text-slate-600 hover:bg-slate-100'
+                            className={`${phaseToggleButtonClass} ${activePhase === 3
+                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                : 'text-slate-600 hover:bg-white hover:text-slate-900'
                                 }`}
                         >
                             Phase 3
                         </button>
+                        </div>
                     </div>
-                    <button
-                        onClick={handleExportExcel}
-                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
-                    >
-                        <Download size={18} />
-                        Export Excel
-                    </button>
-                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                    <div className="relative flex items-center gap-2">
                         <button
-                            onClick={() => setShowBulkResumeImport(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setShowToolbarMenu(prev => !prev);
+                            }}
+                            className={toolbarMenuButtonClass}
                         >
-                            <FileText size={18} />
-                            Bulk Upload Resumes
+                            <Menu size={16} />
+                            Actions
                         </button>
-                    )}
-                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
-                        <button
-                            onClick={() => setShowBulkImport(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium transition-colors"
-                        >
-                            <Upload size={18} />
-                            Bulk Import (Excel)
-                        </button>
-                    )}
-                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
-                        <button
-                            onClick={handleAddNew}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                        >
-                            <Plus size={18} />
-                            Add Candidate
-                        </button>
-                    )}
+                        {showToolbarMenu && (
+                            <div
+                                className="absolute right-0 top-14 z-30 w-[280px] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+                                    Quick Actions
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowToolbarMenu(false);
+                                        handleExportExcel();
+                                    }}
+                                    className={toolbarMenuItemClass}
+                                >
+                                    <span className="flex items-center gap-3">
+                                        <span className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                                            <Download size={15} />
+                                        </span>
+                                        Export Excel
+                                    </span>
+                                </button>
+                                {canMassMail && !isLegacyView && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            openMassMailModal();
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-rose-50 p-2 text-rose-600">
+                                                <Mail size={15} />
+                                            </span>
+                                            Send Mail
+                                        </span>
+                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
+                                            {selectedCandidateIds.length || candidates.length}
+                                        </span>
+                                    </button>
+                                )}
+                                {canBulkTransfer && !isLegacyView && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            openTransferModal(selectedCandidateIds);
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-violet-50 p-2 text-violet-600">
+                                                <ArrowRightLeft size={15} />
+                                            </span>
+                                            Transfer
+                                        </span>
+                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    </button>
+                                )}
+                                {canManageTemplates && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            navigate('/ta/email-templates');
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-slate-100 p-2 text-slate-600">
+                                                <FileText size={15} />
+                                            </span>
+                                            Templates
+                                        </span>
+                                    </button>
+                                )}
+                                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            setShowBulkResumeImport(true);
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                                                <FileText size={15} />
+                                            </span>
+                                            Bulk Upload Resumes
+                                        </span>
+                                    </button>
+                                )}
+                                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            setShowBulkImport(true);
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-slate-100 p-2 text-slate-700">
+                                                <Upload size={15} />
+                                            </span>
+                                            Bulk Import (Excel)
+                                        </span>
+                                    </button>
+                                )}
+                                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            handleAddNew();
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                                                <Plus size={15} />
+                                            </span>
+                                            Add Candidate
+                                        </span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -1546,6 +1689,16 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                     <table className="w-full">
                                         <thead className="bg-slate-50 border-b border-slate-200">
                                             <tr key="header-row">
+                                                {!selectedCandidateId && !isLegacyView && (
+                                                    <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={allVisibleSelected}
+                                                            onChange={toggleSelectAllVisible}
+                                                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                        />
+                                                    </th>
+                                                )}
                                                 <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
@@ -1559,7 +1712,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                         <tbody className="divide-y divide-slate-200">
                                             {paginatedCandidates.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan="7" className="px-4 py-8 text-center text-slate-500">
+                                                    <td colSpan={!selectedCandidateId && !isLegacyView ? 8 : 7} className="px-4 py-8 text-center text-slate-500">
                                                         No candidates match the selected filters.
                                                     </td>
                                                 </tr>
@@ -1573,6 +1726,17 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                             : 'hover:bg-slate-50 bg-white'
                                                             }`}
                                                     >
+                                                        {!selectedCandidateId && !isLegacyView && (
+                                                            <td className="px-4 py-4 align-top text-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedCandidateIds.includes(candidate._id)}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    onChange={() => toggleCandidateSelection(candidate._id)}
+                                                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                                />
+                                                            </td>
+                                                        )}
                                                         <td className="px-4 py-4 align-top">
                                                             <div className="flex flex-col gap-1">
                                                                 <span className="text-[13px] font-bold text-slate-700 leading-tight">
@@ -1794,16 +1958,16 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                                                                         </button>
                                                                     )}
 
-                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && hiringRequestStatus === 'Closed' && (
+                                                                    {canBulkTransfer && !isLegacyView && (
                                                                         <button
                                                                             onClick={() => {
-                                                                                handleTransfer(candidate._id);
+                                                                                openTransferModal([candidate._id]);
                                                                                 setActiveMenu(null);
                                                                             }}
                                                                             className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
                                                                         >
                                                                             <Briefcase size={16} className="text-blue-500" />
-                                                                            Transfer to Active Requisition
+                                                                            Transfer Candidate
                                                                         </button>
                                                                     )}
 
@@ -1917,6 +2081,38 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, hi
                     isOpen={showBulkResumeImport}
                     onClose={() => setShowBulkResumeImport(false)}
                     onImportSuccess={fetchCandidates}
+                />
+            )}
+
+            {showMassMailModal && (
+                <MassMailModal
+                    isOpen={showMassMailModal}
+                    onClose={() => setShowMassMailModal(false)}
+                    hiringRequestId={hiringRequestId}
+                    requestMeta={requestMeta}
+                    candidates={candidates}
+                    initialSelectedIds={selectedCandidateIds}
+                    onSent={() => {
+                        setSelectedCandidateIds([]);
+                        fetchCandidates();
+                    }}
+                />
+            )}
+
+            {showTransferModal && (
+                <BulkTransferModal
+                    isOpen={showTransferModal}
+                    onClose={() => {
+                        setShowTransferModal(false);
+                        setTransferPresetIds([]);
+                    }}
+                    candidates={candidates}
+                    fromHiringRequestId={hiringRequestId}
+                    initialSelectedIds={transferPresetIds.length ? transferPresetIds : selectedCandidateIds}
+                    onTransferred={() => {
+                        setSelectedCandidateIds([]);
+                        fetchCandidates();
+                    }}
                 />
             )}
 

@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap");
 @import "tailwindcss";
 
 @layer base {
@@ -18,8 +19,30 @@
 
   body {
     @apply bg-slate-50 text-slate-900 font-sans antialiased;
+    font-family: 'DM Sans', sans-serif;
     overflow-x: hidden;
     max-width: 100vw;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: 'Syne', sans-serif;
+    letter-spacing: -0.03em;
+  }
+
+  .font-sans {
+    font-family: 'DM Sans', sans-serif !important;
   }
 
   /* Hide Browser Default Password Reveal/Clear Buttons */
@@ -67,6 +90,14 @@
     background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   }
 
+  .font-ta-head {
+    font-family: 'Syne', sans-serif;
+  }
+
+  .font-ta-body {
+    font-family: 'DM Sans', sans-serif;
+  }
+
   .zoho-input {
     @apply w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none transition-all shadow-sm;
     &:focus {
@@ -87,12 +118,20 @@
   }
 
   .zoho-sidebar-link {
-    @apply flex items-center space-x-3 px-3 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors text-sm font-medium;
+    @apply flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-[#998f82] transition-all duration-200 hover:bg-white/5 hover:text-white;
   }
 
   .zoho-sidebar-link-active {
-    @apply flex items-center space-x-3 px-3 py-2.5 text-white rounded-md text-sm font-medium shadow-md;
-    background-color: var(--primary-color);
+    @apply flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold text-white;
+    background: linear-gradient(135deg, #2457e6 0%, #2f60dc 100%);
+    box-shadow: 0 10px 24px rgba(36, 87, 230, 0.24);
+  }
+
+  .zoho-sidebar-link svg,
+  .zoho-sidebar-link-active svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
   }
 }
 

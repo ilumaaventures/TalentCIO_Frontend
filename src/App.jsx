@@ -27,10 +27,12 @@ import LeaveConfig from './pages/LeaveConfig';
 import Leaves from './pages/Leaves';
 import EmployeeDossier from './pages/EmployeeDossier';
 import ClientSelection from './pages/TalentAcquisition/ClientSelection';
+import TalentAcquisitionDashboard from './pages/TalentAcquisition/TalentAcquisitionDashboard';
 import HiringRequestList from './pages/TalentAcquisition/HiringRequestList';
 import CreateHiringRequest from './pages/TalentAcquisition/CreateHiringRequest';
 import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails';
 import WorkflowSettings from './pages/TalentAcquisition/WorkflowSettings';
+import EmailTemplates from './pages/TalentAcquisition/EmailTemplates';
 import CandidateForm from './pages/TalentAcquisition/CandidateForm';
 import CandidateDetails from './pages/TalentAcquisition/CandidateDetails';
 import Phase1Candidates from './pages/TalentAcquisition/Phase1Candidates';
@@ -86,9 +88,11 @@ function App() {
 
                 {/* Talent Acquisition */}
                 <Route element={<ModuleRoute moduleName="talentAcquisition" />}>
-                  <Route path="/ta" element={<ClientSelection />} />
+                  <Route path="/ta" element={<TalentAcquisitionDashboard />} />
+                  <Route path="/ta/clients" element={<ClientSelection />} />
                   <Route path="/ta/hiring-requests/:clientName" element={<HiringRequestList />} />
                   <Route path="/ta/workflows" element={<WorkflowSettings />} />
+                  <Route path="/ta/email-templates" element={<EmailTemplates />} />
                   <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                   <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
                   <Route path="/ta/view/:id" element={<HiringRequestDetails />} />

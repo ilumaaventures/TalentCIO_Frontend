@@ -591,7 +591,7 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
-                            {false && canManageVisibility && request.status === 'Approved' && (
+                            {canManageVisibility && request.status === 'Approved' && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                     <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">
                                         <div className={`p-1.5 rounded-md ${request.isPublic ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
@@ -757,7 +757,7 @@ const HiringRequestDetails = () => {
                 )}
 
                 {activeTab === 'applications' && (
-                    <CandidateList hiringRequestId={id} positionName={request?.positionName} hiringRequestStatus={request?.status} />
+                    <CandidateList hiringRequestId={id} positionName={request?.positionName} requestMeta={request} />
                 )}
 
                 {activeTab === 'public applications' && (

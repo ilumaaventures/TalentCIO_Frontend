@@ -65,10 +65,10 @@ const Profile = () => {
                 <div className="bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
                     <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-700"></div>
                     <div className="px-8 pb-8">
-                        <div className="relative flex justify-between items-end -mt-12 mb-6">
+                        <div className="relative flex justify-between items-end -mt-10 mb-6">
                             <div className="flex items-end">
-                                <div className="h-24 w-24 rounded-full bg-white p-1 shadow-lg relative group">
-                                    <div className="h-full w-full rounded-full bg-slate-200 flex items-center justify-center text-3xl font-bold text-slate-500 overflow-hidden relative">
+                                <div className="h-20 w-20 rounded-full bg-white p-1 shadow-lg relative group">
+                                    <div className="h-full w-full rounded-full bg-slate-200 flex items-center justify-center text-2xl font-bold text-slate-500 overflow-hidden relative">
                                         {profile.profilePicture ? (
                                             <img src={profile.profilePicture} alt="Profile" className="h-full w-full object-cover" />
                                         ) : (
@@ -89,7 +89,7 @@ const Profile = () => {
                                     </div>
                                 </div>
                                 <div className="ml-4">
-                                    <h1 className="text-2xl font-bold mt-12 text-slate-800">{profile.firstName} {profile.lastName}</h1>
+                                    <h1 className="text-2xl font-bold mt-10 text-slate-800">{profile.firstName} {profile.lastName}</h1>
                                     <p className="text-slate-500 flex items-center text-sm">
                                         <Mail size={14} className="mr-1" /> {profile.email}
                                     </p>

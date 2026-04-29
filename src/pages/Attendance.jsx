@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
@@ -147,14 +147,6 @@ const Attendance = () => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
-
-    useEffect(() => {
-        if (activeTab === 'regularize') {
-            fetchRegularizations();
-        } else if (activeTab === 'documents') {
-            fetchAttendanceAttachments();
-        }
-    }, [activeTab, calendarDate, selectedUserId]);
 
     // Fetch Users List for Dropdown (Admin/Manager)
     const [loadingUsers, setLoadingUsers] = useState(false);
@@ -331,7 +323,7 @@ const Attendance = () => {
         }
     };
 
-    const fetchAttendanceAttachments = async () => {
+    const fetchAttendanceAttachments = useCallback(async () => {
         if (!selectedUserId) return;
         setLoadingAttachments(true);
         try {
@@ -343,7 +335,15 @@ const Attendance = () => {
         } finally {
             setLoadingAttachments(false);
         }
-    };
+    }, [calendarDate, selectedUserId]);
+
+    useEffect(() => {
+        if (activeTab === 'regularize') {
+            fetchRegularizations();
+        } else if (activeTab === 'documents') {
+            fetchAttendanceAttachments();
+        }
+    }, [activeTab, calendarDate, fetchAttendanceAttachments, selectedUserId]);
 
     const handleUploadAttachment = async (file) => {
         if (!file || !selectedUserId) return;
@@ -424,7 +424,7 @@ const Attendance = () => {
         }
     };
 
-    const fetchTodayStatus = async () => {
+    const fetchTodayStatus = useCallback(async () => {
         try {
             const res = await api.get('/attendance/today');
             setStatus(res.data);
@@ -436,7 +436,7 @@ const Attendance = () => {
         } catch (error) {
             console.error('Error fetching status', error);
         }
-    };
+    }, [user]);
 
     const fetchMonthHistory = async (year, month, options = {}) => {
         try {
@@ -753,7 +753,7 @@ const Attendance = () => {
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
 
         return () => controller.abort();
-    }, [calendarDate, selectedUserId, user?._id]);
+    }, [calendarDate, fetchTodayStatus, selectedUserId, user?._id]);
 
     // Fetch Tasks only when the 'tasks' tab is clicked
     const tasksFetchedRef = useRef(false);

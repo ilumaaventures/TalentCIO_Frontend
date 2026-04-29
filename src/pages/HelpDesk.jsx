@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { createCachePayload, readSessionCache } from '../utils/cache';
 import HelpdeskWorkflows from './HelpdeskWorkflows';
 
 const QueryFormModal = ({ isOpen, onClose, onSuccess }) => {
@@ -403,7 +403,7 @@ const HelpDesk = () => {
         if (!alreadyFetched) {
             fetchTabData(activeTab);
         }
-    }, [activeTab, fetchTabData, isAdmin, isResolverRole]);
+    }, [activeTab, assignedQueries.length, fetchTabData, isAdmin, isResolverRole]);
 
     const getStatusBadge = (status) => {
         const lowerS = status?.toLowerCase() || '';
