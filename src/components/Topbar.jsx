@@ -140,7 +140,7 @@ const Topbar = ({ toggleSidebar }) => {
             type: 'Task',
             isRead: false,
             createdAt: inv.scheduledDate || new Date().toISOString(),
-            link: `/ta/hiring-request/${inv.hiringRequestId}/candidate/${inv.candidateId}/view`,
+            link: `/ta/hiring-request/${inv.hiringRequestId}/candidate/${inv.candidateId}/view?phase=${inv.phase || 1}`,
             isTask: true
         })),
         ...notifications

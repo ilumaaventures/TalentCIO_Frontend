@@ -460,7 +460,7 @@ const TalentAcquisitionDashboard = () => {
                                             <td className="px-4 py-3.5 text-right">
                                                 <button
                                                     type="button"
-                                                    onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view`)}
+                                                    onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view?phase=${interview.phase || 1}`)}
                                                     className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
                                                 >
                                                     View
@@ -641,7 +641,7 @@ const TalentAcquisitionDashboard = () => {
                                     <td className="px-4 py-3.5 text-right">
                                         <button
                                             type="button"
-                                            onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view`)}
+                                            onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view?phase=${interview.phase || 1}`)}
                                             className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
                                         >
                                             View
