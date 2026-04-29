@@ -2051,7 +2051,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                         </div>
 
                         {/* Scrollable Content Area */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50">
+                        <div className="scrollbar-hide flex-1 overflow-y-auto bg-slate-50/50">
                             <CandidateDetails
                                 key={selectedCandidateId}
                                 candidateId={selectedCandidateId}

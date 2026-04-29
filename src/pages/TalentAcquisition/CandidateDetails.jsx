@@ -656,7 +656,12 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                     {/* Inline Resume Viewer */}
                     {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[500px] h-[1250px]">
+                        <div
+                            className={`scrollbar-hide bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${isSidePanel
+                                ? 'min-h-[420px] h-[68vh]'
+                                : 'min-h-[520px] h-[calc(100vh-190px)] max-h-[900px]'
+                                }`}
+                        >
                             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
                                 <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                                     <FileText size={16} className="text-blue-500" /> Resume Preview
@@ -678,15 +683,13 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                     </button>
                                 </div>
                             </div>
-                            <object
-                                data={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0`}
-                                type="application/pdf"
-                                className="w-full flex-1"
-                            >
+                            <div className="scrollbar-hide w-full flex-1 overflow-hidden bg-white">
                                 <iframe
-                                    src={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0`}
-                                    className="w-full h-full border-none"
+                                    src={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0&view=FitH`}
+                                    className="scrollbar-hide w-full h-full border-none overflow-hidden"
                                     title="Resume Preview"
+                                    scrolling="no"
+                                    style={{ scrollbarWidth: 'none' }}
                                 >
                                     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
                                         <FileText size={48} className="text-slate-300 mb-4" />
@@ -701,7 +704,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                         </a>
                                     </div>
                                 </iframe>
-                            </object>
+                            </div>
                         </div>
                     )}
                 </div>

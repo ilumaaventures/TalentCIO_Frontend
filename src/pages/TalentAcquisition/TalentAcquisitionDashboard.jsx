@@ -364,7 +364,7 @@ const TalentAcquisitionDashboard = () => {
                     title="Recent Requisitions"
                     action={<Link to="/ta/clients" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open client workspace</Link>}
                 >
-                    <div className="overflow-x-auto">
+                    <div className="scrollbar-hide overflow-x-auto">
                         {recentRequests.length ? (
                             <table className="min-w-full text-xs">
                                 <thead>
@@ -381,14 +381,9 @@ const TalentAcquisitionDashboard = () => {
                                     {recentRequests.map((request) => (
                                         <tr key={request._id} className="border-b border-slate-100 transition hover:bg-slate-50">
                                             <td className="px-4 py-3.5">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
-                                                        {getInitials(request.roleDetails?.title)}
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <p className="font-semibold text-slate-900">{request.roleDetails?.title}</p>
-                                                        <p className="text-[11px] text-slate-500">{request.requestId}</p>
-                                                    </div>
+                                                <div className="min-w-0">
+                                                    <p className="font-semibold text-slate-900">{request.roleDetails?.title}</p>
+                                                    <p className="text-[11px] text-slate-500">{request.requestId}</p>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3.5 text-xs text-slate-700">{request.client}</td>
@@ -422,7 +417,7 @@ const TalentAcquisitionDashboard = () => {
                     title="Upcoming Interviews"
                     action={<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{interviews.length} assigned</span>}
                 >
-                    <div className="overflow-x-auto">
+                    <div className="scrollbar-hide overflow-x-auto">
                         {interviews.length ? (
                             <table className="min-w-full text-xs">
                                 <thead>
@@ -460,7 +455,7 @@ const TalentAcquisitionDashboard = () => {
                                             <td className="px-4 py-3.5 text-right">
                                                 <button
                                                     type="button"
-                                                    onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view`)}
+                                                    onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view?phase=${interview.phase || 1}`)}
                                                     className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
                                                 >
                                                     View
@@ -641,7 +636,7 @@ const TalentAcquisitionDashboard = () => {
                                     <td className="px-4 py-3.5 text-right">
                                         <button
                                             type="button"
-                                            onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view`)}
+                                            onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view?phase=${interview.phase || 1}`)}
                                             className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
                                         >
                                             View
