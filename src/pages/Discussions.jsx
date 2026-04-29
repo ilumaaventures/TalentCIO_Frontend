@@ -48,7 +48,6 @@ const Discussions = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const limit = 10;
-    const initialFetchDoneRef = useRef(false);
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
     const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
@@ -127,7 +126,7 @@ const Discussions = () => {
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [DISCUSSION_CACHE_TTL_MS, limit, user?._id]);
+    }, [limit, user?._id]);
 
     const fetchSupervisors = useCallback(async () => {
         const SUPERVISOR_CACHE_KEY = `supervisors_data_${user?._id}`;

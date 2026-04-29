@@ -9,16 +9,12 @@ import { useAuth } from '../context/AuthContext';
 const Topbar = ({ toggleSidebar }) => {
     const { user, hasModule } = useAuth();
     const navigate = useNavigate();
+    const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
     const hasTalentAcquisition = hasModule('talentAcquisition');
     const [notifications, setNotifications] = useState([]);
     const [interviews, setInterviews] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef(null);
-    const showDropdownRef = useRef(false);
-
-    useEffect(() => {
-        showDropdownRef.current = showDropdown;
-    }, [showDropdown]);
 
     const fetchNotificationBootstrap = useCallback(async () => {
         try {
@@ -34,7 +30,11 @@ const Topbar = ({ toggleSidebar }) => {
 
     useEffect(() => {
         if (!user?._id) return;
-        fetchNotificationBootstrap();
+        const timerId = window.setTimeout(() => {
+            fetchNotificationBootstrap();
+        }, 0);
+
+        return () => window.clearTimeout(timerId);
     }, [fetchNotificationBootstrap, user?._id]);
 
     useEffect(() => {
@@ -44,7 +44,7 @@ const Topbar = ({ toggleSidebar }) => {
             setNotifications(prev => [newNotif, ...prev]);
         };
 
-        const handleInterviewUpdate = (data) => {
+        const handleInterviewUpdate = () => {
             fetchNotificationBootstrap();
         };
 
@@ -260,8 +260,16 @@ const Topbar = ({ toggleSidebar }) => {
                         <p className="text-sm font-bold text-slate-800 leading-tight">{user?.firstName}</p>
                         <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">{user?.roles?.[0]?.name || 'User'}</p>
                     </div>
-                    <div className="w-9 h-9 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-sm shadow-inner border border-indigo-200">
-                        {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
+                    <div className="w-8 h-8 overflow-hidden bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-xs shadow-inner border border-indigo-200">
+                        {user?.profilePicture ? (
+                            <img
+                                src={user.profilePicture}
+                                alt={userDisplayName}
+                                className="h-full w-full object-cover"
+                            />
+                        ) : (
+                            <>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}</>
+                        )}
                     </div>
                 </div>
             </div>

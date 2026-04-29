@@ -47,10 +47,8 @@ const Onboarding = () => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewType, setPreviewType] = useState('');
-  const [previewWithData, setPreviewWithData] = useState(true);
   const [previewBlob, setPreviewBlob] = useState(null);
   const previewContainerRef = useRef(null);
-  const fileInputRefs = useRef({ offerLetter: null, declaration: null });
   const [checkedSections, setCheckedSections] = useState(new Set());
   const [checkedDocuments, setCheckedDocuments] = useState(new Set());
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -214,7 +212,9 @@ const Onboarding = () => {
           parsed.employees = nextCachedEmp;
           sessionStorage.setItem(cacheKey, JSON.stringify({ ...cached, data: parsed }));
         }
-      } catch (e) { }
+      } catch {
+        // Ignore cache sync failures and continue with the in-memory update.
+      }
 
       return nextEmployees;
     });
@@ -364,30 +364,6 @@ const Onboarding = () => {
     }
   }, [activeTab, fetchEmployees, fetchSettings, page, searchTerm, statusFilter]);
 
-  const handleTemplateUpload = async (e, type) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.name.endsWith('.docx')) {
-      toast.error('Please upload a .docx file');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('document', file);
-    formData.append('type', type);
-
-    try {
-      toast.loading(`Uploading ${type === 'offerLetter' ? 'Offer Letter' : 'Declaration'}...`, { id: 'upload' });
-      const res = await api.post('/onboarding/settings/templates/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success(res.data.message, { id: 'upload' });
-      fetchSettings({ force: true });
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Upload failed', { id: 'upload' });
-    }
-  };
-
   const handlePolicyUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -429,25 +405,6 @@ const Onboarding = () => {
     }
   };
 
-  const handlePreview = async (type, withData = true) => {
-    try {
-      setPreviewLoading(true);
-      setPreviewType(type);
-      setPreviewWithData(withData);
-      setShowPreviewModal(true);
-      if (previewBlob) setPreviewBlob(null);
-
-      const res = await api.get(`/onboarding/settings/templates/${type}/preview?withData=${withData}`, { responseType: 'blob' });
-      setPreviewBlob(res.data);
-    } catch (err) {
-      console.error('Preview error:', err);
-      toast.error('Failed to load preview');
-      setShowPreviewModal(false);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
   const [previewLabel, setPreviewLabel] = useState('');
 
   const handleFilePreview = async (url, label = 'File', type = 'file') => {
@@ -456,7 +413,6 @@ const Onboarding = () => {
       setPreviewType(type);
       setPreviewLabel(label);
       setShowPreviewModal(true);
-      setPreviewWithData(false);
       if (previewBlob) setPreviewBlob(null);
 
       // Use configured api instance for internal routes to get headers/base URL, 
@@ -525,38 +481,6 @@ const Onboarding = () => {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadTemplate = async (type) => {
-    try {
-      toast.loading('Preparing download...', { id: 'dl' });
-      const res = await api.get(`/onboarding/settings/templates/${type}/download`, { responseType: 'blob' });
-      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      const filename = `${type === 'offerLetter' ? 'OfferLetter' : 'Declaration'}_Template.docx`;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-      toast.success('Downloaded successfully!', { id: 'dl' });
-    } catch (err) {
-      console.error('Download error:', err);
-      toast.error('Download failed', { id: 'dl' });
-    }
-  };
-
-  const handleDeleteBaseTemplate = async (type) => {
-    if (!window.confirm(`Are you sure you want to delete the custom ${type === 'offerLetter' ? 'Offer Letter' : 'Declaration'} template? It will revert to the default template.`)) return;
-    try {
-      await api.delete(`/onboarding/settings/templates/${type}`);
-      toast.success('Template deleted successfully');
-      fetchSettings({ force: true });
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete template');
-    }
   };
 
   const handleOpenAddModal = () => {

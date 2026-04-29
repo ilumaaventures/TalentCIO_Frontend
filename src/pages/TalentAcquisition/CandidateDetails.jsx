@@ -140,7 +140,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [newRound, selectedInterviewer, candidateId, currentPhase, fetchCandidate]);
+    }, [candidateId, currentPhase, fetchCandidate, newRound, onUpdate, selectedInterviewer]);
 
     const handleEditRound = useCallback(async (roundId) => {
         if (!editingRoundForm.levelName) {
@@ -168,7 +168,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [editingRoundForm, candidateId, fetchCandidate]);
+    }, [candidateId, editingRoundForm, fetchCandidate, onUpdate]);
 
 
     const handleApplyWorkflowSubmit = useCallback(async () => {
@@ -203,7 +203,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [selectedWorkflow, interviewWorkflows, workflowMapping, candidateId, currentPhase, fetchCandidate]);
+    }, [candidateId, currentPhase, fetchCandidate, interviewWorkflows, onUpdate, selectedWorkflow, workflowMapping]);
 
     const handleDeleteRound = useCallback(async (roundId) => {
         if (!window.confirm('Are you sure you want to delete this round?')) return;
@@ -219,7 +219,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [candidateId, fetchCandidate]);
+    }, [candidateId, fetchCandidate, onUpdate]);
 
     const submitEvaluation = useCallback(async (roundId) => {
         if (!evaluationForm.feedback) {
@@ -247,7 +247,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [evaluationForm, candidateId, fetchCandidate]);
+    }, [candidateId, evaluationForm, fetchCandidate, onUpdate]);
 
     const handlePhase3DecisionChange = async (newDecision) => {
         try {

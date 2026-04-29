@@ -795,7 +795,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             await api.delete(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}`);
             toast.success('Document deleted', { id: loadingToast });
             fetchAttachments();
-        } catch (error) {
+        } catch {
             toast.error('Failed to delete document');
         }
     };
