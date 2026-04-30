@@ -1854,7 +1854,7 @@ const Attendance = () => {
                         )}
 
                         {/* Legend */}
-                        <div className="zoho-card p-5">
+                        {/* <div className="zoho-card p-5">
                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Legend</h4>
                             <div className="space-y-3">
                                 <div className="flex items-center text-sm">
@@ -1874,7 +1874,7 @@ const Attendance = () => {
                                     <span className="text-slate-600">Leave</span>
                                 </div>
                             </div>
-                        </div>
+                        </div> */}
                     </div>
 
                     {/* Main Content Column with Tabs - Flex Column */}
