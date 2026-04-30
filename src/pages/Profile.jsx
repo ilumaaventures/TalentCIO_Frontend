@@ -5,6 +5,84 @@ import { User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar } from 'lu
 import toast from 'react-hot-toast';
 import EmployeeDossier from './EmployeeDossier';
 
+const PROFILE_IMAGE_MAX_DIMENSION = 512;
+const PROFILE_IMAGE_TARGET_BYTES = 900 * 1024;
+
+const loadImageFromFile = (file) => new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(image);
+    };
+
+    image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Failed to read the selected image.'));
+    };
+
+    image.src = objectUrl;
+});
+
+const canvasToBlob = (canvas, type, quality) => new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+        if (blob) {
+            resolve(blob);
+            return;
+        }
+
+        reject(new Error('Failed to process the selected image.'));
+    }, type, quality);
+});
+
+const optimizeProfileImage = async (file) => {
+    if (!file.type?.startsWith('image/')) {
+        throw new Error('Please select an image file.');
+    }
+
+    if (file.size <= PROFILE_IMAGE_TARGET_BYTES) {
+        return file;
+    }
+
+    const image = await loadImageFromFile(file);
+    const scale = Math.min(
+        1,
+        PROFILE_IMAGE_MAX_DIMENSION / image.width,
+        PROFILE_IMAGE_MAX_DIMENSION / image.height
+    );
+
+    const targetWidth = Math.max(1, Math.round(image.width * scale));
+    const targetHeight = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement('canvas');
+
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('Image processing is not supported in this browser.');
+    }
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    let quality = 0.82;
+    let blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+
+    while (blob.size > PROFILE_IMAGE_TARGET_BYTES && quality > 0.5) {
+        quality -= 0.08;
+        blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+    }
+
+    return new File(
+        [blob],
+        `${file.name.replace(/\.[^/.]+$/, '') || 'profile-picture'}.jpg`,
+        { type: 'image/jpeg' }
+    );
+};
+
 const Profile = () => {
     useAuth();
     const [profile, setProfile] = useState(null);
@@ -30,13 +108,14 @@ const Profile = () => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const formData = new FormData();
-        formData.append('image', file);
-
         setUploading(true);
         const loadingToast = toast.loading('Uploading profile picture...');
 
         try {
+            const optimizedFile = await optimizeProfileImage(file);
+            const formData = new FormData();
+            formData.append('image', optimizedFile);
+
             const res = await api.post('/auth/upload-profile-picture', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -47,8 +126,16 @@ const Profile = () => {
             toast.success('Profile picture updated!');
         } catch (error) {
             console.error(error);
-            toast.error('Failed to upload image');
+            const status = error.response?.status;
+            const message = error.response?.data?.message || error.message;
+
+            if (status === 413) {
+                toast.error('Image is too large. Please use a smaller photo.');
+            } else {
+                toast.error(message || 'Failed to upload image');
+            }
         } finally {
+            e.target.value = '';
             setUploading(false);
             toast.dismiss(loadingToast);
         }
