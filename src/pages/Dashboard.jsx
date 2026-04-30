@@ -69,6 +69,8 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true);
 
     const attendanceSettings = user?.company?.settings?.attendance || {};
+    const showLeavesModule = user?.company?.enabledModules?.includes('leaves');
+    const showProjectModule = user?.company?.enabledModules?.includes('projectManagement');
     const showLocation = attendanceSettings.requireLocationCheckIn || 
                        attendanceSettings.requireLocationCheckOut || 
                        attendanceSettings.locationCheck;
@@ -106,10 +108,27 @@ const Dashboard = () => {
                     deadline: p.deadline
                 }));
 
+                const minimalLeavesToday = (data.leavesToday || []).map(leave => ({
+                    _id: leave._id,
+                    user: leave.user ? {
+                        name: leave.user.name,
+                        role: leave.user.role,
+                        employmentType: leave.user.employmentType
+                    } : null,
+                    leaveType: leave.leaveType,
+                    startDate: leave.startDate,
+                    endDate: leave.endDate,
+                    daysCount: leave.daysCount,
+                    isHalfDay: leave.isHalfDay,
+                    halfDaySession: leave.halfDaySession,
+                    status: leave.status
+                }));
+
                 const payload = createCachePayload({
                     stats: data.stats,
                     recentActivity: minimalActivity,
-                    projects: minimalProjects
+                    projects: minimalProjects,
+                    leavesToday: minimalLeavesToday
                 }, fingerprint);
 
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
@@ -124,9 +143,10 @@ const Dashboard = () => {
             const payload = data?.data || data;
             if (!payload) return '';
             const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.time ?? ''}`).join('|') || '';
-            const statsPart = `${payload.stats?.totalEmployees || 0}:${payload.stats?.presentToday || 0}`;
+            const statsPart = `${payload.stats?.totalEmployees || 0}:${payload.stats?.presentToday || 0}:${payload.stats?.leaveToday || 0}:${payload.stats?.pendingLeaveRequests || 0}`;
             const projPart = payload.projects?.length || 0;
-            return `${activityPart}#${statsPart}#${projPart}`;
+            const leavePart = payload.leavesToday?.map(leave => `${leave._id}:${leave.leaveType}:${leave.startDate}:${leave.endDate}`).join('|') || '';
+            return `${activityPart}#${statsPart}#${projPart}#${leavePart}`;
         };
 
         const applyData = (payload) => {
@@ -191,6 +211,50 @@ const Dashboard = () => {
         };
     }, []);
 
+    const dashboardKpis = [
+        {
+            label: 'Total Workforce',
+            value: stats?.totalEmployees || 0,
+            icon: Users,
+            color: 'blue',
+            trend: 'Active',
+            bgColor: 'bg-blue-50',
+            textColor: 'text-blue-600'
+        },
+        {
+            label: 'Present Today',
+            value: stats?.presentToday || 0,
+            total: stats?.totalEmployees || 0,
+            icon: UserCheck,
+            color: 'emerald',
+            trend: 'Verified',
+            progress: (stats?.presentToday / (stats?.totalEmployees || 1)) * 100,
+            bgColor: 'bg-emerald-50',
+            textColor: 'text-emerald-600'
+        },
+        {
+            label: 'Absent Personnel',
+            value: stats?.absentToday || 0,
+            icon: UserX,
+            color: 'orange',
+            trend: 'Tracked',
+            bgColor: 'bg-orange-50',
+            textColor: 'text-orange-600'
+        }
+    ];
+
+    if (showLeavesModule) {
+        dashboardKpis.push({
+            label: 'On Leave Today',
+            value: stats?.leaveToday || 0,
+            icon: Calendar,
+            color: 'violet',
+            trend: `${stats?.pendingLeaveRequests || 0} Pending`,
+            bgColor: 'bg-violet-50',
+            textColor: 'text-violet-600'
+        });
+    }
+
     return (
         <div className="flex-1 flex flex-col bg-[#f8f9fa] font-sans selection:bg-blue-100 selection:text-blue-900">
             {/* Main Content */}
@@ -217,38 +281,8 @@ const Dashboard = () => {
                         </div>
 
                         {/* KPI Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {[
-                                {
-                                    label: 'Total Workforce',
-                                    value: stats?.totalEmployees || 0,
-                                    icon: Users,
-                                    color: 'blue',
-                                    trend: 'Active',
-                                    bgColor: 'bg-blue-50',
-                                    textColor: 'text-blue-600'
-                                },
-                                {
-                                    label: 'Present Today',
-                                    value: stats?.presentToday || 0,
-                                    total: stats?.totalEmployees || 0,
-                                    icon: UserCheck,
-                                    color: 'emerald',
-                                    trend: 'Verified',
-                                    progress: (stats?.presentToday / (stats?.totalEmployees || 1)) * 100,
-                                    bgColor: 'bg-emerald-50',
-                                    textColor: 'text-emerald-600'
-                                },
-                                {
-                                    label: 'Absent Personnel',
-                                    value: stats?.absentToday || 0,
-                                    icon: UserX,
-                                    color: 'orange',
-                                    trend: 'Tracked',
-                                    bgColor: 'bg-orange-50',
-                                    textColor: 'text-orange-600'
-                                }
-                            ].map((kpi, idx) => (
+                        <div className={`grid grid-cols-1 gap-4 ${showLeavesModule ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
+                            {dashboardKpis.map((kpi, idx) => (
                                 <MotionDiv
                                     key={kpi.label}
                                     initial={{ opacity: 0, y: 20 }}
@@ -302,7 +336,7 @@ const Dashboard = () => {
                         {/* Tables Section */}
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                             {/* Attendance Table */}
-                            <div className="lg:col-span-8 premium-card bg-white overflow-hidden flex flex-col">
+                            <div className={`${showProjectModule ? 'lg:col-span-8' : 'lg:col-span-12'} premium-card bg-white overflow-hidden flex flex-col`}>
                                 <div className="px-5 py-3.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
                                     <div className="flex items-center gap-2.5">
                                         <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
@@ -379,55 +413,58 @@ const Dashboard = () => {
                                 </div>
                             </div>
 
-                            {/* Projects Table */}
-                            {user?.company?.enabledModules?.includes('projectManagement') && (
-                                <div className="lg:col-span-4 premium-card bg-white overflow-hidden flex flex-col">
-                                    <div className="px-5 py-3.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="w-1 h-5 bg-purple-600 rounded-full"></div>
-                                            <h2 className="text-base font-bold text-slate-900 tracking-tight">Active Projects</h2>
-                                        </div>
-                                        <Link to="/projects" className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest">
-                                            View Data
-                                        </Link>
-                                    </div>
-                                    <div className="p-0">
-                                        <div className="divide-y divide-slate-50">
-                                            {loading ? (
-                                                [1, 2, 3].map(i => <div key={i} className="p-4"><Skeleton className="h-10 w-full" /></div>)
-                                            ) : projects.filter(p => p.status === 'Active').length > 0 ? (
-                                                projects.filter(p => p.status === 'Active').slice(0, 5).map((project) => (
-                                                    <div
-                                                        key={project._id}
-                                                        onClick={() => navigate('/projects')}
-                                                        className="px-5 py-3.5 hover:bg-slate-50/30 cursor-pointer transition-all group"
-                                                    >
-                                                        <div className="flex justify-between items-start mb-2">
-                                                            <h3 className="font-bold text-slate-900 text-[13px] group-hover:text-blue-600 transition-colors leading-tight">
-                                                                {project.name}
-                                                            </h3>
-                                                            <span className="text-[8px] font-black bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md uppercase tracking-widest border border-blue-100/50">
-                                                                {project.status}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-1 text-slate-400">
-                                                                <Calendar size={10} />
-                                                                <span className="text-[10px] font-bold">
-                                                                    {project.deadline ? format(new Date(project.deadline), 'MMM d, yy') : 'No Deadline'}
-                                                                </span>
-                                                            </div>
-                                                            <ArrowUpRight size={12} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="p-10 text-center text-slate-400 italic text-xs">
-                                                    No active projects listed.
+                            {showProjectModule && (
+                                <div className="lg:col-span-4 space-y-5">
+                                    {showProjectModule && (
+                                        <div className="premium-card bg-white overflow-hidden flex flex-col">
+                                            <div className="px-5 py-3.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-1 h-5 bg-purple-600 rounded-full"></div>
+                                                    <h2 className="text-base font-bold text-slate-900 tracking-tight">Active Projects</h2>
                                                 </div>
-                                            )}
+                                                <Link to="/projects" className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest">
+                                                    View Data
+                                                </Link>
+                                            </div>
+                                            <div className="p-0">
+                                                <div className="divide-y divide-slate-50">
+                                                    {loading ? (
+                                                        [1, 2, 3].map(i => <div key={i} className="p-4"><Skeleton className="h-10 w-full" /></div>)
+                                                    ) : projects.filter(p => p.status === 'Active').length > 0 ? (
+                                                        projects.filter(p => p.status === 'Active').slice(0, 5).map((project) => (
+                                                            <div
+                                                                key={project._id}
+                                                                onClick={() => navigate('/projects')}
+                                                                className="px-5 py-3.5 hover:bg-slate-50/30 cursor-pointer transition-all group"
+                                                            >
+                                                                <div className="flex justify-between items-start mb-2">
+                                                                    <h3 className="font-bold text-slate-900 text-[13px] group-hover:text-blue-600 transition-colors leading-tight">
+                                                                        {project.name}
+                                                                    </h3>
+                                                                    <span className="text-[8px] font-black bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md uppercase tracking-widest border border-blue-100/50">
+                                                                        {project.status}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-1 text-slate-400">
+                                                                        <Calendar size={10} />
+                                                                        <span className="text-[10px] font-bold">
+                                                                            {project.deadline ? format(new Date(project.deadline), 'MMM d, yy') : 'No Deadline'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <ArrowUpRight size={12} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="p-10 text-center text-slate-400 italic text-xs">
+                                                            No active projects listed.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
                             )}
                         </div>
