@@ -5,11 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import {
+    getSupportedPlaceholderTokens,
     renderTemplateBody,
     TEMPLATE_PLACEHOLDERS,
     resolveTemplate,
     validateTemplateSyntax
 } from '../../utils/templatePlaceholders';
+
+const SUPPORTED_PLACEHOLDER_HELPER = getSupportedPlaceholderTokens().join(', ');
 
 const buildPreviewData = (candidate, requestMeta, customNote = '') => ({
     candidateName: candidate?.candidateName || '',
@@ -380,6 +383,7 @@ const MassMailModal = ({
                                             </button>
                                         ))}
                                     </div>
+                                    <p className="mb-2 text-[11px] text-slate-500">Supported placeholders: {SUPPORTED_PLACEHOLDER_HELPER}</p>
                                     <textarea
                                         value={customHtmlBody}
                                         onChange={(e) => setCustomHtmlBody(e.target.value)}

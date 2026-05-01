@@ -170,6 +170,7 @@ const CandidateForm = () => {
                     email: candidate.email || '',
                     mobile: candidate.mobile || '',
                     source: candidate.source || 'Job Portal',
+                    referralName: candidate.referralName || '',
                     profilePulledBy: candidate.profilePulledBy || '',
                     calledBy: candidate.calledBy || '',
                     rate: candidate.rate || '',
@@ -318,7 +319,17 @@ const CandidateForm = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => {
+            if (name === 'source') {
+                return {
+                    ...prev,
+                    source: value,
+                    referralName: value === 'Referral' ? prev.referralName : ''
+                };
+            }
+
+            return { ...prev, [name]: value };
+        });
         // Clear duplicate warning when user edits the field
         if (name === 'email' || name === 'mobile') {
             setDupCheck(prev => ({ ...prev, [name]: null }));
@@ -653,7 +664,7 @@ const CandidateForm = () => {
                                                         </div>
                                                         <div className="max-h-48 overflow-y-auto">
                                                             {sourceOptions.filter(opt => opt.name.toLowerCase().includes(sourceSearch.toLowerCase())).map(opt => (
-                                                                <div key={opt.name} onClick={() => { setFormData(prev => ({ ...prev, source: opt.name })); setShowSourceDropdown(false); }} className="px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 flex items-center justify-between group cursor-pointer">
+                                                                <div key={opt.name} onClick={() => { setFormData(prev => ({ ...prev, source: opt.name, referralName: opt.name === 'Referral' ? prev.referralName : '' })); setShowSourceDropdown(false); }} className="px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 flex items-center justify-between group cursor-pointer">
                                                                     <span>{opt.name}</span>
                                                                 </div>
                                                             ))}

@@ -5,6 +5,7 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import {
+    getSupportedPlaceholderTokens,
     renderTemplateBody,
     TEMPLATE_PLACEHOLDERS,
     resolveTemplate,
@@ -34,6 +35,8 @@ const DEFAULT_FORM = {
     htmlBody: '',
     isActive: true
 };
+
+const SUPPORTED_PLACEHOLDER_HELPER = getSupportedPlaceholderTokens().join(', ');
 
 const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) => {
     const [form, setForm] = useState(DEFAULT_FORM);
@@ -188,6 +191,7 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
                                     </button>
                                 ))}
                             </div>
+                            <p className="mb-2 text-[11px] text-slate-500">Supported placeholders: {SUPPORTED_PLACEHOLDER_HELPER}</p>
                             <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Email Body</label>
                             <textarea
                                 ref={bodyRef}
