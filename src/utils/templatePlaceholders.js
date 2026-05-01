@@ -15,15 +15,22 @@ export const TEMPLATE_PLACEHOLDERS = [
 ];
 
 export const getSupportedPlaceholderTokens = (placeholders = TEMPLATE_PLACEHOLDERS) => placeholders.map((placeholder) => `{{${placeholder}}}`);
+const SUPPORTED_PLACEHOLDER_PATTERN = TEMPLATE_PLACEHOLDERS.join('|');
 
 const PLACEHOLDER_REGEX = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
 const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
-const COMMON_PLACEHOLDER_BOUNDARY_REGEX = /\}(\s*)\{\{/g;
+const COMMON_PLACEHOLDER_BOUNDARY_REGEX = /(?<!\})\}(\s*)\{\{/g;
+const SINGLE_BRACE_PLACEHOLDER_REGEX = new RegExp(`(?<!\\{)\\{\\s*(${SUPPORTED_PLACEHOLDER_PATTERN})\\s*\\}(?!\\})`, 'g');
+const MISSING_OPEN_BRACE_PLACEHOLDER_REGEX = new RegExp(`(?<!\\{)\\{\\s*(${SUPPORTED_PLACEHOLDER_PATTERN})\\s*\\}\\}`, 'g');
+const MISSING_CLOSE_BRACE_PLACEHOLDER_REGEX = new RegExp(`\\{\\{\\s*(${SUPPORTED_PLACEHOLDER_PATTERN})\\s*\\}(?!\\})`, 'g');
+const CANONICAL_PLACEHOLDER_REGEX = new RegExp(`\\{\\{\\s*(${SUPPORTED_PLACEHOLDER_PATTERN})\\s*\\}\\}`, 'g');
 
-export const normalizeTemplatePlaceholders = (template) => String(template || '').replace(
-    COMMON_PLACEHOLDER_BOUNDARY_REGEX,
-    '}}$1{{'
-);
+export const normalizeTemplatePlaceholders = (template) => String(template || '')
+    .replace(COMMON_PLACEHOLDER_BOUNDARY_REGEX, '}}$1{{')
+    .replace(MISSING_OPEN_BRACE_PLACEHOLDER_REGEX, '{{$1}}')
+    .replace(MISSING_CLOSE_BRACE_PLACEHOLDER_REGEX, '{{$1}}')
+    .replace(SINGLE_BRACE_PLACEHOLDER_REGEX, '{{$1}}')
+    .replace(CANONICAL_PLACEHOLDER_REGEX, '{{$1}}');
 
 const getLineAndColumn = (input, index) => {
     const content = normalizeTemplatePlaceholders(input);
