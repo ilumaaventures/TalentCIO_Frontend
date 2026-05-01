@@ -4,24 +4,12 @@ import { Eye, Mail, Send, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-
-const PLACEHOLDERS = [
-    'candidateName',
-    'email',
-    'mobile',
-    'jobTitle',
-    'client',
-    'department',
-    'recruiterName',
-    'companyName',
-    'requestId',
-    'currentStatus',
-    'interviewDate',
-    'interviewLink',
-    'customNote'
-];
-
-const resolveTemplate = (template, data) => String(template || '').replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] ?? '');
+import {
+    renderTemplateBody,
+    TEMPLATE_PLACEHOLDERS,
+    resolveTemplate,
+    validateTemplateSyntax
+} from '../../utils/templatePlaceholders';
 
 const buildPreviewData = (candidate, requestMeta, customNote = '') => ({
     candidateName: candidate?.candidateName || '',
@@ -164,7 +152,7 @@ const MassMailModal = ({
     const previewCandidate = selectedCandidates[0] || filteredCandidates[0] || candidates[0];
     const previewData = buildPreviewData(previewCandidate, requestMeta, customNote);
     const previewSubject = resolveTemplate(customSubject, previewData);
-    const previewHtml = resolveTemplate(customHtmlBody, previewData);
+    const previewHtml = renderTemplateBody(customHtmlBody, previewData);
 
     const toggleFilter = (key, value) => {
         setFilters((prev) => ({
@@ -213,12 +201,26 @@ const MassMailModal = ({
             return;
         }
 
+        const subjectValidation = validateTemplateSyntax(customSubject, TEMPLATE_PLACEHOLDERS);
+        if (!subjectValidation.valid) {
+            toast.error(`Subject error: ${subjectValidation.message}`);
+            setStep(2);
+            return;
+        }
+
+        const bodyValidation = validateTemplateSyntax(customHtmlBody, TEMPLATE_PLACEHOLDERS);
+        if (!bodyValidation.valid) {
+            toast.error(`HTML body error: ${bodyValidation.message}`);
+            setStep(2);
+            return;
+        }
+
         try {
             setSending(true);
             const payload = {
                 templateId: templateMode === 'saved' ? templateId : undefined,
-                customSubject: templateMode === 'custom' ? customSubject : undefined,
-                customHtmlBody: templateMode === 'custom' ? customHtmlBody : undefined,
+                customSubject,
+                customHtmlBody,
                 candidateIds: sendToAllMatching ? [] : selectedIds,
                 filters: sendToAllMatching ? normalizeFiltersForRequest(filters) : undefined,
                 customNote
@@ -367,10 +369,10 @@ const MassMailModal = ({
 
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <div className="mb-3 flex flex-wrap gap-2">
-                                        {PLACEHOLDERS.map((placeholder) => (
-                                            <button
-                                                key={placeholder}
-                                                type="button"
+                                            {TEMPLATE_PLACEHOLDERS.map((placeholder) => (
+                                                <button
+                                                    key={placeholder}
+                                                    type="button"
                                                 onClick={() => handleInsertPlaceholder(placeholder)}
                                                 className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700"
                                             >
@@ -383,8 +385,9 @@ const MassMailModal = ({
                                         onChange={(e) => setCustomHtmlBody(e.target.value)}
                                         rows={14}
                                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Enter HTML email body"
+                                        placeholder="Write your mail exactly as it should appear. Spaces and blank lines will be preserved."
                                     />
+                                    <p className="mt-2 text-xs text-slate-500">Edits made here are sent exactly from this screen, even when you started from a saved template.</p>
                                 </div>
 
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -409,6 +412,7 @@ const MassMailModal = ({
                                 <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                                     <div className="prose prose-sm max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: previewHtml || '<p>Preview content will appear here.</p>' }} />
                                 </div>
+                                <p className="mt-3 text-xs text-slate-500">Manual spaces and skipped lines stay preserved for plain text-style bodies.</p>
                             </div>
                         </div>
                     )}
