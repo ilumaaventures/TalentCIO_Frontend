@@ -1032,7 +1032,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                             <span className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
                                                 <FileText size={15} />
                                             </span>
-                                            Bulk Upload Resumes
+                                            Upload Resumes
                                         </span>
                                     </button>
                                 )}
@@ -1048,7 +1048,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                             <span className="rounded-lg bg-slate-100 p-2 text-slate-700">
                                                 <Upload size={15} />
                                             </span>
-                                            Bulk Import (Excel)
+                                            Import (Excel)
                                         </span>
                                     </button>
                                 )}

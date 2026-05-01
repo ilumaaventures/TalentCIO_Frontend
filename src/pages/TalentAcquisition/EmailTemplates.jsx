@@ -4,22 +4,12 @@ import { Edit, Eye, Plus, Trash2, X } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
-
-const PLACEHOLDERS = [
-    'candidateName',
-    'email',
-    'mobile',
-    'jobTitle',
-    'client',
-    'department',
-    'recruiterName',
-    'companyName',
-    'requestId',
-    'currentStatus',
-    'interviewDate',
-    'interviewLink',
-    'customNote'
-];
+import {
+    renderTemplateBody,
+    TEMPLATE_PLACEHOLDERS,
+    resolveTemplate,
+    validateTemplateSyntax
+} from '../../utils/templatePlaceholders';
 
 const SAMPLE_DATA = {
     candidateName: 'Aarav Mehta',
@@ -36,8 +26,6 @@ const SAMPLE_DATA = {
     interviewLink: 'https://meet.example.com/interview',
     customNote: 'Please join 10 minutes early.'
 };
-
-const resolveTemplate = (template, data) => String(template || '').replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] ?? '');
 
 const DEFAULT_FORM = {
     name: '',
@@ -89,7 +77,7 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
     };
 
     const previewSubject = useMemo(() => resolveTemplate(form.subject, SAMPLE_DATA), [form.subject]);
-    const previewHtml = useMemo(() => resolveTemplate(form.htmlBody, SAMPLE_DATA), [form.htmlBody]);
+    const previewHtml = useMemo(() => renderTemplateBody(form.htmlBody, SAMPLE_DATA), [form.htmlBody]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -97,6 +85,18 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
 
         if (!form.name.trim() || !form.subject.trim() || !form.htmlBody.trim()) {
             toast.error('Name, subject, and body are required.');
+            return;
+        }
+
+        const subjectValidation = validateTemplateSyntax(form.subject, TEMPLATE_PLACEHOLDERS);
+        if (!subjectValidation.valid) {
+            toast.error(`Subject error: ${subjectValidation.message}`);
+            return;
+        }
+
+        const bodyValidation = validateTemplateSyntax(form.htmlBody, TEMPLATE_PLACEHOLDERS);
+        if (!bodyValidation.valid) {
+            toast.error(`HTML body error: ${bodyValidation.message}`);
             return;
         }
 
@@ -164,7 +164,7 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
 
                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
                             <div className="mb-2 flex flex-wrap gap-2">
-                                {PLACEHOLDERS.map((placeholder) => (
+                                {TEMPLATE_PLACEHOLDERS.map((placeholder) => (
                                     <button key={placeholder} type="button" onClick={() => insertPlaceholder('subject', placeholder)} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
                                         {`{{${placeholder}}}`}
                                     </button>
@@ -182,19 +182,20 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
 
                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
                             <div className="mb-2 flex flex-wrap gap-2">
-                                {PLACEHOLDERS.map((placeholder) => (
+                                {TEMPLATE_PLACEHOLDERS.map((placeholder) => (
                                     <button key={placeholder} type="button" onClick={() => insertPlaceholder('htmlBody', placeholder)} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
                                         {`{{${placeholder}}}`}
                                     </button>
                                 ))}
                             </div>
-                            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">HTML Body</label>
+                            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Email Body</label>
                             <textarea
                                 ref={bodyRef}
                                 rows={16}
                                 value={form.htmlBody}
                                 onChange={(e) => setForm((prev) => ({ ...prev, htmlBody: e.target.value }))}
                                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Write your mail exactly as it should appear. Spaces and blank lines will be preserved."
                             />
                         </div>
                     </div>
@@ -210,6 +211,7 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
                             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                                 <div className="prose prose-sm max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: previewHtml || '<p>Preview content will appear here.</p>' }} />
                             </div>
+                            <p className="mt-3 text-xs text-slate-500">Plain text-style content keeps its spaces and skipped lines. HTML content still renders as HTML.</p>
                         </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
