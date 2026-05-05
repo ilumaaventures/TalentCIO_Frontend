@@ -14,6 +14,7 @@ import {
     LineChart, Line, ComposedChart, Area, Funnel, FunnelChart, LabelList
 } from 'recharts';
 import Skeleton from '../../components/Skeleton';
+import { useAuth } from '../../context/AuthContext';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e', '#10b981', '#f59e0b', '#64748b'];
 
@@ -36,6 +37,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const GlobalTADashboard = () => {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
@@ -52,6 +54,10 @@ const GlobalTADashboard = () => {
         phase: 'all',
         requisitionId: ''
     });
+
+    const hasGlobalAnalyticsAccess = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global');
+    const dashboardTitle = hasGlobalAnalyticsAccess ? 'Global Talent Acquisition Analytics' : 'Assigned Requisition Analytics';
+    const dashboardSubtitle = hasGlobalAnalyticsAccess ? 'Enterprise Recruitment Intelligence' : 'Performance across requisitions assigned to you';
 
     const fetchAnalytics = useCallback(async () => {
         try {
@@ -130,9 +136,9 @@ const GlobalTADashboard = () => {
                             <div>
                                 <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                     <TrendingUp className="text-indigo-600" size={24} />
-                                    Global Talent Acquisition Analytics
+                                    {dashboardTitle}
                                 </h1>
-                                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">Enterprise Recruitment Intelligence</p>
+                                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">{dashboardSubtitle}</p>
                             </div>
                         </div>
 

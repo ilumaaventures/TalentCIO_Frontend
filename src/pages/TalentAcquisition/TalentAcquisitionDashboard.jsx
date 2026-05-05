@@ -29,6 +29,7 @@ import {
     readTAClientsCache,
     refreshTAClientsCache
 } from '../../utils/taCache';
+import { useAuth } from '../../context/AuthContext';
 
 const requestStatusClasses = {
     Draft: 'bg-slate-100 text-slate-600 border-slate-200',
@@ -135,9 +136,8 @@ const LoadingDashboard = () => (
     </div>
 );
 
-const VALID_TA_SECTIONS = ['overview', 'requisitions', 'clients', 'interviews', 'analytics'];
-
 const TalentAcquisitionDashboard = () => {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [loading, setLoading] = useState(true);
@@ -148,10 +148,22 @@ const TalentAcquisitionDashboard = () => {
     const [clients, setClients] = useState([]);
     const [interviews, setInterviews] = useState([]);
 
+    const canViewAnalytics = useMemo(() => (
+        user?.roles?.includes('Admin') ||
+        user?.permissions?.includes('ta.analytics.global') ||
+        user?.isTAAnalyticsViewer
+    ), [user]);
+
+    const availableTabs = useMemo(() => (
+        canViewAnalytics
+            ? ['overview', 'requisitions', 'clients', 'interviews', 'analytics']
+            : ['requisitions', 'clients', 'interviews']
+    ), [canViewAnalytics]);
+
     const activeTab = useMemo(() => {
         const currentTab = searchParams.get('tab');
-        return VALID_TA_SECTIONS.includes(currentTab) ? currentTab : 'overview';
-    }, [searchParams]);
+        return availableTabs.includes(currentTab) ? currentTab : availableTabs[0];
+    }, [availableTabs, searchParams]);
 
     const loadDashboard = useCallback(async ({ silent = false } = {}) => {
         if (silent) {
@@ -166,8 +178,12 @@ const TalentAcquisitionDashboard = () => {
             setClients(cachedClients.data);
         }
 
+        const analyticsPromise = canViewAnalytics
+            ? api.get('/ta/analytics/global', createNoCacheRequestConfig())
+            : Promise.resolve({ data: { data: null } });
+
         const [analyticsResult, requestsResult, interviewsResult, clientsResult] = await Promise.allSettled([
-            api.get('/ta/analytics/global', createNoCacheRequestConfig()),
+            analyticsPromise,
             api.get('/ta/hiring-request', createNoCacheRequestConfig({ page: 1, limit: 18 })),
             api.get('/ta/candidates/my/interviews', createNoCacheRequestConfig()),
             refreshTAClientsCache()
@@ -177,7 +193,7 @@ const TalentAcquisitionDashboard = () => {
 
         if (analyticsResult.status === 'fulfilled') {
             setAnalytics(analyticsResult.value.data?.data || null);
-        } else {
+        } else if (canViewAnalytics) {
             failures.push('analytics');
         }
 
@@ -199,13 +215,15 @@ const TalentAcquisitionDashboard = () => {
             failures.push('clients');
         }
 
-        if (failures.length === 4) {
+        const totalExpectedFailures = canViewAnalytics ? 4 : 3;
+
+        if (failures.length === totalExpectedFailures) {
             setError('Unable to load the TA dashboard right now.');
         }
 
         setLoading(false);
         setRefreshing(false);
-    }, []);
+    }, [canViewAnalytics]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -714,7 +732,9 @@ const TalentAcquisitionDashboard = () => {
                                 Talent Acquisition Dashboard
                             </h1>
                             <p className="mt-1.5 text-[11px] text-slate-500">
-                                Requisitions, clients, interviews, and analytics in one workspace.
+                                {canViewAnalytics
+                                    ? 'Requisitions, clients, interviews, and analytics in one workspace.'
+                                    : 'Requisitions, clients, and interviews in one workspace.'}
                             </p>
                         </div>
 
@@ -734,11 +754,11 @@ const TalentAcquisitionDashboard = () => {
                         </div>
                     ) : null}
 
-                    {activeTab === 'overview' && renderOverview()}
+                    {canViewAnalytics && activeTab === 'overview' && renderOverview()}
                     {activeTab === 'requisitions' && renderRequisitions()}
                     {activeTab === 'clients' && renderClients()}
                     {activeTab === 'interviews' && renderInterviews()}
-                    {activeTab === 'analytics' && renderAnalytics()}
+                    {canViewAnalytics && activeTab === 'analytics' && renderAnalytics()}
 
                     <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -753,10 +773,12 @@ const TalentAcquisitionDashboard = () => {
                                     Clients
                                     <ArrowRight size={14} />
                                 </Link>
-                                <Link to="/ta/analysis" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
-                                    Analytics
-                                    <ArrowRight size={14} />
-                                </Link>
+                                {canViewAnalytics && (
+                                    <Link to="/ta/analysis" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
+                                        Analytics
+                                        <ArrowRight size={14} />
+                                    </Link>
+                                )}
                                 <Link to="/ta/workflows" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
                                     Workflows
                                     <ArrowRight size={14} />

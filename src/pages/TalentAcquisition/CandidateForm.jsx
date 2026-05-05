@@ -62,6 +62,15 @@ const CandidateForm = () => {
 
     // Duplicate detection state: { email: null | 'checking' | string, mobile: null | 'checking' | string }
     const [dupCheck, setDupCheck] = useState({ email: null, mobile: null });
+    const [duplicateCandidates, setDuplicateCandidates] = useState({ email: null, mobile: null });
+
+    const candidateHasResume = useCallback((candidate) => (
+        Boolean(candidate?.resumeUrl && String(candidate.resumeUrl).startsWith('http'))
+    ), []);
+
+    const canAttachResumeToDuplicate = useCallback((candidate) => (
+        Boolean(candidate && !candidateHasResume(candidate) && (resumeFile || (resumeUrl && String(resumeUrl).startsWith('http'))))
+    ), [candidateHasResume, resumeFile, resumeUrl]);
 
     // Handle click outside to close dropdown
     useEffect(() => {
@@ -333,6 +342,7 @@ const CandidateForm = () => {
         // Clear duplicate warning when user edits the field
         if (name === 'email' || name === 'mobile') {
             setDupCheck(prev => ({ ...prev, [name]: null }));
+            setDuplicateCandidates(prev => ({ ...prev, [name]: null }));
         }
     };
 
@@ -350,16 +360,21 @@ const CandidateForm = () => {
                     : c.mobile?.trim() === value.trim()
             );
             if (duplicate) {
+                setDuplicateCandidates(prev => ({ ...prev, [field]: duplicate }));
                 setDupCheck(prev => ({
                     ...prev,
-                    [field]: `"${duplicate.candidateName}" is already added with this ${field === 'email' ? 'email' : 'mobile number'}.`
+                    [field]: canAttachResumeToDuplicate(duplicate)
+                        ? `"${duplicate.candidateName}" already exists with this ${field === 'email' ? 'email' : 'mobile number'}. The uploaded resume will be attached to that existing profile.`
+                        : `"${duplicate.candidateName}" is already added with this ${field === 'email' ? 'email' : 'mobile number'}.`
                 }));
             } else {
                 setDupCheck(prev => ({ ...prev, [field]: null }));
+                setDuplicateCandidates(prev => ({ ...prev, [field]: null }));
             }
         } catch {
             // silently ignore — backend will catch it on submit anyway
             setDupCheck(prev => ({ ...prev, [field]: null }));
+            setDuplicateCandidates(prev => ({ ...prev, [field]: null }));
         }
     };
 
@@ -421,12 +436,12 @@ const CandidateForm = () => {
             return;
         }
 
-        // Block submission if a duplicate was detected
-        if (dupCheck.email && dupCheck.email !== 'checking') {
+        // Block submission if a duplicate was detected, unless we're attaching a resume to an existing profile with no resume yet.
+        if (dupCheck.email && dupCheck.email !== 'checking' && !canAttachResumeToDuplicate(duplicateCandidates.email)) {
             toast.error('Please resolve the duplicate email before submitting.');
             return;
         }
-        if (dupCheck.mobile && dupCheck.mobile !== 'checking') {
+        if (dupCheck.mobile && dupCheck.mobile !== 'checking' && !canAttachResumeToDuplicate(duplicateCandidates.mobile)) {
             toast.error('Please resolve the duplicate mobile number before submitting.');
             return;
         }
@@ -470,12 +485,14 @@ const CandidateForm = () => {
                 lastWorkingDay: formData.lastWorkingDay || undefined
             };
 
+            let response;
+
             if (isEditMode) {
                 await api.put(`/ta/candidates/${candidateId}`, payload);
                 toast.success('Candidate updated successfully');
             } else {
-                await api.post('/ta/candidates', payload);
-                toast.success('Candidate created successfully');
+                response = await api.post('/ta/candidates', payload);
+                toast.success(response?.data?.isUpdate ? 'Resume attached to existing candidate successfully' : 'Candidate created successfully');
             }
 
             navigate(`/ta/view/${hiringRequestId}?tab=applications`);

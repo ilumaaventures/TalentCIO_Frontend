@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Briefcase } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
+import BulkTransferModal from './BulkTransferModal';
 
 const Phase1Candidates = () => {
     const { hiringRequestId } = useParams();
@@ -29,10 +30,23 @@ const Phase1Candidates = () => {
 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
 
     // Close menu when clicking outside
     useEffect(() => {
-        const handleClose = () => setActiveMenu(null);
+        const handleClose = (event) => {
+            const target = event?.target;
+            const clickedMenuTrigger = target?.closest?.('[data-phase1-action-menu-trigger="true"]');
+            const clickedMenuContent = target?.closest?.('[data-phase1-action-menu-content="true"]');
+
+            if (clickedMenuTrigger || clickedMenuContent) {
+                return;
+            }
+
+            setActiveMenu(null);
+        };
         document.addEventListener('click', handleClose);
         window.addEventListener('scroll', handleClose, true);
         return () => {
@@ -177,6 +191,11 @@ const Phase1Candidates = () => {
     const handleAddNew = useCallback(() => {
         navigate(`/ta/hiring-request/${hiringRequestId}/add-candidate`);
     }, [navigate, hiringRequestId]);
+
+    const openTransferModal = useCallback((candidateIds = []) => {
+        setTransferPresetIds(candidateIds);
+        setShowTransferModal(true);
+    }, []);
 
 
 
@@ -578,6 +597,7 @@ const Phase1Candidates = () => {
                                                     <td className="px-4 py-4 align-top text-center">
                                                         <button
                                                             onClick={(e) => toggleMenu(e, candidate._id)}
+                                                            data-phase1-action-menu-trigger="true"
                                                             className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
                                                         >
                                                             <MoreVertical size={18} />
@@ -586,6 +606,7 @@ const Phase1Candidates = () => {
                                                         {/* Dropdown Menu */}
                                                         {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
                                                             <div
+                                                                data-phase1-action-menu-content="true"
                                                                 className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
                                                                 style={menuPosition}
                                                                 onClick={(e) => e.stopPropagation()}
@@ -622,6 +643,19 @@ const Phase1Candidates = () => {
                                                                     >
                                                                         <Edit size={16} className="text-slate-500" />
                                                                         Edit Candidate
+                                                                    </button>
+                                                                )}
+
+                                                                {canBulkTransfer && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            openTransferModal([candidate._id]);
+                                                                            setActiveMenu(null);
+                                                                        }}
+                                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
+                                                                    >
+                                                                        <Briefcase size={16} className="text-blue-500" />
+                                                                        Transfer Candidate
                                                                     </button>
                                                                 )}
 
@@ -676,6 +710,17 @@ const Phase1Candidates = () => {
                     </div>
                 )}
             </div>
+            <BulkTransferModal
+                isOpen={showTransferModal}
+                onClose={() => setShowTransferModal(false)}
+                candidates={candidates}
+                fromHiringRequestId={hiringRequestId}
+                initialSelectedIds={transferPresetIds}
+                onTransferred={() => {
+                    setShowTransferModal(false);
+                    fetchCandidates();
+                }}
+            />
         </div>
     );
 };

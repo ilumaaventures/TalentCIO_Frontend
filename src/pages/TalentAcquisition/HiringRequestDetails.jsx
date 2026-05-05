@@ -572,6 +572,52 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
+                            {Array.isArray(request.assignedUsers) && request.assignedUsers.length > 0 && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2 pb-3 border-b border-slate-50">
+                                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded-md">
+                                            <User size={14} />
+                                        </div>
+                                        Assigned Access
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {request.assignedUsers.map((assignedUser) => (
+                                            <div key={assignedUser._id || assignedUser.email} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                                <p className="text-xs font-bold text-slate-800">
+                                                    {[assignedUser.firstName, assignedUser.lastName].filter(Boolean).join(' ') || assignedUser.email}
+                                                </p>
+                                                <p className="text-[11px] text-slate-500">
+                                                    {assignedUser.email || assignedUser.employeeCode || 'Assigned user'}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {Array.isArray(request.analyticsViewers) && request.analyticsViewers.length > 0 && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2 pb-3 border-b border-slate-50">
+                                        <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-md">
+                                            <User size={14} />
+                                        </div>
+                                        Performance Viewers
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {request.analyticsViewers.map((viewer) => (
+                                            <div key={viewer._id || viewer.email} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                                <p className="text-xs font-bold text-slate-800">
+                                                    {[viewer.firstName, viewer.lastName].filter(Boolean).join(' ') || viewer.email}
+                                                </p>
+                                                <p className="text-[11px] text-slate-500">
+                                                    {viewer.email || viewer.employeeCode || 'Analytics viewer'}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Status Card */}
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                 <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">

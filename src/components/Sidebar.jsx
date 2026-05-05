@@ -39,12 +39,17 @@ const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
-  const currentTATab = new URLSearchParams(location.search).get('tab') || 'overview';
+  const canViewTAAnalytics = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global') || user?.isTAAnalyticsViewer;
+  const requestedTATab = new URLSearchParams(location.search).get('tab');
+  const currentTATab = (!canViewTAAnalytics && (requestedTATab === 'overview' || requestedTATab === 'analytics'))
+    ? 'requisitions'
+    : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
   const isActive = (path) => location.pathname === path ? "zoho-sidebar-link-active" : "zoho-sidebar-link";
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
-  const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view') || user?.isTAParticipant);
+  const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view') || user?.isTAParticipant || canViewTAAnalytics);
   const canCreateTA = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create');
   const canManageTAWorkflows = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
+  const canManagePhaseTemplates = user?.roles?.includes('Admin');
   const showDashboard = user?.roles?.includes('Admin') || user?.hasAllPermissions;
   const showAttendance = user?.company?.enabledModules?.includes('attendance');
   const showLeaves = user?.company?.enabledModules?.includes('leaves');
@@ -85,7 +90,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       label: 'Full Analytics',
       to: '/ta/analysis',
       icon: BarChart3,
-      visible: true,
+      visible: canViewTAAnalytics,
       isActive: location.pathname === '/ta/analysis'
     },
     {
@@ -94,6 +99,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: Workflow,
       visible: canManageTAWorkflows,
       isActive: location.pathname === '/ta/workflows'
+    },
+    {
+      label: 'Phase Templates',
+      to: '/ta/settings/phase-templates',
+      icon: Settings,
+      visible: canManagePhaseTemplates,
+      isActive: location.pathname === '/ta/settings/phase-templates'
     },
     {
       label: 'Email Templates',
@@ -164,7 +176,13 @@ const Sidebar = ({ isOpen, onClose }) => {
 
               <div className={sectionLabelClass}>Main</div>
               <div className="mb-6 space-y-1">
-                {TA_DASHBOARD_VIEWS.map((item) => {
+                {TA_DASHBOARD_VIEWS.filter((item) => {
+                  if (!canViewTAAnalytics && (item.id === 'overview' || item.id === 'analytics')) {
+                    return false;
+                  }
+
+                  return true;
+                }).map((item) => {
                   const Icon = item.icon;
                   const isDashboardViewActive = location.pathname === '/ta' && currentTATab === item.id;
 

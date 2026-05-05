@@ -6,8 +6,11 @@ import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X, Loade
 import toast from 'react-hot-toast';
 import WorkflowSettings from './WorkflowSettings';
 import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '../../utils/taCache';
+import UserMultiSelect from '../../components/UserMultiSelect';
 
 const SALARY_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR'];
+const NO_TEMPLATE_OPTION = 'STANDARD_3_PHASE_PROCESS';
+
 const parseOptionalNumber = (value) => {
     if (value === '' || value === null || value === undefined) {
         return undefined;
@@ -160,7 +163,9 @@ const CreateHiringRequest = () => {
 
         // Job Description
         jobDescription: '',
-        jobDescriptionFile: ''
+        jobDescriptionFile: '',
+        assignedUsers: [],
+        analyticsViewers: []
     });
 
     const [searchParams] = useSearchParams();
@@ -169,18 +174,39 @@ const CreateHiringRequest = () => {
     const [workflows, setWorkflows] = useState([]); // Store available workflows
     const [interviewWorkflows, setInterviewWorkflows] = useState([]); // Store interview templates
     const [clients, setClients] = useState([]); // Store available clients
+    const [availableUsers, setAvailableUsers] = useState([]);
+    const [phaseTemplates, setPhaseTemplates] = useState([]);
+    const [selectedPhaseTemplateId, setSelectedPhaseTemplateId] = useState(NO_TEMPLATE_OPTION);
     const [showWorkflowModal, setShowWorkflowModal] = useState(false);
 
     const fetchWorkflowsData = async () => {
         try {
-            const [wfRes, intWfRes, clientRes] = await Promise.all([
+            const [wfRes, intWfRes, clientRes, phaseTemplateRes, usersRes] = await Promise.all([
                 api.get('/workflows', createNoCacheRequestConfig()),
                 api.get('/ta/interview-workflows', createNoCacheRequestConfig()),
-                api.get('/projects/clients', createNoCacheRequestConfig())
+                api.get('/projects/clients', createNoCacheRequestConfig()),
+                api.get('/ta/phase-templates', createNoCacheRequestConfig()),
+                api.get('/admin/users', createNoCacheRequestConfig()).catch(() => ({ data: [] }))
             ]);
             setWorkflows(wfRes.data.filter(w => w.isActive));
             setInterviewWorkflows(intWfRes.data.filter(w => w.isActive));
             setClients(clientRes.data);
+            const fetchedUsers = Array.isArray(usersRes.data)
+                ? usersRes.data
+                : Array.isArray(usersRes.data?.data)
+                    ? usersRes.data.data
+                    : [];
+            setAvailableUsers(fetchedUsers.filter((currentUser) => currentUser?.isActive !== false));
+            const fetchedTemplates = phaseTemplateRes.data?.templates || [];
+            setPhaseTemplates(fetchedTemplates);
+            setSelectedPhaseTemplateId((current) => {
+                if (current && current !== NO_TEMPLATE_OPTION) {
+                    return current;
+                }
+
+                const defaultTemplate = fetchedTemplates.find((template) => template.isDefault) || fetchedTemplates[0];
+                return defaultTemplate?._id || NO_TEMPLATE_OPTION;
+            });
         } catch (error) {
             console.error("Failed to fetch workflow data", error);
         }
@@ -228,8 +254,19 @@ const CreateHiringRequest = () => {
                         salaryRangeOpen: Boolean(data.hiringDetails.budgetRange?.isOpen),
                         priority: data.hiringDetails.priority,
                         jobDescription: data.jobDescription || '',
-                        jobDescriptionFile: data.jobDescriptionFile || ''
+                        jobDescriptionFile: data.jobDescriptionFile || '',
+                        assignedUsers: Array.isArray(data.assignedUsers)
+                            ? data.assignedUsers.map((assignedUser) => assignedUser?._id || assignedUser).filter(Boolean)
+                            : [],
+                        analyticsViewers: Array.isArray(data.analyticsViewers)
+                            ? data.analyticsViewers.map((viewer) => viewer?._id || viewer).filter(Boolean)
+                            : []
                     });
+                    setSelectedPhaseTemplateId(
+                        data.useDynamicPhases && data.phaseTemplateId
+                            ? (data.phaseTemplateId?._id || data.phaseTemplateId)
+                            : NO_TEMPLATE_OPTION
+                    );
                 } catch (error) {
                     console.error(error);
                     toast.error('Failed to load request details');
@@ -363,8 +400,16 @@ const CreateHiringRequest = () => {
                     priority: formData.priority
                 },
                 jobDescription: formData.jobDescription,
-                jobDescriptionFile: formData.jobDescriptionFile
+                jobDescriptionFile: formData.jobDescriptionFile,
+                assignedUsers: formData.assignedUsers,
+                analyticsViewers: formData.analyticsViewers
             };
+
+            if (!id && selectedPhaseTemplateId && selectedPhaseTemplateId !== NO_TEMPLATE_OPTION) {
+                payload.phaseTemplateId = selectedPhaseTemplateId;
+            } else if (!id && selectedPhaseTemplateId === NO_TEMPLATE_OPTION) {
+                payload.useDynamicPhases = false;
+            }
 
             let response;
 
@@ -398,6 +443,9 @@ const CreateHiringRequest = () => {
             setLoading(false);
         }
     };
+
+    const selectedPhaseTemplate = phaseTemplates.find((template) => template._id === selectedPhaseTemplateId);
+    const workflowSelectionLocked = Boolean(id);
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -533,6 +581,117 @@ const CreateHiringRequest = () => {
                     <Input label="Job Title" name="title" value={formData.title} onChange={handleChange} required placeholder="e.g. Senior Frontend Developer" />
                     <Input label="Department" name="department" value={formData.department} onChange={handleChange} required placeholder="e.g. Engineering" />
                     <Input label="Employment Type" name="employmentType" value={formData.employmentType} onChange={handleChange} required options={['Full-time', 'Intern', 'Contract', 'Freelance']} />
+                </Section>
+
+                <Section title="Access Assignment" icon={Users} fullWidth>
+                    <div className="col-span-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Assigned Users
+                        </label>
+                        <UserMultiSelect
+                            users={availableUsers}
+                            selectedUserIds={formData.assignedUsers}
+                            onChange={(selectedUserIds) => setFormData((prev) => ({ ...prev, assignedUsers: selectedUserIds }))}
+                            placeholder="Select users who can access this requisition"
+                        />
+                        <p className="mt-2 text-xs text-slate-500">
+                            Only assigned users can access this requisition in the regular user view. Admin and HR level users still retain full access.
+                        </p>
+                    </div>
+                </Section>
+
+                <Section title="Performance Visibility" icon={Users} fullWidth>
+                    <div className="col-span-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Requisition Performance Viewers
+                        </label>
+                        <UserMultiSelect
+                            users={availableUsers}
+                            selectedUserIds={formData.analyticsViewers}
+                            onChange={(selectedUserIds) => setFormData((prev) => ({ ...prev, analyticsViewers: selectedUserIds }))}
+                            placeholder="Select users who can view this requisition's analytics"
+                        />
+                        <p className="mt-2 text-xs text-slate-500">
+                            These users can open performance analytics for this requisition. This does not automatically give them access to candidate data unless they are also assigned separately.
+                        </p>
+                    </div>
+                </Section>
+
+                <Section title="Recruitment Workflow" icon={Users} fullWidth>
+                    <div className="col-span-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Select Phase Template
+                        </label>
+                        <select
+                            value={selectedPhaseTemplateId}
+                            onChange={(event) => setSelectedPhaseTemplateId(event.target.value)}
+                            disabled={workflowSelectionLocked}
+                            className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                            <option value={NO_TEMPLATE_OPTION}>No Template (Use Standard 3-Phase Process)</option>
+                            {phaseTemplates.map((template) => (
+                                <option key={template._id} value={template._id}>
+                                    {template.name}{template.isDefault ? ' (Default)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-2 text-xs text-slate-500">
+                            {workflowSelectionLocked
+                                ? 'Recruitment workflow selection is locked after a requisition is created.'
+                                : 'Templates copy their phase structure into the new requisition without affecting older requests.'}
+                        </p>
+                    </div>
+
+                    <div className="col-span-1">
+                        {selectedPhaseTemplate && selectedPhaseTemplateId !== NO_TEMPLATE_OPTION ? (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-800">{selectedPhaseTemplate.name}</p>
+                                        <p className="text-xs text-slate-500">{selectedPhaseTemplate.description || 'Custom recruitment workflow selected.'}</p>
+                                    </div>
+                                    <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                                        {selectedPhaseTemplate.phases?.length || 0} phases
+                                    </span>
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    {(selectedPhaseTemplate.phases || [])
+                                        .slice()
+                                        .sort((left, right) => left.order - right.order)
+                                        .map((phase) => {
+                                            const tooltipContent = [
+                                                phase.description || '',
+                                                `Statuses: ${(phase.statusOptions || []).map((status) => status.label).join(', ') || 'None'}`,
+                                                `Decisions: ${(phase.decisionOptions || []).map((decision) => decision.label).join(', ') || 'None'}`
+                                            ].filter(Boolean).join('\n');
+
+                                            return (
+                                                <span
+                                                    key={phase._id || phase.phaseId || phase.order}
+                                                    title={tooltipContent}
+                                                    className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold"
+                                                    style={{
+                                                        color: phase.color || '#2563EB',
+                                                        borderColor: `${phase.color || '#2563EB'}33`,
+                                                        backgroundColor: `${phase.color || '#2563EB'}12`
+                                                    }}
+                                                >
+                                                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-[11px] font-bold">
+                                                        {phase.order}
+                                                    </span>
+                                                    {phase.name}
+                                                </span>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                                Standard 3-phase process will be used.
+                            </div>
+                        )}
+                    </div>
                 </Section>
 
                 <Section title="2. Purpose of Hiring" icon={Users}>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRightLeft, Menu } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -15,6 +15,7 @@ import CandidateDetails from './CandidateDetails';
 import { ProfileReviewModal } from './PublicApplicationsView';
 import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
+import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -26,6 +27,69 @@ const hasReviewableApplicantProfile = (item) => Boolean(
 );
 
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
+    const [resolvedRequest, setResolvedRequest] = useState(requestMeta);
+    const [requestLoading, setRequestLoading] = useState(!requestMeta);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        if (requestMeta) {
+            setResolvedRequest(requestMeta);
+            setRequestLoading(false);
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        const fetchRequest = async () => {
+            try {
+                setRequestLoading(true);
+                const response = await api.get(`/ta/hiring-request/${hiringRequestId}`);
+                if (!cancelled) {
+                    setResolvedRequest(response.data);
+                }
+            } catch (error) {
+                console.error('Failed to resolve hiring request for candidate list:', error);
+                if (!cancelled) {
+                    toast.error(error.response?.data?.message || 'Failed to load requisition details');
+                    setResolvedRequest(null);
+                }
+            } finally {
+                if (!cancelled) {
+                    setRequestLoading(false);
+                }
+            }
+        };
+
+        if (hiringRequestId) {
+            fetchRequest();
+        }
+
+        return () => {
+            cancelled = true;
+        };
+    }, [hiringRequestId, requestMeta]);
+
+    if (requestLoading) {
+        return (
+            <div className="space-y-4">
+                <Skeleton className="h-14 w-full rounded-2xl" />
+                <div className="grid gap-4 md:grid-cols-3">
+                    {[...Array(3)].map((_, index) => <Skeleton key={index} className="h-24 w-full rounded-2xl" />)}
+                </div>
+                <Skeleton className="h-[420px] w-full rounded-2xl" />
+            </div>
+        );
+    }
+
+    if (resolvedRequest?.useDynamicPhases === true) {
+        return <DynamicPhaseView hiringRequest={resolvedRequest} />;
+    }
+
+    return <LegacyCandidateList hiringRequestId={hiringRequestId} positionName={positionName} isLegacyView={isLegacyView} requestMeta={resolvedRequest || requestMeta} />;
+};
+
+const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
@@ -62,6 +126,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
     const canMassMail = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
     const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
     const canManageTemplates = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const isProfileSharedCandidate = useCallback((candidate) =>
+        candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
+    , []);
 
     const handleSelectCandidate = (candId) => {
         const newParams = new URLSearchParams(searchParams);
@@ -87,7 +154,15 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
 
     // Close menu when clicking outside
     useEffect(() => {
-        const handleClose = () => {
+        const handleClose = (event) => {
+            const target = event?.target;
+            const clickedMenuTrigger = target?.closest?.('[data-legacy-action-menu-trigger="true"]');
+            const clickedMenuContent = target?.closest?.('[data-legacy-action-menu-content="true"]');
+
+            if (clickedMenuTrigger || clickedMenuContent) {
+                return;
+            }
+
             setActiveMenu(null);
             setShowToolbarMenu(false);
         };
@@ -222,12 +297,12 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
     // Structural Phase 2 population
     const structuralPhase2Candidates = useMemo(() => {
         return candidates.filter(c => {
-            const isShortlisted = c.decision === 'Shortlisted';
+            const isShortlisted = isProfileSharedCandidate(c);
             const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
             return isShortlisted && matchPulledBy && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterTransferred]);
+    }, [candidates, filterPulledBy, filterTransferred, isProfileSharedCandidate]);
 
     // Base for Phase 2 dynamic cards
     const basePhase2Candidates = useMemo(() => {
@@ -485,6 +560,33 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
         try {
             toast.loading('Preparing export...', { id: 'export-excel' });
 
+            const toEmptyCell = (value, { zeroIsEmpty = false } = {}) => {
+                if (value === undefined || value === null) {
+                    return null;
+                }
+
+                if (typeof value === 'number') {
+                    if (zeroIsEmpty && value === 0) {
+                        return null;
+                    }
+
+                    return value;
+                }
+
+                if (typeof value === 'string') {
+                    const normalized = value.trim();
+                    const upperValue = normalized.toUpperCase();
+                    const isZeroLike = /^0+(?:\.0+)?$/.test(normalized);
+                    if (!normalized || normalized === '-' || normalized === '--' || upperValue === 'N/A' || (zeroIsEmpty && isZeroLike)) {
+                        return null;
+                    }
+
+                    return normalized;
+                }
+
+                return value;
+            };
+
             // 1. Fetch Requisition Details for Dynamic Skills
             let softSkillsFromReq = [];
             let techSkillsFromReq = [];
@@ -544,7 +646,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
                 ...roundSections,
-                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 6 }
+                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(sec => sec.width > 0);
 
             const workbook = new ExcelJS.Workbook();
@@ -579,7 +681,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                 const col = sheet.getColumn(i + 1);
                 col.width = 18; // default
                 if (i === 0) col.width = 8; // S.no
-                if (row2Data[i] === 'Remarks' || row2Data[i] === 'Interviewer Feedback') col.width = 35;
+                if (row2Data[i] === 'Remarks' || row2Data[i] === 'Interviewer Feedback' || row2Data[i] === 'Interviewer Feedback (Phase 2)') col.width = 35;
                 if (row2Data[i] === 'Name of Candidate' || row2Data[i].includes('Skill')) col.width = 25;
 
                 col.alignment = { wrapText: true, vertical: 'middle' };
@@ -620,10 +722,13 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
 
                 const techSkillRatings = techSkillsHeaders.map(skillName => {
                     const skillEntry = (candidate.mustHaveSkills || []).find(s => s.skill === skillName);
-                    if (skillEntry) return `${skillEntry.experience}y`;
+                    if (skillEntry) {
+                        const experience = toEmptyCell(skillEntry.experience, { zeroIsEmpty: true });
+                        return experience === null ? null : `${experience}y`;
+                    }
 
                     const rating = (candidate.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
-                    return rating !== undefined ? `${rating}/10` : '-';
+                    return rating !== undefined ? `${rating}/10` : null;
                 });
 
                 // Collect data for each round
@@ -631,77 +736,84 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                 for (let i = 0; i < maxRoundsCount; i++) {
                     const r = rounds[i];
                     if (r) {
-                        const feedback = r.feedback || '-';
-                        const date = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd-MMM-yyyy') : '-';
-                        const interviewer = r.evaluatedBy ? `${r.evaluatedBy.firstName} ${r.evaluatedBy.lastName}` : (r.interviewerName || '-');
+                        const feedback = toEmptyCell(r.feedback);
+                        const date = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd-MMM-yyyy') : null;
+                        const interviewer = r.evaluatedBy
+                            ? `${r.evaluatedBy.firstName || ''} ${r.evaluatedBy.lastName || ''}`.trim()
+                            : toEmptyCell(r.interviewerName);
 
                         const rSoftSkillRatings = softSkillsHeaders.map(skillName => {
                             const rating = (r.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
-                            return rating !== undefined ? `${rating}/10` : '-';
+                            return rating !== undefined ? `${rating}/10` : null;
                         });
 
                         const rTechSkillRatings = techSkillsHeaders.map(skillName => {
                             const sr = (r.skillRatings || []).find(s => s.skill === skillName);
-                            return sr ? `${sr.rating}/10` : '-';
+                            return sr ? `${sr.rating}/10` : null;
                         });
 
-                        roundsData.push(feedback, date, interviewer, ...rSoftSkillRatings, ...rTechSkillRatings);
+                        roundsData.push(feedback, date, toEmptyCell(interviewer), ...rSoftSkillRatings, ...rTechSkillRatings);
                     } else {
                         // Empty round padding
                         const fieldCount = 3 + softSkillsHeaders.length + techSkillsHeaders.length;
-                        for (let j = 0; j < fieldCount; j++) roundsData.push('-');
+                        for (let j = 0; j < fieldCount; j++) roundsData.push(null);
                     }
                 }
 
                 const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : (candidate.decision === 'Rejected' ? 'No' : '');
+                const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected') ? 'Yes' : null;
+                const phase2Selected = candidate.phase2Decision === 'Selected' ? 'Yes' : null;
                 const statusSummary = getInterviewStatusSummary(rounds);
-                const interviewStatusLabel = statusSummary.label || '-';
+                const interviewStatusLabel = toEmptyCell(statusSummary.label);
 
                 // Construct row data according to sections order
                 const rowData = [
                     index + 1,
-                    candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : '-',
-                    candidate.source || '-',
-                    candidate.profilePulledBy || '-',
-                    candidate.calledBy || '-',
-                    candidate.candidateName || '-',
-                    candidate.totalExperience || '-',
+                    candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : null,
+                    toEmptyCell(candidate.source),
+                    toEmptyCell(candidate.profilePulledBy),
+                    toEmptyCell(candidate.calledBy),
+                    toEmptyCell(candidate.candidateName),
+                    toEmptyCell(candidate.totalExperience),
 
-                    candidate.tatToJoin || '-',
-                    candidate.rate || '-',
-                    candidate.remark || '-',
+                    toEmptyCell(candidate.tatToJoin, { zeroIsEmpty: true }),
+                    toEmptyCell(candidate.rate, { zeroIsEmpty: true }),
+                    toEmptyCell(candidate.remark),
 
-                    candidate.relevantExperience || '-',
+                    toEmptyCell(candidate.relevantExperience, { zeroIsEmpty: true }),
                     ...techSkillRatings,
 
-                    candidate.qualification || '-',
-                    candidate.currentCompany || '-',
+                    toEmptyCell(candidate.qualification),
+                    toEmptyCell(candidate.currentCompany),
 
-                    candidate.currentCTC || '-',
-                    candidate.expectedCTC || '-',
+                    toEmptyCell(candidate.currentCTC, { zeroIsEmpty: true }),
+                    toEmptyCell(candidate.expectedCTC, { zeroIsEmpty: true }),
 
-                    candidate.noticePeriod || '-',
-                    candidate.currentLocation || '-',
-                    candidate.preferredLocation || '-',
+                    toEmptyCell(candidate.noticePeriod, { zeroIsEmpty: true }),
+                    toEmptyCell(candidate.currentLocation),
+                    toEmptyCell(candidate.preferredLocation),
 
-                    candidate.email || '-',
-                    candidate.mobile || '-',
+                    toEmptyCell(candidate.email),
+                    toEmptyCell(candidate.mobile),
 
-                    candidate.offerCompany || '-',
-                    candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : '-',
+                    toEmptyCell(candidate.offerCompany),
+                    candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : null,
 
-                    candidate.status || '',
-                    candidate.remark || '-',
-                    candidate.customRemark || '-',
+                    toEmptyCell(candidate.status),
+                    toEmptyCell(candidate.remark),
+                    toEmptyCell(candidate.customRemark),
 
                     ...roundsData,
 
-                    profileShortlisted,
-                    '-', // Final Scoring
-                    '-', // Profile Shared
+                    toEmptyCell(profileShortlisted),
+                    null, // Final Scoring
+                    isProfileSharedCandidate(candidate) ? 'Yes' : null, // Profile Shared
+                    phase2Shortlisted,
+                    phase2Selected,
+                    toEmptyCell(candidate.phase2InterviewerFeedback),
                     interviewStatusLabel,
-                    candidate.rejectionReason || '-',
-                    '' // Decision Status
+                    toEmptyCell(candidate.rejectionReason),
+                    null // Decision Status
                 ];
 
                 const row = sheet.addRow(rowData);
@@ -709,16 +821,20 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                 // Calculate Formula Indexes Dynamically
                 // Profile Shortlisted is the 1st column of the last section
                 // Decision Status is the 6th column (last) of the last section
-                const totalColsBeforeLast = row2Data.length - 6;
+                const totalColsBeforeLast = row2Data.length - 9;
                 const profileShortlistedColIndex = totalColsBeforeLast + 1;
-                const decisionStatusColIndex = totalColsBeforeLast + 6;
+                const decisionStatusColIndex = totalColsBeforeLast + 9;
 
                 const colLetter = sheet.getColumn(profileShortlistedColIndex).letter;
                 const formulaRow = row.number;
-                row.getCell(decisionStatusColIndex).value = {
-                    formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",""))`,
-                    result: profileShortlisted === 'Yes' ? 'Shortlisted' : (profileShortlisted === 'No' ? 'Rejected' : '')
-                };
+                if (profileShortlisted) {
+                    row.getCell(decisionStatusColIndex).value = {
+                        formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",""))`,
+                        result: profileShortlisted === 'Yes' ? 'Shortlisted' : (profileShortlisted === 'No' ? 'Rejected' : '')
+                    };
+                } else {
+                    row.getCell(decisionStatusColIndex).value = null;
+                }
             });
 
             const buffer = await workbook.xlsx.writeBuffer();
@@ -745,6 +861,19 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
         } catch (error) {
             console.error('Error updating decision:', error);
             toast.error('Failed to update decision');
+        }
+    };
+
+    const handleMoveToNextPhase = async (candidateId) => {
+        try {
+            await api.put(`/ta/candidates/${candidateId}`, { profileShared: true });
+            toast.success('Candidate moved to next phase');
+            setCandidates(prev => prev.map(c =>
+                c._id === candidateId ? { ...c, profileShared: true } : c
+            ));
+        } catch (error) {
+            console.error('Error moving candidate to next phase:', error);
+            toast.error(error.response?.data?.message || 'Failed to move candidate to next phase');
         }
     };
 
@@ -780,6 +909,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
         switch (decision) {
             case 'Selected': return 'text-purple-600 font-bold';
             case 'Shortlisted': return 'text-emerald-600 font-bold';
+            case 'Profile Shared': return 'text-sky-600 font-bold';
             case 'Phase 3 Offer Stage': return 'text-purple-600 font-bold';
             case 'Offer Sent': return 'text-blue-600 font-bold';
             case 'Offer Accepted': return 'text-amber-600 font-bold';
@@ -866,7 +996,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
     }
 
     const phaseToggleButtonClass = 'min-w-[84px] rounded-[10px] px-4 py-2.5 text-sm font-semibold transition-all duration-200';
-    const toolbarMenuButtonClass = 'inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50';
+    const toolbarMenuButtonClass = 'inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50';
     const toolbarMenuItemClass = 'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50';
 
     return (
@@ -940,9 +1070,11 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                 setShowToolbarMenu(prev => !prev);
                             }}
                             className={toolbarMenuButtonClass}
+                            aria-label="Open quick actions"
+                            title="Quick actions"
                         >
                             <Menu size={16} />
-                            Actions
+                            <span className="sr-only">Quick actions</span>
                         </button>
                         {showToolbarMenu && (
                             <div
@@ -1102,15 +1234,6 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                     onClick: () => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
                                 },
                                 {
-                                    id: 'interviewScheduled',
-                                    label: 'Interview Scheduled',
-                                    value: metrics.interviewScheduled,
-                                    icon: UserCheck,
-                                    color: 'amber',
-                                    isActive: filterInterviewStatus === 'Scheduled',
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }
-                                },
-                                {
                                     id: 'shortlisted',
                                     label: 'Shortlisted',
                                     value: metrics.shortlisted,
@@ -1118,6 +1241,15 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                     color: 'sky',
                                     isActive: filterDecision === 'Shortlisted',
                                     onClick: () => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                },
+                                {
+                                    id: 'interviewScheduled',
+                                    label: 'Interview Scheduled',
+                                    value: metrics.interviewScheduled,
+                                    icon: UserCheck,
+                                    color: 'amber',
+                                    isActive: filterInterviewStatus === 'Scheduled',
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }
                                 },
                                 {
                                     id: 'onHold',
@@ -1252,16 +1384,17 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                             indigo: 'border-b-indigo-500 text-indigo-600',
                                             blue: 'border-b-blue-500 text-blue-600'
                                         };
+                                        const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
 
                                         return (
                                             <div
                                                 key={idx}
                                                 onClick={card.onClick}
-                                                className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                                className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
                                             >
                                                 <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                                 <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
                                             </div>
                                         );
                                     })}
@@ -1272,7 +1405,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                 const funnelCards = [
                                     {
                                         id: 'total',
-                                        label: 'Total Profile Sent',
+                                        label: 'Profile Shared',
                                         value: phase2Metrics.totalShortlisted,
                                         icon: Users,
                                         color: 'purple',
@@ -1289,6 +1422,15 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                         onClick: () => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }
                                     },
                                     {
+                                        id: 'selected',
+                                        label: 'Selected',
+                                        value: phase2Metrics.selected,
+                                        icon: CheckCircle,
+                                        color: 'green',
+                                        isActive: filterDecision === 'Selected',
+                                        onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
+                                    },
+                                    {
                                         id: 'interviewScheduled',
                                         label: 'Interview Scheduled',
                                         value: phase2Metrics.interviewScheduled,
@@ -1296,15 +1438,6 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                         color: 'amber',
                                         isActive: filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled',
                                         onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }
-                                    },
-                                    {
-                                        id: 'selected',
-                                        label: 'Selected',
-                                        value: phase2Metrics.selected,
-                                        icon: CheckCircle,
-                                        color: 'emerald',
-                                        isActive: filterDecision === 'Selected',
-                                        onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
                                     },
                                     {
                                         id: 'rejected',
@@ -1369,21 +1502,24 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                                 purple: 'border-b-purple-500 text-purple-600',
                                                 sky: 'border-b-sky-500 text-sky-600',
                                                 amber: 'border-b-amber-500 text-amber-600',
+                                                green: 'border-b-green-500 text-green-600',
                                                 emerald: 'border-b-emerald-500 text-emerald-600',
                                                 rose: 'border-b-rose-500 text-rose-600',
                                                 indigo: 'border-b-indigo-500 text-indigo-600',
-                                                blue: 'border-b-blue-500 text-blue-600'
+                                                blue: 'border-b-blue-500 text-blue-600',
+                                                slate: 'border-b-slate-500 text-slate-600'
                                             };
+                                            const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
 
                                             return (
                                                 <div
                                                     key={idx}
                                                     onClick={card.onClick}
-                                                    className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                                    className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
                                                 >
                                                     <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                                     <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
                                                 </div>
                                             );
                                         })}
@@ -1496,16 +1632,17 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                                     indigo: 'border-b-indigo-500 text-indigo-600',
                                                     blue: 'border-b-blue-500 text-blue-600'
                                                 };
+                                                const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
 
                                                 return (
                                                     <div
                                                         key={idx}
                                                         onClick={card.onClick}
-                                                        className={`bg-white border border-slate-200 border-b-4 ${colorMap[card.color].split(' ')[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
                                                     >
                                                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorMap[card.color].split(' ')[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
                                                     </div>
                                                 );
                                             })}
@@ -1826,9 +1963,9 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                                                 <div className="relative inline-block w-full max-w-[110px]">
                                                                     {activePhase === 1 ? (
                                                                         <select
-                                                                            value={candidate.decision || 'None'}
+                                                                            value={candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None')}
                                                                             onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
+                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
                                                                             onClick={(e) => e.stopPropagation()}
                                                                             disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
                                                                         >
@@ -1896,6 +2033,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                                         <td className="px-4 py-4 align-top text-center">
                                                             <button
                                                                 onClick={(e) => toggleMenu(e, candidate._id)}
+                                                                data-legacy-action-menu-trigger="true"
                                                                 className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
                                                             >
                                                                 <MoreVertical size={18} />
@@ -1904,6 +2042,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                                             {/* Dropdown Menu */}
                                                             {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
                                                                 <div
+                                                                    data-legacy-action-menu-content="true"
                                                                     className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
                                                                     style={menuPosition}
                                                                     onClick={(e) => e.stopPropagation()}
@@ -1955,6 +2094,19 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                                                                         >
                                                                             <Edit size={16} className="text-slate-500" />
                                                                             Edit Candidate
+                                                                        </button>
+                                                                    )}
+
+                                                                    {activePhase === 1 && !isProfileSharedCandidate(candidate) && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleMoveToNextPhase(candidate._id);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-sky-700 hover:bg-sky-50 transition-colors text-left font-semibold"
+                                                                        >
+                                                                            <ArrowRight size={16} className="text-sky-500" />
+                                                                            Moved to Next Phase
                                                                         </button>
                                                                     )}
 
