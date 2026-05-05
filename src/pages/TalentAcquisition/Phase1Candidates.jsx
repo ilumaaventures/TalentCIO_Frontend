@@ -389,21 +389,6 @@ const Phase1Candidates = () => {
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Interview Status</label>
-                        <select
-                            value={filterInterviewStatus}
-                            onChange={(e) => setFilterInterviewStatus(e.target.value)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                        >
-                            <option value="All">All Interviews</option>
-                            <option value="None">None Scheduled</option>
-                            <option value="In_Process">In Interviews (Active)</option>
-                            <option value="Pending">In Progress / Pending</option>
-                            <option value="Passed">All Passed</option>
-                            <option value="Failed">Failed</option>
-                        </select>
-                    </div>
-                    <div>
                         <label className="block text-xs font-semibold text-slate-500 mb-1">Min Avg Rating</label>
                         <select
                             value={filterRating}

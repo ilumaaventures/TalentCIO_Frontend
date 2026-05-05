@@ -47,7 +47,6 @@ const Sidebar = ({ isOpen, onClose }) => {
   const isActive = (path) => location.pathname === path ? "zoho-sidebar-link-active" : "zoho-sidebar-link";
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
   const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view') || user?.isTAParticipant || canViewTAAnalytics);
-  const canCreateTA = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create');
   const canManageTAWorkflows = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
   const canManagePhaseTemplates = user?.roles?.includes('Admin');
   const showDashboard = user?.roles?.includes('Admin') || user?.hasAllPermissions;
@@ -72,20 +71,6 @@ const Sidebar = ({ isOpen, onClose }) => {
   const sidebarCardClass = 'rounded-2xl border border-white/6 bg-white/[0.03]';
 
   const taShortcuts = [
-    {
-      label: 'Raise Requisition',
-      to: '/ta/create-request',
-      icon: BriefcaseBusiness,
-      visible: canCreateTA,
-      isActive: location.pathname === '/ta/create-request' || location.pathname.startsWith('/ta/edit-request/')
-    },
-    {
-      label: 'Client Workspace',
-      to: '/ta/clients',
-      icon: Briefcase,
-      visible: true,
-      isActive: location.pathname === '/ta/clients' || location.pathname.startsWith('/ta/hiring-requests/') || location.pathname.startsWith('/ta/view/') || location.pathname.startsWith('/ta/hiring-request/')
-    },
     {
       label: 'Full Analytics',
       to: '/ta/analysis',
