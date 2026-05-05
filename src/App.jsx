@@ -33,6 +33,7 @@ import CreateHiringRequest from './pages/TalentAcquisition/CreateHiringRequest';
 import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails';
 import WorkflowSettings from './pages/TalentAcquisition/WorkflowSettings';
 import EmailTemplates from './pages/TalentAcquisition/EmailTemplates';
+import PhaseTemplates from './pages/TalentAcquisition/Settings/PhaseTemplates';
 import CandidateForm from './pages/TalentAcquisition/CandidateForm';
 import CandidateDetails from './pages/TalentAcquisition/CandidateDetails';
 import Phase1Candidates from './pages/TalentAcquisition/Phase1Candidates';
@@ -92,6 +93,7 @@ function App() {
                   <Route path="/ta/clients" element={<ClientSelection />} />
                   <Route path="/ta/hiring-requests/:clientName" element={<HiringRequestList />} />
                   <Route path="/ta/workflows" element={<WorkflowSettings />} />
+                  <Route path="/ta/settings/phase-templates" element={<PhaseTemplatesAccessWrapper />} />
                   <Route path="/ta/email-templates" element={<EmailTemplates />} />
                   <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                   <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
@@ -101,7 +103,7 @@ function App() {
                   <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateDetails />} />
                   <Route path="/ta/hiring-request/:hiringRequestId/phase1" element={<Phase1Candidates />} />
                   <Route path="/ta/user-dashboard/:userName" element={<UserTADashboard />} />
-                  <Route path="/ta/analysis" element={<GlobalTADashboard />} />
+                  <Route path="/ta/analysis" element={<TAAnalyticsAccessWrapper />} />
                 </Route>
                 
                 <Route path="/profile" element={<Profile />} />
@@ -198,6 +200,30 @@ const OnboardingAccessWrapper = ({ Component: ComponentProp }) => {
 
   const canAccess = user.roles?.includes('Admin') ||
     user.permissions?.includes('onboarding.manage');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const PhaseTemplatesAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || PhaseTemplates;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const TAAnalyticsAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || GlobalTADashboard;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.analytics.global') ||
+    user.isTAAnalyticsViewer;
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };

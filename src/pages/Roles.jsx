@@ -6,6 +6,29 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
+const LEGACY_HIDDEN_PERMISSION_KEYS = new Set(['ta.analytics.requisition']);
+
+const isVisiblePermission = (permission) =>
+    permission &&
+    permission.key !== '*' &&
+    permission.isDeprecated !== true &&
+    !LEGACY_HIDDEN_PERMISSION_KEYS.has(permission.key);
+
+const sanitizeGroupedPermissions = (groupedPermissions = {}) =>
+    Object.entries(groupedPermissions).reduce((accumulator, [moduleName, perms]) => {
+        const visiblePermissions = (perms || []).filter(isVisiblePermission);
+        if (visiblePermissions.length > 0) {
+            accumulator[moduleName] = visiblePermissions;
+        }
+        return accumulator;
+    }, {});
+
+const sanitizeRoles = (roles = []) =>
+    roles.map(role => ({
+        ...role,
+        permissions: (role.permissions || []).filter(isVisiblePermission)
+    }));
+
 const Roles = () => {
     const { user, refreshProfile } = useAuth();
     const [roles, setRoles] = useState([]);
@@ -27,8 +50,8 @@ const Roles = () => {
 
             if (cachedData) {
                 const data = cachedData.data || cachedData;
-                setRoles(data.roles || []);
-                setPermissions(data.permissions || {});
+                setRoles(sanitizeRoles(data.roles || []));
+                setPermissions(sanitizeGroupedPermissions(data.permissions || {}));
                 setLoading(false);
                 if (isCacheFresh(cachedData, ROLE_CACHE_TTL_MS)) return;
             }
@@ -38,8 +61,8 @@ const Roles = () => {
                 headers: { 'Cache-Control': 'no-cache' },
                 params: { _t: Date.now() }
             } : undefined);
-            const rolesData = bootstrapRes.data?.roles || [];
-            const permsData = bootstrapRes.data?.permissions || {};
+            const rolesData = sanitizeRoles(bootstrapRes.data?.roles || []);
+            const permsData = sanitizeGroupedPermissions(bootstrapRes.data?.permissions || {});
 
             // Fingerprint check - include total number of permissions (sum across all modules)
             const totalPerms = Object.values(permsData).reduce((sum, modulePerms) => sum + modulePerms.length, 0);

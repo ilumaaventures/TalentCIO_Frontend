@@ -21,6 +21,7 @@ const ClientView = () => {
     const { id } = useParams();
     const { user } = useAuth();
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.update');
+    const canViewTAAnalytics = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global') || user?.isTAAnalyticsViewer;
 
     const [client, setClient] = useState(null);
     const [projects, setProjects] = useState([]);
@@ -258,7 +259,13 @@ const ClientView = () => {
                 )}
 
                 {activeTab === 'ta' && (
-                    <ClientTADashboard clientName={client.name} />
+                    canViewTAAnalytics ? (
+                        <ClientTADashboard clientName={client.name} />
+                    ) : (
+                        <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                            You do not have permission to view TA performance analytics for this client.
+                        </div>
+                    )
                 )}
 
             </div>

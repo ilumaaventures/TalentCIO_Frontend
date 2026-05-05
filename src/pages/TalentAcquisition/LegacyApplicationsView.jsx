@@ -17,6 +17,7 @@ import Skeleton from '../../components/Skeleton';
 const decisionColor = (d) => {
     switch (d) {
         case 'Shortlisted': return 'bg-sky-100 text-sky-700 border-sky-200';
+        case 'Profile Shared': return 'bg-blue-100 text-blue-700 border-blue-200';
         case 'Rejected': return 'bg-red-100 text-red-700 border-red-200';
         case 'On Hold': return 'bg-amber-100 text-amber-700 border-amber-200';
         case 'Selected': return 'bg-purple-100 text-purple-700 border-purple-200';
@@ -61,6 +62,8 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     };
 
     const { requisition, candidates } = opening;
+    const isProfileSharedCandidate = (candidate) =>
+        candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted');
     const openedAt = requisition.createdAt ? format(new Date(requisition.createdAt), 'MMM dd, yyyy') : '—';
     const closedAt = requisition.closedAt ? format(new Date(requisition.closedAt), 'MMM dd, yyyy') : 'Ongoing';
     const positionName = requisition.title || 'Position';
@@ -80,11 +83,11 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
 
 
     const phase2Metrics = {
-        totalShortlisted: candidates.filter(c => c.decision === 'Shortlisted' || c.decision === 'Selected').length,
-        totalScreened: candidates.filter(c => (c.decision === 'Shortlisted' || c.decision === 'Selected') && (c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected')).length,
-        interviewScheduled: candidates.filter(c => (c.decision === 'Shortlisted' || c.decision === 'Selected') && c.phase2Decision === 'None' && c.interviewRounds?.some(r => r.phase === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))).length,
-        selected: candidates.filter(c => (c.decision === 'Shortlisted' || c.decision === 'Selected') && c.phase2Decision === 'Selected').length,
-        rejected: candidates.filter(c => (c.decision === 'Shortlisted' || c.decision === 'Selected') && c.phase2Decision === 'Rejected').length
+        totalShortlisted: candidates.filter(c => isProfileSharedCandidate(c)).length,
+        totalScreened: candidates.filter(c => isProfileSharedCandidate(c) && (c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected')).length,
+        interviewScheduled: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'None' && c.interviewRounds?.some(r => r.phase === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))).length,
+        selected: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Selected').length,
+        rejected: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Rejected').length
     };
 
     const phase3Metrics = {
@@ -105,7 +108,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
         if (activePhase === 1) {
             if (filterDecision !== 'All' && candidate.decision !== filterDecision) return false;
         } else if (activePhase === 2) {
-            if (candidate.decision !== 'Shortlisted' && candidate.decision !== 'Selected') return false;
+            if (!isProfileSharedCandidate(candidate)) return false;
             if (filterDecision !== 'All') {
                 if (filterDecision === 'Shortlisted_Selected' && candidate.phase2Decision !== 'Shortlisted' && candidate.phase2Decision !== 'Selected') return false;
                 if (filterDecision !== 'Shortlisted_Selected' && candidate.phase2Decision !== filterDecision) return false;
@@ -370,9 +373,9 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                 ['All', 'All Statuses'], ['Interested', 'Interested'], ['Not Interested', 'Not Interested'], ['Not Relevant', 'Not Relevant'], ['Not Picking', 'Not Picking']
                             ]} />
                             <FilterSelect label="Decision" val={filterDecision} onChange={setFilterDecision} options={
-                                activePhase === 1 ? [['All', 'All Decisions'], ['Shortlisted', 'Shortlisted'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['None', 'None']] :
-                                    activePhase === 2 ? [['All', 'All Decisions'], ['Shortlisted_Selected', 'Shortlisted/Selected'], ['Selected', 'Selected'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['None', 'None']] :
-                                        [['All', 'All Decisions'], ['Offer Sent', 'Offer Sent'], ['Offer Accepted', 'Offer Accepted'], ['Joined', 'Joined'], ['No Show_Offer Declined', 'Declined'], ['Rejected', 'Rejected'], ['None', 'None']]
+                                activePhase === 1 ? [['All', 'All Decisions'], ['Shortlisted', 'Shortlisted'], ['Profile Shared', 'Profile Shared'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['None', 'None']] :
+                                activePhase === 2 ? [['All', 'All Decisions'], ['Shortlisted_Selected', 'Shortlisted/Selected'], ['Selected', 'Selected'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['None', 'None']] :
+                                    [['All', 'All Decisions'], ['Offer Sent', 'Offer Sent'], ['Offer Accepted', 'Offer Accepted'], ['Joined', 'Joined'], ['No Show_Offer Declined', 'Declined'], ['Rejected', 'Rejected'], ['None', 'None']]
                             } />
                             <FilterSelect label="Interviews" val={filterInterviewStatus} onChange={setFilterInterviewStatus} options={[
                                 ['All', 'All Interviews'], ['None', 'None Scheduled'], ['In_Process', 'Active'], ['Pending', 'In Progress'], ['Passed', 'All Passed'], ['Failed', 'Failed']
@@ -500,6 +503,33 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
         }
 
         try {
+            const toEmptyCell = (value, { zeroIsEmpty = false } = {}) => {
+                if (value === undefined || value === null) {
+                    return null;
+                }
+
+                if (typeof value === 'number') {
+                    if (zeroIsEmpty && value === 0) {
+                        return null;
+                    }
+
+                    return value;
+                }
+
+                if (typeof value === 'string') {
+                    const normalized = value.trim();
+                    const upperValue = normalized.toUpperCase();
+                    const isZeroLike = /^0+(?:\.0+)?$/.test(normalized);
+                    if (!normalized || normalized === '-' || normalized === '--' || upperValue === 'N/A' || (zeroIsEmpty && isZeroLike)) {
+                        return null;
+                    }
+
+                    return normalized;
+                }
+
+                return value;
+            };
+
             const workbook = new ExcelJS.Workbook();
 
             selectedOpenings.forEach(idx => {
@@ -521,15 +551,15 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
 
                 opening.candidates.forEach(c => {
                     sheet.addRow({
-                        name: c.candidateName,
-                        email: c.email,
-                        mobile: c.mobile,
-                        experience: c.totalExperience,
-                        status: c.status,
-                        p1: c.decision || 'None',
-                        p2: c.phase2Decision || 'None',
-                        p3: c.phase3Decision || 'None',
-                        pulledBy: c.profilePulledBy
+                        name: toEmptyCell(c.candidateName),
+                        email: toEmptyCell(c.email),
+                        mobile: toEmptyCell(c.mobile),
+                        experience: toEmptyCell(c.totalExperience, { zeroIsEmpty: true }),
+                        status: toEmptyCell(c.status),
+                        p1: toEmptyCell(c.decision),
+                        p2: toEmptyCell(c.phase2Decision),
+                        p3: toEmptyCell(c.phase3Decision),
+                        pulledBy: toEmptyCell(c.profilePulledBy)
                     });
                 });
             });

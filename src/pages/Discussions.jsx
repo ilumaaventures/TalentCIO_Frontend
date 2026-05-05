@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
+import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, MoreVertical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -31,17 +31,19 @@ const Discussions = () => {
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
 
-    // State for toggling full descriptions inline
-    const [expandedIds, setExpandedIds] = useState([]);
-
     const { user } = useAuth();
     const [supervisors, setSupervisors] = useState([]);
+    const [activeMenuId, setActiveMenuId] = useState(null);
+    const [detailsDiscussion, setDetailsDiscussion] = useState(null);
+    const [createVisibleSearch, setCreateVisibleSearch] = useState('');
+    const [editVisibleSearch, setEditVisibleSearch] = useState('');
 
     const [newDiscussion, setNewDiscussion] = useState({
         discussion: '',
         status: 'inprogress',
         dueDate: '',
-        supervisor: ''
+        supervisor: '',
+        visibleToUserIds: []
     });
 
     // Pagination state
@@ -96,7 +98,13 @@ const Discussions = () => {
                     status: d.status,
                     dueDate: d.dueDate,
                     createdAt: d.createdAt,
-                    supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null
+                    createdBy: d.createdBy ? { _id: d.createdBy._id, firstName: d.createdBy.firstName, lastName: d.createdBy.lastName, profilePicture: d.createdBy.profilePicture } : null,
+                    supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null,
+                    visibleToUsers: Array.isArray(d.visibleToUsers) ? d.visibleToUsers.map((u) => ({ _id: u._id, firstName: u.firstName, lastName: u.lastName, profilePicture: u.profilePicture })) : [],
+                    canEdit: d.canEdit,
+                    canDelete: d.canDelete,
+                    canChangeRestrictedStatus: d.canChangeRestrictedStatus,
+                    canUpdateStatus: d.canUpdateStatus
                 }));
 
                 const payload = createCachePayload({
@@ -182,6 +190,42 @@ const Discussions = () => {
         };
     }, [showExportMenu]);
 
+    useEffect(() => {
+        const handlePointerDown = (event) => {
+            const target = event.target;
+            if (target.closest('[data-discussion-menu-trigger]') || target.closest('[data-discussion-menu]')) {
+                return;
+            }
+            setActiveMenuId(null);
+        };
+
+        const handleEscape = (event) => {
+            if (event.key === 'Escape') {
+                setActiveMenuId(null);
+                setDetailsDiscussion(null);
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleEscape);
+
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, []);
+
+    const resetCreateForm = () => {
+        setNewDiscussion({
+            discussion: '',
+            status: 'inprogress',
+            dueDate: '',
+            supervisor: '',
+            visibleToUserIds: []
+        });
+        setCreateVisibleSearch('');
+    };
+
     const handleExportExcel = async () => {
         try {
             setIsExporting(true);
@@ -224,9 +268,20 @@ const Discussions = () => {
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Discussions');
 
+            const formatPersonName = (person) =>
+                [person?.firstName, person?.lastName].filter(Boolean).join(' ') || '';
+
+            const formatVisibleUsers = (users) =>
+                Array.isArray(users)
+                    ? users.map((user) => formatPersonName(user)).filter(Boolean).join(', ')
+                    : '';
+
             sheet.columns = [
                 { header: 'S.No', key: 'slNo', width: 10 },
                 { header: 'Description', key: 'description', width: 50 },
+                { header: 'Created By', key: 'createdBy', width: 24 },
+                { header: 'Supervisor', key: 'supervisor', width: 24 },
+                { header: 'Visible To', key: 'visibleTo', width: 36 },
                 { header: 'Created Date', key: 'createdDate', width: 20 },
                 { header: 'Due Date', key: 'dueDate', width: 20 },
                 { header: 'Status', key: 'status', width: 20 },
@@ -239,6 +294,9 @@ const Discussions = () => {
                 const row = sheet.addRow({
                     slNo: index + 1,
                     description: item.discussion || '-',
+                    createdBy: formatPersonName(item.createdBy) || '-',
+                    supervisor: formatPersonName(item.supervisor) || '-',
+                    visibleTo: formatVisibleUsers(item.visibleToUsers) || '-',
                     createdDate: item.createdAt ? format(new Date(item.createdAt), 'dd MMM yyyy') : '-',
                     dueDate: item.dueDate ? format(new Date(item.dueDate), 'dd MMM yyyy') : 'No due date',
                     status: item.status || '-',
@@ -264,6 +322,7 @@ const Discussions = () => {
             });
 
             sheet.getColumn('description').alignment = { wrapText: true, vertical: 'top' };
+            sheet.getColumn('visibleTo').alignment = { wrapText: true, vertical: 'top' };
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -310,6 +369,14 @@ const Discussions = () => {
             toast.error('Description is required');
             return;
         }
+        if (!newDiscussion.supervisor) {
+            toast.error('Supervisor is required');
+            return;
+        }
+        if (!newDiscussion.visibleToUserIds.length) {
+            toast.error('Choose at least one visible user');
+            return;
+        }
         try {
             setIsSaving(true);
             const payload = { ...newDiscussion, title: 'Discussion' }; // Setting default title since field is removed
@@ -327,12 +394,7 @@ const Discussions = () => {
             fetchDiscussions(1, { silent: true }); // Sync list and cache
 
             setIsCreating(false);
-            setNewDiscussion({
-                discussion: '',
-                status: 'inprogress',
-                dueDate: '',
-                supervisor: ''
-            });
+            resetCreateForm();
         } catch (error) {
             console.error('Error creating discussion:', error);
             toast.error('Failed to create discussion');
@@ -342,18 +404,30 @@ const Discussions = () => {
     };
 
     const handleEditInline = (discussion) => {
+        setIsCreating(false);
+        setActiveMenuId(null);
         setEditingId(discussion._id);
         setEditData({
             discussion: discussion.discussion,
             status: discussion.status,
             dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : '',
-            supervisor: discussion.supervisor?._id || discussion.supervisor
+            supervisor: discussion.supervisor?._id || discussion.supervisor,
+            visibleToUserIds: Array.isArray(discussion.visibleToUsers) ? discussion.visibleToUsers.map((u) => u._id || u) : []
         });
+        setEditVisibleSearch('');
     };
 
     const handleUpdateInline = async (id) => {
         if (!editData.discussion) {
             toast.error('Description is required');
+            return;
+        }
+        if (!editData.supervisor) {
+            toast.error('Supervisor is required');
+            return;
+        }
+        if (!editData.visibleToUserIds?.length) {
+            toast.error('Choose at least one visible user');
             return;
         }
         try {
@@ -381,6 +455,7 @@ const Discussions = () => {
 
             setEditingId(null);
             setEditData(null);
+            setEditVisibleSearch('');
         } catch (error) {
             console.error('Error updating discussion:', error);
             toast.error('Failed to update discussion');
@@ -406,12 +481,6 @@ const Discussions = () => {
         }
     };
 
-    const toggleDescription = (id) => {
-        setExpandedIds(prev =>
-            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-        );
-    };
-
     const getStatusBadgeColor = (status) => {
         const styles = {
             'inprogress': 'bg-amber-100 text-amber-700 border-amber-200',
@@ -419,6 +488,174 @@ const Discussions = () => {
             'on-hold': 'bg-slate-100 text-slate-700 border-slate-200'
         };
         return styles[status] || 'bg-blue-100 text-blue-700 border-blue-200';
+    };
+
+    const canChangeRestrictedStatus = (discussion) => (
+        discussion?.canChangeRestrictedStatus ?? (discussion?.supervisor?._id === user?._id)
+    );
+
+    const canUpdateStatus = (discussion) => (
+        discussion?.canUpdateStatus ?? canChangeRestrictedStatus(discussion)
+    );
+
+    const getUserDisplayName = (person) => (
+        [person?.firstName, person?.lastName].filter(Boolean).join(' ') || 'Not assigned'
+    );
+
+    const getUserInitials = (person) => (
+        `${person?.firstName?.[0] || ''}${person?.lastName?.[0] || ''}`.toUpperCase() || 'NA'
+    );
+
+    const toggleDiscussionMenu = (discussionId) => {
+        setActiveMenuId(prev => prev === discussionId ? null : discussionId);
+    };
+
+    const openDiscussionDetails = (discussion) => {
+        setDetailsDiscussion(discussion);
+        setActiveMenuId(null);
+    };
+
+    const handleCreateButtonClick = () => {
+        setEditingId(null);
+        setEditData(null);
+        setEditVisibleSearch('');
+        setIsCreating(true);
+        setActiveMenuId(null);
+    };
+
+    const handleCancelForm = () => {
+        setIsCreating(false);
+        setEditingId(null);
+        setEditData(null);
+        setEditVisibleSearch('');
+        resetCreateForm();
+    };
+
+    const getFilteredUsers = (searchTerm) => {
+        const query = searchTerm.trim().toLowerCase();
+        if (!query) return supervisors;
+        return supervisors.filter((supervisor) => (
+            `${supervisor.firstName || ''} ${supervisor.lastName || ''}`.toLowerCase().includes(query)
+        ));
+    };
+
+    const handleVisibleUserToggle = (setter, selectedIds, userId) => {
+        const nextIds = selectedIds.includes(userId)
+            ? selectedIds.filter((id) => id !== userId)
+            : [...selectedIds, userId];
+
+        setter(nextIds);
+    };
+
+    const renderVisibleUserPicker = ({ selectedIds, onToggle, searchValue, onSearchChange }) => {
+        const filteredUsers = getFilteredUsers(searchValue);
+
+        return (
+            <div className="rounded-xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 p-3 space-y-2">
+                    <div className="relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            value={searchValue}
+                            onChange={(event) => onSearchChange(event.target.value)}
+                            placeholder="Search users"
+                            className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                        />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                        {selectedIds.length ? `${selectedIds.length} user${selectedIds.length > 1 ? 's' : ''} selected` : 'Choose who can view this discussion'}
+                    </p>
+                </div>
+                <div className="max-h-52 overflow-y-auto p-2">
+                    {filteredUsers.length === 0 ? (
+                        <div className="px-3 py-6 text-center text-sm text-slate-400">No users found</div>
+                    ) : (
+                        filteredUsers.map((supervisor) => {
+                            const checked = selectedIds.includes(supervisor._id);
+
+                            return (
+                                <label
+                                    key={supervisor._id}
+                                    className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-colors ${checked ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-700'}`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => onToggle(supervisor._id)}
+                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium">{getUserDisplayName(supervisor)}</p>
+                                    </div>
+                                </label>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    const renderActionMenu = (discussion, align = 'right') => {
+        const hasActions = discussion?.canEdit || discussion?.canDelete || discussion?.discussion;
+
+        if (!hasActions) return null;
+
+        const alignmentClass = align === 'left' ? 'left-0' : 'right-0';
+
+        return (
+            <div className="relative">
+                <button
+                    type="button"
+                    data-discussion-menu-trigger
+                    onClick={() => toggleDiscussionMenu(discussion._id)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-700"
+                >
+                    <MoreVertical size={18} />
+                </button>
+                {activeMenuId === discussion._id && (
+                    <div
+                        data-discussion-menu
+                        className={`absolute ${alignmentClass} top-12 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl`}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => openDiscussionDetails(discussion)}
+                            className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                        >
+                            View Details
+                        </button>
+                        {discussion.canEdit && (
+                            <button
+                                type="button"
+                                onClick={() => handleEditInline(discussion)}
+                                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                            >
+                                Edit
+                            </button>
+                        )}
+                        {discussion.canDelete && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setActiveMenuId(null);
+                                    handleDelete(discussion._id);
+                                }}
+                                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+                            >
+                                Delete
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const truncateDescription = (text, limit = 60) => {
+        if (!text) return '';
+        return text.length > limit ? `${text.substring(0, limit)}...` : text;
     };
 
     if (loading && discussions.length === 0) return (
@@ -460,7 +697,7 @@ const Discussions = () => {
                         <h1 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
                             <MessageSquare className="text-indigo-600" /> Discussions
                         </h1>
-                        <p className="text-sm text-slate-500 mt-1">Create and manage team discussions, tasks, and topics.</p>
+                        <p className="text-sm text-slate-500 mt-1">Create and manage private discussions with specific users.</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0 items-center">
                         <div className="relative" ref={exportMenuRef}>
@@ -525,7 +762,7 @@ const Discussions = () => {
                         </div>
 
                         <button
-                            onClick={() => setIsCreating(true)}
+                            onClick={handleCreateButtonClick}
                             className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm w-full sm:w-auto"
                         >
                             <Plus size={18} />
@@ -533,6 +770,131 @@ const Discussions = () => {
                         </button>
                     </div>
                 </div>
+
+                {(isCreating || editingId) && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                        <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-slate-800">
+                                        {editingId ? 'Edit Discussion' : 'Create Discussion'}
+                                    </h2>
+                                    <p className="text-sm text-slate-500">
+                                        Choose a supervisor and select visible users from the searchable list.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleCancelForm}
+                                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="space-y-2 lg:col-span-2">
+                                    <label className="text-sm font-medium text-slate-700">Description</label>
+                                    <textarea
+                                        rows={4}
+                                        value={editingId ? editData?.discussion || '' : newDiscussion.discussion}
+                                        onChange={(event) => editingId
+                                            ? setEditData({ ...editData, discussion: event.target.value })
+                                            : setNewDiscussion({ ...newDiscussion, discussion: event.target.value })}
+                                        placeholder="Enter full discussion details"
+                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Due Date</label>
+                                    <input
+                                        type="date"
+                                        value={editingId ? editData?.dueDate || '' : newDiscussion.dueDate}
+                                        onChange={(event) => editingId
+                                            ? setEditData({ ...editData, dueDate: event.target.value })
+                                            : setNewDiscussion({ ...newDiscussion, dueDate: event.target.value })}
+                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Status</label>
+                                    <select
+                                        value={editingId ? editData?.status || 'inprogress' : newDiscussion.status}
+                                        onChange={(event) => editingId
+                                            ? setEditData({ ...editData, status: event.target.value })
+                                            : setNewDiscussion({ ...newDiscussion, status: event.target.value })}
+                                        className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${getStatusBadgeColor(editingId ? editData?.status : newDiscussion.status)}`}
+                                    >
+                                        <option value="inprogress">In Progress</option>
+                                        <option value="on-hold">On-hold</option>
+                                        <option value="mark as complete">Mark as complete</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Supervisor</label>
+                                    <select
+                                        value={editingId ? editData?.supervisor || '' : newDiscussion.supervisor}
+                                        onChange={(event) => editingId
+                                            ? setEditData({ ...editData, supervisor: event.target.value })
+                                            : setNewDiscussion({ ...newDiscussion, supervisor: event.target.value })}
+                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                                    >
+                                        <option value="">Select Supervisor</option>
+                                        {supervisors.map((supervisor) => (
+                                            <option key={supervisor._id} value={supervisor._id}>
+                                                {getUserDisplayName(supervisor)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2 lg:col-span-2">
+                                    <label className="text-sm font-medium text-slate-700">Visible To</label>
+                                    {editingId ? renderVisibleUserPicker({
+                                        selectedIds: editData?.visibleToUserIds || [],
+                                        onToggle: (userId) => handleVisibleUserToggle(
+                                            (nextIds) => setEditData((prev) => ({ ...prev, visibleToUserIds: nextIds })),
+                                            editData?.visibleToUserIds || [],
+                                            userId
+                                        ),
+                                        searchValue: editVisibleSearch,
+                                        onSearchChange: setEditVisibleSearch
+                                    }) : renderVisibleUserPicker({
+                                        selectedIds: newDiscussion.visibleToUserIds,
+                                        onToggle: (userId) => handleVisibleUserToggle(
+                                            (nextIds) => setNewDiscussion((prev) => ({ ...prev, visibleToUserIds: nextIds })),
+                                            newDiscussion.visibleToUserIds,
+                                            userId
+                                        ),
+                                        searchValue: createVisibleSearch,
+                                        onSearchChange: setCreateVisibleSearch
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={handleCancelForm}
+                                    className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => editingId ? handleUpdateInline(editingId) : handleCreateInline()}
+                                    disabled={isSaving}
+                                    className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Discussion'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* List View */}
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
@@ -554,21 +916,21 @@ const Discussions = () => {
                                         <div className="flex-1 min-w-0">
                                             <span className="text-xs font-semibold text-slate-400 mr-1">#{(currentPage - 1) * limit + index + 1}</span>
                                             <span className="text-sm text-slate-700 break-words leading-relaxed">
-                                                {discussion.discussion && discussion.discussion.length > 80 && !expandedIds.includes(discussion._id)
-                                                    ? `${discussion.discussion.substring(0, 80)}...`
-                                                    : discussion.discussion}
+                                                {truncateDescription(discussion.discussion, 60)}
                                             </span>
                                         </div>
+                                        {renderActionMenu(discussion, 'right')}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <select
                                             value={discussion.status}
                                             onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                            className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)}`}
+                                            disabled={!canUpdateStatus(discussion)}
+                                            className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
                                         >
                                             <option value="inprogress">In Progress</option>
-                                            <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
-                                            <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
+                                            <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                            <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                         </select>
                                         {discussion.dueDate ? (
                                             <div className="flex items-center text-slate-500 text-xs">
@@ -583,22 +945,6 @@ const Discussions = () => {
                                             {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2 pt-1">
-                                        {discussion.discussion && discussion.discussion.length > 80 && (
-                                            <button onClick={() => toggleDescription(discussion._id)}
-                                                className="inline-flex items-center justify-center p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors bg-slate-50 shadow-sm">
-                                                {expandedIds.includes(discussion._id) ? <EyeOff size={15} /> : <Eye size={15} />}
-                                            </button>
-                                        )}
-                                        <button onClick={() => handleEditInline(discussion)}
-                                            className="inline-flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors bg-slate-50 shadow-sm">
-                                            <Edit size={15} />
-                                        </button>
-                                        <button onClick={() => handleDelete(discussion._id)}
-                                            className="inline-flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors bg-slate-50 shadow-sm">
-                                            <Trash2 size={15} />
-                                        </button>
-                                    </div>
                                 </div>
                             ))
                         )}
@@ -606,7 +952,7 @@ const Discussions = () => {
 
                     {/* ── Desktop table (hidden below md) ── */}
                     <div className="hidden md:block overflow-x-auto">
-                        <table className="w-full text-sm table-fixed">
+                        <table className="min-w-full text-sm table-auto">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-16">S.No</th>
@@ -614,63 +960,12 @@ const Discussions = () => {
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Created Date</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Due Date</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-36">Status</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-44">Supervisor</th>
-                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-64">Actions</th>
+                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-24">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {isCreating && (
-                                    <tr className="bg-indigo-50/50">
-                                        <td className="px-6 py-4 text-slate-500 text-sm font-medium">New</td>
-                                        <td className="px-6 py-4">
-                                            <input type="text" value={newDiscussion.discussion}
-                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, discussion: e.target.value })}
-                                                placeholder="Enter description"
-                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-500 text-sm whitespace-nowrap">
-                                            {format(new Date(), 'dd MMM yyyy')}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <input type="date" value={newDiscussion.dueDate}
-                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, dueDate: e.target.value })}
-                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600" />
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <select value={newDiscussion.status}
-                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, status: e.target.value })}
-                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 ${getStatusBadgeColor(newDiscussion.status)}`}>
-                                                <option value="inprogress">In Progress</option>
-                                                <option value="on-hold">On-hold</option>
-                                                <option value="mark as complete">Mark as complete</option>
-                                            </select>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <select value={newDiscussion.supervisor}
-                                                onChange={(e) => setNewDiscussion({ ...newDiscussion, supervisor: e.target.value })}
-                                                className="w-40 px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                                                <option value="">Select Supervisor</option>
-                                                {supervisors.map(s => (
-                                                    <option key={s._id} value={s._id}>{s.firstName} {s.lastName}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button onClick={handleCreateInline} disabled={isSaving}
-                                                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                                                    {isSaving ? '...' : 'Save'}
-                                                </button>
-                                                <button onClick={() => setIsCreating(false)}
-                                                    className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors">
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
                                 {loading ? (
-                                    <tr><td colSpan="7" className="px-6 py-8">
+                                    <tr><td colSpan="6" className="px-6 py-8">
                                         <div className="flex justify-center"><Skeleton className="h-8 w-8 rounded-full" /></div>
                                     </td></tr>
                                 ) : discussions.length === 0 && !isCreating ? (
@@ -683,122 +978,42 @@ const Discussions = () => {
                                     </td></tr>
                                 ) : (
                                     discussions.map((discussion, index) => (
-                                        editingId === discussion._id ? (
-                                            <tr key={`edit-${discussion._id}`} className="bg-indigo-50/20">
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
-                                                <td className="px-6 py-4">
-                                                    <input type="text" value={editData.discussion}
-                                                        onChange={(e) => setEditData({ ...editData, discussion: e.target.value })}
-                                                        placeholder="Enter description"
-                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-500 text-sm whitespace-nowrap">
-                                                    {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <input type="date" value={editData.dueDate}
-                                                        onChange={(e) => setEditData({ ...editData, dueDate: e.target.value })}
-                                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600" />
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <select value={editData.status}
-                                                        onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(editData.status)}`}>
-                                                        <option value="inprogress">In Progress</option>
-                                                        <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
-                                                        <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <select value={editData.supervisor}
-                                                        onChange={(e) => setEditData({ ...editData, supervisor: e.target.value })}
-                                                        className="w-40 px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700">
-                                                        <option value="">Select Supervisor</option>
-                                                        {supervisors.map(s => (
-                                                            <option key={s._id} value={s._id}>{s.firstName} {s.lastName}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <button onClick={() => handleUpdateInline(discussion._id)} disabled={isSaving}
-                                                            className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                                                            {isSaving ? '...' : 'Save'}
-                                                        </button>
-                                                        <button onClick={() => { setEditingId(null); setEditData(null); }}
-                                                            className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded hover:bg-slate-300 transition-colors">
-                                                            Cancel
-                                                        </button>
+                                        <tr key={discussion._id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="max-w-xl text-sm text-slate-600 break-words whitespace-normal leading-relaxed">
+                                                    {truncateDescription(discussion.discussion, 60)}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-700 text-sm whitespace-nowrap">
+                                                {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {discussion.dueDate ? (
+                                                    <div className="flex items-center text-slate-700 whitespace-nowrap text-sm">
+                                                        <Calendar size={14} className="mr-1.5 text-slate-400" />
+                                                        {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            <tr key={discussion._id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
-                                                <td className="px-6 py-4">
-                                                    <div className="text-sm text-slate-600 break-words whitespace-normal leading-relaxed">
-                                                        {discussion.discussion && discussion.discussion.length > 55 && !expandedIds.includes(discussion._id)
-                                                            ? `${discussion.discussion.substring(0, 55)}...`
-                                                            : discussion.discussion}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-700 text-sm whitespace-nowrap">
-                                                    {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {discussion.dueDate ? (
-                                                        <div className="flex items-center text-slate-700 whitespace-nowrap text-sm">
-                                                            <Calendar size={14} className="mr-1.5 text-slate-400" />
-                                                            {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-slate-400 text-xs italic">No due date</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <select value={discussion.status}
-                                                        onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(discussion.status)}`}>
-                                                        <option value="inprogress">In Progress</option>
-                                                        <option value="on-hold" disabled={discussion.supervisor?._id !== user?._id}>On-hold {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
-                                                        <option value="mark as complete" disabled={discussion.supervisor?._id !== user?._id}>Mark as complete {discussion.supervisor?._id !== user?._id && '(Supervisor Only)'}</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        {discussion.supervisor?.profilePicture ? (
-                                                            <img src={discussion.supervisor.profilePicture} alt="" className="w-6 h-6 rounded-full border border-slate-200" />
-                                                        ) : (
-                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 uppercase">
-                                                                {discussion.supervisor?.firstName?.[0]}{discussion.supervisor?.lastName?.[0]}
-                                                            </div>
-                                                        )}
-                                                        <span className="text-xs text-slate-600 font-medium">
-                                                            {discussion.supervisor?.firstName} {discussion.supervisor?.lastName}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {discussion.discussion && discussion.discussion.length > 55 && (
-                                                            <button onClick={() => toggleDescription(discussion._id)}
-                                                                title={expandedIds.includes(discussion._id) ? 'Show Less' : 'View'}
-                                                                className="inline-flex items-center justify-center p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors bg-slate-50 border-transparent shadow-sm">
-                                                                {expandedIds.includes(discussion._id) ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                            </button>
-                                                        )}
-                                                        <button onClick={() => handleEditInline(discussion)} title="Edit"
-                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors bg-slate-50 border-transparent shadow-sm">
-                                                            <Edit size={16} />
-                                                        </button>
-                                                        <button onClick={() => handleDelete(discussion._id)} title="Delete"
-                                                            className="inline-flex items-center justify-center p-2 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors bg-slate-50 border-transparent shadow-sm">
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs italic">No due date</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <select value={discussion.status}
+                                                    onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
+                                                    disabled={!canUpdateStatus(discussion)}
+                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                                                    <option value="inprogress">In Progress</option>
+                                                    <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                                    <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                                </select>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex justify-end">
+                                                    {renderActionMenu(discussion, 'right')}
+                                                </div>
+                                            </td>
+                                        </tr>
                                     ))
                                 )}
                             </tbody>
@@ -838,6 +1053,92 @@ const Discussions = () => {
                         </div>
                     )}
                 </div>
+
+                {detailsDiscussion && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+                        <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+                            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-slate-800">Discussion Details</h2>
+                                    <p className="mt-1 text-sm text-slate-500">Full discussion information for this record.</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setDetailsDiscussion(null)}
+                                    className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <div className="max-h-[80vh] overflow-y-auto px-5 py-5 sm:px-6">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
+                                        <p className="mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold text-slate-700">
+                                            {detailsDiscussion.status === 'inprogress' ? 'In Progress' : detailsDiscussion.status}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Created Date</p>
+                                        <p className="mt-2 text-sm font-medium text-slate-700">
+                                            {detailsDiscussion.createdAt ? format(new Date(detailsDiscussion.createdAt), 'dd MMM yyyy') : '-'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Due Date</p>
+                                        <p className="mt-2 text-sm font-medium text-slate-700">
+                                            {detailsDiscussion.dueDate ? format(new Date(detailsDiscussion.dueDate), 'dd MMM yyyy') : 'No due date'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Created By</p>
+                                        <p className="mt-2 text-sm font-medium text-slate-700">
+                                            {detailsDiscussion.createdBy ? getUserDisplayName(detailsDiscussion.createdBy) : 'Not available'}
+                                        </p>
+                                    </div>
+                                    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</p>
+                                        <div className="mt-2 max-w-full overflow-hidden rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+                                            <p className="whitespace-pre-wrap break-all text-sm leading-6 text-slate-700">
+                                            {detailsDiscussion.discussion || '-'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supervisor</p>
+                                        <div className="mt-3 flex items-center gap-3">
+                                            {detailsDiscussion.supervisor?.profilePicture ? (
+                                                <img src={detailsDiscussion.supervisor.profilePicture} alt="" className="h-10 w-10 rounded-full border border-slate-200 object-cover" />
+                                            ) : (
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-bold text-slate-500">
+                                                    {getUserInitials(detailsDiscussion.supervisor)}
+                                                </div>
+                                            )}
+                                            <p className="text-sm font-medium text-slate-700">
+                                                {getUserDisplayName(detailsDiscussion.supervisor)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Visible To</p>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {(detailsDiscussion.visibleToUsers || []).length > 0 ? (
+                                                detailsDiscussion.visibleToUsers.map((visibleUser) => (
+                                                    <span key={visibleUser._id || visibleUser} className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                                                        {getUserDisplayName(visibleUser)}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-sm italic text-slate-400">No users selected</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
         </div>

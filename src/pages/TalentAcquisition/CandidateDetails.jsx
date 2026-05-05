@@ -53,6 +53,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [internalRemarkText, setInternalRemarkText] = useState('');
     const [internalRemarkEditing, setInternalRemarkEditing] = useState(false);
     const [internalRemarkLoading, setInternalRemarkLoading] = useState(false);
+    const [phase2FeedbackText, setPhase2FeedbackText] = useState('');
+    const [phase2FeedbackEditing, setPhase2FeedbackEditing] = useState(false);
+    const [phase2FeedbackLoading, setPhase2FeedbackLoading] = useState(false);
 
     // Users List for Assessment assignment
     const [users, setUsers] = useState([]);
@@ -83,6 +86,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                 setCandidate(candRes.data);
                 setInternalRemarkText(candRes.data.internalRemark || '');
+                setPhase2FeedbackText(candRes.data.phase2InterviewerFeedback || '');
                 setUsers(usersRes.data.data || usersRes.data || []);
                 setRoles(rolesRes.data || []);
                 setInterviewWorkflows(workflowsRes.data || []);
@@ -275,6 +279,22 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             toast.error('Failed to save internal remark');
         } finally {
             setInternalRemarkLoading(false);
+        }
+    };
+
+    const handleUpdatePhase2Feedback = async () => {
+        try {
+            setPhase2FeedbackLoading(true);
+            await api.put(`/ta/candidates/${candidateId}`, { phase2InterviewerFeedback: phase2FeedbackText });
+            setCandidate(prev => ({ ...prev, phase2InterviewerFeedback: phase2FeedbackText }));
+            setPhase2FeedbackEditing(false);
+            if (onUpdate) onUpdate();
+            toast.success('Phase 2 feedback saved successfully');
+        } catch (error) {
+            console.error('Error saving Phase 2 feedback:', error);
+            toast.error(error.response?.data?.message || 'Failed to save Phase 2 feedback');
+        } finally {
+            setPhase2FeedbackLoading(false);
         }
     };
 
@@ -506,6 +526,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                     >
                                                         <option value="None">None</option>
                                                         <option value="Shortlisted">Shortlisted</option>
+                                                        <option value="Profile Shared">Profile Shared</option>
                                                         <option value="Hired">Hired</option>
                                                         <option value="Rejected">Rejected</option>
                                                         <option value="On Hold">On Hold</option>
@@ -1379,6 +1400,51 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.internalRemark}</p>
                         ) : (
                             <p className="text-slate-400 text-sm italic">No remark added yet. Click "Add Remark" to write one.</p>
+                        )}
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Interviewer Feedback (Phase 2)</h3>
+                            {canManageRounds && !phase2FeedbackEditing && (
+                                <button
+                                    onClick={() => { setPhase2FeedbackText(candidate.phase2InterviewerFeedback || ''); setPhase2FeedbackEditing(true); }}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-medium"
+                                >
+                                    <Edit2 size={12} /> {candidate.phase2InterviewerFeedback ? 'Edit' : 'Add Feedback'}
+                                </button>
+                            )}
+                        </div>
+                        {phase2FeedbackEditing ? (
+                            <div className="space-y-2">
+                                <textarea
+                                    rows={4}
+                                    value={phase2FeedbackText}
+                                    onChange={(e) => setPhase2FeedbackText(e.target.value)}
+                                    placeholder="Add Phase 2 interviewer feedback..."
+                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none"
+                                    autoFocus
+                                />
+                                <div className="flex justify-end gap-2">
+                                    <button
+                                        onClick={() => setPhase2FeedbackEditing(false)}
+                                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleUpdatePhase2Feedback}
+                                        disabled={phase2FeedbackLoading}
+                                        className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                                    >
+                                        {phase2FeedbackLoading && <Loader size={12} className="animate-spin" />} Save Feedback
+                                    </button>
+                                </div>
+                            </div>
+                        ) : candidate.phase2InterviewerFeedback ? (
+                            <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.phase2InterviewerFeedback}</p>
+                        ) : (
+                            <p className="text-slate-400 text-sm italic">No Phase 2 feedback added yet.</p>
                         )}
                     </div>
                 </div>

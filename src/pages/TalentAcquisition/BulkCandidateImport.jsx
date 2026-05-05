@@ -20,6 +20,51 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
     const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
 
     const fileInputRef = useRef(null);
+    const normalizeStatusKey = (value) => String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_');
+
+    const getImportErrorReason = (error) => {
+        const payload = error?.response?.data;
+
+        if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+            return payload.errors.join(', ');
+        }
+
+        if (typeof payload?.error === 'string' && payload.error.trim()) {
+            return payload.error.trim();
+        }
+
+        if (typeof payload?.message === 'string' && payload.message.trim() && payload.message.trim() !== 'Server error') {
+            return payload.message.trim();
+        }
+
+        if (typeof error?.message === 'string' && error.message.trim() && !error.message.includes('status code')) {
+            return error.message.trim();
+        }
+
+        return 'Server error';
+    };
+
+    const normalizeDynamicImportStatus = (rawStatus) => {
+        if (!request?.useDynamicPhases || !Array.isArray(request?.phases) || request.phases.length === 0) {
+            return rawStatus;
+        }
+
+        const firstPhase = [...request.phases].sort((left, right) => (left.order || 0) - (right.order || 0))[0];
+        const normalizedTarget = normalizeStatusKey(rawStatus);
+        if (!firstPhase || !normalizedTarget) {
+            return rawStatus;
+        }
+
+        const matchedStatusOption = (firstPhase.statusOptions || []).find((option) => (
+            normalizeStatusKey(option?.value) === normalizedTarget ||
+            normalizeStatusKey(option?.label) === normalizedTarget
+        ));
+
+        return matchedStatusOption?.value || rawStatus;
+    };
 
     const normalizeUsers = (payload) => {
         if (payload?.success && Array.isArray(payload.data)) return payload.data;
@@ -119,6 +164,13 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         return 'Other';
     };
 
+    const parseYesNo = (value) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (normalized === 'yes') return true;
+        if (normalized === 'no') return false;
+        return null;
+    };
+
 
 
     const processFile = async (file) => {
@@ -208,7 +260,11 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 interviewRemark: ['interview remark', 'evaluator feedback', 'interview summary'],
                 compSkillAssessment: ['comprehensive skill assessment', 'skill assessment', 'detailed ratings'],
                 interviewerName: ['interviewer name', 'panel name', 'evaluated by'],
-                isShortlisted: ['profile shortlisted (yes/no)', 'shortlisted', 'shortlisted?', 'profile shortlisted', 'is shortlisted']
+                isShortlisted: ['profile shortlisted (yes/no)', 'shortlisted', 'shortlisted?', 'profile shortlisted', 'is shortlisted'],
+                profileShared: ['profile shared', 'profile shared (yes/no)', 'shared profile', 'shared with client'],
+                phase2Shortlisted: ['shortlisted (phase 2)', 'phase 2 shortlisted', 'shortlisted phase 2'],
+                phase2Selected: ['selected (phase 2)', 'phase 2 selected', 'selected phase 2'],
+                phase2InterviewerFeedback: ['interviewer feedback (phase 2)', 'phase 2 interviewer feedback', 'phase 2 feedback']
             };
 
             const reqMustHave = request?.requirements?.mustHaveSkills;
@@ -279,6 +335,11 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
                 // Ensure text fields are always strings (Excel can return numbers, booleans, etc.)
                 const toStr = (v) => (v != null ? String(v) : null);
+                const shortlistedFlag = parseYesNo(getCellValue(columnMapping.isShortlisted));
+                const profileSharedFlag = parseYesNo(getCellValue(columnMapping.profileShared));
+                const phase2ShortlistedFlag = parseYesNo(getCellValue(columnMapping.phase2Shortlisted));
+                const phase2SelectedFlag = parseYesNo(getCellValue(columnMapping.phase2Selected));
+                const phase2InterviewerFeedback = toStr(getCellValue(columnMapping.phase2InterviewerFeedback));
 
                 const mappedRow = {
                     candidateName: toStr(getCellValue(columnMapping.candidateName)),
@@ -306,10 +367,12 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
                     resumePublicId: 'bulk-imported-placeholder',
+                    profileShared: profileSharedFlag === true || phase2ShortlistedFlag === true || phase2SelectedFlag === true || Boolean((phase2InterviewerFeedback || '').trim()),
+                    phase2Decision: phase2SelectedFlag === true ? 'Selected' : (phase2ShortlistedFlag === true ? 'Shortlisted' : ''),
+                    phase2InterviewerFeedback: phase2InterviewerFeedback || '',
                     decision: (() => {
-                        const val = getCellValue(columnMapping.isShortlisted)?.toString().toLowerCase();
-                        if (val === 'yes') return 'Shortlisted';
-                        if (val === 'no') return 'Rejected';
+                        if (shortlistedFlag === true) return 'Shortlisted';
+                        if (shortlistedFlag === false && profileSharedFlag !== true) return 'Rejected';
                         return '';
                     })(),
                     mustHaveSkills: [],
@@ -320,7 +383,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 mappedRow.lastWorkingDay = parseExcelDate(mappedRow.lastWorkingDay);
 
                 // Identify and Parse Must-Have Skills
-                const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 's.no', 'serial no.', 'serial no', 'slno', 'submission date', 'date', 'relevant experience', 'custom remark', 'profile shortlisted (yes/no)', 'final scoring', 'profile shared', 'interview status', 'reason', 'decision status (auto-calculated)');
+                const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 's.no', 'serial no.', 'serial no', 'slno', 'submission date', 'date', 'relevant experience', 'custom remark', 'profile shortlisted (yes/no)', 'final scoring', 'profile shared', 'shortlisted (phase 2)', 'selected (phase 2)', 'interviewer feedback (phase 2)', 'interview status', 'reason', 'decision status (auto-calculated)');
 
                 if (isTwoTier) {
                     // In two-tier, technical skills are specifically under "Technical Skills (Experience)"
@@ -558,7 +621,11 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     return round;
                 });
 
-                const importPayload = { ...row.data, interviewRounds: processedRounds };
+                const importPayload = {
+                    ...row.data,
+                    status: normalizeDynamicImportStatus(row.data.status),
+                    interviewRounds: processedRounds
+                };
 
                 const response = await api.post('/ta/candidates', importPayload);
                 results.imported.push({
@@ -571,7 +638,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 console.error(`Failed to import row ${row.rowNumber}:`, error);
                 results.failed.push({
                     ...row,
-                    apiError: error.response?.data?.message || 'Server error'
+                    apiError: getImportErrorReason(error)
                 });
                 setProgress(prev => ({ ...prev, current: i + 1, failed: prev.failed + 1 }));
             }
@@ -619,7 +686,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     subHeaders: ['Interviewer Feedback', 'Interview date', 'Interviewer Name', ...softSkills, ...techSkills],
                     width: 3 + softSkills.length + techSkills.length
                 },
-                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 6 }
+                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(s => s.width > 0);
 
             // Row 1: Main Headings
@@ -680,6 +747,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (lower === 'email') return 'sample@example.com';
                 if (lower === 'mobile no.') return '9876543210';
                 if (lower === 'status') return 'Interested';
+                if (lower === 'profile shortlisted (yes/no)') return 'No';
+                if (lower === 'profile shared') return 'No';
                 if (h.includes('Skill') || techSkills.includes(h)) return '0';
                 return '-';
             });
@@ -956,7 +1025,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                                     <tr key={idx} className="text-sm">
                                                         <td className="px-4 py-2 font-medium text-slate-600">{fail.rowNumber}</td>
                                                         <td className="px-4 py-2 text-slate-600">{fail.data.candidateName}</td>
-                                                        <td className="px-4 py-2 text-red-500 font-medium">{fail.apiError}</td>
+                                                        <td className="px-4 py-2 font-medium text-red-500 whitespace-normal break-words">{fail.apiError}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
