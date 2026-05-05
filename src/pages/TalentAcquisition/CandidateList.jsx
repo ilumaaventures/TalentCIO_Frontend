@@ -105,6 +105,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterRating, setFilterRating] = useState('All');
     const [filterPulledBy, setFilterPulledBy] = useState('All');
     const [filterTransferred, setFilterTransferred] = useState('All');
+    const [filterProfileShared, setFilterProfileShared] = useState(false);
     const [users, setUsers] = useState([]);
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -177,7 +178,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy]);
+    }, [filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterProfileShared]);
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -255,6 +256,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         return basePhase1Candidates.filter(candidate => {
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
+            const matchProfileShared = !filterProfileShared || isProfileSharedCandidate(candidate);
 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
@@ -273,9 +275,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
                 else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !allCompleted;
             }
-            return matchStatus && matchDecision && matchInterviewStatus;
+            return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared;
         });
-    }, [basePhase1Candidates, filterStatus, filterDecision, filterInterviewStatus]);
+    }, [basePhase1Candidates, filterStatus, filterDecision, filterInterviewStatus, filterProfileShared, isProfileSharedCandidate]);
 
     // Compute Metrics for Summary Boxes (Phase 1 — computed from structuralPhase1Candidates for stability)
     const metrics = useMemo(() => {
@@ -287,11 +289,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             ).length,
             shortlisted: structuralPhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
             rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected').length,
-            onHold: structuralPhase1Candidates.filter(c => c.decision === 'On Hold').length,
+            profileShared: structuralPhase1Candidates.filter(c => isProfileSharedCandidate(c)).length,
             transferred: structuralPhase1Candidates.filter(c => c.isTransferred).length,
         };
         return counts;
-    }, [structuralPhase1Candidates]);
+    }, [structuralPhase1Candidates, isProfileSharedCandidate]);
 
     // --- Phase 2: shortlisted candidates + their metrics ---
     // Structural Phase 2 population
@@ -1221,8 +1223,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     value: metrics.total,
                                     icon: Users,
                                     color: 'purple',
-                                    isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All',
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                    isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All' && !filterProfileShared,
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(false); }
                                 },
                                 {
                                     id: 'interested',
@@ -1230,17 +1232,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     value: metrics.interested,
                                     icon: CheckCircle,
                                     color: 'green',
-                                    isActive: filterStatus === 'Interested',
-                                    onClick: () => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
-                                },
-                                {
-                                    id: 'shortlisted',
-                                    label: 'Shortlisted',
-                                    value: metrics.shortlisted,
-                                    icon: ThumbsUp,
-                                    color: 'sky',
-                                    isActive: filterDecision === 'Shortlisted',
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                    isActive: filterStatus === 'Interested' && !filterProfileShared,
+                                    onClick: () => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(false); }
                                 },
                                 {
                                     id: 'interviewScheduled',
@@ -1248,17 +1241,26 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     value: metrics.interviewScheduled,
                                     icon: UserCheck,
                                     color: 'amber',
-                                    isActive: filterInterviewStatus === 'Scheduled',
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); }
+                                    isActive: filterInterviewStatus === 'Scheduled' && !filterProfileShared,
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); setFilterProfileShared(false); }
                                 },
                                 {
-                                    id: 'onHold',
-                                    label: 'On Hold',
-                                    value: metrics.onHold,
-                                    icon: Clock,
+                                    id: 'shortlisted',
+                                    label: 'Shortlisted',
+                                    value: metrics.shortlisted,
+                                    icon: ThumbsUp,
+                                    color: 'sky',
+                                    isActive: filterDecision === 'Shortlisted' && !filterProfileShared,
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(false); }
+                                },
+                                {
+                                    id: 'profileShared',
+                                    label: 'Profile Shared',
+                                    value: metrics.profileShared,
+                                    icon: ArrowRight,
                                     color: 'slate',
-                                    isActive: filterDecision === 'On Hold',
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('On Hold'); setFilterInterviewStatus('All'); setFilterTransferred('All'); }
+                                    isActive: filterProfileShared,
+                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(true); }
                                 }
                             ];
 
@@ -1275,7 +1277,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 });
                             }
 
-                            if (filterDecision === 'Rejected') {
+                            if (filterDecision === 'Rejected' && !filterProfileShared) {
                                 dynamicCards.push({
                                     label: 'Rejected',
                                     value: metrics.rejected,
@@ -1313,7 +1315,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 });
                             }
 
-                            if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled') {
+                            if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled' && !filterProfileShared) {
                                 const interviewCount = basePhase1Candidates.filter(candidate => {
                                     const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
                                     const hasFailed = rounds.some(r => r.status === 'Failed');
@@ -1706,22 +1708,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold text-slate-500 mb-1">Interview Status</label>
-                                <select
-                                    value={filterInterviewStatus}
-                                    onChange={(e) => setFilterInterviewStatus(e.target.value)}
-                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                                >
-                                    <option value="All">All Interviews</option>
-                                    <option value="None">None Scheduled</option>
-                                    <option value="In_Process">In Interviews (Active)</option>
-                                    <option value="Scheduled">Has Interviews (All)</option>
-                                    <option value="Pending">In Progress / Pending</option>
-                                    <option value="Passed">All Passed</option>
-                                    <option value="Failed">Failed</option>
-                                </select>
-                            </div>
-                            <div>
                                 <label className="block text-xs font-semibold text-slate-500 mb-1">Min Avg Rating</label>
                                 <select
                                     value={filterRating}
@@ -1783,11 +1769,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
                                 />
                             </div>
-                            {( (activePhase === 1 && filterStatus !== 'Interested') || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
+                            {( (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
                                 <button
                                     onClick={() => {
                                         if (activePhase === 1) setFilterStatus('Interested');
                                         else setFilterStatus('All');
+                                        setFilterProfileShared(false);
                                         setFilterDecision('All');
                                         setFilterExperience('');
                                         setFilterInterviewStatus('All');
