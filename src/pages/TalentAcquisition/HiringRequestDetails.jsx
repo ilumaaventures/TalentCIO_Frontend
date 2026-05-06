@@ -34,6 +34,34 @@ const formatBudgetLabel = (budgetRange = {}) => {
     return `${currency} ${min} to ${max}`;
 };
 
+const getHiringPositionSummary = (request) => {
+    const openPositions = Math.max(Number(request?.hiringDetails?.openPositions) || 0, 0);
+    const storedClosedPositions = Math.max(Number(request?.hiringDetails?.closedPositions) || 0, 0);
+    const storedOriginalPositions = Math.max(Number(request?.hiringDetails?.originalOpenPositions) || 0, 0);
+
+    if (request?.status === 'Closed') {
+        const requestedPositions = Math.max(storedOriginalPositions, storedClosedPositions, openPositions, 1);
+        return {
+            requested: requestedPositions,
+            open: 0,
+            closed: requestedPositions
+        };
+    }
+
+    const requestedPositions = Math.max(
+        storedOriginalPositions,
+        openPositions + storedClosedPositions,
+        openPositions,
+        1
+    );
+
+    return {
+        requested: requestedPositions,
+        open: openPositions,
+        closed: Math.max(storedClosedPositions, requestedPositions - openPositions, 0)
+    };
+};
+
 const HiringRequestDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -45,6 +73,9 @@ const HiringRequestDetails = () => {
     const [actionLoading, setActionLoading] = useState(false);
     const [togglingVisibility, setTogglingVisibility] = useState(false);
     const [togglingResourceGateway, setTogglingResourceGateway] = useState(false);
+    const [showCloseModal, setShowCloseModal] = useState(false);
+    const [closeMode, setCloseMode] = useState('all');
+    const [partialCloseCount, setPartialCloseCount] = useState(1);
     const [activeTab, setActiveTab] = useState('overview'); // overview, applications, reviews
 
     useEffect(() => {
@@ -80,6 +111,8 @@ const HiringRequestDetails = () => {
     const hasSuperApprove = user?.permissions?.includes('ta.super_approve') || user?.permissions?.includes('*');
     const canManageVisibility = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
     const resourceGatewayEnabledForCompany = Boolean(user?.company?.settings?.careers?.enableResourceGatewayPublishing);
+    const positionSummary = getHiringPositionSummary(request);
+    const canPartialClose = positionSummary.open > 1;
 
     const canApprove = request && isDynamic
         ? (
@@ -135,23 +168,49 @@ const HiringRequestDetails = () => {
     };
 
     const handleClose = async () => {
-        if (!window.confirm('Are you sure you want to close this hiring request?')) return;
+        const closeCount = closeMode === 'partial' ? Number(partialCloseCount) : positionSummary.open;
+        if (!Number.isFinite(closeCount) || closeCount <= 0) {
+            return toast.error('No open positions are available to close.');
+        }
+        if (closeMode === 'partial' && closeCount > positionSummary.open) {
+            return toast.error(`You can close at most ${positionSummary.open} positions.`);
+        }
         try {
             setActionLoading(true);
-            const response = await api.patch(`/ta/hiring-request/${id}/close`);
+            const response = await api.patch(`/ta/hiring-request/${id}/close`, closeMode === 'partial'
+                ? { mode: 'partial', closeCount }
+                : { mode: 'all' });
             const updatedRequest = response.data;
             setRequest(updatedRequest);
-            toast.success('Request closed successfully');
+            setShowCloseModal(false);
+            setCloseMode('all');
+            setPartialCloseCount(1);
+            if (updatedRequest.status === 'Closed') {
+                toast.success('Request closed successfully');
+            } else {
+                const remainingOpenPositions = Math.max(Number(updatedRequest?.hiringDetails?.openPositions) || 0, 0);
+                toast.success(`${closeCount} position${closeCount === 1 ? '' : 's'} closed. ${remainingOpenPositions} still open.`);
+            }
             invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
             refreshTAClientsCache().catch((cacheError) => {
                 console.error('Failed to refresh TA client cache after close:', cacheError);
             });
         } catch (error) {
             console.error(error);
-            toast.error('Failed to close request');
+            toast.error(error.response?.data?.message || 'Failed to close request');
         } finally {
             setActionLoading(false);
         }
+    };
+
+    const openCloseModal = () => {
+        if (positionSummary.open <= 0) {
+            toast.error('There are no open positions left to close.');
+            return;
+        }
+        setCloseMode('all');
+        setPartialCloseCount(1);
+        setShowCloseModal(true);
     };
 
     const handleEdit = () => {
@@ -534,8 +593,16 @@ const HiringRequestDetails = () => {
                                 </h3>
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center group">
+                                        <span className="text-slate-500 text-xs font-medium">Requested Positions</span>
+                                        <span className="text-slate-900 font-bold text-xs bg-slate-100 px-2 py-0.5 rounded">{positionSummary.requested}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center group">
                                         <span className="text-slate-500 text-xs font-medium">Open Positions</span>
-                                        <span className="text-slate-900 font-bold text-xs bg-slate-100 px-2 py-0.5 rounded group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">{request.hiringDetails.openPositions}</span>
+                                        <span className="text-slate-900 font-bold text-xs bg-slate-100 px-2 py-0.5 rounded group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">{positionSummary.open}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center group">
+                                        <span className="text-slate-500 text-xs font-medium">Closed Positions</span>
+                                        <span className="text-slate-900 font-bold text-xs bg-slate-100 px-2 py-0.5 rounded">{positionSummary.closed}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-slate-500 text-xs font-medium">Expected Joining</span>
@@ -731,8 +798,8 @@ const HiringRequestDetails = () => {
 
                                     {request.status !== 'Closed' && (
                                         <button
-                                            onClick={handleClose}
-                                            disabled={actionLoading}
+                                            onClick={openCloseModal}
+                                            disabled={actionLoading || positionSummary.open <= 0}
                                             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-xl font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             {actionLoading ? <Loader className="animate-spin" size={16} /> : <XCircle size={16} />} Close Request
@@ -815,6 +882,102 @@ const HiringRequestDetails = () => {
                 )}
 
             </div>
+
+            {showCloseModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-base font-bold text-slate-900">Close Positions</h3>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    Choose whether to close all open positions or only some of them for this requisition.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowCloseModal(false)}
+                                disabled={actionLoading}
+                                className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+
+                        <div className="mt-5 space-y-3">
+                            <label className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${closeMode === 'all' ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                <input
+                                    type="radio"
+                                    name="close-mode"
+                                    value="all"
+                                    checked={closeMode === 'all'}
+                                    onChange={() => setCloseMode('all')}
+                                    className="mt-0.5"
+                                />
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-800">Close all open positions</p>
+                                    <p className="text-xs text-slate-500">
+                                        This will close all {positionSummary.open} remaining position{positionSummary.open === 1 ? '' : 's'} and mark the requisition as closed.
+                                    </p>
+                                </div>
+                            </label>
+
+                            {canPartialClose && (
+                                <label className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${closeMode === 'partial' ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                    <input
+                                        type="radio"
+                                        name="close-mode"
+                                        value="partial"
+                                        checked={closeMode === 'partial'}
+                                        onChange={() => setCloseMode('partial')}
+                                        className="mt-0.5"
+                                    />
+                                    <div className="w-full">
+                                        <p className="text-sm font-semibold text-slate-800">Close some positions</p>
+                                        <p className="text-xs text-slate-500">
+                                            Reduce the open positions without closing the entire requisition.
+                                        </p>
+
+                                        {closeMode === 'partial' && (
+                                            <div className="mt-3 space-y-2">
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max={positionSummary.open}
+                                                    value={partialCloseCount}
+                                                    onChange={(e) => setPartialCloseCount(e.target.value)}
+                                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                />
+                                                <p className="text-xs text-slate-500">
+                                                    After closing {Math.min(Math.max(Number(partialCloseCount) || 0, 0), positionSummary.open)} position{Number(partialCloseCount) === 1 ? '' : 's'}, {Math.max(positionSummary.open - (Number(partialCloseCount) || 0), 0)} will remain open.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </label>
+                            )}
+                        </div>
+
+                        <div className="mt-6 flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowCloseModal(false)}
+                                disabled={actionLoading}
+                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleClose}
+                                disabled={actionLoading}
+                                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {actionLoading ? 'Saving...' : closeMode === 'partial' ? 'Close Selected Positions' : 'Close All Positions'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

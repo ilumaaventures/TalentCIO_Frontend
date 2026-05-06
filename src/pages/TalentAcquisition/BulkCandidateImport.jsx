@@ -249,13 +249,14 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 currentCompany: ['company', 'current company', 'organization'],
                 currentCTC: ['ctc', 'current ctc', 'cctc'],
                 expectedCTC: ['expected ctc', 'exp ctc', 'ectc'],
-                noticePeriod: ['notice period', 'np'],
+                noticePeriod: ['notice period(days)', 'notice period (days)', 'notice period days', 'notice period', 'np'],
                 tatToJoin: ['tat', 'tat to join'],
                 inHandOffer: ['any offer in hand', 'offer in hand', 'counter offer'],
                 status: ['status', 'round 1', 'initial status'],
                 remark: ['remark', 'remarks', 'comments'],
                 offerCompany: ['offer company', 'company offered'],
-                lastWorkingDay: ['date of joining new company', 'date of joining', 'last working day', 'doj', 'lwd'],
+                offerJoiningDate: ['date of joining new company', 'date of joining new company', 'joining date new company', 'new company doj'],
+                lastWorkingDay: ['last working day', 'lwd', 'date of exit', 'last working date'],
                 interviewDetails: ['interview details', 'interviews'],
                 interviewRemark: ['interview remark', 'evaluator feedback', 'interview summary'],
                 compSkillAssessment: ['comprehensive skill assessment', 'skill assessment', 'detailed ratings'],
@@ -363,6 +364,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
                     remark: toStr(getCellValue(columnMapping.remark)),
                     offerCompany: toStr(getCellValue(columnMapping.offerCompany)),
+                    offerJoiningDate: getCellValue(columnMapping.offerJoiningDate),
                     lastWorkingDay: getCellValue(columnMapping.lastWorkingDay),
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
@@ -379,8 +381,13 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     interviewRounds: []
                 };
 
-                // Parse Date of Joining/Last Working Day
+                // Parse date fields
+                mappedRow.offerJoiningDate = parseExcelDate(mappedRow.offerJoiningDate);
                 mappedRow.lastWorkingDay = parseExcelDate(mappedRow.lastWorkingDay);
+                mappedRow.inHandOffer = Boolean(mappedRow.inHandOffer) || Boolean(
+                    (mappedRow.offerCompany && String(mappedRow.offerCompany).trim()) ||
+                    mappedRow.offerJoiningDate
+                );
 
                 // Identify and Parse Must-Have Skills
                 const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 's.no', 'serial no.', 'serial no', 'slno', 'submission date', 'date', 'relevant experience', 'custom remark', 'profile shortlisted (yes/no)', 'final scoring', 'profile shared', 'shortlisted (phase 2)', 'selected (phase 2)', 'interviewer feedback (phase 2)', 'interview status', 'reason', 'decision status (auto-calculated)');
@@ -677,7 +684,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 { title: 'Technical Skills (Experience)', subHeaders: techSkills, width: techSkills.length },
                 { title: 'Education & Employment', subHeaders: ['Qualification', 'Company'], width: 2 },
                 { title: 'Compensation', subHeaders: ['CTC', 'Expected CTC'], width: 2 },
-                { title: 'Availability & Location', subHeaders: ['Notice Period', 'Location', 'Preferred Location'], width: 3 },
+                { title: 'Availability & Location', subHeaders: ['Notice Period(Days)', 'Last Working Day', 'Location', 'Preferred Location'], width: 4 },
                 { title: 'Contact Details', subHeaders: ['Email', 'Mobile No.'], width: 2 },
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },

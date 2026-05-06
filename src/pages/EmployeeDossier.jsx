@@ -197,7 +197,7 @@ const documentCategories = [
     }
 ];
 
-const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
+const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'personal', onTabChange }) => {
     const { userId: paramUserId } = useParams();
     const userId = propUserId || paramUserId;
     const navigate = useNavigate();
@@ -491,6 +491,22 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
             setActiveTab('personal');
         }
     }, [hasDossierModule, activeTab]);
+
+    useEffect(() => {
+        if (!initialTab || initialTab === activeTab) return;
+
+        const tabExists = tabs.some((tab) => tab.id === initialTab);
+        if (tabExists) {
+            setActiveTab(initialTab);
+        }
+    }, [activeTab, initialTab, tabs]);
+
+    const handleTabSelect = useCallback((tabId) => {
+        setActiveTab(tabId);
+        if (onTabChange) {
+            onTabChange(tabId);
+        }
+    }, [onTabChange]);
 
     // Handle Input Change for nested objects
     const handleInputChange = (section, field, value) => {
@@ -2296,7 +2312,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false }) => {
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
+                                onClick={() => handleTabSelect(tab.id)}
                                 className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
                                     ? 'border-blue-600 text-blue-600 bg-blue-50/50'
                                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'

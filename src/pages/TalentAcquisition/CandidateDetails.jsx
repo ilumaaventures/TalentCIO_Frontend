@@ -342,6 +342,35 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         return { hasSuperApprove: superApprove, canManageRounds: manageRounds };
     }, [user]);
 
+    const skillExperienceList = useMemo(() => {
+        const groupedSkills = new Map();
+        const sourceSkills = [
+            ...(Array.isArray(candidate?.mustHaveSkills) ? candidate.mustHaveSkills.map((skill) => ({ ...skill, category: 'Must-Have' })) : []),
+            ...(Array.isArray(candidate?.niceToHaveSkills) ? candidate.niceToHaveSkills.map((skill) => ({ ...skill, category: 'Nice-To-Have' })) : [])
+        ];
+
+        sourceSkills.forEach((entry) => {
+            const skillName = String(entry?.skill || '').trim();
+            const experience = Number(entry?.experience);
+            if (!skillName || !Number.isFinite(experience) || experience <= 0) return;
+
+            const skillKey = skillName.toLowerCase();
+            const existing = groupedSkills.get(skillKey);
+            if (!existing || experience > existing.experience) {
+                groupedSkills.set(skillKey, {
+                    skill: skillName,
+                    experience,
+                    category: entry.category
+                });
+            }
+        });
+
+        return Array.from(groupedSkills.values()).sort((left, right) => {
+            if (right.experience !== left.experience) return right.experience - left.experience;
+            return left.skill.localeCompare(right.skill);
+        });
+    }, [candidate?.mustHaveSkills, candidate?.niceToHaveSkills]);
+
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-50 pb-12">
@@ -592,11 +621,31 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Profile Pulled By</p>
+                                    <p className="text-slate-700 font-medium">{candidate.profilePulledBy || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Called By</p>
+                                    <p className="text-slate-700 font-medium">{candidate.calledBy || 'N/A'}</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Rate</p>
+                                <p className="text-slate-700 font-medium">
+                                    {candidate.rate !== undefined && candidate.rate !== null
+                                        ? ` ${Number(candidate.rate).toLocaleString('en-IN')}`
+                                        : 'N/A'}
+                                </p>
+                            </div>
+
                             {/* In-Hand Offer */}
                             {candidate.inHandOffer ? (
                                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                                     <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">In-Hand Offer</p>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div>
                                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Company</p>
                                             <p className="text-slate-800 font-semibold text-sm">{candidate.offerCompany || 'N/A'}</p>
@@ -604,6 +653,10 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                         <div>
                                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Their CTC</p>
                                             <p className="text-slate-800 font-semibold text-sm">{candidate.offerCTC ? `₹${candidate.offerCTC.toLocaleString()}` : 'N/A'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Date Of Joining New Company</p>
+                                            <p className="text-slate-800 font-semibold text-sm">{candidate.offerJoiningDate ? format(new Date(candidate.offerJoiningDate), 'dd MMM yyyy') : 'N/A'}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -670,6 +723,27 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             </li>
                                         ))}
                                     </ul>
+                                </div>
+                            )}
+
+                            {skillExperienceList.length > 0 && (
+                                <div className="pt-2 border-t border-slate-100 mt-2">
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Skill Experience</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {skillExperienceList.map((skill) => (
+                                            <div key={`${skill.skill}-${skill.category}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-800">{skill.skill}</p>
+                                                        <p className="text-[11px] text-slate-500">{skill.category}</p>
+                                                    </div>
+                                                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                                                        {skill.experience} yrs
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
