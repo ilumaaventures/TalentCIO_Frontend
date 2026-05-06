@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Shield, User } from 'lucide-react';
+import { AlertCircle, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Settings, Shield, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import api from '../api/axios';
@@ -21,6 +21,10 @@ const Topbar = ({ toggleSidebar }) => {
     const hasDossierModule = user?.company?.enabledModules?.includes('employeeDossier');
     const canApproveDossier = hasAdminRole || user?.permissions?.includes('dossier.approve');
     const isManager = hasAdminRole || user?.directReportsCount > 0 || canApproveDossier;
+    const canViewRolesSettings = hasAdminRole || user?.permissions?.includes('role.read') || user?.hasAllPermissions;
+    const canViewAttendanceSettings = user?.company?.enabledModules?.includes('attendance') && (hasAdminRole || user?.permissions?.includes('user.update') || user?.hasAllPermissions);
+    const canViewLeavePolicies = user?.company?.enabledModules?.includes('leaves') && (hasAdminRole || user?.permissions?.includes('role.read') || user?.hasAllPermissions);
+    const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
     const profileTabs = [
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
@@ -31,6 +35,9 @@ const Topbar = ({ toggleSidebar }) => {
         ] : []),
         ...(hasDossierModule && isManager ? [
             { id: 'requests', label: 'Requests', icon: AlertCircle }
+        ] : []),
+        ...(canViewProfileSettings ? [
+            { id: 'settings', label: 'Settings', icon: Settings }
         ] : [])
     ];
 
