@@ -2,17 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Skeleton from '../components/Skeleton';
-import Button from '../components/Button';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, Users, Clock, Calendar, Search, Bell, Menu, ChevronDown, Shield, Building, Briefcase, UserCheck, UserX, AlertCircle, ArrowUpRight, TrendingUp, MapPin, RefreshCw } from 'lucide-react';
-import { format } from 'date-fns';
+import { Users, Clock, Calendar, UserCheck, UserX, AlertCircle, ArrowUpRight, MapPin, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { addDays, format } from 'date-fns';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 // Simple global cache for location lookups to avoid redundant API hits across polls
 const locationCache = {};
 const DASHBOARD_CACHE_TTL_MS = 15 * 1000;
 const MotionDiv = motion.div;
+const TODAY_DATE_STRING = format(new Date(), 'yyyy-MM-dd');
 
 const LocationLink = ({ location }) => {
     const coordsKey = location ? `${location.lat},${location.lng}` : null;
@@ -68,8 +68,12 @@ const Dashboard = () => {
     const [recentActivity, setRecentActivity] = useState([]);
     const [recentActivityMeta, setRecentActivityMeta] = useState({ total: 0, hasMore: false, limit: 10 });
     const [loading, setLoading] = useState(true);
-    const [attendanceExpanded, setAttendanceExpanded] = useState(false);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
+    const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+    const [attendanceModalDate, setAttendanceModalDate] = useState(() => TODAY_DATE_STRING);
+    const [attendanceModalRecords, setAttendanceModalRecords] = useState([]);
+    const [attendanceModalMeta, setAttendanceModalMeta] = useState({ total: 0, date: TODAY_DATE_STRING });
+    const [attendanceModalLoading, setAttendanceModalLoading] = useState(false);
 
     const attendanceSettings = user?.company?.settings?.attendance || {};
     const showLeavesModule = user?.company?.enabledModules?.includes('leaves');
@@ -79,7 +83,7 @@ const Dashboard = () => {
                        attendanceSettings.locationCheck;
 
     useEffect(() => {
-        const attendanceLimit = attendanceExpanded ? 'all' : '10';
+        const attendanceLimit = '10';
         // Cache key: date-scoped so it auto-invalidates at midnight
         const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}_${attendanceLimit}`;
 
@@ -132,7 +136,7 @@ const Dashboard = () => {
                 const payload = createCachePayload({
                     stats: data.stats,
                     recentActivity: minimalActivity,
-                    recentActivityMeta: data.recentActivityMeta || { total: minimalActivity.length, hasMore: false, limit: attendanceExpanded ? null : 10 },
+                    recentActivityMeta: data.recentActivityMeta || { total: minimalActivity.length, hasMore: false, limit: 10 },
                     projects: minimalProjects,
                     leavesToday: minimalLeavesToday
                 }, fingerprint);
@@ -159,7 +163,7 @@ const Dashboard = () => {
             if (!payload?.stats) return;
             setStats(payload.stats);
             setRecentActivity(payload.recentActivity || []);
-            setRecentActivityMeta(payload.recentActivityMeta || { total: payload.recentActivity?.length || 0, hasMore: false, limit: attendanceExpanded ? null : 10 });
+            setRecentActivityMeta(payload.recentActivityMeta || { total: payload.recentActivity?.length || 0, hasMore: false, limit: 10 });
             setProjects(payload.projects || []);
         };
 
@@ -218,7 +222,42 @@ const Dashboard = () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('focus', handleFocus);
         };
-    }, [attendanceExpanded]);
+    }, []);
+
+    useEffect(() => {
+        if (!attendanceModalOpen) return;
+
+        const fetchAttendanceForDate = async () => {
+            try {
+                setAttendanceModalLoading(true);
+                const res = await api.get(`/dashboard?attendanceLimit=all&attendanceDate=${attendanceModalDate}`);
+                setAttendanceModalRecords(res.data?.recentActivity || []);
+                setAttendanceModalMeta(res.data?.recentActivityMeta || { total: 0, date: attendanceModalDate });
+            } catch (error) {
+                console.error('Failed to fetch attendance for selected date', error);
+                setAttendanceModalRecords([]);
+                setAttendanceModalMeta({ total: 0, date: attendanceModalDate });
+            } finally {
+                setAttendanceModalLoading(false);
+            }
+        };
+
+        fetchAttendanceForDate();
+    }, [attendanceModalDate, attendanceModalOpen]);
+
+    const openAttendanceModal = () => {
+        setAttendanceModalDate(TODAY_DATE_STRING);
+        setAttendanceModalOpen(true);
+    };
+
+    const shiftAttendanceModalDate = (days) => {
+        setAttendanceModalDate((prev) => {
+            const nextDate = format(addDays(new Date(`${prev}T00:00:00`), days), 'yyyy-MM-dd');
+            return nextDate > TODAY_DATE_STRING ? TODAY_DATE_STRING : nextDate;
+        });
+    };
+
+    const isAttendanceModalAtToday = attendanceModalDate >= TODAY_DATE_STRING;
 
     const dashboardKpis = [
         {
@@ -352,20 +391,14 @@ const Dashboard = () => {
                                         <h2 className="text-base font-bold text-slate-900 tracking-tight">Recent Attendance</h2>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        {!attendanceExpanded && recentActivityMeta.hasMore && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setAttendanceExpanded(true)}
-                                                disabled={attendanceLoading}
-                                                className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
-                                            >
-                                                {attendanceLoading ? 'Loading...' : 'View All'}
-                                            </button>
-                                        )}
-                                        <div className="flex items-center gap-2 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md">
-                                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                                            <span className="text-[9px] font-black uppercase tracking-widest">Live Updates</span>
-                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={openAttendanceModal}
+                                            disabled={attendanceLoading}
+                                            className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
+                                        >
+                                            View All
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
@@ -496,6 +529,141 @@ const Dashboard = () => {
                     </div>
                 </MotionDiv>
             </main>
+
+            {attendanceModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+                    <div className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-900">Attendance Overview</h2>
+                                <p className="text-sm text-slate-500">Review all attendance records for a selected day.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setAttendanceModalOpen(false)}
+                                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Close attendance overview"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => shiftAttendanceModalDate(-1)}
+                                    className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                                    aria-label="Previous day attendance"
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                <input
+                                    type="date"
+                                    value={attendanceModalDate}
+                                    max={TODAY_DATE_STRING}
+                                    onChange={(e) => setAttendanceModalDate(e.target.value > TODAY_DATE_STRING ? TODAY_DATE_STRING : e.target.value)}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => shiftAttendanceModalDate(1)}
+                                    disabled={isAttendanceModalAtToday}
+                                    className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                    aria-label="Next day attendance"
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
+                                <Calendar size={15} className="text-blue-600" />
+                                <span>{format(new Date(`${attendanceModalDate}T00:00:00`), 'dd MMM yyyy')}</span>
+                                <span className="text-slate-300">|</span>
+                                <span>{attendanceModalMeta.total || attendanceModalRecords.length} records</span>
+                            </div>
+                        </div>
+
+                        <div className="overflow-auto">
+                            <table className="w-full">
+                                <thead className="sticky top-0 bg-white shadow-sm">
+                                    <tr className="bg-slate-50/80">
+                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Employee</th>
+                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Clock In</th>
+                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Status</th>
+                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Type</th>
+                                        {showLocation && (
+                                            <th className="px-6 py-3 text-right text-[10px] font-black uppercase tracking-widest text-slate-500">Location</th>
+                                        )}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {attendanceModalLoading ? (
+                                        [1, 2, 3, 4, 5, 6].map((row) => (
+                                            <tr key={row}>
+                                                <td colSpan={showLocation ? 5 : 4} className="px-6 py-3">
+                                                    <Skeleton className="h-12 w-full" />
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : attendanceModalRecords.length > 0 ? (
+                                        attendanceModalRecords.map((record) => (
+                                            <tr key={`${attendanceModalDate}-${record.id}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-[11px] font-bold text-slate-600">
+                                                            {record.user.name.charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-sm font-bold text-slate-900">{record.user.name}</div>
+                                                            <div className="text-[10px] font-semibold text-slate-400">{record.user.role || 'Personnel'}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                        <Clock size={14} className="text-slate-400" />
+                                                        <span>
+                                                            {record.attendanceMode === 'present_only'
+                                                                ? 'Present'
+                                                                : record.time
+                                                                    ? format(new Date(record.time), 'hh:mm a')
+                                                                    : '--:--'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">
+                                                        {String(record.status || 'Present').replace('_', ' ')}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">
+                                                        {record.user.employmentType || 'FT'}
+                                                    </span>
+                                                </td>
+                                                {showLocation && (
+                                                    <td className="px-6 py-4 text-right">
+                                                        <LocationLink location={record.location} />
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={showLocation ? 5 : 4} className="px-6 py-14 text-center">
+                                                <div className="flex flex-col items-center gap-2 text-slate-400">
+                                                    <AlertCircle size={26} strokeWidth={1.5} />
+                                                    <p className="text-sm font-medium italic">No attendance records found for {format(new Date(`${attendanceModalDate}T00:00:00`), 'dd MMM yyyy')}.</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

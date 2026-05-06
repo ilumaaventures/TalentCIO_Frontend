@@ -334,7 +334,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             className={`${sidebarCardClass} flex items-center gap-3 p-3 transition-colors hover:bg-white/[0.05] group`}
             onClick={onClose}
           >
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#2457e6] text-xs font-bold text-white ring-1 ring-white/10">
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-white/10 text-xs font-bold text-white ring-1 ring-white/10">
               {user?.profilePicture ? (
                 <img
                   src={user.profilePicture}
