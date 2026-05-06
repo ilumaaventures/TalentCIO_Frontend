@@ -643,7 +643,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 { title: 'Technical Skills (Experience)', subHeaders: techSkillsHeaders, width: techSkillsHeaders.length },
                 { title: 'Education & Employment', subHeaders: ['Qualification', 'Company'], width: 2 },
                 { title: 'Compensation', subHeaders: ['CTC', 'Expected CTC'], width: 2 },
-                { title: 'Availability & Location', subHeaders: ['Notice Period', 'Location', 'Preferred Location'], width: 3 },
+                { title: 'Availability & Location', subHeaders: ['Notice Period(Days)', 'Last Working Day', 'Location', 'Preferred Location'], width: 4 },
                 { title: 'Contact Details', subHeaders: ['Email', 'Mobile No.'], width: 2 },
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
@@ -792,6 +792,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     toEmptyCell(candidate.expectedCTC, { zeroIsEmpty: true }),
 
                     toEmptyCell(candidate.noticePeriod, { zeroIsEmpty: true }),
+                    candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : null,
                     toEmptyCell(candidate.currentLocation),
                     toEmptyCell(candidate.preferredLocation),
 
@@ -799,7 +800,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     toEmptyCell(candidate.mobile),
 
                     toEmptyCell(candidate.offerCompany),
-                    candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : null,
+                    candidate.offerJoiningDate ? format(new Date(candidate.offerJoiningDate), 'dd-MMM-yyyy') : null,
 
                     toEmptyCell(candidate.status),
                     toEmptyCell(candidate.remark),

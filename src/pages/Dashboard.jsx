@@ -66,7 +66,10 @@ const Dashboard = () => {
     const [stats, setStats] = useState(null);
     const [projects, setProjects] = useState([]);
     const [recentActivity, setRecentActivity] = useState([]);
+    const [recentActivityMeta, setRecentActivityMeta] = useState({ total: 0, hasMore: false, limit: 10 });
     const [loading, setLoading] = useState(true);
+    const [attendanceExpanded, setAttendanceExpanded] = useState(false);
+    const [attendanceLoading, setAttendanceLoading] = useState(false);
 
     const attendanceSettings = user?.company?.settings?.attendance || {};
     const showLeavesModule = user?.company?.enabledModules?.includes('leaves');
@@ -76,8 +79,9 @@ const Dashboard = () => {
                        attendanceSettings.locationCheck;
 
     useEffect(() => {
+        const attendanceLimit = attendanceExpanded ? 'all' : '10';
         // Cache key: date-scoped so it auto-invalidates at midnight
-        const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}`;
+        const CACHE_KEY = `dashboard_${new Date().toISOString().slice(0, 10)}_${attendanceLimit}`;
 
         const readCache = () => {
             const parsed = readSessionCache(CACHE_KEY);
@@ -97,6 +101,7 @@ const Dashboard = () => {
                     id: r.id,
                     user: r.user ? { name: r.user.name, role: r.user.role, employmentType: r.user.employmentType } : null,
                     time: r.time,
+                    attendanceMode: r.attendanceMode,
                     status: r.status,
                     location: r.location
                 }));
@@ -127,6 +132,7 @@ const Dashboard = () => {
                 const payload = createCachePayload({
                     stats: data.stats,
                     recentActivity: minimalActivity,
+                    recentActivityMeta: data.recentActivityMeta || { total: minimalActivity.length, hasMore: false, limit: attendanceExpanded ? null : 10 },
                     projects: minimalProjects,
                     leavesToday: minimalLeavesToday
                 }, fingerprint);
@@ -142,7 +148,7 @@ const Dashboard = () => {
         const buildFingerprint = (data) => {
             const payload = data?.data || data;
             if (!payload) return '';
-            const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.time ?? ''}`).join('|') || '';
+            const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.attendanceMode ?? ''}:${r.time ?? ''}`).join('|') || '';
             const statsPart = `${payload.stats?.totalEmployees || 0}:${payload.stats?.presentToday || 0}:${payload.stats?.leaveToday || 0}:${payload.stats?.pendingLeaveRequests || 0}`;
             const projPart = payload.projects?.length || 0;
             const leavePart = payload.leavesToday?.map(leave => `${leave._id}:${leave.leaveType}:${leave.startDate}:${leave.endDate}`).join('|') || '';
@@ -153,6 +159,7 @@ const Dashboard = () => {
             if (!payload?.stats) return;
             setStats(payload.stats);
             setRecentActivity(payload.recentActivity || []);
+            setRecentActivityMeta(payload.recentActivityMeta || { total: payload.recentActivity?.length || 0, hasMore: false, limit: attendanceExpanded ? null : 10 });
             setProjects(payload.projects || []);
         };
 
@@ -169,7 +176,8 @@ const Dashboard = () => {
 
             // 2. Always fetch fresh data in background
             try {
-                const res = await api.get('/dashboard');
+                setAttendanceLoading(true);
+                const res = await api.get(`/dashboard?attendanceLimit=${attendanceLimit}`);
                 const payload = res.data;
                 if (!payload?.stats) return;
 
@@ -187,6 +195,7 @@ const Dashboard = () => {
             } catch (error) {
                 console.error('Failed to fetch dashboard data', error);
             } finally {
+                setAttendanceLoading(false);
                 setLoading(false);
             }
         };
@@ -209,7 +218,7 @@ const Dashboard = () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('focus', handleFocus);
         };
-    }, []);
+    }, [attendanceExpanded]);
 
     const dashboardKpis = [
         {
@@ -342,9 +351,21 @@ const Dashboard = () => {
                                         <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
                                         <h2 className="text-base font-bold text-slate-900 tracking-tight">Recent Attendance</h2>
                                     </div>
-                                    <div className="flex items-center gap-2 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md">
-                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                                        <span className="text-[9px] font-black uppercase tracking-widest">Live Updates</span>
+                                    <div className="flex items-center gap-2">
+                                        {!attendanceExpanded && recentActivityMeta.hasMore && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setAttendanceExpanded(true)}
+                                                disabled={attendanceLoading}
+                                                className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
+                                            >
+                                                {attendanceLoading ? 'Loading...' : 'View All'}
+                                            </button>
+                                        )}
+                                        <div className="flex items-center gap-2 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md">
+                                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                                            <span className="text-[9px] font-black uppercase tracking-widest">Live Updates</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
@@ -364,8 +385,8 @@ const Dashboard = () => {
                                                 [1, 2, 3, 4, 5].map(i => (
                                                     <tr key={i}><td colSpan={showLocation ? 4 : 3} className="px-5 py-2.5"><Skeleton className="h-10 w-full" /></td></tr>
                                                 ))
-                                            ) : recentActivity.filter(r => r.status === 'PRESENT').length > 0 ? (
-                                                recentActivity.filter(r => r.status === 'PRESENT').map((record) => (
+                                            ) : recentActivity.length > 0 ? (
+                                                recentActivity.map((record) => (
                                                     <tr key={record.id} className="group hover:bg-slate-50/30 transition-colors border-b border-slate-50 last:border-0">
                                                         <td className="px-5 py-3">
                                                             <div className="flex items-center gap-2.5">
@@ -382,7 +403,11 @@ const Dashboard = () => {
                                                             <div className="flex items-center gap-1 text-slate-700 font-bold">
                                                                 <Clock size={10} className="text-slate-400" />
                                                                 <span className="text-[11px] uppercase">
-                                                                    {record.time ? format(new Date(record.time), 'hh:mm a') : '--:--'}
+                                                                    {record.attendanceMode === 'present_only'
+                                                                        ? 'Present'
+                                                                        : record.time
+                                                                            ? format(new Date(record.time), 'hh:mm a')
+                                                                            : '--:--'}
                                                                 </span>
                                                             </div>
                                                         </td>

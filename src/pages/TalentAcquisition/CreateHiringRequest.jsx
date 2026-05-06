@@ -223,6 +223,15 @@ const CreateHiringRequest = () => {
                     setLoading(true);
                     const res = await api.get(`/ta/hiring-request/${id || reopenFrom}`, createNoCacheRequestConfig());
                     const data = res.data;
+                    const storedOpenPositions = Math.max(Number(data.hiringDetails?.openPositions) || 0, 0);
+                    const storedClosedPositions = Math.max(Number(data.hiringDetails?.closedPositions) || 0, 0);
+                    const storedOriginalPositions = Math.max(Number(data.hiringDetails?.originalOpenPositions) || 0, 0);
+                    const resolvedRequestedPositions = Math.max(
+                        storedOriginalPositions,
+                        storedOpenPositions + storedClosedPositions,
+                        storedOpenPositions,
+                        1
+                    );
 
                     setFormData({
                         client: data.client || '',
@@ -246,7 +255,7 @@ const CreateHiringRequest = () => {
                         experienceMax: data.requirements.experienceMax,
                         location: data.requirements.location,
                         shift: data.requirements.shift,
-                        openPositions: data.hiringDetails.openPositions,
+                        openPositions: reopenFrom ? resolvedRequestedPositions : Math.max(storedOpenPositions, 1),
                         expectedJoiningDate: data.hiringDetails.expectedJoiningDate ? data.hiringDetails.expectedJoiningDate.split('T')[0] : '', // Format for date input
                         budgetMin: data.hiringDetails.budgetRange?.min ?? '',
                         budgetMax: data.hiringDetails.budgetRange?.max ?? '',

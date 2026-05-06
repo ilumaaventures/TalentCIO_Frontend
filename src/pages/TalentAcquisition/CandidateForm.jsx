@@ -38,6 +38,7 @@ const CandidateForm = () => {
         inHandOffer: false,
         offerCompany: '',
         offerCTC: '',
+        offerJoiningDate: '',
         preference: 'Neutral / Average',
         totalExperience: '',
         qualification: '',
@@ -188,6 +189,7 @@ const CandidateForm = () => {
                     inHandOffer: candidate.inHandOffer || false,
                     offerCompany: candidate.offerCompany || '',
                     offerCTC: candidate.offerCTC || '',
+                    offerJoiningDate: candidate.offerJoiningDate ? new Date(candidate.offerJoiningDate).toISOString().split('T')[0] : '',
                     preference: candidate.preference || 'Neutral / Average',
                     totalExperience: candidate.totalExperience || '',
                     qualification: candidate.qualification || '',
@@ -477,6 +479,7 @@ const CandidateForm = () => {
                 rate: formData.rate ? Number(formData.rate) : undefined,
                 currentCTC: formData.currentCTC ? Number(formData.currentCTC) : undefined,
                 expectedCTC: formData.expectedCTC ? Number(formData.expectedCTC) : undefined,
+                offerJoiningDate: formData.offerJoiningDate || undefined,
                 preference: formData.preference || undefined,
                 pastExperience: formData.pastExperience.filter(exp => exp.companyName && exp.experienceYears),
                 totalExperience: Number(formData.totalExperience),
@@ -764,13 +767,18 @@ const CandidateForm = () => {
                                     {/* In-Hand Offer Toggle */}
                                     <div className="bg-amber-50/50 border border-amber-200 rounded-lg p-3 mt-4">
                                         <div className="flex items-center gap-3">
-                                            <button type="button" onClick={() => !isViewMode && setFormData(prev => ({ ...prev, inHandOffer: !prev.inHandOffer }))} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formData.inHandOffer ? 'bg-amber-500' : 'bg-slate-300'} ${isViewMode ? 'cursor-default' : 'cursor-pointer'}`} disabled={isViewMode}>
+                                            <button type="button" onClick={() => !isViewMode && setFormData(prev => {
+                                                const nextInHandOffer = !prev.inHandOffer;
+                                                return nextInHandOffer
+                                                    ? { ...prev, inHandOffer: true }
+                                                    : { ...prev, inHandOffer: false, offerCompany: '', offerCTC: '', offerJoiningDate: '' };
+                                            })} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formData.inHandOffer ? 'bg-amber-500' : 'bg-slate-300'} ${isViewMode ? 'cursor-default' : 'cursor-pointer'}`} disabled={isViewMode}>
                                                 <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${formData.inHandOffer ? 'translate-x-5' : 'translate-x-1'}`} />
                                             </button>
                                             <label className="text-[11px] font-bold text-slate-700">Candidate has an In-Hand Offer</label>
                                         </div>
                                         {formData.inHandOffer && (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
                                                 <div>
                                                     <label className="block text-[11px] font-bold text-slate-600 mb-1">Offering Company *</label>
                                                     <input type="text" name="offerCompany" value={formData.offerCompany} onChange={handleChange} placeholder="e.g. Infosys" className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" required disabled={isViewMode} />
@@ -778,6 +786,10 @@ const CandidateForm = () => {
                                                 <div>
                                                     <label className="block text-[11px] font-bold text-slate-600 mb-1">Offered CTC</label>
                                                     <input type="number" name="offerCTC" value={formData.offerCTC} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" disabled={isViewMode} />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Date Of Joining New Company</label>
+                                                    <input type="date" name="offerJoiningDate" value={formData.offerJoiningDate} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" disabled={isViewMode} />
                                                 </div>
                                             </div>
                                         )}
