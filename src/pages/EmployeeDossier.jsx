@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -465,25 +465,29 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
     }, [activeTab, canApprove, currentUser]);
 
-    const tabs = [
-        { id: 'personal', label: 'Personal', icon: User },
-        { id: 'employment', label: 'Employment History', icon: Briefcase }
-    ];
-
     const hasDossierModule = currentUser?.company?.enabledModules?.includes('employeeDossier');
 
-    if (hasDossierModule) {
-        tabs.push(
-            { id: 'documents', label: 'Documents', icon: FileText },
-            { id: 'hris', label: 'HRIS', icon: Shield },
-            { id: 'history', label: 'Activities', icon: Calendar }
-        );
-    }
-
     const isManager = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
-    if (isManager && hasDossierModule) {
-        tabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
-    }
+    const tabs = useMemo(() => {
+        const nextTabs = [
+            { id: 'personal', label: 'Personal', icon: User },
+            { id: 'employment', label: 'Employment History', icon: Briefcase }
+        ];
+
+        if (hasDossierModule) {
+            nextTabs.push(
+                { id: 'documents', label: 'Documents', icon: FileText },
+                { id: 'hris', label: 'HRIS', icon: Shield },
+                { id: 'history', label: 'Activities', icon: Calendar }
+            );
+        }
+
+        if (isManager && hasDossierModule) {
+            nextTabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
+        }
+
+        return nextTabs;
+    }, [hasDossierModule, isManager]);
 
     // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
     useEffect(() => {
@@ -499,7 +503,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         if (tabExists) {
             setActiveTab(initialTab);
         }
-    }, [activeTab, initialTab, tabs]);
+    }, [initialTab, tabs]);
 
     const handleTabSelect = useCallback((tabId) => {
         setActiveTab(tabId);
