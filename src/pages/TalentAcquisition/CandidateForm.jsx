@@ -594,7 +594,7 @@ const CandidateForm = () => {
                                             </label>
 
                                             {resumeFile && (
-                                                <div className="flex items-center gap-2 px-2 py-1 bg-white rounded border border-slate-200 min-w-0 flex-1 max-w-[250px]">
+                                                <div className="flex items-center gap-2 px-2 py-1 bg-white rounded border border-slate-200 min-w-0 flex-1 max-w-62.5">
                                                     <span className="text-[10px] text-slate-600 font-medium truncate">{resumeFile.name}</span>
                                                     {previewUrl && (
                                                         <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-blue-600 hover:underline shrink-0">
@@ -905,7 +905,7 @@ const CandidateForm = () => {
 
                     {/* Resume Panel */}
                     {showResumePanel && (resumeFile || resumeUrl) && (
-                        <div className="w-1/2 sticky top-[88px] h-[calc(100vh-140px)] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden group flex flex-col animate-in slide-in-from-right-4 duration-500">
+                        <div className="w-1/2 sticky top-22 h-[calc(100vh-140px)] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden group flex flex-col animate-in slide-in-from-right-4 duration-500">
                             {/* PDF Previewer */}
                             <div className="flex-1 bg-slate-100 relative">
                                 <div className="absolute inset-0 flex items-center justify-center text-slate-400 z-0">

@@ -78,7 +78,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                 <div className="grid gap-4 md:grid-cols-3">
                     {[...Array(3)].map((_, index) => <Skeleton key={index} className="h-24 w-full rounded-2xl" />)}
                 </div>
-                <Skeleton className="h-[420px] w-full rounded-2xl" />
+                <Skeleton className="h-105 w-full rounded-2xl" />
             </div>
         );
     }
@@ -1096,7 +1096,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         </button>
                         {showToolbarMenu && (
                             <div
-                                className="absolute right-0 top-14 z-30 w-[280px] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
+                                className="absolute right-0 top-14 z-30 w-70 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
                                 onClick={(event) => event.stopPropagation()}
                             >
                                 <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
@@ -1130,7 +1130,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             </span>
                                             Send Mail
                                         </span>
-                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
                                             {selectedCandidateIds.length || candidates.length}
                                         </span>
                                     </button>
@@ -1149,7 +1149,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             </span>
                                             Transfer
                                         </span>
-                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
                                             {selectedCandidateIds.length}
                                         </span>
                                     </button>
@@ -1839,7 +1839,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     ) : (
                         <div className="bg-white rounded-xl border border-slate-200 mb-24">
                             <div className="w-full overflow-x-auto">
-                                <div className={selectedCandidateId ? "min-w-full" : "min-w-[1100px]"}>
+                                <div className={selectedCandidateId ? "min-w-full" : "min-w-275"}>
                                     <table className="w-full">
                                         <thead className="bg-slate-50 border-b border-slate-200">
                                             <tr key="header-row">
@@ -1977,7 +1977,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                         )}
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
-                                                                <div className="relative inline-block w-full max-w-[110px]">
+                                                                <div className="relative inline-block w-full max-w-27.5">
                                                                     {activePhase === 1 ? (
                                                                         <select
                                                                             value={candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None')}
@@ -2033,7 +2033,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                             <td className="px-4 py-4 align-top">
                                                                 <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
                                                                     <span
-                                                                        className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline"
+                                                                        className="font-bold text-blue-600 mb-0.5 max-w-30 truncate cursor-pointer hover:underline"
                                                                         title={candidate.profilePulledBy || '-'}
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
@@ -2060,7 +2060,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                             {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
                                                                 <div
                                                                     data-legacy-action-menu-content="true"
-                                                                    className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
+                                                                    className="fixed z-9999 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
                                                                     style={menuPosition}
                                                                     onClick={(e) => e.stopPropagation()}
                                                                 >
@@ -2189,7 +2189,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     >
                                         Previous
                                     </button>
-                                    <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
+                                    <span className="text-sm font-medium text-slate-600 min-w-25 text-center">
                                         Page {page} of {totalPages}
                                     </span>
                                     <button
@@ -2207,7 +2207,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                 {/* Right Side: Candidate Details Side Panel */}
                 {selectedCandidateId && (
-                    <div className={`${isSidePanelMaximized ? 'fixed top-0 right-0 bottom-0 left-0 md:left-64 z-[100]' : 'w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)]'} bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300`}>
+                    <div className={`${isSidePanelMaximized ? 'fixed top-0 right-0 bottom-0 left-0 md:left-64 z-100' : 'w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)]'} bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300`}>
                         {/* Side Panel Header */}
                         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 ">
                             <h2 className="text-lg font-bold text-slate-800">Quick Profile View</h2>
