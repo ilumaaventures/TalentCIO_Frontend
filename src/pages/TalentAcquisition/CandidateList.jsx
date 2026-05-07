@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -16,6 +16,7 @@ import { ProfileReviewModal } from './PublicApplicationsView';
 import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
 import DynamicPhaseView from './CandidateList/DynamicPhaseView';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -106,7 +107,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterPulledBy, setFilterPulledBy] = useState('All');
     const [filterTransferred, setFilterTransferred] = useState('All');
     const [filterProfileShared, setFilterProfileShared] = useState(false);
+    const [candidateNameSearch, setCandidateNameSearch] = useState('');
     const [users, setUsers] = useState([]);
+    const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 300);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCandidateId = searchParams.get('candidateId');
@@ -178,7 +181,16 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterProfileShared]);
+    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterProfileShared]);
+
+    const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
+    const matchesCandidateNameSearch = useCallback((candidate) => {
+        if (!normalizedCandidateNameSearch) {
+            return true;
+        }
+
+        return String(candidate?.candidateName || '').toLowerCase().includes(normalizedCandidateNameSearch);
+    }, [normalizedCandidateNameSearch]);
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -219,15 +231,16 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // 1. Structural population: Only structural filters (Pulled By, Transferred, Legacy)
     const structuralPhase1Candidates = useMemo(() => {
         return candidates.filter(candidate => {
+            const matchCandidateName = matchesCandidateNameSearch(candidate);
             const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
             const matchTransferred = filterTransferred === 'All'
                 ? true
                 : filterTransferred === 'Transferred'
                     ? candidate.isTransferred
                     : !candidate.isTransferred;
-            return matchPulledBy && matchTransferred;
+            return matchCandidateName && matchPulledBy && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterTransferred]);
+    }, [candidates, filterPulledBy, filterTransferred, matchesCandidateNameSearch]);
 
     // 2. Base for Dynamic Cards: Structural + (Rating, Exp, Preference)
     const basePhase1Candidates = useMemo(() => {
@@ -300,11 +313,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const structuralPhase2Candidates = useMemo(() => {
         return candidates.filter(c => {
             const isShortlisted = isProfileSharedCandidate(c);
+            const matchCandidateName = matchesCandidateNameSearch(c);
             const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
-            return isShortlisted && matchPulledBy && matchTransferred;
+            return isShortlisted && matchCandidateName && matchPulledBy && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterTransferred, isProfileSharedCandidate]);
+    }, [candidates, filterPulledBy, filterTransferred, isProfileSharedCandidate, matchesCandidateNameSearch]);
 
     // Base for Phase 2 dynamic cards
     const basePhase2Candidates = useMemo(() => {
@@ -367,11 +381,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const structuralPhase3Candidates = useMemo(() => {
         return candidates.filter(c => {
             const isSelected = c.phase2Decision === 'Selected';
+            const matchCandidateName = matchesCandidateNameSearch(c);
             const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
-            return isSelected && matchPulledBy && matchTransferred;
+            return isSelected && matchCandidateName && matchPulledBy && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterTransferred]);
+    }, [candidates, filterPulledBy, filterTransferred, matchesCandidateNameSearch]);
 
     // Base for Phase 3 dynamic cards
     const basePhase3Candidates = useMemo(() => {
@@ -1656,6 +1671,19 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     {/* Filters - Only show when no candidate is selected */}
                     {!selectedCandidateId && (
                         <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-end">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 mb-1">Candidate Name</label>
+                                <div className="relative">
+                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={candidateNameSearch}
+                                        onChange={(e) => setCandidateNameSearch(e.target.value)}
+                                        placeholder="Search candidate name"
+                                        className="pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-56"
+                                    />
+                                </div>
+                            </div>
 
                             {activePhase === 1 && (
                                 <div>
@@ -1770,11 +1798,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
                                 />
                             </div>
-                            {( (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
+                            {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
                                 <button
                                     onClick={() => {
                                         if (activePhase === 1) setFilterStatus('Interested');
                                         else setFilterStatus('All');
+                                        setCandidateNameSearch('');
                                         setFilterProfileShared(false);
                                         setFilterDecision('All');
                                         setFilterExperience('');

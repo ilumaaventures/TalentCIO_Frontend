@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
-    User, Briefcase, FileText, DollarSign, Calendar, Shield,
+    User, Briefcase, FileText, DollarSign, Calendar, Shield, Settings,
     ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search, Eye
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -466,6 +466,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     }, [activeTab, canApprove, currentUser]);
 
     const hasDossierModule = currentUser?.company?.enabledModules?.includes('employeeDossier');
+    const hasAdminRole = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
+    const canViewRolesSettings = hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions;
+    const canViewAttendanceSettings = currentUser?.company?.enabledModules?.includes('attendance') && (hasAdminRole || currentUser?.permissions?.includes('user.update') || currentUser?.hasAllPermissions);
+    const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions);
+    const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
 
     const isManager = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
     const tabs = useMemo(() => {
@@ -486,8 +491,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             nextTabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
         }
 
+        if (canViewSettingsTab) {
+            nextTabs.push({ id: 'settings', label: 'Settings', icon: Settings });
+        }
+
         return nextTabs;
-    }, [hasDossierModule, isManager]);
+    }, [canViewSettingsTab, hasDossierModule, isManager]);
 
     // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
     useEffect(() => {
@@ -688,6 +697,79 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         } finally {
             setSavingSection(null);
         }
+    };
+
+    const renderSettings = () => {
+        const settingCards = [
+            {
+                key: 'roles',
+                visible: canViewRolesSettings,
+                label: 'Roles & Permissions',
+                description: 'Manage role access and permission mappings across the workspace.',
+                route: '/roles'
+            },
+            {
+                key: 'attendance',
+                visible: canViewAttendanceSettings,
+                label: 'Attendance Settings',
+                description: 'Configure attendance modes, shifts, location rules, and policy defaults.',
+                route: '/attendance-settings'
+            },
+            {
+                key: 'leave',
+                visible: canViewLeavePolicies,
+                label: 'Leave Policies',
+                description: 'Review and update leave types, accrual rules, and leave balances policy setup.',
+                route: '/leave-config'
+            }
+        ].filter((card) => card.visible);
+
+        return (
+            <div className="space-y-6">
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                            <Settings size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800">Admin Settings</h3>
+                            <p className="mt-1 text-sm text-slate-500">
+                                Open the core company setup pages directly from your profile.
+                            </p>
+                        </div>
+                    </div>
+
+                    {settingCards.length > 0 ? (
+                        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            {settingCards.map((card) => (
+                                <button
+                                    key={card.key}
+                                    type="button"
+                                    onClick={() => navigate(card.route)}
+                                    className="group rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5 text-left transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-md"
+                                >
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-base font-semibold text-slate-800 transition-colors group-hover:text-blue-700">
+                                            {card.label}
+                                        </span>
+                                        <span className="rounded-full bg-white p-2 text-slate-400 transition-colors group-hover:text-blue-600">
+                                            <ArrowLeft size={16} className="rotate-180" />
+                                        </span>
+                                    </div>
+                                    <p className="mt-3 text-sm leading-6 text-slate-500">
+                                        {card.description}
+                                    </p>
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                            No settings shortcuts are available for your access level.
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
     };
 
     // --- RENDER SECTIONS ---
@@ -2339,6 +2421,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     {activeTab === 'hris' && renderHRIS()}
                     {activeTab === 'history' && renderHistory()}
                     {activeTab === 'requests' && renderHRISRequests()}
+                    {activeTab === 'settings' && renderSettings()}
                 </div>
 
 

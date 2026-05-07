@@ -20,7 +20,6 @@ import {
   LogOut,
   Mail,
   Settings,
-  Shield,
   UserPlus,
   Users,
   Workflow,
@@ -57,15 +56,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.roles?.includes('Admin') || user?.permissions?.includes('onboarding.manage');
-  const showRoles = user?.permissions?.includes('role.read') || user?.roles?.includes('Admin');
-  const showAttendanceSettings = user?.company?.enabledModules?.includes('attendance') && (user?.roles?.includes('Admin') || user?.permissions?.includes('user.update') || user?.hasAllPermissions);
-  const showLeavePolicies = (user?.roles?.includes('Admin') || user?.permissions?.includes('role.read') || user?.hasAllPermissions) && user?.company?.enabledModules?.includes('leaves');
   const showBusinessUnits = user?.company?.enabledModules?.includes('projectManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.read'));
   const showClients = user?.company?.enabledModules?.includes('projectManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('client.read'));
   const showProjects = user?.company?.enabledModules?.includes('projectManagement');
   const showMainSection = showDashboard || showAttendance || showLeaves || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding;
-  const showAdminSection = showRoles || showAttendanceSettings || showLeavePolicies;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const sectionLabelClass = 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]';
   const sidebarCardClass = 'rounded-2xl border border-white/6 bg-white/[0.03]';
@@ -273,31 +268,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <UserPlus size={18} />
                   <span>Onboarding</span>
                 </Link>
-              )}
-
-              {showAdminSection && (
-                <>
-                  <div className="mt-8"><div className={sectionLabelClass}>Admin</div></div>
-
-                  {showRoles && (
-                    <Link to="/roles" className={isActive('/roles')} onClick={onClose}>
-                      <Shield size={18} />
-                      <span>Roles & Permissions</span>
-                    </Link>
-                  )}
-                  {showAttendanceSettings && (
-                    <Link to="/attendance-settings" className={isActive('/attendance-settings')} onClick={onClose}>
-                      <Settings size={18} />
-                      <span>Attendance Settings</span>
-                    </Link>
-                  )}
-                  {showLeavePolicies && (
-                    <Link to="/leave-config" className={isActive('/leave-config')} onClick={onClose}>
-                      <Settings size={18} />
-                      <span>Leave Policies</span>
-                    </Link>
-                  )}
-                </>
               )}
 
               {showProjectManagementSection && (

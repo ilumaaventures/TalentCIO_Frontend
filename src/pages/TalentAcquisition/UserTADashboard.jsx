@@ -10,11 +10,22 @@ import { Filter, Search, X } from 'lucide-react';
 const UserTADashboard = ({ providedUserName }) => {
     const { userName: routeUserName } = useParams();
     const navigate = useNavigate();
+    const itemsPerPage = 10;
 
     // Use the provided name (if used as embedded component) or the route param
     const userName = providedUserName || routeUserName;
 
     const [candidates, setCandidates] = useState([]);
+    const [summaryMetrics, setSummaryMetrics] = useState({
+        total: 0,
+        interested: 0,
+        inInterviews: 0,
+        rejected: 0,
+        onHold: 0
+    });
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCandidates, setTotalCandidates] = useState(0);
     const [loading, setLoading] = useState(true);
 
     // Filter States
@@ -28,21 +39,34 @@ const UserTADashboard = ({ providedUserName }) => {
     const fetchUserCandidates = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await api.get(`/ta/candidates/user/${encodeURIComponent(userName)}`);
+            const response = await api.get(`/ta/candidates/user/${encodeURIComponent(userName)}?page=${page}&limit=${itemsPerPage}`);
             setCandidates(response.data.candidates || []);
+            setSummaryMetrics(response.data.summary || {
+                total: response.data.count || 0,
+                interested: 0,
+                inInterviews: 0,
+                rejected: 0,
+                onHold: 0
+            });
+            setTotalPages(response.data.totalPages || 1);
+            setTotalCandidates(response.data.count || 0);
         } catch (error) {
             console.error('Error fetching user candidates:', error);
             toast.error('Failed to load candidate metrics for this user');
         } finally {
             setLoading(false);
         }
+    }, [itemsPerPage, page, userName]);
+
+    useEffect(() => {
+        setPage(1);
     }, [userName]);
 
     useEffect(() => {
         if (userName) {
             fetchUserCandidates();
         }
-    }, [userName, fetchUserCandidates]);
+    }, [fetchUserCandidates, userName]);
 
     const uniqueProfiles = useMemo(() => {
         const profiles = candidates.map(c => c.hiringRequestId?.roleDetails?.title).filter(Boolean);
@@ -85,27 +109,7 @@ const UserTADashboard = ({ providedUserName }) => {
     }, [candidates, searchTerm, filterProfile, filterStatus, filterDateFrom, filterDateTo]);
 
     // Calculate metrics based on FILTERED candidates
-    const metrics = useMemo(() => {
-        return {
-            total: filteredCandidates.length,
-            interested: filteredCandidates.filter(c => {
-                if (c.status !== 'Interested') return false;
-                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
-                if (c.interviewRounds && c.interviewRounds.length > 0) return false;
-                return true;
-            }).length,
-            inInterviews: filteredCandidates.filter(c => {
-                const rounds = c.interviewRounds || [];
-                if (rounds.length === 0) return false;
-                if (c.decision && ['Rejected', 'On Hold'].includes(c.decision)) return false;
-                const hasFailed = rounds.some(r => r.status === 'Failed');
-                if (hasFailed) return false;
-                return true;
-            }).length,
-            rejected: filteredCandidates.filter(c => c.decision === 'Rejected').length,
-            onHold: filteredCandidates.filter(c => c.decision === 'On Hold').length,
-        };
-    }, [filteredCandidates]);
+    const metrics = summaryMetrics;
 
     const getDecisionColor = useCallback((decision) => {
         switch (decision) {
@@ -397,6 +401,38 @@ const UserTADashboard = ({ providedUserName }) => {
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                )}
+
+                {totalCandidates > 0 && (
+                    <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-sm text-slate-500">
+                            Showing page <span className="font-semibold text-slate-700">{page}</span> of <span className="font-semibold text-slate-700">{totalPages}</span>
+                            {' '}for <span className="font-semibold text-slate-700">{totalCandidates}</span> sourced candidates
+                        </div>
+                        {totalPages > 1 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                                    disabled={page === 1 || loading}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    Previous
+                                </button>
+                                <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">
+                                    {page}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                                    disabled={page === totalPages || loading}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
