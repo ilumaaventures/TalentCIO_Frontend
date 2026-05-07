@@ -15,6 +15,7 @@ import BulkResumeImport from '../BulkResumeImport';
 import MassMailModal from '../MassMailModal';
 import BulkTransferModal from '../BulkTransferModal';
 
+
 const TOTAL_CANDIDATE_CARD_KEY = 'total_candidates';
 const INTERVIEWS_CARD_KEY = 'interviews';
 
