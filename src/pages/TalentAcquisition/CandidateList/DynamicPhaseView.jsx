@@ -182,13 +182,14 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [visibilityEditorPhaseOrder, setVisibilityEditorPhaseOrder] = useState(phases[0]?.order || 1);
     const [savingCardVisibility, setSavingCardVisibility] = useState(false);
 
-    const canEdit = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
-    const canMakeDecisions = canEdit || user?.permissions?.includes('ta.decision');
-    const canManualAdvance = user?.roles?.includes('Admin');
-    const canCreate = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create');
-    const canMassMail = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
-    const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
-    const canManageTemplates = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const isAdmin = user?.roles?.includes('Admin');
+    const canEdit = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.candidate.edit');
+    const canMakeDecisions = canEdit || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
+    const canManualAdvance = isAdmin || canEdit;
+    const canCreate = isAdmin || user?.permissions?.includes('ta.create');
+    const canMassMail = isAdmin || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
+    const canBulkTransfer = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.candidate.transfer');
+    const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
 
     useEffect(() => {
         if (hiringRequest?.phases?.length) {

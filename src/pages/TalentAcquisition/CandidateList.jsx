@@ -127,9 +127,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
-    const canMassMail = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
-    const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
-    const canManageTemplates = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const isAdmin = user?.roles?.includes('Admin');
+    const canEditCandidates = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.candidate.edit');
+    const canMakeDecisions = canEditCandidates || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
+    const canTransferCandidates = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.candidate.transfer');
+    const canMassMail = isAdmin || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
+    const canBulkTransfer = canTransferCandidates;
+    const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
     , []);
@@ -1984,7 +1988,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                            disabled={!canMakeDecisions}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -1997,7 +2001,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                            disabled={!canMakeDecisions}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -2011,7 +2015,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                            disabled={!canMakeDecisions}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
@@ -2101,7 +2105,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         </a>
                                                                     )}
 
-                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {canEditCandidates && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleEdit(candidate);
@@ -2114,7 +2118,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         </button>
                                                                     )}
 
-                                                                    {activePhase === 1 && !isProfileSharedCandidate(candidate) && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {activePhase === 1 && !isProfileSharedCandidate(candidate) && canEditCandidates && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleMoveToNextPhase(candidate._id);
@@ -2140,7 +2144,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         </button>
                                                                     )}
 
-                                                                    {((activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None') || (activePhase === 2 && candidate.phase2Decision === 'Selected')) && !candidate.isTransferredToOnboarding && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {((activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None') || (activePhase === 2 && candidate.phase2Decision === 'Selected')) && !candidate.isTransferredToOnboarding && canTransferCandidates && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleTransferToOnboarding(candidate._id);

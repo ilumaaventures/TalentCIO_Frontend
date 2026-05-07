@@ -19,6 +19,7 @@ import {
   LifeBuoy,
   LogOut,
   Mail,
+  ShieldCheck,
   Settings,
   UserPlus,
   Users,
@@ -45,9 +46,20 @@ const Sidebar = ({ isOpen, onClose }) => {
     : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
   const isActive = (path) => location.pathname === path ? "zoho-sidebar-link-active" : "zoho-sidebar-link";
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
-  const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view') || user?.isTAParticipant || canViewTAAnalytics);
-  const canManageTAWorkflows = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
-  const canManagePhaseTemplates = user?.roles?.includes('Admin');
+  const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (
+    user?.roles?.includes('Admin')
+    || user?.permissions?.includes('ta.view')
+    || user?.permissions?.includes('ta.candidate.view')
+    || user?.permissions?.includes('ta.candidate.edit')
+    || user?.permissions?.includes('ta.candidate.evaluate_round')
+    || user?.permissions?.includes('ta.candidate.make_decision')
+    || user?.permissions?.includes('ta.candidate.transfer')
+    || user?.permissions?.includes('ta.config.manage')
+    || user?.isTAParticipant
+    || canViewTAAnalytics
+  );
+  const canManageTAWorkflows = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.edit');
+  const canManagePhaseTemplates = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('*');
   const showDashboard = user?.roles?.includes('Admin') || user?.hasAllPermissions;
   const showAttendance = user?.company?.enabledModules?.includes('attendance');
   const showLeaves = user?.company?.enabledModules?.includes('leaves');
@@ -66,6 +78,13 @@ const Sidebar = ({ isOpen, onClose }) => {
   const sidebarCardClass = 'rounded-2xl border border-white/6 bg-white/[0.03]';
 
   const taShortcuts = [
+    {
+      label: 'Access Settings',
+      to: '/ta/settings/access',
+      icon: ShieldCheck,
+      visible: user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('role.update') || user?.permissions?.includes('role.create') || user?.permissions?.includes('*'),
+      isActive: location.pathname === '/ta/settings/access'
+    },
     {
       label: 'Full Analytics',
       to: '/ta/analysis',
@@ -91,7 +110,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       label: 'Email Templates',
       to: '/ta/email-templates',
       icon: Mail,
-      visible: user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit'),
+      visible: user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit'),
       isActive: location.pathname === '/ta/email-templates'
     }
   ].filter((item) => item.visible);
