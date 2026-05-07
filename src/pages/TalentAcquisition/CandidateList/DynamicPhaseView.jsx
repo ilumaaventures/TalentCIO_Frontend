@@ -9,6 +9,7 @@ import { saveAs } from 'file-saver';
 import api from '../../../api/axios';
 import Skeleton from '../../../components/Skeleton';
 import { useAuth } from '../../../context/AuthContext';
+import useDebouncedValue from '../../../hooks/useDebouncedValue';
 import BulkCandidateImport from '../BulkCandidateImport';
 import BulkResumeImport from '../BulkResumeImport';
 import MassMailModal from '../MassMailModal';
@@ -159,6 +160,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const debouncedSearch = useDebouncedValue(search, 300);
     const [statusFilter, setStatusFilter] = useState('All');
     const [decisionFilter, setDecisionFilter] = useState('All');
     const [pulledByFilter, setPulledByFilter] = useState('All');
@@ -345,13 +347,14 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
             const currentDecision = phaseEntry?.decision || 'None';
             const haystack = `${candidate.candidateName || ''} ${candidate.email || ''}`.toLowerCase();
-            const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
+            const normalizedSearch = debouncedSearch.trim().toLowerCase();
+            const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesStatus = statusFilter === 'All' || phaseEntry?.status === statusFilter;
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             return matchesSearch && matchesStatus && matchesDecision && matchesPulledBy;
         })
-    ), [activePhase, decisionFilter, phaseCandidates, pulledByFilter, search, statusFilter]);
+    ), [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, statusFilter]);
 
     useEffect(() => {
         const visibleIds = new Set(phaseCandidates.map((candidate) => candidate._id));
@@ -365,7 +368,8 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
             const currentDecision = phaseEntry?.decision || 'None';
             const haystack = `${candidate.candidateName || ''} ${candidate.email || ''}`.toLowerCase();
-            const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
+            const normalizedSearch = debouncedSearch.trim().toLowerCase();
+            const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             return matchesSearch && matchesDecision && matchesPulledBy;
@@ -375,14 +379,15 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             ...statusOption,
             count: summaryBase.filter((candidate) => getPhaseEntryForOrder(candidate, activePhase?.order)?.status === statusOption.value).length
         }));
-    }, [activePhase, decisionFilter, phaseCandidates, pulledByFilter, search]);
+    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter]);
 
     const decisionSummary = useMemo(() => {
         const summaryBase = phaseCandidates.filter((candidate) => {
             const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
             const phaseStatus = phaseEntry?.status || '';
             const haystack = `${candidate.candidateName || ''} ${candidate.email || ''}`.toLowerCase();
-            const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
+            const normalizedSearch = debouncedSearch.trim().toLowerCase();
+            const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesStatus = statusFilter === 'All' || phaseStatus === statusFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             return matchesSearch && matchesStatus && matchesPulledBy;
@@ -392,32 +397,34 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             ...decisionOption,
             count: summaryBase.filter((candidate) => (getPhaseEntryForOrder(candidate, activePhase?.order)?.decision || 'None') === decisionOption.value).length
         }));
-    }, [activePhase, phaseCandidates, pulledByFilter, search, statusFilter]);
+    }, [activePhase, debouncedSearch, phaseCandidates, pulledByFilter, statusFilter]);
 
     const totalSourcedCount = useMemo(() => {
         return phaseCandidates.filter((candidate) => {
             const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
             const currentDecision = phaseEntry?.decision || 'None';
             const haystack = `${candidate.candidateName || ''} ${candidate.email || ''}`.toLowerCase();
-            const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
+            const normalizedSearch = debouncedSearch.trim().toLowerCase();
+            const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             return matchesSearch && matchesDecision && matchesPulledBy;
         }).length;
-    }, [activePhase, decisionFilter, phaseCandidates, pulledByFilter, search]);
+    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter]);
 
     const interviewsCount = useMemo(() => {
         return phaseCandidates.filter((candidate) => {
             const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
             const currentDecision = phaseEntry?.decision || 'None';
             const haystack = `${candidate.candidateName || ''} ${candidate.email || ''}`.toLowerCase();
-            const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
+            const normalizedSearch = debouncedSearch.trim().toLowerCase();
+            const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const rounds = (candidate.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(activePhase?.order || 1));
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             return matchesSearch && matchesDecision && matchesPulledBy && rounds.length > 0;
         }).length;
-    }, [activePhase, decisionFilter, phaseCandidates, pulledByFilter, search]);
+    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter]);
 
     const activeVisibleCardKeys = useMemo(
         () => getVisibleCardKeysForPhase(activePhase, cardVisibilityConfig),
