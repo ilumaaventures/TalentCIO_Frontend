@@ -27,6 +27,19 @@ const hasReviewableApplicantProfile = (item) => Boolean(
     )
 );
 
+const hasUploadedResumeFile = (resumeUrl) => (
+    typeof resumeUrl === 'string' &&
+    /^https?:\/\//i.test(resumeUrl.trim())
+);
+
+const getCandidateUploadType = (candidate) => (
+    hasUploadedResumeFile(candidate?.resumeUrl) ? 'CV' : 'Excel'
+);
+
+const getCandidateUploadedByName = (candidate) => (
+    `${candidate?.uploadedBy?.firstName || ''} ${candidate?.uploadedBy?.lastName || ''}`.trim()
+);
+
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
     const [resolvedRequest, setResolvedRequest] = useState(requestMeta);
     const [requestLoading, setRequestLoading] = useState(!requestMeta);
@@ -105,6 +118,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
     const [filterRating, setFilterRating] = useState('All');
     const [filterPulledBy, setFilterPulledBy] = useState('All');
+    const [filterUploadedBy, setFilterUploadedBy] = useState('All');
+    const [filterUploadType, setFilterUploadType] = useState('All');
     const [filterTransferred, setFilterTransferred] = useState('All');
     const [filterProfileShared, setFilterProfileShared] = useState(false);
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
@@ -198,7 +213,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterProfileShared]);
+    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, filterProfileShared]);
 
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
@@ -208,6 +223,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
         return String(candidate?.candidateName || '').toLowerCase().includes(normalizedCandidateNameSearch);
     }, [normalizedCandidateNameSearch]);
+
+    const uploadedByOptions = useMemo(() => {
+        const options = [...new Set(
+            candidates
+                .map((candidate) => getCandidateUploadedByName(candidate))
+                .filter(Boolean)
+        )].sort((left, right) => left.localeCompare(right));
+
+        if (filterUploadedBy !== 'All' && filterUploadedBy && !options.includes(filterUploadedBy)) {
+            return [...options, filterUploadedBy].sort((left, right) => left.localeCompare(right));
+        }
+
+        return options;
+    }, [candidates, filterUploadedBy]);
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -250,14 +279,16 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         return candidates.filter(candidate => {
             const matchCandidateName = matchesCandidateNameSearch(candidate);
             const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
+            const matchUploadedBy = filterUploadedBy === 'All' || getCandidateUploadedByName(candidate) === filterUploadedBy;
+            const matchUploadType = filterUploadType === 'All' || getCandidateUploadType(candidate) === filterUploadType;
             const matchTransferred = filterTransferred === 'All'
                 ? true
                 : filterTransferred === 'Transferred'
                     ? candidate.isTransferred
                     : !candidate.isTransferred;
-            return matchCandidateName && matchPulledBy && matchTransferred;
+            return matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterTransferred, matchesCandidateNameSearch]);
+    }, [candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch]);
 
     // 2. Base for Dynamic Cards: Structural + (Rating, Exp, Preference)
     const basePhase1Candidates = useMemo(() => {
@@ -332,10 +363,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const isShortlisted = isProfileSharedCandidate(c);
             const matchCandidateName = matchesCandidateNameSearch(c);
             const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
+            const matchUploadedBy = filterUploadedBy === 'All' || getCandidateUploadedByName(c) === filterUploadedBy;
+            const matchUploadType = filterUploadType === 'All' || getCandidateUploadType(c) === filterUploadType;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
-            return isShortlisted && matchCandidateName && matchPulledBy && matchTransferred;
+            return isShortlisted && matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterTransferred, isProfileSharedCandidate, matchesCandidateNameSearch]);
+    }, [candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, isProfileSharedCandidate, matchesCandidateNameSearch]);
 
     // Base for Phase 2 dynamic cards
     const basePhase2Candidates = useMemo(() => {
@@ -400,10 +433,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const isSelected = c.phase2Decision === 'Selected';
             const matchCandidateName = matchesCandidateNameSearch(c);
             const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
+            const matchUploadedBy = filterUploadedBy === 'All' || getCandidateUploadedByName(c) === filterUploadedBy;
+            const matchUploadType = filterUploadType === 'All' || getCandidateUploadType(c) === filterUploadType;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
-            return isSelected && matchCandidateName && matchPulledBy && matchTransferred;
+            return isSelected && matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterTransferred, matchesCandidateNameSearch]);
+    }, [candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch]);
 
     // Base for Phase 3 dynamic cards
     const basePhase3Candidates = useMemo(() => {
@@ -1687,153 +1722,182 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                     {/* Filters - Only show when no candidate is selected */}
                     {!selectedCandidateId && (
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-end">
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 mb-1">Candidate Name</label>
-                                <div className="relative">
-                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <div className="scrollbar-hide bg-white p-4 rounded-xl border border-slate-200 overflow-x-auto">
+                            <div className="flex flex-nowrap gap-4 items-end min-w-max">
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Candidate Name</label>
+                                    <div className="relative">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            value={candidateNameSearch}
+                                            onChange={(e) => setCandidateNameSearch(e.target.value)}
+                                            placeholder="Search candidate name"
+                                            className="pl-8 pr-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-52"
+                                        />
+                                    </div>
+                                </div>
+
+                                {activePhase === 1 && (
+                                    <div className="shrink-0">
+                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Status</label>
+                                        <select
+                                            value={filterStatus}
+                                            onChange={(e) => setFilterStatus(e.target.value)}
+                                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="All">All Statuses</option>
+                                            <option value="Interested">Interested</option>
+                                            <option value="Not Interested">Not Interested</option>
+                                            <option value="Not Relevant">Not Relevant</option>
+                                            <option value="Not Picking">Not Picking</option>
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Decision</label>
+                                    <select
+                                        value={filterDecision}
+                                        onChange={(e) => setFilterDecision(e.target.value)}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="All">All Decisions</option>
+                                        {activePhase === 1 && (
+                                            <>
+                                                <option value="Shortlisted">Shortlisted</option>
+                                                <option value="Rejected">Rejected</option>
+                                                <option value="On Hold">On Hold</option>
+                                                <option value="None">None</option>
+                                            </>
+                                        )}
+                                        {activePhase === 2 && (
+                                            <>
+                                                <option value="Selected">Selected</option>
+                                                <option value="Shortlisted">Shortlisted (Screened)</option>
+                                                <option value="Rejected">Rejected</option>
+                                                <option value="On Hold">On Hold</option>
+                                            </>
+                                        )}
+                                        {activePhase === 3 && (
+                                            <>
+                                                <option value="Offer Sent">Offer Sent</option>
+                                                <option value="Offer Accepted">Offer Accepted</option>
+                                                <option value="Joined">Joined</option>
+                                                <option value="No Show">No Show</option>
+                                                <option value="Offer Declined">Offer Declined</option>
+                                            </>
+                                        )}
+                                    </select>
+                                </div>
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Min Avg Rating</label>
+                                    <select
+                                        value={filterRating}
+                                        onChange={(e) => setFilterRating(e.target.value)}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-30"
+                                    >
+                                        <option value="All">All Ratings</option>
+                                        <option value="9">9+ (Excellent)</option>
+                                        <option value="7">7+ (Good)</option>
+                                        <option value="5">5+ (Average)</option>
+                                        <option value="3">3+ (Below Avg)</option>
+                                    </select>
+                                </div>
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Pulled By</label>
+                                    <select
+                                        value={filterPulledBy}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setFilterPulledBy(val);
+                                            if (val !== 'All') {
+                                                setFilterStatus('All');
+                                                setFilterDecision('All');
+                                                setFilterInterviewStatus('All');
+                                            }
+                                        }}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-34"
+                                    >
+                                        <option value="All">All Users</option>
+                                        {users.map(u => (
+                                            <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
+                                                {u.firstName} {u.lastName}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Uploaded By</label>
+                                    <select
+                                        value={filterUploadedBy}
+                                        onChange={(e) => setFilterUploadedBy(e.target.value)}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                    >
+                                        <option value="All">All Uploaders</option>
+                                        {uploadedByOptions.map((name) => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Upload Type</label>
+                                    <select
+                                        value={filterUploadType}
+                                        onChange={(e) => setFilterUploadType(e.target.value)}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                                    >
+                                        <option value="All">All Types</option>
+                                        <option value="CV">CV</option>
+                                        <option value="Excel">Excel</option>
+                                    </select>
+                                </div>
+                                {!isLegacyView && candidates.some(c => c.isTransferred) && (
+                                    <div className="shrink-0">
+                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Origin</label>
+                                        <select
+                                            value={filterTransferred}
+                                            onChange={(e) => setFilterTransferred(e.target.value)}
+                                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                                        >
+                                            <option value="All">All Origins</option>
+                                            <option value="New">New Applications</option>
+                                            <option value="Transferred">Transferred</option>
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
                                     <input
-                                        type="text"
-                                        value={candidateNameSearch}
-                                        onChange={(e) => setCandidateNameSearch(e.target.value)}
-                                        placeholder="Search candidate name"
-                                        className="pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-56"
+                                        type="number"
+                                        min="0"
+                                        placeholder="e.g. 2"
+                                        value={filterExperience}
+                                        onChange={(e) => setFilterExperience(e.target.value)}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-28"
                                     />
                                 </div>
-                            </div>
-
-                            {activePhase === 1 && (
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
-                                    <select
-                                        value={filterStatus}
-                                        onChange={(e) => setFilterStatus(e.target.value)}
-                                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="All">All Statuses</option>
-                                        <option value="Interested">Interested</option>
-                                        <option value="Not Interested">Not Interested</option>
-                                        <option value="Not Relevant">Not Relevant</option>
-                                        <option value="Not Picking">Not Picking</option>
-                                    </select>
-                                </div>
-                            )}
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 mb-1">Decision</label>
-                                <select
-                                    value={filterDecision}
-                                    onChange={(e) => setFilterDecision(e.target.value)}
-                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="All">All Decisions</option>
-                                    {activePhase === 1 && (
-                                        <>
-                                            <option value="Shortlisted">Shortlisted</option>
-                                            <option value="Rejected">Rejected</option>
-                                            <option value="On Hold">On Hold</option>
-                                            <option value="None">None</option>
-                                        </>
-                                    )}
-                                    {activePhase === 2 && (
-                                        <>
-                                            <option value="Selected">Selected</option>
-                                            <option value="Shortlisted">Shortlisted (Screened)</option>
-                                            <option value="Rejected">Rejected</option>
-                                            <option value="On Hold">On Hold</option>
-                                        </>
-                                    )}
-                                    {activePhase === 3 && (
-                                        <>
-                                            <option value="Offer Sent">Offer Sent</option>
-                                            <option value="Offer Accepted">Offer Accepted</option>
-                                            <option value="Joined">Joined</option>
-                                            <option value="No Show">No Show</option>
-                                            <option value="Offer Declined">Offer Declined</option>
-                                        </>
-                                    )}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 mb-1">Min Avg Rating</label>
-                                <select
-                                    value={filterRating}
-                                    onChange={(e) => setFilterRating(e.target.value)}
-                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                                >
-                                    <option value="All">All Ratings</option>
-                                    <option value="9">9+ (Excellent)</option>
-                                    <option value="7">7+ (Good)</option>
-                                    <option value="5">5+ (Average)</option>
-                                    <option value="3">3+ (Below Avg)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 mb-1">Pulled By</label>
-                                <select
-                                    value={filterPulledBy}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        setFilterPulledBy(val);
-                                        if (val !== 'All') {
-                                            setFilterStatus('All');
+                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterUploadedBy !== 'All' || filterUploadType !== 'All' || filterTransferred !== 'All') && (
+                                    <button
+                                        onClick={() => {
+                                            if (activePhase === 1) setFilterStatus('Interested');
+                                            else setFilterStatus('All');
+                                            setCandidateNameSearch('');
+                                            setFilterProfileShared(false);
                                             setFilterDecision('All');
+                                            setFilterExperience('');
                                             setFilterInterviewStatus('All');
-                                        }
-                                    }}
-                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                                >
-                                    <option value="All">All Users</option>
-                                    {users.map(u => (
-                                        <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
-                                            {u.firstName} {u.lastName}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            {!isLegacyView && candidates.some(c => c.isTransferred) && (
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Origin</label>
-                                    <select
-                                        value={filterTransferred}
-                                        onChange={(e) => setFilterTransferred(e.target.value)}
-                                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                            setFilterRating('All');
+                                            setFilterPulledBy('All');
+                                            setFilterUploadedBy('All');
+                                            setFilterUploadType('All');
+                                            setFilterTransferred('All');
+                                        }}
+                                        className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
                                     >
-                                        <option value="All">All Origins</option>
-                                        <option value="New">New Applications</option>
-                                        <option value="Transferred">Transferred</option>
-                                    </select>
-                                </div>
-                            )}
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    placeholder="e.g. 2"
-                                    value={filterExperience}
-                                    onChange={(e) => setFilterExperience(e.target.value)}
-                                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                                />
+                                        Clear Filters
+                                    </button>
+                                )}
                             </div>
-                            {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterTransferred !== 'All') && (
-                                <button
-                                    onClick={() => {
-                                        if (activePhase === 1) setFilterStatus('Interested');
-                                        else setFilterStatus('All');
-                                        setCandidateNameSearch('');
-                                        setFilterProfileShared(false);
-                                        setFilterDecision('All');
-                                        setFilterExperience('');
-                                        setFilterInterviewStatus('All');
-                                        setFilterRating('All');
-                                        setFilterPulledBy('All');
-                                        setFilterTransferred('All');
-                                    }}
-                                    className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
-                                >
-                                    Clear Filters
-                                </button>
-                            )}
                         </div>
                     )}
 
@@ -1876,7 +1940,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled By</th>}
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled / Uploaded</th>}
                                                 <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                                             </tr>
                                         </thead>
@@ -2058,6 +2122,24 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         }}
                                                                     >
                                                                         {candidate.profilePulledBy || '-'}
+                                                                    </span>
+                                                                    {getCandidateUploadedByName(candidate) ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            className="w-fit text-left text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setFilterUploadedBy(getCandidateUploadedByName(candidate));
+                                                                            }}
+                                                                            title={`Filter by uploader ${getCandidateUploadedByName(candidate)}`}
+                                                                        >
+                                                                            {getCandidateUploadedByName(candidate)}
+                                                                        </button>
+                                                                    ) : (
+                                                                        <span className="text-[11px] text-slate-400">Unknown uploader</span>
+                                                                    )}
+                                                                    <span className={`mt-0.5 w-fit rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                                                        {getCandidateUploadType(candidate)}
                                                                     </span>
                                                                     <span>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</span>
                                                                     <span className="text-[10px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
