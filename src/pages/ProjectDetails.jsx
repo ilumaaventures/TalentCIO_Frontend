@@ -11,6 +11,8 @@ import Button from '../components/Button';
 import { createCachePayload } from '../utils/cache';
 import { format, differenceInDays, addDays, isValid } from 'date-fns';
 
+const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
+
 const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -36,7 +38,7 @@ const ProjectDetails = () => {
     // Forms
     const [moduleForm, setModuleForm] = useState({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
     const [taskForm, setTaskForm] = useState({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
-    const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
+    const [logForm, setLogForm] = useState({ date: getLocalDateInputValue(), hours: '', description: '' });
 
     // Editing State
     const [editingModuleId, setEditingModuleId] = useState(null);
@@ -261,7 +263,7 @@ const ProjectDetails = () => {
 
     const openLogModal = (taskId) => {
         setLoggingTaskId(taskId);
-        setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
+        setLogForm({ date: getLocalDateInputValue(), hours: '', description: '' });
         setShowLogModal(true);
     };
 

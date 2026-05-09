@@ -13,6 +13,74 @@ import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const TIMESHEET_CACHE_TTL_MS = 20 * 1000;
+const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
+
+const getNormalizedTimesheetCycle = (cycle = 'Monthly') => {
+    if (cycle === 'Daily' || cycle === 'Weekly' || cycle === 'Bi-Weekly') {
+        return cycle;
+    }
+    return 'Monthly';
+};
+
+const getWeekStartFromYearAndNumber = (year, weekNumber) => {
+    const firstDayOfYear = new Date(year, 0, 1);
+    const daysToFirstMonday = (8 - firstDayOfYear.getDay()) % 7;
+    const firstMonday = new Date(year, 0, 1 + daysToFirstMonday);
+    return startOfWeek(addWeeks(firstMonday, weekNumber - 1));
+};
+
+const getTimesheetPeriodId = (date, cycle = 'Monthly') => {
+    const normalizedCycle = getNormalizedTimesheetCycle(cycle);
+
+    if (normalizedCycle === 'Weekly') {
+        return format(date, "yyyy-'W'II");
+    }
+
+    if (normalizedCycle === 'Bi-Weekly') {
+        const weekNumber = parseInt(format(date, 'II'), 10);
+        const biWeeklyNumber = Math.ceil(weekNumber / 2);
+        return `${format(date, 'yyyy')}-BW${String(biWeeklyNumber).padStart(2, '0')}`;
+    }
+
+    if (normalizedCycle === 'Daily') {
+        return format(date, 'yyyy-MM-dd');
+    }
+
+    return format(date, 'yyyy-MM');
+};
+
+const getVisibleDaysForCycle = (date, cycle = 'Monthly') => {
+    const normalizedCycle = getNormalizedTimesheetCycle(cycle);
+
+    if (normalizedCycle === 'Weekly') {
+        const start = startOfWeek(date);
+        return eachDayOfInterval({ start, end: addDays(start, 6) });
+    }
+
+    if (normalizedCycle === 'Bi-Weekly') {
+        const periodId = getTimesheetPeriodId(date, normalizedCycle);
+        const match = periodId.match(/^(\d{4})-BW(\d{2})$/);
+
+        if (match) {
+            const year = parseInt(match[1], 10);
+            const biWeeklyNumber = parseInt(match[2], 10);
+            const firstWeekNumber = ((biWeeklyNumber - 1) * 2) + 1;
+            const start = getWeekStartFromYearAndNumber(year, firstWeekNumber);
+            return eachDayOfInterval({ start, end: addDays(start, 13) });
+        }
+    }
+
+    if (normalizedCycle === 'Daily') {
+        return [startOfDay(date)];
+    }
+
+    return eachDayOfInterval({ start: startOfMonth(date), end: endOfMonth(date) });
+};
+
+const isFullyRejectedTimesheet = (timesheet) =>
+    timesheet?.status === 'REJECTED' &&
+    (timesheet.entries || []).length > 0 &&
+    timesheet.entries.every(entry => entry.status === 'REJECTED');
 
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
     const { user } = useAuth();
@@ -508,15 +576,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     // Identification already handled at the top
 
     const getCurrentTimesheetCacheKey = () => {
-        const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
-        let formattedMonth;
-        if (cycle === 'Weekly') {
-            formattedMonth = format(viewDate, "yyyy-'W'II");
-        } else if (cycle === 'Daily') {
-            formattedMonth = format(viewDate, 'yyyy-MM-dd');
-        } else {
-            formattedMonth = format(viewDate, 'yyyy-MM');
-        }
+        const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
+        const formattedMonth = getTimesheetPeriodId(viewDate, cycle);
 
         return `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
     };
@@ -525,15 +586,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         const skipCache = typeof options === 'boolean' ? options : !!options.skipCache;
         const silent = typeof options === 'object' ? !!options.silent : false;
 
-        const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
-        let formattedMonth;
-        if (cycle === 'Weekly') {
-            formattedMonth = format(viewDate, "yyyy-'W'II");
-        } else if (cycle === 'Daily') {
-            formattedMonth = format(viewDate, 'yyyy-MM-dd');
-        } else {
-            formattedMonth = format(viewDate, 'yyyy-MM');
-        }
+        const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
+        const formattedMonth = getTimesheetPeriodId(viewDate, cycle);
 
         // Cache Key: Scoped by User, Period, and Cycle
         const CACHE_KEY = `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
@@ -727,8 +781,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
 
         try {
+            const normalizedEntryDate = getLocalDateInputValue(newEntry.date);
             await api.post('/timesheet/entry', {
-                date: newEntry.date,
+                date: normalizedEntryDate,
                 hours: totalHours.toFixed(2), // Send total
                 description: newEntry.description,
                 projectId: newEntry.projectId,
@@ -738,7 +793,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             });
             toast.success("Work Log Added");
             setIsAddingEntry(false);
-            setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', minutes: '', description: '' });
+            setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', minutes: '', description: '', date: '' });
             await refreshTimesheetData(true); // Silent Refresh
             // Update selected cell logs? fetchData will update timesheet, but we might need to locally update selectedCell or close it.
             // Closing it is easiest to ensure consistency.
@@ -879,20 +934,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     }, [fetchData, targetUserId, viewDate]); // Re-fetch when month or user changes
 
     // Generate days for current view (Monthly)
-    const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+    const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
     const weeklyOff = weeklyOffs;
-
-    let visibleDays = [];
-    if (cycle === 'Weekly') {
-        const start = startOfWeek(viewDate);
-        visibleDays = eachDayOfInterval({ start, end: addDays(start, 6) });
-    } else if (cycle === 'Daily') {
-        visibleDays = [startOfDay(viewDate)];
-    } else {
-        const monthStart = startOfMonth(viewDate);
-        const monthEnd = endOfMonth(viewDate);
-        visibleDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
-    }
+    const visibleDays = getVisibleDaysForCycle(viewDate, cycle);
 
     // State for Details Modal
     const [selectedCell, setSelectedCell] = useState(null); // { date: Date, project: ProjectObj, logs: [] }
@@ -972,7 +1016,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             return;
         }
         try {
-            const formattedMonth = format(viewDate, 'yyyy-MM');
+            const formattedMonth = getTimesheetPeriodId(viewDate, cycle);
             await api.post('/timesheet/submit', { month: formattedMonth });
             toast.success('Timesheet Submitted Successfully');
             // Local State Update
@@ -1183,7 +1227,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     const getResolvedTimesheetEntryStatus = (status) => {
         if (timesheet?.status === 'APPROVED') return 'APPROVED';
-        if (timesheet?.status === 'REJECTED') return 'REJECTED';
+        if (isFullyRejectedTimesheet(timesheet)) return 'REJECTED';
         return status || 'PENDING';
     };
 
@@ -1213,7 +1257,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     const getDayStatusMeta = (logs = []) => {
         if (timesheet?.status === 'APPROVED' && logs.length > 0) return getLogStatusMeta('APPROVED');
-        if (timesheet?.status === 'REJECTED' && logs.length > 0) return getLogStatusMeta('REJECTED');
+        if (isFullyRejectedTimesheet(timesheet) && logs.length > 0) return getLogStatusMeta('REJECTED');
         if (logs.some(log => getResolvedTimesheetEntryStatus(log.status) === 'REJECTED')) return getLogStatusMeta('REJECTED');
         if (logs.length > 0 && logs.every(log => getResolvedTimesheetEntryStatus(log.status) === 'APPROVED')) return getLogStatusMeta('APPROVED');
         return getLogStatusMeta('PENDING');
@@ -1229,7 +1273,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
 
         const resolvedApprovalStatus = (timesheet?.status === 'APPROVED' ? 'APPROVED' : null)
-            || (timesheet?.status === 'REJECTED' ? 'REJECTED' : null)
+            || (isFullyRejectedTimesheet(timesheet) ? 'REJECTED' : null)
             || record.approvalStatus
             || 'PENDING';
 
@@ -1344,8 +1388,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             <div className="flex items-center space-x-2 text-sm text-slate-500">
                                                 <span>
                                                     {(() => {
-                                                        const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+                                                        const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
                                                         if (cycle === 'Weekly') return `Week ${format(viewDate, 'II')}, ${format(viewDate, 'yyyy')}`;
+                                                        if (cycle === 'Bi-Weekly') return `Bi-Week ${getTimesheetPeriodId(viewDate, cycle).split('-BW')[1]}, ${format(viewDate, 'yyyy')}`;
                                                         if (cycle === 'Daily') return format(viewDate, 'do MMMM yyyy');
                                                         return format(viewDate, 'MMMM yyyy');
                                                     })()}
@@ -1367,8 +1412,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         <div className="flex space-x-3 items-center">
                                             <Button
                                                 onClick={() => {
-                                                    const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+                                                    const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
                                                     if (cycle === 'Weekly') setViewDate(d => subWeeks(d, 1));
+                                                    else if (cycle === 'Bi-Weekly') setViewDate(d => addDays(d, -14));
                                                     else if (cycle === 'Daily') setViewDate(d => subDays(d, 1));
                                                     else setViewDate(d => subMonths(d, 1));
                                                 }}
@@ -1379,8 +1425,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             </Button>
                                             <Button
                                                 onClick={() => {
-                                                    const cycle = user?.company?.settings?.timesheet?.approvalCycle || 'Monthly';
+                                                    const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
                                                     if (cycle === 'Weekly') setViewDate(d => addWeeks(d, 1));
+                                                    else if (cycle === 'Bi-Weekly') setViewDate(d => addDays(d, 14));
                                                     else if (cycle === 'Daily') setViewDate(d => addDays(d, 1));
                                                     else setViewDate(d => addMonths(d, 1));
                                                 }}
@@ -1902,7 +1949,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 <Button
                                                     onClick={() => {
                                                         setIsAddingEntry(true);
-                                                        setNewEntry(prev => ({ ...prev, date: selectedCell.date }));
+                                                        setNewEntry(prev => ({ ...prev, date: getLocalDateInputValue(selectedCell.date) }));
                                                     }}
                                                     variant="ghost"
                                                     className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm h-auto"

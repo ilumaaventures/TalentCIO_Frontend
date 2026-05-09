@@ -569,7 +569,7 @@ const PhaseTemplates = () => {
                             </div>
                         </>
                     ) : (
-                        <div className="flex h-full min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                        <div className="flex h-full min-h-80 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
                             <div className="text-center">
                                 <Settings2 className="mx-auto text-slate-400" size={28} />
                                 <p className="mt-3 text-sm font-medium text-slate-700">Select a template to review its workflow.</p>
@@ -776,7 +776,7 @@ const PhaseTemplates = () => {
             )}
 
             {editorOpen && activePhaseDraft && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 p-4">
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/35 p-4">
                     <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
                         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                             <div>

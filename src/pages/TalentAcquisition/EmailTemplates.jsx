@@ -253,7 +253,10 @@ const EmailTemplates = () => {
     const [editorOpen, setEditorOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState(null);
 
-    const canManage = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const canManage = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.config.manage')
+        || user?.permissions?.includes('ta.email_template.manage')
+        || user?.permissions?.includes('ta.edit');
 
     const fetchTemplates = async () => {
         try {

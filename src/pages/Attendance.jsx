@@ -14,6 +14,8 @@ import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
+const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
+
 const DEFAULT_ATTENDANCE_SHIFTS = [
     {
         code: 'general',
@@ -51,7 +53,7 @@ const Attendance = () => {
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
     const [recentLogs, setRecentLogs] = useState([]);
-    const [logForm, setLogForm] = useState({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
+    const [logForm, setLogForm] = useState({ date: getLocalDateInputValue(), hours: '', minutes: '', description: '' });
     const [loggingTaskId, setLoggingTaskId] = useState(null);
     const [weeklyOffs, setWeeklyOffs] = useState(['Saturday', 'Sunday']);
     const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize', 'documents'
@@ -965,7 +967,7 @@ const Attendance = () => {
             setExpandedLogTaskId(null);
             setLoggingTaskId(null);
             setEditingLogId(null);
-            setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', description: '' });
+            setLogForm({ date: getLocalDateInputValue(), hours: '', minutes: '', description: '' });
         } else {
             setExpandedLogTaskId(taskId);
             setLoggingTaskId(taskId);
@@ -977,14 +979,14 @@ const Attendance = () => {
                 const m = Math.round((total - h) * 60);
 
                 setLogForm({
-                    date: new Date(existingLog.date).toISOString().split('T')[0],
+                    date: getLocalDateInputValue(existingLog.date),
                     hours: h,
                     minutes: m,
                     description: existingLog.description || ''
                 });
             } else {
                 setEditingLogId(null);
-                setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
+                setLogForm({ date: getLocalDateInputValue(), hours: '', minutes: '', description: '' });
             }
         }
     };
@@ -1025,7 +1027,7 @@ const Attendance = () => {
             setExpandedLogTaskId(null);
             setLoggingTaskId(null);
             setEditingLogId(null);
-            setLogForm({ date: new Date().toISOString().split('T')[0], hours: '', minutes: '', description: '' });
+            setLogForm({ date: getLocalDateInputValue(), hours: '', minutes: '', description: '' });
             fetchRecentLogs(); // Refresh logs
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to log work');
@@ -2102,11 +2104,11 @@ const AssignedTasksView = ({
 
     // Helper
     const getTodayLogForTask = (taskId) => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateInputValue();
         return recentLogs.find(log =>
             log.task &&
             log.task._id === taskId &&
-            new Date(log.date).toISOString().split('T')[0] === today
+            getLocalDateInputValue(log.date) === today
         );
     };
 

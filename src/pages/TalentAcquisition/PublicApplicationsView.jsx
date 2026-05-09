@@ -376,7 +376,19 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
     const [selectedTargetId, setSelectedTargetId] = useState(hiringRequestId);
     const [profileTarget, setProfileTarget] = useState(null);
 
-    const canEdit = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit');
+    const isAdmin = user?.roles?.includes('Admin');
+    const canReview = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.edit')
+        || user?.permissions?.includes('ta.candidate.make_decision');
+    const canTransfer = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.bulk_transfer')
+        || user?.permissions?.includes('ta.candidate.transfer');
 
     const fetchApplications = useCallback(async () => {
         try {
@@ -695,11 +707,11 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                                         </a>
                                                     )}
 
-                                                    {canEdit && application.reviewStatus !== 'Transferred' && (
+                                                    {(canReview || canTransfer) && application.reviewStatus !== 'Transferred' && (
                                                         <>
                                                             <div className="border-t border-slate-100 my-1" />
 
-                                                            {application.reviewStatus !== 'Shortlisted' && (
+                                                            {canReview && application.reviewStatus !== 'Shortlisted' && (
                                                                 <button
                                                                     onClick={() => handleReview(application._id, 'Shortlisted')}
                                                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-sky-700 hover:bg-sky-50 transition-colors text-left font-semibold"
@@ -709,7 +721,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                                                 </button>
                                                             )}
 
-                                                            {application.reviewStatus !== 'Rejected' && (
+                                                            {canReview && application.reviewStatus !== 'Rejected' && (
                                                                 <button
                                                                     onClick={() => handleReview(application._id, 'Rejected')}
                                                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-700 hover:bg-red-50 transition-colors text-left font-semibold"
@@ -719,7 +731,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                                                 </button>
                                                             )}
 
-                                                            {application.reviewStatus !== 'Pending Review' && (
+                                                            {canReview && application.reviewStatus !== 'Pending Review' && (
                                                                 <button
                                                                     onClick={() => handleReview(application._id, 'Pending Review')}
                                                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors text-left"
@@ -729,15 +741,19 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                                                 </button>
                                                             )}
 
-                                                            <div className="border-t border-slate-100 my-1" />
+                                                            {canTransfer && (
+                                                                <>
+                                                                    <div className="border-t border-slate-100 my-1" />
 
-                                                            <button
-                                                                onClick={() => openTransferModal(application)}
-                                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
-                                                            >
-                                                                <ArrowRight size={15} className="text-blue-500" />
-                                                                Transfer to Active Req.
-                                                            </button>
+                                                                    <button
+                                                                        onClick={() => openTransferModal(application)}
+                                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
+                                                                    >
+                                                                        <ArrowRight size={15} className="text-blue-500" />
+                                                                        Transfer to Active Req.
+                                                                    </button>
+                                                                </>
+                                                            )}
                                                         </>
                                                     )}
                                                 </div>,

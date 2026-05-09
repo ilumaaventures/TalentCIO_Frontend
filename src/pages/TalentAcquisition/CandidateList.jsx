@@ -78,7 +78,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
                 <div className="grid gap-4 md:grid-cols-3">
                     {[...Array(3)].map((_, index) => <Skeleton key={index} className="h-24 w-full rounded-2xl" />)}
                 </div>
-                <Skeleton className="h-[420px] w-full rounded-2xl" />
+                <Skeleton className="h-105 w-full rounded-2xl" />
             </div>
         );
     }
@@ -127,9 +127,26 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
-    const canMassMail = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
-    const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
-    const canManageTemplates = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const isAdmin = user?.roles?.includes('Admin');
+    const canEditCandidates = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit');
+    const canMakeDecisions = canEditCandidates || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
+    const canTransferCandidates = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.bulk_transfer')
+        || user?.permissions?.includes('ta.candidate.transfer');
+    const canMassMail = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.mass_mail')
+        || user?.permissions?.includes('ta.edit');
+    const canBulkTransfer = canTransferCandidates;
+    const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
     , []);
@@ -1096,7 +1113,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         </button>
                         {showToolbarMenu && (
                             <div
-                                className="absolute right-0 top-14 z-30 w-[280px] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
+                                className="absolute right-0 top-14 z-30 w-70 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
                                 onClick={(event) => event.stopPropagation()}
                             >
                                 <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
@@ -1130,7 +1147,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             </span>
                                             Send Mail
                                         </span>
-                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
                                             {selectedCandidateIds.length || candidates.length}
                                         </span>
                                     </button>
@@ -1149,7 +1166,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             </span>
                                             Transfer
                                         </span>
-                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
                                             {selectedCandidateIds.length}
                                         </span>
                                     </button>
@@ -1839,7 +1856,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     ) : (
                         <div className="bg-white rounded-xl border border-slate-200 mb-24">
                             <div className="w-full overflow-x-auto">
-                                <div className={selectedCandidateId ? "min-w-full" : "min-w-[1100px]"}>
+                                <div className={selectedCandidateId ? "min-w-full" : "min-w-275"}>
                                     <table className="w-full">
                                         <thead className="bg-slate-50 border-b border-slate-200">
                                             <tr key="header-row">
@@ -1977,14 +1994,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                         )}
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
-                                                                <div className="relative inline-block w-full max-w-[110px]">
+                                                                <div className="relative inline-block w-full max-w-27.5">
                                                                     {activePhase === 1 ? (
                                                                         <select
                                                                             value={candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None')}
                                                                             onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                            disabled={!canMakeDecisions}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -1997,7 +2014,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                            disabled={!canMakeDecisions}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -2011,7 +2028,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                            disabled={!canMakeDecisions}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
@@ -2033,7 +2050,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                             <td className="px-4 py-4 align-top">
                                                                 <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
                                                                     <span
-                                                                        className="font-bold text-blue-600 mb-0.5 max-w-[120px] truncate cursor-pointer hover:underline"
+                                                                        className="font-bold text-blue-600 mb-0.5 max-w-30 truncate cursor-pointer hover:underline"
                                                                         title={candidate.profilePulledBy || '-'}
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
@@ -2060,7 +2077,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                             {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
                                                                 <div
                                                                     data-legacy-action-menu-content="true"
-                                                                    className="fixed z-[9999] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
+                                                                    className="fixed z-9999 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
                                                                     style={menuPosition}
                                                                     onClick={(e) => e.stopPropagation()}
                                                                 >
@@ -2101,7 +2118,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         </a>
                                                                     )}
 
-                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {canEditCandidates && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleEdit(candidate);
@@ -2114,7 +2131,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         </button>
                                                                     )}
 
-                                                                    {activePhase === 1 && !isProfileSharedCandidate(candidate) && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {activePhase === 1 && !isProfileSharedCandidate(candidate) && canEditCandidates && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleMoveToNextPhase(candidate._id);
@@ -2140,7 +2157,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         </button>
                                                                     )}
 
-                                                                    {((activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None') || (activePhase === 2 && candidate.phase2Decision === 'Selected')) && !candidate.isTransferredToOnboarding && (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                                                                    {((activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None') || (activePhase === 2 && candidate.phase2Decision === 'Selected')) && !candidate.isTransferredToOnboarding && canTransferCandidates && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleTransferToOnboarding(candidate._id);
@@ -2189,7 +2206,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     >
                                         Previous
                                     </button>
-                                    <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
+                                    <span className="text-sm font-medium text-slate-600 min-w-25 text-center">
                                         Page {page} of {totalPages}
                                     </span>
                                     <button
@@ -2207,7 +2224,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                 {/* Right Side: Candidate Details Side Panel */}
                 {selectedCandidateId && (
-                    <div className={`${isSidePanelMaximized ? 'fixed top-0 right-0 bottom-0 left-0 md:left-64 z-[100]' : 'w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)]'} bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300`}>
+                    <div className={`${isSidePanelMaximized ? 'fixed top-0 right-0 bottom-0 left-0 md:left-64 z-100' : 'w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)]'} bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300`}>
                         {/* Side Panel Header */}
                         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 ">
                             <h2 className="text-lg font-bold text-slate-800">Quick Profile View</h2>

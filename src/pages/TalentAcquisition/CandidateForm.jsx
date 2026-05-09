@@ -1,9 +1,35 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, Upload, Loader, ArrowLeft, Plus, Trash, CheckCircle, ChevronDown, Search, Eye, EyeOff } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Skeleton from '../../components/Skeleton';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+
+const sortRequestPhases = (request) => (
+    [...(request?.phases || [])].sort((left, right) => (left.order || 0) - (right.order || 0))
+);
+
+const resolveDynamicPhase = (request, candidatePhaseState = null) => {
+    const phases = sortRequestPhases(request);
+    if (!phases.length) {
+        return null;
+    }
+
+    const currentPhaseId = String(candidatePhaseState?.currentPhaseId || '');
+    const currentPhaseOrder = Number(candidatePhaseState?.currentPhaseOrder || 0);
+
+    return phases.find((phase) => currentPhaseId && String(phase.phaseId || phase._id || '') === currentPhaseId)
+        || phases.find((phase) => currentPhaseOrder && Number(phase.order || 0) === currentPhaseOrder)
+        || phases[0];
+};
+
+const getDefaultDynamicStatus = (phase) => {
+    if (!Array.isArray(phase?.statusOptions) || phase.statusOptions.length === 0) {
+        return '';
+    }
+
+    return phase.statusOptions.find((option) => option?.isDefault)?.value || phase.statusOptions[0]?.value || '';
+};
 
 const CandidateForm = () => {
     const { hiringRequestId, candidateId } = useParams();
@@ -23,6 +49,13 @@ const CandidateForm = () => {
     const [uploading, setUploading] = useState(false);
     const [isParsing, setIsParsing] = useState(false);
     const [showResumePanel, setShowResumePanel] = useState(true);
+    const [requestMeta, setRequestMeta] = useState(null);
+    const [candidatePhaseState, setCandidatePhaseState] = useState({
+        currentPhaseId: '',
+        currentPhaseOrder: null,
+        currentPhaseName: '',
+        currentPhaseStatus: ''
+    });
 
     const [formData, setFormData] = useState({
         candidateName: '',
@@ -64,6 +97,13 @@ const CandidateForm = () => {
     // Duplicate detection state: { email: null | 'checking' | string, mobile: null | 'checking' | string }
     const [dupCheck, setDupCheck] = useState({ email: null, mobile: null });
     const [duplicateCandidates, setDuplicateCandidates] = useState({ email: null, mobile: null });
+
+    const isDynamicRequest = Boolean(requestMeta?.useDynamicPhases && Array.isArray(requestMeta?.phases) && requestMeta.phases.length > 0);
+    const activeDynamicPhase = useMemo(
+        () => resolveDynamicPhase(requestMeta, candidatePhaseState),
+        [requestMeta, candidatePhaseState]
+    );
+    const dynamicStatusOptions = Array.isArray(activeDynamicPhase?.statusOptions) ? activeDynamicPhase.statusOptions : [];
 
     const candidateHasResume = useCallback((candidate) => (
         Boolean(candidate?.resumeUrl && String(candidate.resumeUrl).startsWith('http'))
@@ -128,6 +168,13 @@ const CandidateForm = () => {
             const res = await api.get(`/ta/hiring-request/${hiringRequestId}`);
             let reqData = res.data;
             if (res.data?.success) reqData = res.data.data;
+            setRequestMeta(reqData || null);
+            setCandidatePhaseState({
+                currentPhaseId: '',
+                currentPhaseOrder: null,
+                currentPhaseName: '',
+                currentPhaseStatus: ''
+            });
 
             if (reqData?.requirements) {
                 const { mustHaveSkills, niceToHaveSkills } = reqData.requirements;
@@ -147,6 +194,18 @@ const CandidateForm = () => {
                     mustHaveSkills: allMustHave.map(s => ({ skill: s, experience: '' })),
                     niceToHaveSkills: allNiceToHave.map(s => ({ skill: s, experience: '' }))
                 }));
+            }
+
+            if (reqData?.useDynamicPhases) {
+                const firstPhase = resolveDynamicPhase(reqData);
+                const defaultStatus = getDefaultDynamicStatus(firstPhase);
+                if (defaultStatus) {
+                    setFormData((prev) => (
+                        prev.status
+                            ? prev
+                            : { ...prev, status: defaultStatus }
+                    ));
+                }
             }
         } catch (error) {
             console.error('Failed to fetch requisition skills', error);
@@ -171,10 +230,24 @@ const CandidateForm = () => {
     const fetchCandidateDetails = useCallback(async () => {
         try {
             setFetching(true);
-            const res = await api.get(`/ta/candidates/${hiringRequestId}`);
-            const candidate = res.data.candidates.find(c => c._id === candidateId);
+            const [candidateRes, requestRes] = await Promise.all([
+                api.get(`/ta/candidates/candidate/${candidateId}`),
+                api.get(`/ta/hiring-request/${hiringRequestId}`)
+            ]);
+            const candidate = candidateRes.data;
+            let reqData = requestRes.data;
+            if (requestRes.data?.success) reqData = requestRes.data.data;
 
             if (candidate) {
+                const nextCandidatePhaseState = {
+                    currentPhaseId: candidate.currentPhaseId || '',
+                    currentPhaseOrder: candidate.currentPhaseOrder || null,
+                    currentPhaseName: candidate.currentPhaseName || '',
+                    currentPhaseStatus: candidate.currentPhaseStatus || ''
+                };
+                setRequestMeta(reqData || null);
+                setCandidatePhaseState(nextCandidatePhaseState);
+
                 setFormData({
                     candidateName: candidate.candidateName || '',
                     email: candidate.email || '',
@@ -202,7 +275,9 @@ const CandidateForm = () => {
                     tatToJoin: candidate.tatToJoin || '',
                     noticePeriod: candidate.noticePeriod || '',
                     lastWorkingDay: candidate.lastWorkingDay ? new Date(candidate.lastWorkingDay).toISOString().split('T')[0] : '',
-                    status: candidate.status || 'Interested',
+                    status: reqData?.useDynamicPhases
+                        ? (candidate.currentPhaseStatus || '')
+                        : (candidate.status || 'Interested'),
                     remark: candidate.remark || '',
                     mustHaveSkills: candidate.mustHaveSkills || [],
                     niceToHaveSkills: candidate.niceToHaveSkills || []
@@ -237,6 +312,23 @@ const CandidateForm = () => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [candidateId, hiringRequestId]);
+
+    useEffect(() => {
+        if (!isDynamicRequest || !isAddMode || formData.status) {
+            return;
+        }
+
+        const defaultStatus = getDefaultDynamicStatus(activeDynamicPhase);
+        if (!defaultStatus) {
+            return;
+        }
+
+        setFormData((prev) => (
+            prev.status
+                ? prev
+                : { ...prev, status: defaultStatus }
+        ));
+    }, [activeDynamicPhase, formData.status, isAddMode, isDynamicRequest]);
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
@@ -594,7 +686,7 @@ const CandidateForm = () => {
                                             </label>
 
                                             {resumeFile && (
-                                                <div className="flex items-center gap-2 px-2 py-1 bg-white rounded border border-slate-200 min-w-0 flex-1 max-w-[250px]">
+                                                <div className="flex items-center gap-2 px-2 py-1 bg-white rounded border border-slate-200 min-w-0 flex-1 max-w-62.5">
                                                     <span className="text-[10px] text-slate-600 font-medium truncate">{resumeFile.name}</span>
                                                     {previewUrl && (
                                                         <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-blue-600 hover:underline shrink-0">
@@ -870,14 +962,44 @@ const CandidateForm = () => {
                                     <h3 className="text-sm font-bold text-slate-800 pb-1 border-b border-slate-200">6. Status & Remarks</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-[11px] font-bold text-slate-600 mb-1">Status *</label>
-                                            <select name="status" value={formData.status} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-700 bg-blue-50" required disabled={isViewMode}>
-                                                <option value="Interested">Interested</option>
-                                                <option value="In Interview">In Interview</option>
-                                                <option value="Not Interested">Not Interested</option>
-                                                <option value="Not Relevant">Not Relevant</option>
-                                                <option value="Not Picking">Not Picking</option>
-                                            </select>
+                                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                                {isDynamicRequest
+                                                    ? `Current Phase Status${activeDynamicPhase?.name ? ` (${activeDynamicPhase.name})` : ''}`
+                                                    : 'Status *'}
+                                            </label>
+                                            {isDynamicRequest ? (
+                                                <>
+                                                    <select
+                                                        name="status"
+                                                        value={formData.status}
+                                                        onChange={handleChange}
+                                                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-700 bg-blue-50 disabled:bg-slate-100 disabled:text-slate-500"
+                                                        disabled={isViewMode || dynamicStatusOptions.length === 0}
+                                                    >
+                                                        <option value="">
+                                                            {dynamicStatusOptions.length > 0 ? 'Select phase status' : 'No phase statuses configured'}
+                                                        </option>
+                                                        {dynamicStatusOptions.map((option) => (
+                                                            <option key={option.value} value={option.value}>
+                                                                {option.label || option.value}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <p className="mt-1 text-[10px] text-slate-500">
+                                                        {activeDynamicPhase
+                                                            ? `This requisition uses a dynamic workflow. Status updates apply to the candidate's current phase: ${activeDynamicPhase.name}.`
+                                                            : 'This requisition uses a dynamic workflow.'}
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                <select name="status" value={formData.status} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-700 bg-blue-50" required disabled={isViewMode}>
+                                                    <option value="Interested">Interested</option>
+                                                    <option value="In Interview">In Interview</option>
+                                                    <option value="Not Interested">Not Interested</option>
+                                                    <option value="Not Relevant">Not Relevant</option>
+                                                    <option value="Not Picking">Not Picking</option>
+                                                </select>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Internal Remark</label>
@@ -905,7 +1027,7 @@ const CandidateForm = () => {
 
                     {/* Resume Panel */}
                     {showResumePanel && (resumeFile || resumeUrl) && (
-                        <div className="w-1/2 sticky top-[88px] h-[calc(100vh-140px)] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden group flex flex-col animate-in slide-in-from-right-4 duration-500">
+                        <div className="w-1/2 sticky top-22 h-[calc(100vh-140px)] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden group flex flex-col animate-in slide-in-from-right-4 duration-500">
                             {/* PDF Previewer */}
                             <div className="flex-1 bg-slate-100 relative">
                                 <div className="absolute inset-0 flex items-center justify-center text-slate-400 z-0">

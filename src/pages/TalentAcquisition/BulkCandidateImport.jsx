@@ -931,7 +931,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                                             </span>
                                                         ) : '-'}
                                                     </td>
-                                                    <td className="px-4 py-3 text-sm text-slate-600 truncate max-w-[120px]">{row.data.offerCompany || '-'}</td>
+                                                    <td className="px-4 py-3 text-sm text-slate-600 truncate max-w-30">{row.data.offerCompany || '-'}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -1032,7 +1032,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                                     <tr key={idx} className="text-sm">
                                                         <td className="px-4 py-2 font-medium text-slate-600">{fail.rowNumber}</td>
                                                         <td className="px-4 py-2 text-slate-600">{fail.data.candidateName}</td>
-                                                        <td className="px-4 py-2 font-medium text-red-500 whitespace-normal break-words">{fail.apiError}</td>
+                                                        <td className="px-4 py-2 font-medium text-red-500 whitespace-normal wrap-break-word">{fail.apiError}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>

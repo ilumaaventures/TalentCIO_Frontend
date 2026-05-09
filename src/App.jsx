@@ -34,6 +34,7 @@ import HiringRequestDetails from './pages/TalentAcquisition/HiringRequestDetails
 import WorkflowSettings from './pages/TalentAcquisition/WorkflowSettings';
 import EmailTemplates from './pages/TalentAcquisition/EmailTemplates';
 import PhaseTemplates from './pages/TalentAcquisition/Settings/PhaseTemplates';
+import TAAccessSettings from './pages/TalentAcquisition/TAAccessSettings';
 import CandidateForm from './pages/TalentAcquisition/CandidateForm';
 import CandidateDetails from './pages/TalentAcquisition/CandidateDetails';
 import Phase1Candidates from './pages/TalentAcquisition/Phase1Candidates';
@@ -94,6 +95,7 @@ function App() {
                   <Route path="/ta/hiring-requests/:clientName" element={<HiringRequestList />} />
                   <Route path="/ta/workflows" element={<WorkflowSettings />} />
                   <Route path="/ta/settings/phase-templates" element={<PhaseTemplatesAccessWrapper />} />
+                  <Route path="/ta/settings/access" element={<TAAccessSettingsAccessWrapper />} />
                   <Route path="/ta/email-templates" element={<EmailTemplates />} />
                   <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                   <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
@@ -210,7 +212,9 @@ const PhaseTemplatesAccessWrapper = ({ Component: ComponentProp }) => {
 
   if (!user) return null;
 
-  const canAccess = user.roles?.includes('Admin');
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.config.manage') ||
+    user.permissions?.includes('*');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };
@@ -224,6 +228,22 @@ const TAAnalyticsAccessWrapper = ({ Component: ComponentProp }) => {
   const canAccess = user.roles?.includes('Admin') ||
     user.permissions?.includes('ta.analytics.global') ||
     user.isTAAnalyticsViewer;
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const TAAccessSettingsAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || TAAccessSettings;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.config.manage') ||
+    user.permissions?.includes('ta.edit') ||
+    user.permissions?.includes('role.update') ||
+    user.permissions?.includes('role.create') ||
+    user.permissions?.includes('*');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };

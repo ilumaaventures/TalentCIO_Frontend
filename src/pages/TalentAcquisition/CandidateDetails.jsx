@@ -338,7 +338,11 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
         const perms = user?.permissions || [];
         const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
-        const manageRounds = admin || perms.includes('ta.edit');
+        const manageRounds = admin
+            || perms.includes('ta.edit')
+            || perms.includes('ta.candidate.manage.assigned')
+            || perms.includes('ta.candidate.manage.all')
+            || perms.includes('ta.candidate.edit');
         return { hasSuperApprove: superApprove, canManageRounds: manageRounds };
     }, [user]);
 
@@ -540,7 +544,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                                         {/* Dropdown to change decision based on active phase */}
                                         {canManageRounds && (
-                                            <div className="mt-2 w-full max-w-[200px]">
+                                            <div className="mt-2 w-full max-w-50">
                                                 {currentPhase === 1 ? (
                                                     <select
                                                         value={candidate.decision || 'None'}
@@ -753,8 +757,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
                         <div
                             className={`scrollbar-hide bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${isSidePanel
-                                ? 'min-h-[420px] h-[68vh]'
-                                : 'min-h-[520px] h-[calc(100vh-190px)] max-h-[900px]'
+                                ? 'min-h-105 h-[68vh]'
+                                : 'min-h-130 h-[calc(100vh-190px)] max-h-225'
                                 }`}
                         >
                             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
@@ -992,7 +996,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             <div key={round._id} className="relative pl-8">
                                                 {/* Timeline Line */}
                                                 {index !== displayedRounds.length - 1 && (
-                                                    <div className="absolute top-8 bottom-[-2rem] left-3.5 w-0.5 bg-slate-200"></div>
+                                                    <div className="absolute top-8 -bottom-8 left-3.5 w-0.5 bg-slate-200"></div>
                                                 )}
 
                                                 {/* Dot */}
