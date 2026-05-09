@@ -31,8 +31,7 @@ const TA_DASHBOARD_VIEWS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'requisitions', label: 'Requisitions', icon: FolderKanban },
   { id: 'clients', label: 'Clients', icon: Building2 },
-  { id: 'interviews', label: 'Interviews', icon: CalendarClock },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+  { id: 'interviews', label: 'Interviews', icon: CalendarClock }
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -41,9 +40,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
   const canViewTAAnalytics = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global') || user?.isTAAnalyticsViewer;
   const requestedTATab = new URLSearchParams(location.search).get('tab');
-  const currentTATab = (!canViewTAAnalytics && (requestedTATab === 'overview' || requestedTATab === 'analytics'))
-    ? 'requisitions'
-    : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
+  const currentTATab = requestedTATab === 'analytics'
+    ? (canViewTAAnalytics ? 'overview' : 'requisitions')
+    : (!canViewTAAnalytics && requestedTATab === 'overview')
+      ? 'requisitions'
+      : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
   const isActive = (path) => location.pathname === path ? "zoho-sidebar-link-active" : "zoho-sidebar-link";
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
   const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (
@@ -178,7 +179,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className={sectionLabelClass}>Main</div>
               <div className="mb-6 space-y-1">
                 {TA_DASHBOARD_VIEWS.filter((item) => {
-                  if (!canViewTAAnalytics && (item.id === 'overview' || item.id === 'analytics')) {
+                  if (!canViewTAAnalytics && item.id === 'overview') {
                     return false;
                   }
 
