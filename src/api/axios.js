@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+const API_TIMEOUT_MS = 40000;
+
 const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  timeout: API_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -120,6 +123,10 @@ api.interceptors.response.use(
     if (error.config) {
       const requestKey = getRequestKey(error.config);
       pendingRequests.delete(requestKey);
+    }
+
+    if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+      console.warn('API Request Timed Out:', error.config?.url);
     }
 
     // Handle 429 (Too Many Requests) specifically
