@@ -49,6 +49,8 @@ const Sidebar = ({ isOpen, onClose }) => {
   const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (
     user?.roles?.includes('Admin')
     || user?.permissions?.includes('ta.view')
+    || user?.permissions?.includes('ta.candidate.manage.assigned')
+    || user?.permissions?.includes('ta.candidate.manage.all')
     || user?.permissions?.includes('ta.candidate.view')
     || user?.permissions?.includes('ta.candidate.edit')
     || user?.permissions?.includes('ta.candidate.evaluate_round')

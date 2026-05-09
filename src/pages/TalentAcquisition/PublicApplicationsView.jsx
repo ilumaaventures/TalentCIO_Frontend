@@ -378,9 +378,14 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
 
     const isAdmin = user?.roles?.includes('Admin');
     const canReview = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.edit')
         || user?.permissions?.includes('ta.candidate.make_decision');
     const canTransfer = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.bulk_transfer')
         || user?.permissions?.includes('ta.candidate.transfer');

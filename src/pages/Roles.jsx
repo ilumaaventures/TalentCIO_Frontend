@@ -7,12 +7,59 @@ import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 const LEGACY_HIDDEN_PERMISSION_KEYS = new Set(['ta.analytics.requisition']);
+const TA_PERMISSION_MODULE = 'TALENT ACQUISITION';
+const TA_PERMISSION_SUB_TABS = [
+    { id: 'all', label: 'All' },
+    { id: 'requisition', label: 'Requisition' },
+    { id: 'candidate', label: 'Candidates' },
+    { id: 'manage', label: 'Manage' }
+];
 
 const isVisiblePermission = (permission) =>
     permission &&
     permission.key !== '*' &&
     permission.isDeprecated !== true &&
     !LEGACY_HIDDEN_PERMISSION_KEYS.has(permission.key);
+
+const getTAPermissionCategory = (permissionKey = '') => {
+    if (permissionKey.startsWith('ta.requisition.')) return 'requisition';
+    if (permissionKey.startsWith('ta.candidate.')) return 'candidate';
+    return 'manage';
+};
+
+const filterTAPermissionsByTab = (permissionsList = [], activeTab = 'all') => {
+    if (activeTab === 'all') {
+        return permissionsList;
+    }
+
+    return permissionsList.filter((permission) => getTAPermissionCategory(permission.key) === activeTab);
+};
+
+const getTAPermissionSections = (permissionsList = [], activeTab = 'all') => {
+    const candidatePermissions = permissionsList.filter((permission) => permission.key.startsWith('ta.candidate.'));
+
+    if (activeTab === 'candidate') {
+        return [
+            { id: 'candidate', label: 'Candidate Permissions', permissions: candidatePermissions }
+        ].filter((section) => section.permissions.length > 0);
+    }
+
+    if (activeTab === 'all') {
+        const requisitionPermissions = permissionsList.filter((permission) => permission.key.startsWith('ta.requisition.'));
+        const managePermissions = permissionsList.filter((permission) => (
+            !permission.key.startsWith('ta.requisition.')
+            && !permission.key.startsWith('ta.candidate.')
+        ));
+
+        return [
+            { id: 'requisition', label: 'Requisition Permissions', permissions: requisitionPermissions },
+            { id: 'candidate', label: 'Candidate Permissions', permissions: candidatePermissions },
+            { id: 'manage', label: 'Manage Permissions', permissions: managePermissions }
+        ].filter((section) => section.permissions.length > 0);
+    }
+
+    return [{ id: activeTab, label: '', permissions: permissionsList }];
+};
 
 const sanitizeGroupedPermissions = (groupedPermissions = {}) =>
     Object.entries(groupedPermissions).reduce((accumulator, [moduleName, perms]) => {
@@ -39,6 +86,7 @@ const Roles = () => {
     const [roleName, setRoleName] = useState('');
     const [selectedPerms, setSelectedPerms] = useState([]);
     const [viewOnly, setViewOnly] = useState(false);
+    const [taPermissionTab, setTaPermissionTab] = useState('all');
     const initialFetchDoneRef = useRef(false);
     const ROLE_CACHE_TTL_MS = 45 * 1000;
     const cacheKey = `role_data_${user?._id}`;
@@ -231,6 +279,7 @@ const Roles = () => {
         setSelectedPerms(role.permissions.map(p => p._id));
         setEditingId(role._id);
         setViewOnly(isView);
+        setTaPermissionTab('all');
         setShowModal(true);
     };
 
@@ -239,6 +288,7 @@ const Roles = () => {
         setSelectedPerms([]);
         setEditingId(null);
         setViewOnly(false);
+        setTaPermissionTab('all');
         setShowModal(true);
     };
 
@@ -388,7 +438,13 @@ const Roles = () => {
                                         // Check if module is enabled
                                         return user?.company?.enabledModules?.includes(moduleKey);
                                     })
-                                    .map(([module, perms]) => (
+                                    .map(([module, perms]) => {
+                                        const isTAModule = module === TA_PERMISSION_MODULE;
+                                        const visiblePerms = isTAModule ? filterTAPermissionsByTab(perms, taPermissionTab) : perms;
+                                        const allVisibleSelected = visiblePerms.length > 0 && visiblePerms.every(p => selectedPerms.includes(p._id));
+                                        const taSections = isTAModule ? getTAPermissionSections(visiblePerms, taPermissionTab) : [];
+
+                                        return (
                                         <div key={module} className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
                                             <div className="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
                                                 <h4 className="font-bold text-slate-700 flex items-center">
@@ -398,35 +454,95 @@ const Roles = () => {
                                                 {!viewOnly && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => toggleGroup(perms)}
+                                                        onClick={() => toggleGroup(visiblePerms)}
                                                         className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline"
                                                     >
-                                                        {perms.every(p => selectedPerms.includes(p._id)) ? 'Unselect All' : 'Select All'}
+                                                        {allVisibleSelected ? 'Unselect All' : 'Select All'}
                                                     </button>
                                                 )}
                                             </div>
-                                            <div className="space-y-2">
-                                                {perms.map(p => (
-                                                    <label key={p._id} className={`flex items-start space-x-3 group ${viewOnly ? '' : 'cursor-pointer'}`}>
-                                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors mt-0.5 ${selectedPerms.includes(p._id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
-                                                            {selectedPerms.includes(p._id) && <Check size={12} className="text-white" />}
+                                            {isTAModule && (
+                                                <div className="mb-4 flex flex-wrap gap-2">
+                                                    {TA_PERMISSION_SUB_TABS.map((tab) => {
+                                                        const isActive = taPermissionTab === tab.id;
+                                                        const tabCount = filterTAPermissionsByTab(perms, tab.id).length;
+
+                                                        return (
+                                                            <button
+                                                                key={tab.id}
+                                                                type="button"
+                                                                onClick={() => setTaPermissionTab(tab.id)}
+                                                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                                    isActive
+                                                                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                                                                }`}
+                                                            >
+                                                                {tab.label} ({tabCount})
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            {isTAModule ? (
+                                                <div className="space-y-4">
+                                                    {taSections.map((section) => (
+                                                        <div key={section.id} className="space-y-2">
+                                                            {section.label ? (
+                                                                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                                                                    {section.label}
+                                                                </div>
+                                                            ) : null}
+                                                            {section.permissions.map((p) => (
+                                                                <label key={p._id} className={`flex items-start space-x-3 group ${viewOnly ? '' : 'cursor-pointer'}`}>
+                                                                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors mt-0.5 ${selectedPerms.includes(p._id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
+                                                                        {selectedPerms.includes(p._id) && <Check size={12} className="text-white" />}
+                                                                    </div>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="hidden"
+                                                                        checked={selectedPerms.includes(p._id)}
+                                                                        onChange={() => togglePermission(p._id)}
+                                                                        disabled={viewOnly}
+                                                                    />
+                                                                    <div className="flex-1">
+                                                                        <div className="text-sm font-medium text-slate-700">{p.key}</div>
+                                                                        <div className="text-xs text-slate-500">{p.description}</div>
+                                                                    </div>
+                                                                </label>
+                                                            ))}
                                                         </div>
-                                                        <input
-                                                            type="checkbox"
-                                                            className="hidden"
-                                                            checked={selectedPerms.includes(p._id)}
-                                                            onChange={() => togglePermission(p._id)}
-                                                            disabled={viewOnly}
-                                                        />
-                                                        <div className="flex-1">
-                                                            <div className="text-sm font-medium text-slate-700">{p.key}</div>
-                                                            <div className="text-xs text-slate-500">{p.description}</div>
+                                                    ))}
+                                                    {visiblePerms.length === 0 && (
+                                                        <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-xs text-slate-500">
+                                                            No permissions available in this Talent Acquisition sub-tab.
                                                         </div>
-                                                    </label>
-                                                ))}
-                                            </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {visiblePerms.map(p => (
+                                                        <label key={p._id} className={`flex items-start space-x-3 group ${viewOnly ? '' : 'cursor-pointer'}`}>
+                                                            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors mt-0.5 ${selectedPerms.includes(p._id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
+                                                                {selectedPerms.includes(p._id) && <Check size={12} className="text-white" />}
+                                                            </div>
+                                                            <input
+                                                                type="checkbox"
+                                                                className="hidden"
+                                                                checked={selectedPerms.includes(p._id)}
+                                                                onChange={() => togglePermission(p._id)}
+                                                                disabled={viewOnly}
+                                                            />
+                                                            <div className="flex-1">
+                                                                <div className="text-sm font-medium text-slate-700">{p.key}</div>
+                                                                <div className="text-xs text-slate-500">{p.description}</div>
+                                                            </div>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
+                                    )})}
                             </div>
                         </div>
 

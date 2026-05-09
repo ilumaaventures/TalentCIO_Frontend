@@ -128,10 +128,23 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
     const isAdmin = user?.roles?.includes('Admin');
-    const canEditCandidates = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.candidate.edit');
+    const canEditCandidates = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit');
     const canMakeDecisions = canEditCandidates || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
-    const canTransferCandidates = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.candidate.transfer');
-    const canMassMail = isAdmin || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
+    const canTransferCandidates = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.bulk_transfer')
+        || user?.permissions?.includes('ta.candidate.transfer');
+    const canMassMail = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.mass_mail')
+        || user?.permissions?.includes('ta.edit');
     const canBulkTransfer = canTransferCandidates;
     const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
     const isProfileSharedCandidate = useCallback((candidate) =>

@@ -338,7 +338,11 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
         const perms = user?.permissions || [];
         const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
-        const manageRounds = admin || perms.includes('ta.edit') || perms.includes('ta.candidate.edit');
+        const manageRounds = admin
+            || perms.includes('ta.edit')
+            || perms.includes('ta.candidate.manage.assigned')
+            || perms.includes('ta.candidate.manage.all')
+            || perms.includes('ta.candidate.edit');
         return { hasSuperApprove: superApprove, canManageRounds: manageRounds };
     }, [user]);
 

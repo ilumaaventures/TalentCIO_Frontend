@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BriefcaseBusiness, Loader, ShieldCheck, Users, UserSquare2 } from 'lucide-react';
+import { BriefcaseBusiness, Building2, Loader, ShieldCheck, Users, UserSquare2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import Skeleton from '../../components/Skeleton';
@@ -9,8 +9,56 @@ const tabOptions = [
     { id: 'overview', label: 'Overview', icon: ShieldCheck },
     { id: 'roles', label: 'Role Permissions', icon: UserSquare2 },
     { id: 'requisitions', label: 'Requisition Access', icon: BriefcaseBusiness },
+    { id: 'clients', label: 'Client Assignment', icon: Building2 },
     { id: 'users', label: 'User Coverage', icon: Users }
 ];
+
+const TA_PERMISSION_SUB_TABS = [
+    { id: 'all', label: 'All' },
+    { id: 'requisition', label: 'Requisition' },
+    { id: 'candidate', label: 'Candidates' },
+    { id: 'manage', label: 'Manage' }
+];
+
+const CLIENT_CARD_MIN_HEIGHT_PX = 84;
+const USER_CARD_MIN_HEIGHT_PX = 96;
+
+const getTAPermissionCategory = (permissionKey = '') => {
+    if (permissionKey.startsWith('ta.requisition.')) return 'requisition';
+    if (permissionKey.startsWith('ta.candidate.')) return 'candidate';
+    return 'manage';
+};
+
+const filterTAPermissionsByTab = (permissionsList = [], activeTab = 'all') => {
+    if (activeTab === 'all') return permissionsList;
+    return permissionsList.filter((permission) => getTAPermissionCategory(permission.key) === activeTab);
+};
+
+const getTAPermissionSections = (permissionsList = [], activeTab = 'all') => {
+    const candidatePermissions = permissionsList.filter((permission) => permission.key.startsWith('ta.candidate.'));
+
+    if (activeTab === 'candidate') {
+        return [
+            { id: 'candidate', label: 'Candidate Permissions', permissions: candidatePermissions }
+        ].filter((section) => section.permissions.length > 0);
+    }
+
+    if (activeTab === 'all') {
+        const requisitionPermissions = permissionsList.filter((permission) => permission.key.startsWith('ta.requisition.'));
+        const managePermissions = permissionsList.filter((permission) => (
+            !permission.key.startsWith('ta.requisition.')
+            && !permission.key.startsWith('ta.candidate.')
+        ));
+
+        return [
+            { id: 'requisition', label: 'Requisition Permissions', permissions: requisitionPermissions },
+            { id: 'candidate', label: 'Candidate Permissions', permissions: candidatePermissions },
+            { id: 'manage', label: 'Manage Permissions', permissions: managePermissions }
+        ].filter((section) => section.permissions.length > 0);
+    }
+
+    return [{ id: activeTab, label: '', permissions: permissionsList }];
+};
 
 const StatCard = ({ label, value, hint }) => (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -20,8 +68,8 @@ const StatCard = ({ label, value, hint }) => (
     </div>
 );
 
-const SectionCard = ({ title, description, children, actions = null }) => (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+const SectionCard = ({ title, description, children, actions = null, className = '', bodyClassName = '' }) => (
+    <section className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
             <div>
                 <h2 className="text-lg font-bold text-slate-900">{title}</h2>
@@ -29,7 +77,7 @@ const SectionCard = ({ title, description, children, actions = null }) => (
             </div>
             {actions}
         </div>
-        <div className="p-5">{children}</div>
+        <div className={`min-h-0 p-5 ${bodyClassName}`}>{children}</div>
     </section>
 );
 
@@ -42,14 +90,19 @@ const TAAccessSettings = () => {
     const [loading, setLoading] = useState(true);
     const [savingRoleId, setSavingRoleId] = useState('');
     const [savingRequestId, setSavingRequestId] = useState('');
+    const [savingClientName, setSavingClientName] = useState('');
     const [activeTab, setActiveTab] = useState('overview');
     const [permissions, setPermissions] = useState([]);
+    const [clients, setClients] = useState([]);
     const [roles, setRoles] = useState([]);
     const [users, setUsers] = useState([]);
     const [requests, setRequests] = useState([]);
     const [selectedRoleId, setSelectedRoleId] = useState('');
     const [selectedRolePermissionIds, setSelectedRolePermissionIds] = useState([]);
+    const [taPermissionTab, setTaPermissionTab] = useState('all');
     const [selectedRequestId, setSelectedRequestId] = useState('');
+    const [selectedClientName, setSelectedClientName] = useState('');
+    const [clientAssignedUserIdsDraft, setClientAssignedUserIdsDraft] = useState([]);
     const [requestAccessDraft, setRequestAccessDraft] = useState({
         recruiterId: '',
         assignedUsers: [],
@@ -63,11 +116,13 @@ const TAAccessSettings = () => {
             setLoading(true);
             const response = await api.get('/ta/settings/access/overview');
             const nextPermissions = response.data?.permissions || [];
+            const nextClients = response.data?.clients || [];
             const nextRoles = response.data?.roles || [];
             const nextUsers = response.data?.users || [];
             const nextRequests = response.data?.requests || [];
 
             setPermissions(nextPermissions);
+            setClients(nextClients);
             setRoles(nextRoles);
             setUsers(nextUsers);
             setRequests(nextRequests);
@@ -84,6 +139,13 @@ const TAAccessSettings = () => {
                     return current;
                 }
                 return nextRequests[0]?._id || '';
+            });
+
+            setSelectedClientName((current) => {
+                if (preserveSelections && current && nextClients.includes(current)) {
+                    return current;
+                }
+                return nextClients[0] || '';
             });
         } catch (error) {
             console.error('Failed to load TA access settings:', error);
@@ -108,6 +170,7 @@ const TAAccessSettings = () => {
             return;
         }
 
+        setTaPermissionTab('all');
         setSelectedRolePermissionIds(
             Array.isArray(selectedRole.taPermissions)
                 ? selectedRole.taPermissions.map((permission) => permission._id)
@@ -145,6 +208,23 @@ const TAAccessSettings = () => {
         });
     }, [selectedRequest]);
 
+    useEffect(() => {
+        if (!selectedClientName) {
+            setClientAssignedUserIdsDraft([]);
+            return;
+        }
+
+        setClientAssignedUserIdsDraft(
+            users
+                .filter((user) => (
+                    Array.isArray(user.taAssignedClients)
+                        ? user.taAssignedClients.includes(selectedClientName)
+                        : false
+                ))
+                .map((user) => user._id)
+        );
+    }, [selectedClientName, users]);
+
     const filteredUsers = useMemo(() => {
         const query = userSearch.trim().toLowerCase();
         if (!query) return users;
@@ -177,6 +257,15 @@ const TAAccessSettings = () => {
                 : [...current, permissionId]
         ));
     };
+
+    const visibleRolePermissions = useMemo(
+        () => filterTAPermissionsByTab(permissions, taPermissionTab),
+        [permissions, taPermissionTab]
+    );
+    const visibleRolePermissionSections = useMemo(
+        () => getTAPermissionSections(visibleRolePermissions, taPermissionTab),
+        [visibleRolePermissions, taPermissionTab]
+    );
 
     const handleSaveRolePermissions = async () => {
         if (!selectedRole) return;
@@ -221,6 +310,34 @@ const TAAccessSettings = () => {
         }
     };
 
+    const toggleClientUserAssignment = (userId) => {
+        setClientAssignedUserIdsDraft((current) => (
+            current.includes(userId)
+                ? current.filter((id) => id !== userId)
+                : [...current, userId]
+        ));
+    };
+
+    const handleSaveClientAssignments = async () => {
+        if (!selectedClientName) return;
+
+        try {
+            setSavingClientName(selectedClientName);
+            const response = await api.put('/ta/settings/access/clients/assignments', {
+                clientName: selectedClientName,
+                userIds: clientAssignedUserIdsDraft
+            });
+            const updatedUsers = response.data?.users || [];
+            setUsers(updatedUsers);
+            toast.success(response.data?.message || 'TA client assignments updated');
+        } catch (error) {
+            console.error('Failed to save TA client assignments:', error);
+            toast.error(error.response?.data?.message || 'Failed to update TA client assignments');
+        } finally {
+            setSavingClientName('');
+        }
+    };
+
     if (loading) {
         return (
             <div className="space-y-6">
@@ -241,7 +358,7 @@ const TAAccessSettings = () => {
                 <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-600">TA Settings</p>
                 <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">TA Access Settings</h1>
                 <p className="mt-2 max-w-3xl text-sm text-slate-500">
-                    Manage Talent Acquisition role permissions, requisition assignments, analytics viewers, and interviewer coverage from one place.
+                    Manage Talent Acquisition role permissions, client assignment, requisition sharing, analytics viewers, and interviewer coverage from one place.
                 </p>
             </div>
 
@@ -278,7 +395,7 @@ const TAAccessSettings = () => {
                 <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                     <SectionCard
                         title="User Coverage"
-                        description="See who currently participates in TA through requisition assignments, recruiter ownership, analytics visibility, or interview rounds."
+                        description="See who currently participates in TA through client assignment, requisition sharing, recruiter ownership, analytics visibility, or interview rounds."
                     >
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-slate-200">
@@ -287,6 +404,7 @@ const TAAccessSettings = () => {
                                         <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">User</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Roles</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Assigned</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Clients</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Recruiter</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Analytics</th>
                                         <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Interview Rounds</th>
@@ -301,6 +419,7 @@ const TAAccessSettings = () => {
                                             </td>
                                             <td className="px-4 py-3 text-sm text-slate-600">{user.roles.join(', ') || '-'}</td>
                                             <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.assignedRequests}</td>
+                                            <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.clientAssignments || 0}</td>
                                             <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.recruiterOn}</td>
                                             <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.analyticsViewerOn}</td>
                                             <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.interviewRoundsAssigned}</td>
@@ -396,29 +515,69 @@ const TAAccessSettings = () => {
                                 System roles are shown here for visibility, but they cannot be edited from TA Access Settings.
                             </div>
                         ) : (
-                            <div className="grid gap-3 md:grid-cols-2">
-                                {permissions.map((permission) => {
-                                    const isChecked = selectedRolePermissionIds.includes(permission._id);
-                                    return (
-                                        <label
-                                            key={permission._id}
-                                            className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
-                                                isChecked ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={isChecked}
-                                                onChange={() => toggleRolePermission(permission._id)}
-                                                className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-800">{permission.key}</p>
-                                                <p className="mt-1 text-xs text-slate-500">{permission.description || 'Talent Acquisition permission'}</p>
+                            <div className="space-y-4">
+                                <div className="flex flex-wrap gap-2">
+                                    {TA_PERMISSION_SUB_TABS.map((tab) => {
+                                        const isActive = taPermissionTab === tab.id;
+                                        const tabCount = filterTAPermissionsByTab(permissions, tab.id).length;
+
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => setTaPermissionTab(tab.id)}
+                                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                    isActive
+                                                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                                                }`}
+                                            >
+                                                {tab.label} ({tabCount})
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="space-y-4">
+                                {visibleRolePermissionSections.map((section) => (
+                                    <div key={section.id} className="space-y-3">
+                                        {section.label ? (
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                                                {section.label}
                                             </div>
-                                        </label>
-                                    );
-                                })}
+                                        ) : null}
+                                        <div className="grid gap-3 md:grid-cols-2">
+                                        {section.permissions.map((permission) => {
+                                            const isChecked = selectedRolePermissionIds.includes(permission._id);
+                                            return (
+                                                <label
+                                                    key={permission._id}
+                                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
+                                                        isChecked ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => toggleRolePermission(permission._id)}
+                                                        className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-800">{permission.key}</p>
+                                                        <p className="mt-1 text-xs text-slate-500">{permission.description || 'Talent Acquisition permission'}</p>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                        </div>
+                                    </div>
+                                ))}
+                                {visibleRolePermissions.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                                        No permissions available in this Talent Acquisition sub-tab.
+                                    </div>
+                                ) : null}
+                                </div>
                             </div>
                         )}
                     </SectionCard>
@@ -536,10 +695,153 @@ const TAAccessSettings = () => {
                 </div>
             )}
 
+            {activeTab === 'clients' && (
+                <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <SectionCard
+                        title="Clients"
+                        description="Select a client to view and manage which users are assigned to it."
+                    >
+                        <div
+                            className="space-y-2"
+                        >
+                            {clients.map((clientName) => {
+                                const assignedCount = users.filter((user) => (
+                                    Array.isArray(user.taAssignedClients)
+                                        ? user.taAssignedClients.includes(clientName)
+                                        : false
+                                )).length;
+
+                                return (
+                                    <button
+                                        key={clientName}
+                                        type="button"
+                                        onClick={() => setSelectedClientName(clientName)}
+                                        className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                                            selectedClientName === clientName
+                                                ? 'border-blue-200 bg-blue-50'
+                                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                        }`}
+                                        style={{ minHeight: `${CLIENT_CARD_MIN_HEIGHT_PX}px` }}
+                                    >
+                                        <p className="font-semibold text-slate-800">{clientName}</p>
+                                        <p className="mt-2 text-[11px] font-semibold text-slate-500">
+                                            {assignedCount} users assigned
+                                        </p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </SectionCard>
+
+                    <SectionCard
+                        title={selectedClientName ? `${selectedClientName} User Assignment` : 'Client Assignment'}
+                        description="Choose which users should automatically access the selected client's requisitions and candidates."
+                        actions={selectedClientName ? (
+                            <button
+                                type="button"
+                                onClick={handleSaveClientAssignments}
+                                disabled={savingClientName === selectedClientName}
+                                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            >
+                                {savingClientName === selectedClientName ? <Loader size={16} className="animate-spin" /> : null}
+                                Save Client Assignment
+                            </button>
+                        ) : null}
+                    >
+                        {!selectedClientName ? (
+                            <p className="text-sm text-slate-500">Select a client to begin.</p>
+                        ) : clients.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                                No TA clients are available yet. Create requisitions with client names first, then assign those clients here.
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Users</p>
+                                        <p className="mt-2 text-sm font-semibold text-slate-800">{clientAssignedUserIdsDraft.length}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Available Users</p>
+                                        <p className="mt-2 text-sm font-semibold text-slate-800">{users.length}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Access Behavior</p>
+                                        <p className="mt-2 text-sm font-semibold text-slate-800">Assigned users get access to this client's requisitions and candidates</p>
+                                    </div>
+                                </div>
+
+                                <div
+                                    className="md:hidden"
+                                >
+                                    <div className="grid gap-3">
+                                        {users.map((user) => {
+                                            const isChecked = clientAssignedUserIdsDraft.includes(user._id);
+                                            return (
+                                                <label
+                                                    key={user._id}
+                                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
+                                                        isChecked ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                    style={{ minHeight: `${USER_CARD_MIN_HEIGHT_PX}px` }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => toggleClientUserAssignment(user._id)}
+                                                        className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-800">{formatUserName(user)}</p>
+                                                        <p className="mt-1 text-xs text-slate-500">{user.email}</p>
+                                                        <p className="mt-2 text-xs text-slate-500">Grant this user automatic TA access for {selectedClientName}.</p>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div
+                                    className="hidden md:block"
+                                >
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        {users.map((user) => {
+                                            const isChecked = clientAssignedUserIdsDraft.includes(user._id);
+                                            return (
+                                                <label
+                                                    key={user._id}
+                                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
+                                                        isChecked ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                    style={{ minHeight: `${USER_CARD_MIN_HEIGHT_PX}px` }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => toggleClientUserAssignment(user._id)}
+                                                        className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-800">{formatUserName(user)}</p>
+                                                        <p className="mt-1 text-xs text-slate-500">{user.email}</p>
+                                                        <p className="mt-2 text-xs text-slate-500">Grant this user automatic TA access for {selectedClientName}.</p>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </SectionCard>
+                </div>
+            )}
+
             {activeTab === 'users' && (
                 <SectionCard
                     title="User Access Coverage"
-                    description="Review how Talent Acquisition work is distributed across users through role permissions, requisition assignments, and interview rounds."
+                    description="Review how Talent Acquisition work is distributed across users through role permissions, client assignment, requisition sharing, and interview rounds."
                 >
                     <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <input
@@ -559,6 +861,7 @@ const TAAccessSettings = () => {
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">User</th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Roles</th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Requests</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Clients</th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Recruiter On</th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Hiring Manager On</th>
                                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Analytics Viewer On</th>
@@ -574,6 +877,7 @@ const TAAccessSettings = () => {
                                         </td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{user.roles.join(', ') || '-'}</td>
                                         <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.assignedRequests}</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.clientAssignments || 0}</td>
                                         <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.recruiterOn}</td>
                                         <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.hiringManagerOn}</td>
                                         <td className="px-4 py-3 text-sm font-semibold text-slate-700">{user.analyticsViewerOn}</td>

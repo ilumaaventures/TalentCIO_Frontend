@@ -183,12 +183,28 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [savingCardVisibility, setSavingCardVisibility] = useState(false);
 
     const isAdmin = user?.roles?.includes('Admin');
-    const canEdit = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.candidate.edit');
+    const canEdit = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit');
     const canMakeDecisions = canEdit || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
     const canManualAdvance = isAdmin || canEdit;
-    const canCreate = isAdmin || user?.permissions?.includes('ta.create');
-    const canMassMail = isAdmin || user?.permissions?.includes('ta.mass_mail') || user?.permissions?.includes('ta.edit');
-    const canBulkTransfer = isAdmin || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.candidate.transfer');
+    const canCreate = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.create');
+    const canMassMail = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.mass_mail')
+        || user?.permissions?.includes('ta.edit');
+    const canBulkTransfer = isAdmin
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.bulk_transfer')
+        || user?.permissions?.includes('ta.candidate.transfer');
     const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
 
     useEffect(() => {
