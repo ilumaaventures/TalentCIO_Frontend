@@ -31,8 +31,7 @@ const TA_DASHBOARD_VIEWS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'requisitions', label: 'Requisitions', icon: FolderKanban },
   { id: 'clients', label: 'Clients', icon: Building2 },
-  { id: 'interviews', label: 'Interviews', icon: CalendarClock },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+  { id: 'interviews', label: 'Interviews', icon: CalendarClock }
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -41,10 +40,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
   const canViewTAAnalytics = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global') || user?.isTAAnalyticsViewer;
   const requestedTATab = new URLSearchParams(location.search).get('tab');
-  const currentTATab = (!canViewTAAnalytics && (requestedTATab === 'overview' || requestedTATab === 'analytics'))
-    ? 'requisitions'
-    : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
-  const isActive = (path) => location.pathname === path ? "zoho-sidebar-link-active" : "zoho-sidebar-link";
+  const currentTATab = requestedTATab === 'analytics'
+    ? (canViewTAAnalytics ? 'overview' : 'requisitions')
+    : (!canViewTAAnalytics && requestedTATab === 'overview')
+      ? 'requisitions'
+      : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
   const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (
     user?.roles?.includes('Admin')
@@ -76,8 +76,30 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showMainSection = showDashboard || showAttendance || showLeaves || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
-  const sectionLabelClass = 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]';
-  const sidebarCardClass = 'rounded-2xl border border-white/6 bg-white/[0.03]';
+  const sectionLabelClass = isTalentAcquisitionRoute
+    ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-100/55'
+    : 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]';
+  const sidebarCardClass = isTalentAcquisitionRoute
+    ? 'rounded-2xl border border-white/12 bg-white/[0.07] backdrop-blur-sm'
+    : 'rounded-2xl border border-white/6 bg-white/[0.03]';
+  const sidebarShellClass = isTalentAcquisitionRoute
+    ? 'bg-gradient-to-b from-[#134a85] via-[#0f3d70] to-[#0a2f57] border-r border-blue-200/15'
+    : 'bg-[#111315] border-r border-white/6';
+  const sidebarLinkClass = isTalentAcquisitionRoute
+    ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-blue-100/80 transition-all duration-200 hover:bg-white/10 hover:text-white'
+    : 'zoho-sidebar-link';
+  const sidebarLinkActiveClass = isTalentAcquisitionRoute
+    ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold text-white bg-white/[0.16] shadow-[0_10px_24px_rgba(6,22,48,0.28)] ring-1 ring-white/10'
+    : 'zoho-sidebar-link-active';
+  const sidebarSubtleTextClass = isTalentAcquisitionRoute ? 'text-blue-100/55' : 'text-[#6d6258]';
+  const sidebarDividerClass = isTalentAcquisitionRoute ? 'border-white/10' : 'border-white/6';
+  const sidebarIconBadgeClass = isTalentAcquisitionRoute
+    ? 'flex h-8 w-8 items-center justify-center rounded-lg bg-white/12 text-white'
+    : 'flex h-8 w-8 items-center justify-center rounded-lg bg-white/6 text-slate-200';
+  const sidebarLogoutClass = isTalentAcquisitionRoute
+    ? 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/75 transition-colors hover:bg-white/10 hover:text-white'
+    : 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition-colors hover:bg-white/5 hover:text-white';
+  const getSidebarLinkClass = (isLinkActive) => (isLinkActive ? sidebarLinkActiveClass : sidebarLinkClass);
 
   const taShortcuts = [
     {
@@ -130,12 +152,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       {overlay}
       <aside
         className={`
-            bg-[#111315] text-white flex flex-col shadow-xl z-50 fixed inset-y-0 left-0 border-r border-white/6
+            ${sidebarShellClass} text-white flex flex-col shadow-xl z-50 fixed inset-y-0 left-0
             transition-transform duration-300 ease-in-out md:translate-x-0 w-64
             ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <div className="flex items-start justify-between border-b border-white/6 px-5 py-5">
+        <div className={`flex items-start justify-between px-5 py-5 ${sidebarDividerClass ? `border-b ${sidebarDividerClass}` : ''}`}>
           <div className="min-w-0">
             <img
               src="/dark-logo-compact.png"
@@ -155,15 +177,15 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className={`${sidebarCardClass} mb-6 p-3`}>
                 <Link
                   to="/"
-                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-200 transition hover:bg-white/5"
+                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-white transition hover:bg-white/10"
                   onClick={onClose}
                 >
                   <span className="flex items-center gap-3">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/6 text-slate-200">
+                    <span className={sidebarIconBadgeClass}>
                       <BriefcaseBusiness size={16} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6d6258]">
+                      <span className={`block text-[10px] font-semibold uppercase tracking-[0.18em] ${sidebarSubtleTextClass}`}>
                         Workspace
                       </span>
                       <span className="block truncate text-[13px] font-semibold text-white">
@@ -178,7 +200,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className={sectionLabelClass}>Main</div>
               <div className="mb-6 space-y-1">
                 {TA_DASHBOARD_VIEWS.filter((item) => {
-                  if (!canViewTAAnalytics && (item.id === 'overview' || item.id === 'analytics')) {
+                  if (!canViewTAAnalytics && item.id === 'overview') {
                     return false;
                   }
 
@@ -191,7 +213,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                     <Link
                       key={item.id}
                       to={`/ta?tab=${item.id}`}
-                      className={isDashboardViewActive ? "zoho-sidebar-link-active" : "zoho-sidebar-link"}
+                      className={getSidebarLinkClass(isDashboardViewActive)}
                       onClick={onClose}
                     >
                       <Icon size={18} />
@@ -209,7 +231,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <Link
                     key={item.label}
                     to={item.to}
-                    className={item.isActive ? "zoho-sidebar-link-active" : "zoho-sidebar-link"}
+                    className={getSidebarLinkClass(item.isActive)}
                     onClick={onClose}
                   >
                     <Icon size={18} />
@@ -222,37 +244,37 @@ const Sidebar = ({ isOpen, onClose }) => {
             <>
               {showMainSection && <div className={sectionLabelClass}>Main</div>}
               {showDashboard && (
-                <Link to="/" className={isActive('/')} onClick={onClose}>
+                <Link to="/" className={getSidebarLinkClass(location.pathname === '/')} onClick={onClose}>
                   <Users size={18} />
                   <span>Dashboard</span>
                 </Link>
               )}
               {showAttendance && (
-                <Link to="/attendance" className={isActive('/attendance')} onClick={onClose}>
+                <Link to="/attendance" className={getSidebarLinkClass(location.pathname === '/attendance')} onClick={onClose}>
                   <Clock size={18} />
                   <span>Attendance</span>
                 </Link>
               )}
               {showLeaves && (
-                <Link to="/leaves" className={isActive('/leaves')} onClick={onClose}>
+                <Link to="/leaves" className={getSidebarLinkClass(location.pathname === '/leaves')} onClick={onClose}>
                   <FileText size={18} />
                   <span>Leaves</span>
                 </Link>
               )}
               {showTimesheet && (
-                <Link to="/timesheet" className={isActive('/timesheet')} onClick={onClose}>
+                <Link to="/timesheet" className={getSidebarLinkClass(location.pathname === '/timesheet')} onClick={onClose}>
                   <Calendar size={18} />
                   <span>Timesheet</span>
                 </Link>
               )}
-              <Link to="/holidays" className={isActive('/holidays')} onClick={onClose}>
+              <Link to="/holidays" className={getSidebarLinkClass(location.pathname === '/holidays')} onClick={onClose}>
                 <CalendarDays size={18} />
                 <span>Holidays</span>
               </Link>
               {showMeetings && (
                 <Link
                   to={(user?.roles?.includes('Admin') || user?.permissions?.includes('discussion.read')) ? "/discussions" : "/meetings"}
-                  className={(location.pathname === '/meetings' || location.pathname.startsWith('/discussions')) ? "zoho-sidebar-link-active" : "zoho-sidebar-link"}
+                  className={getSidebarLinkClass(location.pathname === '/meetings' || location.pathname.startsWith('/discussions'))}
                   onClick={onClose}
                 >
                   <ClipboardList size={18} />
@@ -260,7 +282,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </Link>
               )}
               {showHelpDesk && (
-                <Link to="/helpdesk" className={isActive('/helpdesk')} onClick={onClose}>
+                <Link to="/helpdesk" className={getSidebarLinkClass(location.pathname === '/helpdesk')} onClick={onClose}>
                   <LifeBuoy size={18} />
                   <span>Help Desk</span>
                 </Link>
@@ -269,7 +291,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               {canAccessTA && (
                 <Link
                   to="/ta"
-                  className={isTalentAcquisitionRoute ? "zoho-sidebar-link-active" : "zoho-sidebar-link"}
+                  className={getSidebarLinkClass(isTalentAcquisitionRoute)}
                   onClick={onClose}
                 >
                   <Briefcase size={18} />
@@ -279,13 +301,13 @@ const Sidebar = ({ isOpen, onClose }) => {
 
               {showOrganizationSection && <div className="mt-8"><div className={sectionLabelClass}>Manage</div></div>}
               {showEmployees && (
-                <Link to="/users" className={isActive('/users')} onClick={onClose}>
+                <Link to="/users" className={getSidebarLinkClass(location.pathname === '/users')} onClick={onClose}>
                   <Users size={18} />
                   <span>Employees</span>
                 </Link>
               )}
               {showOnboarding && (
-                <Link to="/onboarding" className={isActive('/onboarding')} onClick={onClose}>
+                <Link to="/onboarding" className={getSidebarLinkClass(location.pathname === '/onboarding')} onClick={onClose}>
                   <UserPlus size={18} />
                   <span>Onboarding</span>
                 </Link>
@@ -296,20 +318,20 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <div className="mt-8"><div className={sectionLabelClass}>Projects</div></div>
 
                   {showBusinessUnits && (
-                    <Link to="/business-units" className={isActive('/business-units')} onClick={onClose}>
+                    <Link to="/business-units" className={getSidebarLinkClass(location.pathname === '/business-units')} onClick={onClose}>
                       <Building size={18} />
                       <span>Business Units</span>
                     </Link>
                   )}
 
                   {showClients && (
-                    <Link to="/clients" className={isActive('/clients')} onClick={onClose}>
+                    <Link to="/clients" className={getSidebarLinkClass(location.pathname === '/clients')} onClick={onClose}>
                       <Users size={18} />
                       <span>Clients</span>
                     </Link>
                   )}
 
-                  {showProjects && <Link to="/projects" className={isActive('/projects')} onClick={onClose}>
+                  {showProjects && <Link to="/projects" className={getSidebarLinkClass(location.pathname === '/projects')} onClick={onClose}>
                     <Briefcase size={18} />
                     <span>Projects</span>
                   </Link>}
@@ -319,10 +341,10 @@ const Sidebar = ({ isOpen, onClose }) => {
           )}
         </div>
 
-        <div className="border-t border-white/6 p-4">
+        <div className={`p-4 border-t ${sidebarDividerClass}`}>
           <Link
             to="/profile"
-            className={`${sidebarCardClass} flex items-center gap-3 p-3 transition-colors hover:bg-white/[0.05] group`}
+            className={`${sidebarCardClass} flex items-center gap-3 p-3 transition-colors group ${isTalentAcquisitionRoute ? 'hover:bg-white/10' : 'hover:bg-white/[0.05]'}`}
             onClick={onClose}
           >
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-white/10 text-xs font-bold text-white ring-1 ring-white/10">
@@ -340,7 +362,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="truncate text-sm font-semibold text-white">{user?.firstName || userDisplayName}</div>
 
               {user?.reportingManagers && user.reportingManagers.length > 0 && (
-                <div className="mt-0.5 truncate text-[10px] uppercase tracking-[0.16em] text-[#6d6258]">
+                <div className={`mt-0.5 truncate text-[10px] uppercase tracking-[0.16em] ${sidebarSubtleTextClass}`}>
                   Reports to: {user.reportingManagers.map(m => m.firstName).join(', ')}
                 </div>
               )}
@@ -348,7 +370,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           </Link>
           <button
             onClick={logout}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+            className={sidebarLogoutClass}
           >
             <LogOut size={14} /> <span>Log Out</span>
           </button>

@@ -201,11 +201,15 @@ const CreateHiringRequest = () => {
             setPhaseTemplates(fetchedTemplates);
             setSelectedPhaseTemplateId((current) => {
                 if (current && current !== NO_TEMPLATE_OPTION) {
+                    const templateStillExists = fetchedTemplates.some((template) => template._id === current);
+                    return templateStillExists ? current : NO_TEMPLATE_OPTION;
+                }
+
+                if (current === NO_TEMPLATE_OPTION) {
                     return current;
                 }
 
-                const defaultTemplate = fetchedTemplates.find((template) => template.isDefault) || fetchedTemplates[0];
-                return defaultTemplate?._id || NO_TEMPLATE_OPTION;
+                return NO_TEMPLATE_OPTION;
             });
         } catch (error) {
             console.error("Failed to fetch workflow data", error);

@@ -153,6 +153,19 @@ const getSummaryCardMeta = (cardKey, label) => {
     return { icon: FileText, color: 'blue' };
 };
 
+const hasUploadedResumeFile = (resumeUrl) => (
+    typeof resumeUrl === 'string' &&
+    /^https?:\/\//i.test(resumeUrl.trim())
+);
+
+const getCandidateUploadType = (candidate) => (
+    hasUploadedResumeFile(candidate?.resumeUrl) ? 'CV' : 'Excel'
+);
+
+const getCandidateUploadedByName = (candidate) => (
+    `${candidate?.uploadedBy?.firstName || ''} ${candidate?.uploadedBy?.lastName || ''}`.trim()
+);
+
 const DynamicPhaseView = ({ hiringRequest }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -165,6 +178,8 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [statusFilter, setStatusFilter] = useState('All');
     const [decisionFilter, setDecisionFilter] = useState('All');
     const [pulledByFilter, setPulledByFilter] = useState('All');
+    const [uploadedByFilter, setUploadedByFilter] = useState('All');
+    const [uploadTypeFilter, setUploadTypeFilter] = useState('All');
     const [pulledByUsers, setPulledByUsers] = useState([]);
     const [actionLoadingId, setActionLoadingId] = useState('');
     const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
@@ -354,6 +369,20 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         return options;
     }, [pulledByFilter, pulledByUsers]);
 
+    const uploadedByOptions = useMemo(() => {
+        const options = [...new Set(
+            candidates
+                .map((candidate) => getCandidateUploadedByName(candidate))
+                .filter(Boolean)
+        )].sort((left, right) => left.localeCompare(right));
+
+        if (uploadedByFilter !== 'All' && uploadedByFilter && !options.includes(uploadedByFilter)) {
+            return [...options, uploadedByFilter].sort((left, right) => left.localeCompare(right));
+        }
+
+        return options;
+    }, [candidates, uploadedByFilter]);
+
     useEffect(() => {
         if (pulledByFilter !== 'All' && !pulledByOptions.includes(pulledByFilter)) {
             setPulledByFilter('All');
@@ -370,9 +399,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const matchesStatus = statusFilter === 'All' || phaseEntry?.status === statusFilter;
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
-            return matchesSearch && matchesStatus && matchesDecision && matchesPulledBy;
+            const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
+            const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
+            return matchesSearch && matchesStatus && matchesDecision && matchesPulledBy && matchesUploadedBy && matchesUploadType;
         })
-    ), [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, statusFilter]);
+    ), [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, statusFilter, uploadedByFilter, uploadTypeFilter]);
 
     useEffect(() => {
         const visibleIds = new Set(phaseCandidates.map((candidate) => candidate._id));
@@ -390,14 +421,16 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
-            return matchesSearch && matchesDecision && matchesPulledBy;
+            const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
+            const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
+            return matchesSearch && matchesDecision && matchesPulledBy && matchesUploadedBy && matchesUploadType;
         });
 
         return (activePhase?.statusOptions || []).map((statusOption) => ({
             ...statusOption,
             count: summaryBase.filter((candidate) => getPhaseEntryForOrder(candidate, activePhase?.order)?.status === statusOption.value).length
         }));
-    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter]);
+    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, uploadedByFilter, uploadTypeFilter]);
 
     const decisionSummary = useMemo(() => {
         const summaryBase = phaseCandidates.filter((candidate) => {
@@ -408,14 +441,16 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesStatus = statusFilter === 'All' || phaseStatus === statusFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
-            return matchesSearch && matchesStatus && matchesPulledBy;
+            const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
+            const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
+            return matchesSearch && matchesStatus && matchesPulledBy && matchesUploadedBy && matchesUploadType;
         });
 
         return (activePhase?.decisionOptions || []).map((decisionOption) => ({
             ...decisionOption,
             count: summaryBase.filter((candidate) => (getPhaseEntryForOrder(candidate, activePhase?.order)?.decision || 'None') === decisionOption.value).length
         }));
-    }, [activePhase, debouncedSearch, phaseCandidates, pulledByFilter, statusFilter]);
+    }, [activePhase, debouncedSearch, phaseCandidates, pulledByFilter, statusFilter, uploadedByFilter, uploadTypeFilter]);
 
     const totalSourcedCount = useMemo(() => {
         return phaseCandidates.filter((candidate) => {
@@ -426,9 +461,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
-            return matchesSearch && matchesDecision && matchesPulledBy;
+            const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
+            const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
+            return matchesSearch && matchesDecision && matchesPulledBy && matchesUploadedBy && matchesUploadType;
         }).length;
-    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter]);
+    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, uploadedByFilter, uploadTypeFilter]);
 
     const interviewsCount = useMemo(() => {
         return phaseCandidates.filter((candidate) => {
@@ -440,9 +477,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
             const rounds = (candidate.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(activePhase?.order || 1));
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
-            return matchesSearch && matchesDecision && matchesPulledBy && rounds.length > 0;
+            const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
+            const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
+            return matchesSearch && matchesDecision && matchesPulledBy && matchesUploadedBy && matchesUploadType && rounds.length > 0;
         }).length;
-    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter]);
+    }, [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, uploadedByFilter, uploadTypeFilter]);
 
     const activeVisibleCardKeys = useMemo(
         () => getVisibleCardKeysForPhase(activePhase, cardVisibilityConfig),
@@ -1260,7 +1299,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="grid flex-1 gap-4 md:grid-cols-4">
+                    <div className="grid flex-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
                         <div className="md:col-span-1">
                             <label className="mb-2 block text-xs font-semibold text-slate-500">Search</label>
                             <div className="relative">
@@ -1316,9 +1355,52 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                 ))}
                             </select>
                         </div>
+
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-500">Uploaded By</label>
+                            <select
+                                value={uploadedByFilter}
+                                onChange={(event) => setUploadedByFilter(event.target.value)}
+                                className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            >
+                                <option value="All">All Uploaders</option>
+                                {uploadedByOptions.map((name) => (
+                                    <option key={name} value={name}>{name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-500">Upload Type</label>
+                            <select
+                                value={uploadTypeFilter}
+                                onChange={(event) => setUploadTypeFilter(event.target.value)}
+                                className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            >
+                                <option value="All">All Types</option>
+                                <option value="CV">CV</option>
+                                <option value="Excel">Excel</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                        {(search || statusFilter !== 'All' || decisionFilter !== 'All' || pulledByFilter !== 'All' || uploadedByFilter !== 'All' || uploadTypeFilter !== 'All') && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSearch('');
+                                    setStatusFilter('All');
+                                    setDecisionFilter('All');
+                                    setPulledByFilter('All');
+                                    setUploadedByFilter('All');
+                                    setUploadTypeFilter('All');
+                                }}
+                                className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                            >
+                                Clear Filters
+                            </button>
+                        )}
                         <div className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-600">
                             {selectedCandidateIds.length} selected
                         </div>
@@ -1351,7 +1433,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Current Status</th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Decision</th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Interviews</th>
-                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pulled By</th>
+                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pulled / Uploaded</th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Actions</th>
                             </tr>
                         </thead>
@@ -1436,6 +1518,21 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                     ) : (
                                                         <span className="text-[13px] font-bold text-slate-400">-</span>
                                                     )}
+                                                    {getCandidateUploadedByName(candidate) ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setUploadedByFilter(getCandidateUploadedByName(candidate))}
+                                                            className="mt-1 w-fit text-left text-[11px] font-semibold text-indigo-600 transition hover:text-indigo-700 hover:underline"
+                                                            title={`Filter by uploader ${getCandidateUploadedByName(candidate)}`}
+                                                        >
+                                                            {getCandidateUploadedByName(candidate)}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="mt-1 text-[11px] text-slate-400">Unknown uploader</span>
+                                                    )}
+                                                    <span className={`mt-1 w-fit rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                                        {getCandidateUploadType(candidate)}
+                                                    </span>
                                                     <span className="mt-1 text-[12px] text-slate-600">
                                                         {candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'MMM dd, yyyy') : '-'}
                                                     </span>

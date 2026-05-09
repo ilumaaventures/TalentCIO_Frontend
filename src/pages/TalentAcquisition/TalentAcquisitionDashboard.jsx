@@ -4,8 +4,10 @@ import {
     ArrowRight,
     BriefcaseBusiness,
     Building2,
+    CalendarDays,
     CheckCircle2,
     Clock3,
+    FileText,
     RefreshCw,
     Target,
     Users
@@ -14,8 +16,6 @@ import { format, formatDistanceToNow } from 'date-fns';
 import {
     Area,
     AreaChart,
-    Bar,
-    BarChart,
     CartesianGrid,
     ResponsiveContainer,
     Tooltip,
@@ -43,7 +43,6 @@ const requestStatusClasses = {
     On_Hold: 'bg-slate-200 text-slate-700 border-slate-300'
 };
 
-const pipelineTones = ['bg-blue-600', 'bg-emerald-600', 'bg-amber-500', 'bg-violet-600', 'bg-rose-600', 'bg-slate-700'];
 const interviewStatusClasses = {
     Scheduled: 'bg-blue-50 text-blue-700',
     Pending: 'bg-amber-50 text-amber-700',
@@ -107,6 +106,110 @@ const StatCard = ({ label, value, tone, meta, icon }) => {
     );
 };
 
+const primaryStatThemes = {
+    blue: {
+        accent: 'bg-blue-600',
+        surface: 'from-blue-50 via-white to-white',
+        icon: 'bg-blue-100 text-blue-700',
+        meta: 'text-blue-700/75'
+    },
+    emerald: {
+        accent: 'bg-emerald-600',
+        surface: 'from-emerald-50 via-white to-white',
+        icon: 'bg-emerald-100 text-emerald-700',
+        meta: 'text-emerald-700/75'
+    },
+    amber: {
+        accent: 'bg-amber-500',
+        surface: 'from-amber-50 via-white to-white',
+        icon: 'bg-amber-100 text-amber-700',
+        meta: 'text-amber-700/75'
+    },
+    violet: {
+        accent: 'bg-violet-600',
+        surface: 'from-violet-50 via-white to-white',
+        icon: 'bg-violet-100 text-violet-700',
+        meta: 'text-violet-700/75'
+    }
+};
+
+const PrimaryStatCard = ({ label, value, meta, icon, theme = 'blue' }) => {
+    const IconComponent = icon;
+    const styles = primaryStatThemes[theme] || primaryStatThemes.blue;
+
+    return (
+        <div className={`relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br ${styles.surface} p-4 shadow-sm`}>
+            <div className={`absolute inset-x-0 top-0 h-1.5 ${styles.accent}`} />
+            <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-slate-500">{label}</p>
+                    <p className="font-ta-head mt-3 text-[1.95rem] font-black tracking-tight text-slate-950 sm:text-[2.1rem]">{value}</p>
+                    <p className={`mt-1.5 text-[11px] font-semibold ${styles.meta}`}>{meta}</p>
+                </div>
+                <div className={`rounded-xl p-2.5 ${styles.icon}`}>
+                    <IconComponent size={16} />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const trendCardThemes = {
+    emerald: {
+        accent: 'bg-emerald-600',
+        icon: 'bg-emerald-50 text-emerald-700'
+    },
+    blue: {
+        accent: 'bg-blue-600',
+        icon: 'bg-blue-50 text-blue-700'
+    },
+    amber: {
+        accent: 'bg-amber-500',
+        icon: 'bg-amber-50 text-amber-700'
+    },
+    rose: {
+        accent: 'bg-rose-500',
+        icon: 'bg-rose-50 text-rose-700'
+    }
+};
+
+const TrendMetricCard = ({ label, value, meta, icon, trend, theme = 'blue' }) => {
+    const IconComponent = icon;
+    const styles = trendCardThemes[theme] || trendCardThemes.blue;
+
+    const direction = trend?.direction || 'flat';
+    const trendTone = direction === 'flat'
+        ? 'bg-slate-100 text-slate-600'
+        : trend?.improved
+            ? 'bg-emerald-50 text-emerald-700'
+            : 'bg-rose-50 text-rose-700';
+    const trendArrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '→';
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
+            <div className={`mb-2.5 h-1.5 w-12 rounded-full ${styles.accent}`} />
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{label}</p>
+                    <p className="font-ta-head mt-1.5 text-[1.55rem] font-black tracking-tight text-slate-950">{value}</p>
+                    <p className="mt-1 text-[10px] text-slate-500">{meta}</p>
+                </div>
+                <div className={`rounded-xl p-2 ${styles.icon}`}>
+                    <IconComponent size={15} />
+                </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${trendTone}`}>
+                    <span>{trendArrow}</span>
+                    <span>{trend?.delta ?? 0}%</span>
+                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Vs previous month</span>
+            </div>
+        </div>
+    );
+};
+
 const SectionCard = ({ title, action, children }) => (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
@@ -156,7 +259,7 @@ const TalentAcquisitionDashboard = () => {
 
     const availableTabs = useMemo(() => (
         canViewAnalytics
-            ? ['overview', 'requisitions', 'clients', 'interviews', 'analytics']
+            ? ['overview', 'requisitions', 'clients', 'interviews']
             : ['requisitions', 'clients', 'interviews']
     ), [canViewAnalytics]);
 
@@ -249,8 +352,6 @@ const TalentAcquisitionDashboard = () => {
         [analytics]
     );
     const recruiterPerformance = useMemo(() => (analytics?.recruiterPerformance || []).slice(0, 5), [analytics]);
-    const departmentAnalysis = useMemo(() => (analytics?.departmentAnalysis || []).slice(0, 5), [analytics]);
-    const pipeline = useMemo(() => analytics?.pipelineDistribution || [], [analytics]);
     const sourceAnalysis = useMemo(
         () => (analytics?.sourceAnalysis || []).map((item) => ({
             ...item,
@@ -258,6 +359,7 @@ const TalentAcquisitionDashboard = () => {
         })),
         [analytics]
     );
+    const metricTrends = useMemo(() => analytics?.metricTrends || {}, [analytics]);
     const overviewSourceAnalysis = useMemo(() => {
         const sorted = [...sourceAnalysis].sort((a, b) => Number(b.sourced || 0) - Number(a.sourced || 0));
         const publicApplicationsIndex = sorted.findIndex((item) => item.name === 'Public Applications');
@@ -273,55 +375,80 @@ const TalentAcquisitionDashboard = () => {
         [sourceAnalysis]
     );
 
-    const statCards = useMemo(() => ([
+    const primaryStatCards = useMemo(() => ([
         {
-            label: 'Open Requisitions',
-            value: formatCompact(topMetrics.totalReqs || approvedRequestsCount),
-            meta: `${pendingRequestsCount} waiting for review`,
-            tone: 'bg-blue-600',
+            label: 'Total Positions Open',
+            value: formatCompact(topMetrics.totalOpenPositions ?? 0),
+            meta: `${approvedRequestsCount} approved requisitions live`,
+            theme: 'blue',
             icon: BriefcaseBusiness
         },
         {
-            label: 'Candidates Sourced',
-            value: formatCompact(topMetrics.totalSourced),
-            meta: `${formatCompact(topMetrics.interviewsScheduled)} moved into interview flow`,
-            tone: 'bg-emerald-600',
-            icon: Users
+            label: 'Total Requisitions',
+            value: formatCompact(topMetrics.totalReqs ?? requests.length),
+            meta: `${pendingRequestsCount} waiting for review`,
+            theme: 'emerald',
+            icon: FileText
         },
         {
             label: 'Offers Released',
-            value: formatCompact(topMetrics.offersReleased),
-            meta: `${topMetrics.offerAcceptanceRate || 0}% acceptance trend`,
-            tone: 'bg-amber-500',
+            value: formatCompact(topMetrics.offersReleased ?? 0),
+            meta: `${topMetrics.offerAcceptanceRate || 0}% offer acceptance rate`,
+            theme: 'amber',
             icon: Target
         },
         {
-            label: 'Joined',
-            value: formatCompact(topMetrics.totalJoined),
+            label: 'Total Joined',
+            value: formatCompact(topMetrics.totalJoined ?? 0),
             meta: `${topMetrics.avgTimeToHire || 0} days avg. to hire`,
-            tone: 'bg-violet-600',
+            theme: 'violet',
             icon: CheckCircle2
         }
-    ]), [approvedRequestsCount, pendingRequestsCount, topMetrics]);
+    ]), [approvedRequestsCount, pendingRequestsCount, requests.length, topMetrics]);
+
+    const overviewTrendCards = useMemo(() => ([
+        {
+            label: 'Offer Acceptance Rate',
+            value: `${topMetrics.offerAcceptanceRate || 0}%`,
+            meta: 'Joined candidates from released offers',
+            theme: 'emerald',
+            icon: Target,
+            trend: metricTrends.offerAcceptanceRate
+        },
+        {
+            label: 'Joining Conversion Rate',
+            value: `${topMetrics.joiningConversionRate || 0}%`,
+            meta: 'Joinees converted from total sourced pool',
+            theme: 'blue',
+            icon: Users,
+            trend: metricTrends.joiningConversionRate
+        },
+        {
+            label: 'Avg Time to Hire',
+            value: `${topMetrics.avgTimeToHire || 0} days`,
+            meta: 'Average sourcing-to-joining cycle time',
+            theme: 'amber',
+            icon: Clock3,
+            trend: metricTrends.avgTimeToHire
+        },
+        {
+            label: 'Avg Time to Fill',
+            value: `${topMetrics.avgTimeToFill || 0} days`,
+            meta: 'Average requisition closure turnaround',
+            theme: 'rose',
+            icon: CalendarDays,
+            trend: metricTrends.avgTimeToFill
+        }
+    ]), [metricTrends, topMetrics]);
 
     const renderOverview = () => (
         <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {statCards.map((card) => <StatCard key={card.label} {...card} />)}
+                {primaryStatCards.map((card) => <PrimaryStatCard key={card.label} {...card} />)}
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-6">
-                {pipeline.length ? pipeline.map((stage, index) => (
-                    <div key={stage.name} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
-                        <div className={`mb-3 h-1.5 w-12 rounded-full ${pipelineTones[index % pipelineTones.length]}`} />
-                        <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{stage.name}</p>
-                        <p className="font-ta-head mt-1.5 text-[1.55rem] font-bold text-slate-950">{formatCompact(stage.value)}</p>
-                    </div>
-                )) : (
-                    <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-white px-5 py-6 text-[11px] text-slate-500">
-                        Pipeline metrics will appear here once sourcing and interviews pick up.
-                    </div>
-                )}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {overviewTrendCards.map((card) => <TrendMetricCard key={card.label} {...card} />)}
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
@@ -432,59 +559,29 @@ const TalentAcquisitionDashboard = () => {
                 </SectionCard>
 
                 <SectionCard
-                    title="Upcoming Interviews"
-                    action={<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{interviews.length} assigned</span>}
+                    title="Top Recruiters"
+                    action={<Link to="/ta/analysis" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open analytics</Link>}
                 >
-                    <div className="scrollbar-hide overflow-x-auto">
-                        {interviews.length ? (
-                            <table className="min-w-full text-xs">
-                                <thead>
-                                    <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                                        <th className="px-4 py-3">Candidate</th>
-                                        <th className="px-4 py-3">Applied For</th>
-                                        <th className="px-4 py-3">Round</th>
-                                        <th className="px-4 py-3">Status</th>
-                                        <th className="px-4 py-3">Scheduled</th>
-                                        <th className="px-4 py-3 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {interviews.slice(0, 8).map((interview) => (
-                                        <tr key={`${interview.candidateId}-${interview.roundId}`} className="border-b border-slate-100 transition hover:bg-slate-50">
-                                            <td className="px-4 py-3.5">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-[10px] font-bold text-white">
-                                                        {getInitials(interview.candidateName)}
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-semibold text-slate-900">{interview.candidateName}</p>
-                                                        <p className="text-[11px] text-slate-500">{interview.status}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3.5 text-xs text-slate-700">{interview.role}</td>
-                                            <td className="px-4 py-3.5 text-xs text-slate-700">{interview.levelName}</td>
-                                            <td className="px-4 py-3.5">
-                                                <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${interviewStatusClasses[interview.status] || 'bg-slate-100 text-slate-700'}`}>
-                                                    {interview.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3.5 text-[11px] text-slate-500">{formatShortDateTime(interview.scheduledDate)}</td>
-                                            <td className="px-4 py-3.5 text-right">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => navigate(`/ta/hiring-request/${interview.hiringRequestId}/candidate/${interview.candidateId}/view?phase=${interview.phase || 1}`)}
-                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-                                                >
-                                                    View
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        ) : (
-                            <p className="text-[11px] text-slate-500">No scheduled interviews are assigned to you right now.</p>
+                    <div className="space-y-4">
+                        {recruiterPerformance.length ? recruiterPerformance.map((recruiter, index) => (
+                            <div key={recruiter.name} className="flex items-center justify-between rounded-[1.35rem] bg-slate-50 px-4 py-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-[13px] font-black text-white">
+                                        {index + 1}
+                                    </div>
+                                    <div>
+                                        <p className="text-[12px] font-bold text-slate-900 sm:text-[14px]">{recruiter.name}</p>
+                                        <p className="mt-0.5 text-[11px] text-slate-500">
+                                            {recruiter.sourced} sourced / {recruiter.joined} joined
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className="font-ta-head text-[1.8rem] font-black tracking-tight text-slate-950">
+                                    {recruiter.conversion}%
+                                </span>
+                            </div>
+                        )) : (
+                            <p className="text-[11px] text-slate-500">Recruiter conversion data is not available yet.</p>
                         )}
                     </div>
                 </SectionCard>
@@ -671,55 +768,6 @@ const TalentAcquisitionDashboard = () => {
         </SectionCard>
     );
 
-    const renderAnalytics = () => (
-        <div className="space-y-6">
-            <div className="grid gap-6 xl:grid-cols-[1.3fr_1fr]">
-                <SectionCard
-                    title="Department Performance"
-                    action={<Link to="/ta/analysis" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open advanced dashboard</Link>}
-                >
-                    {departmentAnalysis.length ? (
-                        <div className="h-72">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={departmentAnalysis}>
-                                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                                    <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={10} />
-                                    <YAxis tickLine={false} axisLine={false} fontSize={10} width={26} />
-                                    <Tooltip />
-                                    <Bar dataKey="sourced" fill="#1A56DB" radius={[8, 8, 0, 0]} />
-                                    <Bar dataKey="joined" fill="#0EA66E" radius={[8, 8, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <p className="text-[11px] text-slate-500">Department analytics will appear after candidate activity builds up.</p>
-                    )}
-                </SectionCard>
-
-                <SectionCard title="Top Recruiters">
-                    <div className="space-y-3">
-                        {recruiterPerformance.length ? recruiterPerformance.map((recruiter, index) => (
-                            <div key={recruiter.name} className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-3">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-slate-900 text-[11px] font-bold text-white">
-                                        {index + 1}
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-slate-900">{recruiter.name}</p>
-                                        <p className="text-[11px] text-slate-500">{recruiter.sourced} sourced / {recruiter.joined} joined</p>
-                                    </div>
-                                </div>
-                                <span className="font-ta-head text-lg font-bold text-slate-950">{recruiter.conversion}%</span>
-                            </div>
-                        )) : (
-                            <p className="text-[11px] text-slate-500">Recruiter conversion data is not available yet.</p>
-                        )}
-                    </div>
-                </SectionCard>
-            </div>
-        </div>
-    );
-
     return (
         <div className="font-ta-body min-h-screen bg-[#f4f5f7] p-4 sm:p-5 lg:p-6">
             {loading ? (
@@ -733,7 +781,7 @@ const TalentAcquisitionDashboard = () => {
                             </h1>
                             <p className="mt-1.5 text-[11px] text-slate-500">
                                 {canViewAnalytics
-                                    ? 'Requisitions, clients, interviews, and analytics in one workspace.'
+                                    ? 'Requisitions, clients, interviews, and hiring insights in one workspace.'
                                     : 'Requisitions, clients, and interviews in one workspace.'}
                             </p>
                         </div>
@@ -758,7 +806,6 @@ const TalentAcquisitionDashboard = () => {
                     {activeTab === 'requisitions' && renderRequisitions()}
                     {activeTab === 'clients' && renderClients()}
                     {activeTab === 'interviews' && renderInterviews()}
-                    {canViewAnalytics && activeTab === 'analytics' && renderAnalytics()}
 
                     <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
