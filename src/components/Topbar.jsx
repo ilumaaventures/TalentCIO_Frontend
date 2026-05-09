@@ -11,6 +11,8 @@ const Topbar = ({ toggleSidebar }) => {
     const navigate = useNavigate();
     const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
     const hasTalentAcquisition = hasModule('talentAcquisition');
+    const hasDashboardAccess = user?.roles?.some((role) => role === 'Admin' || role?.name === 'Admin') || user?.hasAllPermissions;
+    const homeRoute = hasDashboardAccess ? '/' : (hasModule('attendance') ? '/attendance' : '/');
     const [notifications, setNotifications] = useState([]);
     const [interviews, setInterviews] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
@@ -214,12 +216,16 @@ const Topbar = ({ toggleSidebar }) => {
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></svg>
                     </button>
-                    <div className="md:hidden font-bold text-indigo-700 text-lg tracking-tight flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => navigate(homeRoute)}
+                        className="md:hidden font-bold text-indigo-700 text-lg tracking-tight flex items-center gap-2"
+                    >
                         <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
                             <span className="text-white font-black text-sm">T</span>
                         </div>
                         TalentCio
-                    </div>
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-4 ml-auto">
