@@ -166,9 +166,10 @@ const Onboarding = () => {
       setCustomFiles([]);
       if (customFileInputRef.current) customFileInputRef.current.value = '';
 
-      // Refresh employee to see audit log update
-      const empDetail = await api.get(`/onboarding/employees/${selectedEmployee._id}`);
-      setSelectedEmployee(empDetail.data);
+      if (res.data.employee) {
+        setSelectedEmployee(res.data.employee);
+        syncEmployeeState(res.data.employee);
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send file(s)');
     } finally {
@@ -1414,7 +1415,9 @@ const Onboarding = () => {
                 <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>Documents & Requirements</h4>
                 <div style={{ display: 'grid', gap: '8px' }}>
                   {[
-                    ...(selectedEmployee.documents || []).map(d => ({ ...d, itemType: 'document' })),
+                    ...(selectedEmployee.documents || [])
+                      .filter((d) => d.type !== 'custom_file')
+                      .map(d => ({ ...d, itemType: 'document' })),
                     ...(onboardingSettings.policies || []).map(p => {
                       const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === p.name);
                       return {
@@ -1456,7 +1459,10 @@ const Onboarding = () => {
                       isAccepted: selectedEmployee.offerDeclaration?.isComplete,
                       emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Declaration')?.emailSentAt,
                       url: onboardingSettings.declarationTemplateUrl
-                    }] : [])
+                    }] : []),
+                    ...(selectedEmployee.documents || [])
+                      .filter((d) => d.type === 'custom_file')
+                      .map(d => ({ ...d, itemType: 'document', isCustomSentFile: true }))
                   ].map((item, idx) => {
                     const isDoc = item.itemType === 'document';
                     const badge = isDoc ? (DOC_BADGE[item.status] || DOC_BADGE.Pending) : { bg: '#f0fdf4', text: '#16a34a' };
@@ -1472,6 +1478,7 @@ const Onboarding = () => {
                         <div style={{ flex: 1, minWidth: '120px' }}>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
                           {item.itemType === 'policy' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>STATIC POLICY</span></div>}
+                          {item.isCustomSentFile && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>HR SHARED FILE</span></div>}
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
                           {(item.itemType === 'policy' || item.itemType === 'template') && !item.isAccepted && (
                             <div style={{ fontSize: '11px', color: item.emailSentAt ? '#92400e' : '#d97706', marginTop: '2px' }}>

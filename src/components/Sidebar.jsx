@@ -76,6 +76,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showMainSection = showDashboard || showAttendance || showLeaves || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
+  const homeRoute = showDashboard ? '/' : (showAttendance ? '/attendance' : '/');
   const sectionLabelClass = isTalentAcquisitionRoute
     ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-100/55'
     : 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]';
@@ -158,13 +159,13 @@ const Sidebar = ({ isOpen, onClose }) => {
         `}
       >
         <div className={`flex items-start justify-between px-5 py-5 ${sidebarDividerClass ? `border-b ${sidebarDividerClass}` : ''}`}>
-          <div className="min-w-0">
+          <Link to={homeRoute} onClick={onClose} className="min-w-0">
             <img
               src="/dark-logo-compact.png"
               alt="TalentCIO"
               className="h-12 w-auto max-w-[170px] object-contain"
             />
-          </div>
+          </Link>
           {/* Mobile Close Button */}
           <button onClick={onClose} className="md:hidden text-slate-500 hover:text-white">
             <X size={20} />
