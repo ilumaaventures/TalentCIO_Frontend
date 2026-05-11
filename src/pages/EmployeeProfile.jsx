@@ -100,7 +100,7 @@ const EmployeeProfile = () => {
                 try {
                     const [rolesRes, usersRes] = await Promise.all([
                         api.get('/admin/roles'),
-                        api.get('/admin/users', { params: { includeDeleted: true } })
+                        api.get('/admin/users')
                     ]);
                     setRoles(rolesRes.data);
                     setAllUsers(usersRes.data);
@@ -152,50 +152,44 @@ const EmployeeProfile = () => {
             toast.error('The main admin created by Super Admin cannot be moved to the bin.');
             return;
         }
-        if (!window.confirm(`Are you sure you want to ${profile.isActive ? 'move this user to the recycle bin' : (profile.isDeleted ? 'restore this user from the recycle bin' : 'reactivate')} this user?`)) return;
+
+        const confirmMessage = profile.isDeleted
+            ? 'Are you sure you want to restore this user from the recycle bin?'
+            : 'Are you sure you want to move this user to the recycle bin?';
+
+        if (!window.confirm(confirmMessage)) return;
         
         try {
-            const loadingToast = toast.loading(
-                profile.isActive
-                    ? 'Moving user to recycle bin...'
-                    : (profile.isDeleted ? 'Restoring user...' : 'Activating user...')
-            );
+            const loadingToast = toast.loading(profile.isDeleted ? 'Restoring user...' : 'Moving user to recycle bin...');
 
-            if (profile.isActive) {
+            if (!profile.isDeleted) {
                 const res = await api.delete(`/admin/users/${id}`);
                 toast.success(res.data.message, { id: loadingToast });
                 navigate((currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('bin.view')) ? '/bin' : '/users');
                 return;
             }
 
-            if (profile.isDeleted) {
-                let res;
+            let res;
 
-                try {
-                    res = await restoreBinItem('user', id);
-                } catch (restoreError) {
-                    if (restoreError.response?.status === 409 && restoreError.response?.data?.requiresAction) {
-                        const shouldReplace = window.confirm(`${restoreError.response.data.message}\n\nPress OK to replace the current user, or Cancel to stop.`);
-                        if (!shouldReplace) {
-                            toast.dismiss(loadingToast);
-                            toast('Restore cancelled');
-                            return;
-                        }
-
-                        res = await restoreBinItem('user', id, { action: 'replace' });
-                    } else {
-                        throw restoreError;
+            try {
+                res = await restoreBinItem('user', id);
+            } catch (restoreError) {
+                if (restoreError.response?.status === 409 && restoreError.response?.data?.requiresAction) {
+                    const shouldReplace = window.confirm(`${restoreError.response.data.message}\n\nPress OK to replace the current user, or Cancel to stop.`);
+                    if (!shouldReplace) {
+                        toast.dismiss(loadingToast);
+                        toast('Restore cancelled');
+                        return;
                     }
-                }
 
-                toast.success(res.data.message || 'User restored successfully', { id: loadingToast });
-                await fetchData();
-                return;
+                    res = await restoreBinItem('user', id, { action: 'replace' });
+                } else {
+                    throw restoreError;
+                }
             }
 
-            const res = await api.patch(`/admin/users/${id}/status`);
-            toast.success(res.data.message, { id: loadingToast });
-            setProfile(prev => ({ ...prev, isActive: res.data.isActive }));
+            toast.success(res.data.message || 'User restored successfully', { id: loadingToast });
+            await fetchData();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to update status');
         }

@@ -48,7 +48,9 @@ const GlobalTADashboard = () => {
         client: '',
         department: '',
         position: '',
-        recruiter: '',
+        pulledBy: '',
+        uploadedBy: '',
+        calledBy: '',
         startDate: '',
         endDate: '',
         phase: 'all',
@@ -90,7 +92,18 @@ const GlobalTADashboard = () => {
     };
 
     const resetFilters = () => {
-        setFilters({ client: '', department: '', position: '', recruiter: '', startDate: '', endDate: '', phase: 'all', requisitionId: '' });
+        setFilters({
+            client: '',
+            department: '',
+            position: '',
+            pulledBy: '',
+            uploadedBy: '',
+            calledBy: '',
+            startDate: '',
+            endDate: '',
+            phase: 'all',
+            requisitionId: ''
+        });
     };
 
     if (loading && !data) {
@@ -178,7 +191,7 @@ const GlobalTADashboard = () => {
 
                     {/* Dynamic Filter Bar */}
                     {showFilters && (
-                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 animate-in slide-in-from-top-2 duration-300">
+                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-4 animate-in slide-in-from-top-2 duration-300">
                             <div className="relative">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Client</label>
                                 <div className="relative">
@@ -225,14 +238,44 @@ const GlobalTADashboard = () => {
                             </div>
 
                             <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Recruiter</label>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Pulled By</label>
                                 <div className="relative">
                                     <select
-                                        name="recruiter" value={filters.recruiter} onChange={handleFilterChange}
+                                        name="pulledBy" value={filters.pulledBy} onChange={handleFilterChange}
                                         className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
                                     >
-                                        <option value="">All Recruiters</option>
-                                        {filterOptions?.recruiters?.map(r => <option key={r} value={r}>{r}</option>)}
+                                        <option value="">All Pulled By</option>
+                                        {filterOptions?.pulledBys?.map((name) => <option key={name} value={name}>{name}</option>)}
+                                    </select>
+                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                                </div>
+                            </div>
+
+                            <div className="relative">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Uploaded By</label>
+                                <div className="relative">
+                                    <select
+                                        name="uploadedBy" value={filters.uploadedBy} onChange={handleFilterChange}
+                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
+                                    >
+                                        <option value="">All Uploaded By</option>
+                                        {filterOptions?.uploadedBys?.map((name) => <option key={name} value={name}>{name}</option>)}
+                                    </select>
+                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                                </div>
+                            </div>
+
+                            <div className="relative">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Called By</label>
+                                <div className="relative">
+                                    <select
+                                        name="calledBy" value={filters.calledBy} onChange={handleFilterChange}
+                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
+                                    >
+                                        <option value="">All Called By</option>
+                                        {filterOptions?.calledBys?.map((name) => <option key={name} value={name}>{name}</option>)}
                                     </select>
                                     <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
