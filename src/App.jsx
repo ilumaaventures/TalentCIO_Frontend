@@ -47,6 +47,7 @@ import QueryDetails from './pages/QueryDetails';
 import Discussions from './pages/Discussions';
 import GlobalTADashboard from './pages/TalentAcquisition/GlobalTADashboard';
 import Onboarding from './pages/Onboarding';
+import RecycleBin from './pages/RecycleBin';
 import PreOnboardingLogin from './pages/PreOnboardingLogin';
 import PreOnboardingPortal from './pages/PreOnboardingPortal';
 
@@ -154,6 +155,8 @@ function App() {
                   </Route>
                 </Route>
 
+                <Route path="/bin" element={<BinAccessWrapper />} />
+
                 {/* Users Management (Internal access control) */}
                 {/* Users Management */}
                 <Route element={<ModuleRoute moduleName="userManagement" />}>
@@ -244,6 +247,17 @@ const TAAccessSettingsAccessWrapper = ({ Component: ComponentProp }) => {
     user.permissions?.includes('role.update') ||
     user.permissions?.includes('role.create') ||
     user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const BinAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || RecycleBin;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') || user.permissions?.includes('bin.view');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };

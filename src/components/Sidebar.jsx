@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getBinItems } from '../api/bin';
 import {
   ArrowLeft,
   BarChart3,
@@ -21,6 +22,7 @@ import {
   Mail,
   ShieldCheck,
   Settings,
+  Trash2,
   UserPlus,
   Users,
   Workflow,
@@ -37,6 +39,7 @@ const TA_DASHBOARD_VIEWS = [
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [recycleBinCount, setRecycleBinCount] = useState(0);
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
   const canViewTAAnalytics = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global') || user?.isTAAnalyticsViewer;
   const requestedTATab = new URLSearchParams(location.search).get('tab');
@@ -70,6 +73,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.roles?.includes('Admin') || user?.permissions?.includes('onboarding.manage');
+  const showRecycleBin = user?.roles?.includes('Admin') || user?.permissions?.includes('bin.view');
   const showBusinessUnits = user?.company?.enabledModules?.includes('projectManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.read'));
   const showClients = user?.company?.enabledModules?.includes('projectManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('client.read'));
   const showProjects = user?.company?.enabledModules?.includes('projectManagement');
@@ -101,6 +105,31 @@ const Sidebar = ({ isOpen, onClose }) => {
     ? 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/75 transition-colors hover:bg-white/10 hover:text-white'
     : 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition-colors hover:bg-white/5 hover:text-white';
   const getSidebarLinkClass = (isLinkActive) => (isLinkActive ? sidebarLinkActiveClass : sidebarLinkClass);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!showRecycleBin) {
+      setRecycleBinCount(0);
+      return undefined;
+    }
+
+    getBinItems()
+      .then((response) => {
+        if (isActive) {
+          setRecycleBinCount(response.data?.total || 0);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setRecycleBinCount(0);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [location.pathname, showRecycleBin]);
 
   const taShortcuts = [
     {
@@ -311,6 +340,15 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <Link to="/onboarding" className={getSidebarLinkClass(location.pathname === '/onboarding')} onClick={onClose}>
                   <UserPlus size={18} />
                   <span>Onboarding</span>
+                </Link>
+              )}
+              {showRecycleBin && (
+                <Link to="/bin" className={getSidebarLinkClass(location.pathname === '/bin')} onClick={onClose}>
+                  <Trash2 size={18} />
+                  <span>Recycle Bin</span>
+                  <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-inherit">
+                    {recycleBinCount}
+                  </span>
                 </Link>
               )}
 

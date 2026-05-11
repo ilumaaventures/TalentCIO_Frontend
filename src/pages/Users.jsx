@@ -499,7 +499,9 @@ const Users = () => {
             // 1. Fetch Users
             if (isAdmin || canReadUsers) {
                 try {
-                    const res = await api.get('/admin/users');
+                    const res = await api.get('/admin/users', {
+                        params: { includeDeleted: true }
+                    });
                     usersData = res.data;
                 } catch (err) {
                     console.error('Admin users fetch failed', err);
@@ -546,6 +548,7 @@ const Users = () => {
                     attendanceMode: u.attendanceMode,
                     attendanceShiftCode: u.attendanceShiftCode,
                     isActive: u.isActive,
+                    isDeleted: u.isDeleted,
                     roles: u.roles?.map(r => ({ _id: r._id, name: r.name })),
                     reportingManagers: u.reportingManagers?.map(m => ({ _id: m._id, firstName: m.firstName, lastName: m.lastName, email: m.email }))
                 }));
@@ -877,7 +880,7 @@ const Users = () => {
                                         </td>
                                         <td className="px-3 py-2">
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                                {employee.isActive ? 'Active' : 'Inactive'}
+                                                {employee.isActive ? 'Active' : (employee.isDeleted ? 'In Bin' : 'Inactive')}
                                             </span>
                                         </td>
                                         <td className="px-3 py-2 text-right">
