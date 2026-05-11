@@ -735,6 +735,33 @@ const HiringRequestDetails = () => {
                                             {togglingVisibility ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
                                             {request.isPublic ? 'Unpublish from Job Board' : 'Publish to Job Board'}
                                         </button>
+
+                                        {resourceGatewayEnabledForCompany && (
+                                            <div className="space-y-2">
+                                                <button
+                                                    onClick={handleToggleResourceGateway}
+                                                    disabled={togglingResourceGateway || !request.isPublic}
+                                                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border shadow-sm ${
+                                                        request.isResourceGatewayPublic
+                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                >
+                                                    {togglingResourceGateway
+                                                        ? <Loader size={14} className="animate-spin" />
+                                                        : request.isResourceGatewayPublic
+                                                            ? <><Globe size={14} /> Posted on Resource Gateway</>
+                                                            : <><Globe size={14} /> Post on Resource Gateway</>
+                                                    }
+                                                </button>
+
+                                                {!request.isPublic && (
+                                                    <p className="text-[11px] leading-4 text-slate-500">
+                                                        Publish to the main job board first, then this role can also go live on Resource Gateway.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -749,54 +776,6 @@ const HiringRequestDetails = () => {
                                     >
                                         <Edit size={16} /> Edit Request
                                     </button>
-
-                                    {(request.status === 'Approved') && canManageVisibility && (
-                                        <div className="space-y-2">
-                                            <button
-                                                onClick={handleTogglePublic}
-                                                disabled={togglingVisibility}
-                                                className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border shadow-sm ${
-                                                    request.isPublic
-                                                        ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                                                } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                            >
-                                                {togglingVisibility
-                                                    ? <Loader size={14} className="animate-spin" />
-                                                    : request.isPublic
-                                                        ? <><Globe size={14} /> Public on Job Board</>
-                                                        : <><Globe size={14} /> Publish to Job Board</>
-                                                }
-                                            </button>
-
-                                            <button
-                                                onClick={handleToggleResourceGateway}
-                                                disabled={togglingResourceGateway || !resourceGatewayEnabledForCompany || !request.isPublic}
-                                                className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border shadow-sm ${
-                                                    request.isResourceGatewayPublic
-                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                                                } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                            >
-                                                {togglingResourceGateway
-                                                    ? <Loader size={14} className="animate-spin" />
-                                                    : request.isResourceGatewayPublic
-                                                        ? <><Globe size={14} /> Posted on Resource Gateway</>
-                                                        : <><Globe size={14} /> Post on Resource Gateway</>
-                                                }
-                                            </button>
-
-                                            {!resourceGatewayEnabledForCompany ? (
-                                                <p className="text-[11px] leading-4 text-amber-600">
-                                                    Resource Gateway publishing is disabled for this company in Super Admin settings.
-                                                </p>
-                                            ) : !request.isPublic ? (
-                                                <p className="text-[11px] leading-4 text-slate-500">
-                                                    Publish to the main job board first, then this role can also go live on Resource Gateway.
-                                                </p>
-                                            ) : null}
-                                        </div>
-                                    )}
 
                                     {request.status !== 'Closed' && (
                                         <button

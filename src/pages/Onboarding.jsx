@@ -10,6 +10,15 @@ import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cac
 
 const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
 const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
+const CUSTOM_FILE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+const CUSTOM_FILE_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,image/*';
+const CUSTOM_FILE_ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+]);
 
 const STATUS_COLORS = {
   Pending: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' },
@@ -26,6 +35,8 @@ const STATUS_ICONS = {
   Submitted: <FileText size={16} />,
   Reviewed: <CheckCircle size={16} />
 };
+
+const isAllowedCustomFile = (file) => file?.type?.startsWith('image/') || CUSTOM_FILE_ALLOWED_MIME_TYPES.has(file?.type);
 
 const Onboarding = () => {
   const { user } = useAuth();
@@ -1597,11 +1608,29 @@ const Onboarding = () => {
                       <input
                         type="file"
                         multiple
+                        accept={CUSTOM_FILE_ACCEPT}
                         ref={customFileInputRef}
                         onChange={(e) => {
-                          const newFiles = Array.from(e.target.files);
+                          const selectedFiles = Array.from(e.target.files || []);
+                          const invalidTypeFiles = selectedFiles.filter((file) => !isAllowedCustomFile(file));
+                          const oversizedFiles = selectedFiles.filter((file) => file.size > CUSTOM_FILE_MAX_SIZE_BYTES);
+                          const validFiles = selectedFiles.filter((file) => isAllowedCustomFile(file) && file.size <= CUSTOM_FILE_MAX_SIZE_BYTES);
+
+                          if (invalidTypeFiles.length > 0) {
+                            toast.error('Only PDF, Word, Excel, and image files are allowed.');
+                          }
+
+                          if (oversizedFiles.length > 0) {
+                            toast.error('Each file must be 5 MB or smaller.');
+                          }
+
+                          if (validFiles.length === 0) {
+                            if (customFileInputRef.current) customFileInputRef.current.value = '';
+                            return;
+                          }
+
                           setCustomFiles(prev => {
-                            const combined = [...prev, ...newFiles];
+                            const combined = [...prev, ...validFiles];
                             // Filter duplicates by name and size
                             return combined.filter((file, index, self) =>
                               index === self.findIndex((t) => (
@@ -1633,6 +1662,9 @@ const Onboarding = () => {
                         <span style={{ fontSize: '13px', color: '#94a3b8' }}>Click to select files...</span>
                       )}
                     </div>
+                    <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
+                      Allowed: PDF, Word, Excel, and image files. Max size: 5 MB per file.
+                    </p>
 
                     <button
                       onClick={handleSendCustomFile}
