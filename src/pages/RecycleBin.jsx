@@ -101,6 +101,7 @@ const RecycleBin = () => {
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [actionLoadingId, setActionLoadingId] = useState('');
+    const [restoreConflict, setRestoreConflict] = useState(null);
 
     const fetchCounts = useCallback(async () => {
         const response = await getBinItems();
@@ -139,10 +140,43 @@ const RecycleBin = () => {
             toast.success('Item restored successfully');
             await refreshAll();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to restore item');
+            if (error.response?.status === 409 && error.response?.data?.requiresAction) {
+                const pendingItem = items.find((item) => item._id === id);
+                setRestoreConflict({
+                    itemId: id,
+                    itemTitle: pendingItem ? getItemTitle(selectedEntity, pendingItem) : 'this item',
+                    message: error.response.data.message,
+                    conflictTitle: error.response.data?.conflict?.title || 'existing item'
+                });
+            } else {
+                toast.error(error.response?.data?.message || 'Failed to restore item');
+            }
         } finally {
             setActionLoadingId('');
         }
+    };
+
+    const handleReplaceRestore = async () => {
+        if (!restoreConflict) {
+            return;
+        }
+
+        try {
+            setActionLoadingId(`restore-${restoreConflict.itemId}`);
+            await restoreBinItem(selectedEntity, restoreConflict.itemId, { action: 'replace' });
+            toast.success('Item restored and conflicting item moved to the bin');
+            setRestoreConflict(null);
+            await refreshAll();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to replace existing item');
+        } finally {
+            setActionLoadingId('');
+        }
+    };
+
+    const handleCancelRestore = () => {
+        setRestoreConflict(null);
+        toast('Restore cancelled');
     };
 
     const handlePermanentDelete = async (id) => {
@@ -345,6 +379,44 @@ const RecycleBin = () => {
                     </section>
                 </div>
             </div>
+
+            {restoreConflict && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+                        <div className="flex items-start gap-3">
+                            <div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-700">
+                                <AlertTriangle size={18} />
+                            </div>
+                            <div className="min-w-0">
+                                <h3 className="text-lg font-bold text-slate-900">Restore conflict</h3>
+                                <p className="mt-2 text-sm leading-6 text-slate-600">{restoreConflict.message}</p>
+                                <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                                    <p><span className="font-semibold text-slate-900">Restore:</span> {restoreConflict.itemTitle}</p>
+                                    <p className="mt-1"><span className="font-semibold text-slate-900">Replace:</span> {restoreConflict.conflictTitle}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={handleCancelRestore}
+                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleReplaceRestore}
+                                disabled={actionLoadingId === `restore-${restoreConflict.itemId}`}
+                                className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+                            >
+                                {actionLoadingId === `restore-${restoreConflict.itemId}` ? 'Replacing...' : 'Replace'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

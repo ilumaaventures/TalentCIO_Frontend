@@ -9,8 +9,8 @@ export const getBinItems = (entity, page = 1, limit = 20) =>
         }
     });
 
-export const restoreBinItem = (entity, id) =>
-    api.post(`/bin/${entity}/${id}/restore`);
+export const restoreBinItem = (entity, id, payload = {}) =>
+    api.post(`/bin/${entity}/${id}/restore`, payload);
 
 export const permanentDeleteBinItem = (entity, id) =>
     api.delete(`/bin/${entity}/${id}/permanent`);

@@ -169,7 +169,25 @@ const EmployeeProfile = () => {
             }
 
             if (profile.isDeleted) {
-                const res = await restoreBinItem('user', id);
+                let res;
+
+                try {
+                    res = await restoreBinItem('user', id);
+                } catch (restoreError) {
+                    if (restoreError.response?.status === 409 && restoreError.response?.data?.requiresAction) {
+                        const shouldReplace = window.confirm(`${restoreError.response.data.message}\n\nPress OK to replace the current user, or Cancel to stop.`);
+                        if (!shouldReplace) {
+                            toast.dismiss(loadingToast);
+                            toast('Restore cancelled');
+                            return;
+                        }
+
+                        res = await restoreBinItem('user', id, { action: 'replace' });
+                    } else {
+                        throw restoreError;
+                    }
+                }
+
                 toast.success(res.data.message || 'User restored successfully', { id: loadingToast });
                 await fetchData();
                 return;
