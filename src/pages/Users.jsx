@@ -488,7 +488,7 @@ const Users = () => {
                 const parsed = JSON.parse(cachedData);
                 // Use .data if it exists (new format), else fallback to top-level (old format)
                 const data = parsed.data || parsed;
-                setUsers(data.users || []);
+                setUsers((data.users || []).filter((listedUser) => listedUser.isDeleted !== true));
                 setRoles(data.roles || []);
                 setLoading(false); // Immediate UI update
             }
@@ -529,7 +529,7 @@ const Users = () => {
             const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
 
             if (newFingerprint !== oldFingerprint) {
-                setUsers(usersData);
+                setUsers(usersData.filter((listedUser) => listedUser.isDeleted !== true));
                 setRoles(rolesData);
 
                 // Minimal data for caching
@@ -546,6 +546,7 @@ const Users = () => {
                     attendanceMode: u.attendanceMode,
                     attendanceShiftCode: u.attendanceShiftCode,
                     isActive: u.isActive,
+                    isDeleted: u.isDeleted,
                     roles: u.roles?.map(r => ({ _id: r._id, name: r.name })),
                     reportingManagers: u.reportingManagers?.map(m => ({ _id: m._id, firstName: m.firstName, lastName: m.lastName, email: m.email }))
                 }));
@@ -570,15 +571,19 @@ const Users = () => {
 
     const [filterDate, _setFilterDate] = useState('');
 
-    const filteredUsers = users.filter(user => {
+    const filteredUsers = users.filter((listedUser) => {
+        if (listedUser.isDeleted) {
+            return false;
+        }
+
         const matchesSearch = (
-            user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase())
+            listedUser.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            listedUser.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            listedUser.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            listedUser.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase())
         );
 
-        const matchesDate = !filterDate || (user.joiningDate && new Date(user.joiningDate).toISOString().split('T')[0] === filterDate);
+        const matchesDate = !filterDate || (listedUser.joiningDate && new Date(listedUser.joiningDate).toISOString().split('T')[0] === filterDate);
 
         return matchesSearch && matchesDate;
     }).sort((a, b) => new Date(b.joiningDate || 0) - new Date(a.joiningDate || 0));
@@ -877,7 +882,7 @@ const Users = () => {
                                         </td>
                                         <td className="px-3 py-2">
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                                {employee.isActive ? 'Active' : 'Inactive'}
+                                                {employee.isActive ? 'Active' : (employee.isDeleted ? 'In Bin' : 'Inactive')}
                                             </span>
                                         </td>
                                         <td className="px-3 py-2 text-right">

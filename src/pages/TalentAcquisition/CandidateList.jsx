@@ -1492,15 +1492,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         onClick: () => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }
                                     },
                                     {
-                                        id: 'selected',
-                                        label: 'Selected',
-                                        value: phase2Metrics.selected,
-                                        icon: CheckCircle,
-                                        color: 'green',
-                                        isActive: filterDecision === 'Selected',
-                                        onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
-                                    },
-                                    {
                                         id: 'interviewScheduled',
                                         label: 'Interview Scheduled',
                                         value: phase2Metrics.interviewScheduled,
@@ -1508,6 +1499,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         color: 'amber',
                                         isActive: filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled',
                                         onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }
+                                    },
+                                    {
+                                        id: 'selected',
+                                        label: 'Selected',
+                                        value: phase2Metrics.selected,
+                                        icon: CheckCircle,
+                                        color: 'green',
+                                        isActive: filterDecision === 'Selected',
+                                        onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
                                     },
                                     {
                                         id: 'rejected',

@@ -671,7 +671,19 @@ const TalentAcquisitionDashboard = () => {
                             </thead>
                             <tbody>
                                 {topClients.map((client) => (
-                                    <tr key={client.name} className="border-b border-slate-100 transition hover:bg-slate-50">
+                                    <tr
+                                        key={client.name}
+                                        className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
+                                        onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                event.preventDefault();
+                                                navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`);
+                                            }
+                                        }}
+                                        role="button"
+                                        tabIndex={0}
+                                    >
                                         <td className="px-4 py-3.5">
                                             <div className="flex items-center gap-3">
                                                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
@@ -690,7 +702,10 @@ const TalentAcquisitionDashboard = () => {
                                         <td className="px-4 py-3.5 text-right">
                                             <button
                                                 type="button"
-                                                onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`)}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`);
+                                                }}
                                                 className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
                                             >
                                                 View

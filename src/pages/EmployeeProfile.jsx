@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import UserTADashboard from './TalentAcquisition/UserTADashboard';
 import Timesheet from './Timesheet';
 import EmployeeDossier from './EmployeeDossier';
+import { restoreBinItem } from '../api/bin';
 
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
@@ -55,6 +56,7 @@ const EmployeeProfile = () => {
 
     const isAuthorizedForTA = (currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read')) && hasTA;
     const isAuthorizedForEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('user.update');
+    const isProtectedPrimaryAdmin = Boolean(profile?.isProtectedPrimaryAdmin);
     const attendanceShiftOptions = currentUser?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
 
     // Reset active tab if it becomes unauthorized or module is disabled
@@ -69,7 +71,9 @@ const EmployeeProfile = () => {
         setLoading(true);
         try {
             // Fetch the specific user profile
-            const res = await api.get(`/admin/users/${id}`);
+            const res = await api.get(`/admin/users/${id}`, {
+                params: { includeDeleted: true }
+            });
             const userData = res.data;
             setProfile(userData);
 
@@ -122,14 +126,70 @@ const EmployeeProfile = () => {
         }
     }, [fetchData, id]);
 
-    const handleToggleStatus = async () => {
-        if (!window.confirm(`Are you sure you want to ${profile.isActive ? 'deactivate' : 'reactivate'} this user?`)) return;
-        
+    const handleToggleActiveStatus = async () => {
+        if (profile.isDeleted) return;
+        if (isProtectedPrimaryAdmin && profile.isActive) {
+            toast.error('The main admin created by Super Admin cannot be deactivated.');
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to ${profile.isActive ? 'deactivate' : 'activate'} this user?`)) return;
+
         try {
-            const loadingToast = toast.loading(`${profile.isActive ? 'Deactivating' : 'Activating'} user...`);
+            const loadingToast = toast.loading(profile.isActive ? 'Deactivating user...' : 'Activating user...');
             const res = await api.patch(`/admin/users/${id}/status`);
             toast.success(res.data.message, { id: loadingToast });
-            setProfile(prev => ({ ...prev, isActive: res.data.isActive }));
+            setProfile(prev => ({
+                ...prev,
+                isActive: res.data.isActive
+            }));
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to update user status');
+        }
+    };
+
+    const handleBinAction = async () => {
+        if (!profile.isDeleted && isProtectedPrimaryAdmin) {
+            toast.error('The main admin created by Super Admin cannot be moved to the bin.');
+            return;
+        }
+
+        const confirmMessage = profile.isDeleted
+            ? 'Are you sure you want to restore this user from the recycle bin?'
+            : 'Are you sure you want to move this user to the recycle bin?';
+
+        if (!window.confirm(confirmMessage)) return;
+        
+        try {
+            const loadingToast = toast.loading(profile.isDeleted ? 'Restoring user...' : 'Moving user to recycle bin...');
+
+            if (!profile.isDeleted) {
+                const res = await api.delete(`/admin/users/${id}`);
+                toast.success(res.data.message, { id: loadingToast });
+                navigate((currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('bin.view')) ? '/bin' : '/users');
+                return;
+            }
+
+            let res;
+
+            try {
+                res = await restoreBinItem('user', id);
+            } catch (restoreError) {
+                if (restoreError.response?.status === 409 && restoreError.response?.data?.requiresAction) {
+                    const shouldReplace = window.confirm(`${restoreError.response.data.message}\n\nPress OK to replace the current user, or Cancel to stop.`);
+                    if (!shouldReplace) {
+                        toast.dismiss(loadingToast);
+                        toast('Restore cancelled');
+                        return;
+                    }
+
+                    res = await restoreBinItem('user', id, { action: 'replace' });
+                } else {
+                    throw restoreError;
+                }
+            }
+
+            toast.success(res.data.message || 'User restored successfully', { id: loadingToast });
+            await fetchData();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to update status');
         }
@@ -208,30 +268,62 @@ const EmployeeProfile = () => {
 
                             <div className="flex flex-wrap items-center gap-2 sm:pb-2">
                                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${profile.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                    {profile.isActive ? 'Active' : 'Inactive'}
+                                    {profile.isActive ? 'Active' : (profile.isDeleted ? 'In Bin' : 'Inactive')}
                                 </span>
                                 {profile.roles?.map(role => (
                                     <span key={role._id} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
                                         <Shield size={12} /> {role.name}
                                     </span>
                                 ))}
+                                {isProtectedPrimaryAdmin && (
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                        Primary Admin
+                                    </span>
+                                )}
                                 {isAuthorizedForEdit && (
-                                    <button
-                                        onClick={handleToggleStatus}
-                                        className={`ml-2 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm border ${
-                                            profile.isActive 
-                                            ? 'bg-white text-red-600 border-red-200 hover:bg-red-50' 
-                                            : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
-                                        }`}
-                                    >
-                                        {profile.isActive ? <UserMinus size={14} /> : <UserCheck size={14} />}
-                                        {profile.isActive ? 'Deactivate User' : 'Activate User'}
-                                    </button>
+                                    <>
+                                        {!profile.isDeleted && (!isProtectedPrimaryAdmin || !profile.isActive) && (
+                                            <button
+                                                onClick={handleToggleActiveStatus}
+                                                className={`ml-2 px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm border ${
+                                                    profile.isActive
+                                                        ? 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+                                                        : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+                                                }`}
+                                            >
+                                                {profile.isActive ? <UserMinus size={14} /> : <UserCheck size={14} />}
+                                                {profile.isActive ? 'Deactivate User' : 'Activate User'}
+                                            </button>
+                                        )}
+                                        {(!isProtectedPrimaryAdmin || profile.isDeleted) && (
+                                            <button
+                                                onClick={handleBinAction}
+                                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm border ${
+                                                    profile.isDeleted
+                                                        ? 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+                                                        : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
+                                                }`}
+                                            >
+                                                {profile.isDeleted ? <UserCheck size={14} /> : <UserMinus size={14} />}
+                                                {profile.isDeleted ? 'Restore User' : 'Move To Bin'}
+                                            </button>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
                     </div>
                 </div>
+
+                {isProtectedPrimaryAdmin && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 flex items-start gap-3">
+                        <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-sm font-semibold">Protected company admin</p>
+                            <p className="text-sm">This is the main admin account created by Super Admin, so it cannot be deactivated or moved to the recycle bin.</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Navigation Tabs */}
                 <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-200 flex flex-nowrap overflow-x-auto hide-scrollbar gap-1">
