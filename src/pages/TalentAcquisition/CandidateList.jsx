@@ -40,6 +40,54 @@ const getCandidateUploadedByName = (candidate) => (
     `${candidate?.uploadedBy?.firstName || ''} ${candidate?.uploadedBy?.lastName || ''}`.trim()
 );
 
+const interviewFilterOptions = [
+    { value: 'All', label: 'All Candidates' },
+    { value: 'Scheduled', label: 'Scheduled' },
+    { value: 'Shortlisted', label: 'Shortlisted' },
+    { value: 'Failed', label: 'Failed' }
+];
+
+const getRoundsForPhase = (candidate, phase) => (
+    Array.isArray(candidate?.interviewRounds)
+        ? candidate.interviewRounds.filter((round) => (round.phase || 1) === phase)
+        : []
+);
+
+const getInterviewFilterValue = (rounds = []) => {
+    if (!Array.isArray(rounds) || rounds.length === 0) {
+        return null;
+    }
+
+    const hasFailed = rounds.some((round) => round.status === 'Failed');
+    if (hasFailed) {
+        return 'Failed';
+    }
+
+    const hasScheduled = rounds.some((round) => ['Pending', 'Scheduled'].includes(round.status));
+    if (hasScheduled) {
+        return 'Scheduled';
+    }
+
+    const allClosed = rounds.every((round) => ['Passed', 'Skipped'].includes(round.status));
+    if (allClosed) {
+        return 'Shortlisted';
+    }
+
+    return 'Scheduled';
+};
+
+const matchesInterviewFilter = (rounds = [], filterValue = 'All') => {
+    if (filterValue === 'All') {
+        return true;
+    }
+
+    if (filterValue === 'Scheduled') {
+        return Array.isArray(rounds) && rounds.length > 0;
+    }
+
+    return getInterviewFilterValue(rounds) === filterValue;
+};
+
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
     const [resolvedRequest, setResolvedRequest] = useState(requestMeta);
     const [requestLoading, setRequestLoading] = useState(!requestMeta);
@@ -213,7 +261,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, filterProfileShared]);
+    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, filterProfileShared]);
 
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
@@ -321,20 +369,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-
-                const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
-                const allCompleted = rounds.length > 0 && completedRounds.length === rounds.length;
-                const hasFailed = rounds.some(r => r.status === 'Failed');
-                const hasScheduled = rounds.some(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
-
-                matchInterviewStatus = false;
-                if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending') matchInterviewStatus = (rounds.length > 0 && !allCompleted && !hasFailed && !hasScheduled);
-                else if (filterInterviewStatus === 'Scheduled') matchInterviewStatus = hasScheduled;
-                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allCompleted && !hasFailed;
-                else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !allCompleted;
+                const rounds = getRoundsForPhase(candidate, 1);
+                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
             }
             return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared;
         });
@@ -346,7 +382,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             total: structuralPhase1Candidates.length,
             interested: structuralPhase1Candidates.filter(c => c.status === 'Interested').length,
             interviewScheduled: structuralPhase1Candidates.filter(c =>
-                (c.interviewRounds || []).some(r => (r.phase || 1) === 1)
+                getRoundsForPhase(c, 1).length > 0
             ).length,
             shortlisted: structuralPhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
             rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected').length,
@@ -397,19 +433,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     : (candidate.phase2Decision || 'None') === filterDecision);
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
-                const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
-                const allCompleted = rounds.length > 0 && completedRounds.length === rounds.length;
-                const hasFailed = rounds.some(r => r.status === 'Failed');
-                const hasScheduled = rounds.some(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
-
-                matchInterviewStatus = false;
-                if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending') matchInterviewStatus = (rounds.length > 0 && !allCompleted && !hasFailed && !hasScheduled);
-                else if (filterInterviewStatus === 'Scheduled') matchInterviewStatus = hasScheduled;
-                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allCompleted && !hasFailed;
-                else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !allCompleted;
+                const rounds = getRoundsForPhase(candidate, 2);
+                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
             }
             return matchDecision && matchInterviewStatus;
         });
@@ -422,7 +447,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
             rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
             interviewScheduled: structuralPhase2Candidates.filter(c =>
-                (c.interviewRounds || []).some(r => (r.phase || 1) === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))
+                getRoundsForPhase(c, 2).length > 0
             ).length
         };
     }, [structuralPhase2Candidates]);
@@ -471,19 +496,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
-                const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
-                const allCompleted = rounds.length > 0 && completedRounds.length === rounds.length;
-                const hasFailed = rounds.some(r => r.status === 'Failed');
-                const hasScheduled = rounds.some(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
-
-                matchInterviewStatus = false;
-                if (filterInterviewStatus === 'None') matchInterviewStatus = rounds.length === 0;
-                else if (filterInterviewStatus === 'Pending') matchInterviewStatus = (rounds.length > 0 && !allCompleted && !hasFailed && !hasScheduled);
-                else if (filterInterviewStatus === 'Scheduled') matchInterviewStatus = hasScheduled;
-                else if (filterInterviewStatus === 'Passed') matchInterviewStatus = allCompleted && !hasFailed;
-                else if (filterInterviewStatus === 'Failed') matchInterviewStatus = hasFailed;
-                else if (filterInterviewStatus === 'In_Process') matchInterviewStatus = rounds.length > 0 && !hasFailed && !allCompleted;
+                const rounds = getRoundsForPhase(candidate, 3);
+                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
             }
             return matchDecision && matchInterviewStatus;
         });
@@ -796,8 +810,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         return experience === null ? null : `${experience}y`;
                     }
 
-                    const rating = (candidate.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
-                    return rating !== undefined ? `${rating}/10` : null;
+                    return null;
                 });
 
                 // Collect data for each round
@@ -995,33 +1008,21 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const getInterviewStatusSummary = (rounds = []) => {
         if (!rounds || rounds.length === 0) return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
 
-        const total = rounds.length;
-        const completedRounds = rounds.filter(r => r.feedback && (r.rating || r.rating === 0));
-        const completedCount = completedRounds.length;
+        const interviewStatus = getInterviewFilterValue(rounds);
 
-        const failedRounds = rounds.filter(r => r.status === 'Failed');
-        const failedCount = failedRounds.length;
-
-        const scheduledRounds = rounds.filter(r => (r.status === 'Scheduled' || r.status === 'Pending') && !r.feedback);
-
-        if (failedCount > 0) {
-            const failedNames = failedRounds.map(r => r.levelName).join(', ');
-            return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+        if (interviewStatus === 'Failed') {
+            return { label: 'Failed', color: 'text-red-700 bg-red-50 border-red-200' };
         }
 
-        if (scheduledRounds.length > 0 && completedCount === 0) {
+        if (interviewStatus === 'Scheduled') {
             return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
         }
 
-        if (completedCount < total) {
-            return { label: `${completedCount}/${total} Completed`, color: 'text-amber-700 bg-amber-50 border-amber-200' };
+        if (interviewStatus === 'Shortlisted') {
+            return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
         }
 
-        if (completedCount === total && total > 0) {
-            return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-        }
-
-        return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
+        return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
     };
 
     if (loading && candidates.length === 0) {
@@ -1385,19 +1386,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                             if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled' && !filterProfileShared) {
                                 const interviewCount = basePhase1Candidates.filter(candidate => {
-                                    const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
-                                    const hasFailed = rounds.some(r => r.status === 'Failed');
-                                    const allPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
-
-                                    if (filterInterviewStatus === 'None') return rounds.length === 0;
-                                    if (filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled') return rounds.length > 0;
-                                    if (filterInterviewStatus === 'Passed') return allPassed;
-                                    if (filterInterviewStatus === 'Failed') return hasFailed;
-                                    if (filterInterviewStatus === 'In_Process') return rounds.length > 0 && !hasFailed && (!candidate.decision || candidate.decision === 'None');
-                                    return false;
+                                    const rounds = getRoundsForPhase(candidate, 1);
+                                    return matchesInterviewFilter(rounds, filterInterviewStatus);
                                 }).length;
                                 dynamicCards.push({
-                                    label: filterInterviewStatus.replace('_', ' '),
+                                    label: filterInterviewStatus,
                                     value: interviewCount,
                                     icon: Clock,
                                     color: 'amber',
@@ -1497,8 +1490,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         value: phase2Metrics.interviewScheduled,
                                         icon: Clock,
                                         color: 'amber',
-                                        isActive: filterInterviewStatus === 'Pending' || filterInterviewStatus === 'Scheduled',
-                                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Pending'); }
+                                        isActive: filterInterviewStatus === 'Scheduled',
+                                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); }
                                     },
                                     {
                                         id: 'selected',
@@ -1787,6 +1780,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                 <option value="Offer Declined">Offer Declined</option>
                                             </>
                                         )}
+                                    </select>
+                                </div>
+                                <div className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Interviews</label>
+                                    <select
+                                        value={filterInterviewStatus}
+                                        onChange={(e) => setFilterInterviewStatus(e.target.value)}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-34"
+                                    >
+                                        {interviewFilterOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="shrink-0">
