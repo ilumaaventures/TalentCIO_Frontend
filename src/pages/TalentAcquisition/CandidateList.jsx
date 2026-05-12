@@ -796,8 +796,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         return experience === null ? null : `${experience}y`;
                     }
 
-                    const rating = (candidate.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
-                    return rating !== undefined ? `${rating}/10` : null;
+                    return null;
                 });
 
                 // Collect data for each round

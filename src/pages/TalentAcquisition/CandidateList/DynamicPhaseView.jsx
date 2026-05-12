@@ -876,8 +876,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                         return experience === null ? null : `${experience}y`;
                     }
 
-                    const candidateSkillRating = (candidate.skillRatings || []).find((skillRating) => skillRating.skill === skillName)?.rating;
-                    return candidateSkillRating !== undefined ? `${candidateSkillRating}/10` : null;
+                    return null;
                 });
 
                 const roundsData = [];

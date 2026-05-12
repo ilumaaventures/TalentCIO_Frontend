@@ -330,6 +330,18 @@ const CandidateForm = () => {
         ));
     }, [activeDynamicPhase, formData.status, isAddMode, isDynamicRequest]);
 
+    useEffect(() => {
+        if (isDynamicRequest || !isAddMode || formData.status) {
+            return;
+        }
+
+        setFormData((prev) => (
+            prev.status
+                ? prev
+                : { ...prev, status: 'Interested' }
+        ));
+    }, [formData.status, isAddMode, isDynamicRequest]);
+
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;

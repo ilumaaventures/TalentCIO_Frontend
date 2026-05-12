@@ -356,21 +356,37 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         sourceSkills.forEach((entry) => {
             const skillName = String(entry?.skill || '').trim();
             const experience = Number(entry?.experience);
-            if (!skillName || !Number.isFinite(experience) || experience <= 0) return;
+            if (!skillName) return;
 
             const skillKey = skillName.toLowerCase();
             const existing = groupedSkills.get(skillKey);
-            if (!existing || experience > existing.experience) {
+
+            if (!existing) {
                 groupedSkills.set(skillKey, {
                     skill: skillName,
-                    experience,
-                    category: entry.category
+                    experience: Number.isFinite(experience) && experience > 0 ? experience : null,
+                    categories: [entry.category]
                 });
+                return;
+            }
+
+            if (Number.isFinite(experience) && experience > 0 && (existing.experience === null || experience > existing.experience)) {
+                existing.experience = experience;
+            }
+
+            if (!existing.categories.includes(entry.category)) {
+                existing.categories.push(entry.category);
             }
         });
 
         return Array.from(groupedSkills.values()).sort((left, right) => {
-            if (right.experience !== left.experience) return right.experience - left.experience;
+            const leftPriority = left.categories.includes('Must-Have') ? 0 : 1;
+            const rightPriority = right.categories.includes('Must-Have') ? 0 : 1;
+            if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+            const leftExperience = left.experience ?? -1;
+            const rightExperience = right.experience ?? -1;
+            if (rightExperience !== leftExperience) return rightExperience - leftExperience;
             return left.skill.localeCompare(right.skill);
         });
     }, [candidate?.mustHaveSkills, candidate?.niceToHaveSkills]);
@@ -735,14 +751,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Skill Experience</p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {skillExperienceList.map((skill) => (
-                                            <div key={`${skill.skill}-${skill.category}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                            <div key={`${skill.skill}-${skill.categories.join('-')}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div>
                                                         <p className="text-sm font-semibold text-slate-800">{skill.skill}</p>
-                                                        <p className="text-[11px] text-slate-500">{skill.category}</p>
+                                                        <p className="text-[11px] text-slate-500">{skill.categories.join(', ')}</p>
                                                     </div>
                                                     <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
-                                                        {skill.experience} yrs
+                                                        {skill.experience !== null ? `${skill.experience} yrs` : 'Not specified'}
                                                     </span>
                                                 </div>
                                             </div>
