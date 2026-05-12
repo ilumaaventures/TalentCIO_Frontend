@@ -31,6 +31,71 @@ const getDefaultDynamicStatus = (phase) => {
     return phase.statusOptions.find((option) => option?.isDefault)?.value || phase.statusOptions[0]?.value || '';
 };
 
+const normalizeSkillLabel = (value) => String(
+    typeof value === 'string' ? value : (value?.skill || '')
+).trim();
+
+const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();
+
+const normalizeSkillEntries = (skills = []) => (
+    Array.isArray(skills)
+        ? skills
+            .map((skill) => {
+                const name = normalizeSkillLabel(skill);
+                if (!name) return null;
+
+                return {
+                    skill: name,
+                    experience: skill?.experience ?? ''
+                };
+            })
+            .filter(Boolean)
+        : []
+);
+
+const extractRequirementSkills = (skills) => {
+    if (Array.isArray(skills)) {
+        return skills.map(normalizeSkillLabel).filter(Boolean);
+    }
+
+    if (skills && typeof skills === 'object') {
+        return [
+            ...(Array.isArray(skills.technical) ? skills.technical : []),
+            ...(Array.isArray(skills.softSkills) ? skills.softSkills : [])
+        ]
+            .map(normalizeSkillLabel)
+            .filter(Boolean);
+    }
+
+    return [];
+};
+
+const mergeRequirementSkillsWithExperience = (requiredSkills, candidateSkills = []) => {
+    const requirementList = extractRequirementSkills(requiredSkills);
+    const normalizedCandidateSkills = normalizeSkillEntries(candidateSkills);
+    const candidateSkillMap = new Map(
+        normalizedCandidateSkills.map((entry) => [normalizeSkillKey(entry.skill), entry])
+    );
+
+    const mergedSkills = requirementList.map((skillName) => {
+        const matchedSkill = candidateSkillMap.get(normalizeSkillKey(skillName));
+        return {
+            skill: skillName,
+            experience: matchedSkill ? matchedSkill.experience : ''
+        };
+    });
+
+    const existingKeys = new Set(mergedSkills.map((skill) => normalizeSkillKey(skill.skill)));
+    normalizedCandidateSkills.forEach((entry) => {
+        const skillKey = normalizeSkillKey(entry.skill);
+        if (!existingKeys.has(skillKey)) {
+            mergedSkills.push(entry);
+        }
+    });
+
+    return mergedSkills;
+};
+
 const CandidateForm = () => {
     const { hiringRequestId, candidateId } = useParams();
     const navigate = useNavigate();
@@ -178,21 +243,11 @@ const CandidateForm = () => {
 
             if (reqData?.requirements) {
                 const { mustHaveSkills, niceToHaveSkills } = reqData.requirements;
-                
-                // Safely extract mustHaveSkills (it could be an object { technical: [], softSkills: [] } or just an array)
-                const techSkills = Array.isArray(mustHaveSkills?.technical) ? mustHaveSkills.technical : (Array.isArray(mustHaveSkills) ? mustHaveSkills : []);
-                const softSkills = Array.isArray(mustHaveSkills?.softSkills) ? mustHaveSkills.softSkills : [];
-                const allMustHave = [...techSkills, ...softSkills];
-
-                // Safely extract niceToHaveSkills
-                const niceTech = Array.isArray(niceToHaveSkills?.technical) ? niceToHaveSkills.technical : (Array.isArray(niceToHaveSkills) ? niceToHaveSkills : []);
-                const niceSoft = Array.isArray(niceToHaveSkills?.softSkills) ? niceToHaveSkills.softSkills : [];
-                const allNiceToHave = [...niceTech, ...niceSoft];
 
                 setFormData(prev => ({
                     ...prev,
-                    mustHaveSkills: allMustHave.map(s => ({ skill: s, experience: '' })),
-                    niceToHaveSkills: allNiceToHave.map(s => ({ skill: s, experience: '' }))
+                    mustHaveSkills: mergeRequirementSkillsWithExperience(mustHaveSkills, []),
+                    niceToHaveSkills: mergeRequirementSkillsWithExperience(niceToHaveSkills, [])
                 }));
             }
 
@@ -239,6 +294,13 @@ const CandidateForm = () => {
             if (requestRes.data?.success) reqData = requestRes.data.data;
 
             if (candidate) {
+                const mergedMustHaveSkills = reqData?.requirements
+                    ? mergeRequirementSkillsWithExperience(reqData.requirements.mustHaveSkills, candidate.mustHaveSkills || [])
+                    : normalizeSkillEntries(candidate.mustHaveSkills || []);
+                const mergedNiceToHaveSkills = reqData?.requirements
+                    ? mergeRequirementSkillsWithExperience(reqData.requirements.niceToHaveSkills, candidate.niceToHaveSkills || [])
+                    : normalizeSkillEntries(candidate.niceToHaveSkills || []);
+
                 const nextCandidatePhaseState = {
                     currentPhaseId: candidate.currentPhaseId || '',
                     currentPhaseOrder: candidate.currentPhaseOrder || null,
@@ -279,8 +341,8 @@ const CandidateForm = () => {
                         ? (candidate.currentPhaseStatus || '')
                         : (candidate.status || 'Interested'),
                     remark: candidate.remark || '',
-                    mustHaveSkills: candidate.mustHaveSkills || [],
-                    niceToHaveSkills: candidate.niceToHaveSkills || []
+                    mustHaveSkills: mergedMustHaveSkills,
+                    niceToHaveSkills: mergedNiceToHaveSkills
                 });
                 setResumeUrl(candidate.resumeUrl || '');
                 setResumePublicId(candidate.resumePublicId || '');

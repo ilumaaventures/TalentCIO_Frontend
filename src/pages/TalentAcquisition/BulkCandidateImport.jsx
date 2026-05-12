@@ -6,6 +6,10 @@ import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
 
+const normalizeSkillLabel = (value) => String(value || '').trim();
+const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();
+const normalizeHeaderValue = (value) => String(value || '').trim().toLowerCase();
+
 const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess }) => {
     const [, setFile] = useState(null);
     const [previewData, setPreviewData] = useState([]);
@@ -129,6 +133,15 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         return matches ? parseFloat(matches[1]) : 0;
     };
 
+    const hasMeaningfulCellValue = (val) => {
+        if (val === null || val === undefined) return false;
+        if (typeof val === 'string') {
+            const normalized = val.trim().toLowerCase();
+            return normalized !== '' && normalized !== '-' && normalized !== 'na' && normalized !== 'n/a';
+        }
+        return true;
+    };
+
     const parseExcelDate = (dateVal) => {
         if (!dateVal || dateVal === '-') return null;
         try {
@@ -171,6 +184,36 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         return null;
     };
 
+    const detectTwoTierHeader = (row1, row2) => {
+        const row1Values = [];
+        const row2Values = [];
+
+        row1.eachCell({ includeEmpty: true }, (cell) => {
+            row1Values.push(normalizeHeaderValue(cell.value));
+        });
+
+        row2.eachCell({ includeEmpty: true }, (cell) => {
+            row2Values.push(normalizeHeaderValue(cell.value));
+        });
+
+        const row1HasMainSection = row1Values.some((value) => (
+            value === 'technical skills (experience)' ||
+            value === 'basic info' ||
+            value.startsWith('round ')
+        ));
+
+        const row2HasCandidateHeaders = row2Values.some((value) => (
+            value === 's.no' ||
+            value === 'sl no' ||
+            value === 'serial no' ||
+            value === 'name of candidate' ||
+            value === 'email' ||
+            value === 'mobile no.'
+        ));
+
+        return row1HasMainSection && row2HasCandidateHeaders;
+    };
+
 
 
     const processFile = async (file) => {
@@ -203,10 +246,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
             const headers = {};
             const tier1Headers = {}; // Main categories (Basic Info, Round 1, etc.)
+            const headerLabels = {}; // Preserve original header casing for skill names
 
             // Check if it's a two-tier header format (standard in our new template)
-            const row2Value = row2.getCell(1).value?.toString().toLowerCase();
-            const isTwoTier = row2Value === 'sl no' || row2Value === 's.no' || row2Value === 'serial no';
+            const isTwoTier = detectTwoTierHeader(row1, row2);
 
             if (isTwoTier) {
                 // Tier 1 (Main Headings)
@@ -222,14 +265,22 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
                 // Tier 2 (Sub-Headers)
                 row2.eachCell((cell, colNumber) => {
-                    const val = cell.value?.toString().toLowerCase().trim();
-                    if (val) headers[val] = colNumber;
+                    const rawVal = cell.value?.toString().trim();
+                    const val = rawVal?.toLowerCase();
+                    if (val) {
+                        headers[val] = colNumber;
+                        headerLabels[colNumber] = rawVal;
+                    }
                 });
             } else {
                 // Legacy Single Row Header
                 row1.eachCell((cell, colNumber) => {
-                    const val = cell.value?.toString().toLowerCase().trim();
-                    if (val) headers[val] = colNumber;
+                    const rawVal = cell.value?.toString().trim();
+                    const val = rawVal?.toLowerCase();
+                    if (val) {
+                        headers[val] = colNumber;
+                        headerLabels[colNumber] = rawVal;
+                    }
                 });
             }
 
@@ -271,12 +322,19 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             const reqMustHave = request?.requirements?.mustHaveSkills;
             let techSkills = [];
             let softSkills = [];
-            if (reqMustHave && typeof reqMustHave === 'object' && !Array.isArray(reqMustHave)) {
-                techSkills = (reqMustHave.technical || []).map(s => typeof s === 'string' ? s : (s?.skill || ''));
-                softSkills = (reqMustHave.softSkills || []).map(s => typeof s === 'string' ? s : (s?.skill || ''));
-            } else if (Array.isArray(reqMustHave)) {
-                techSkills = reqMustHave.map(s => typeof s === 'string' ? s : (s?.skill || ''));
-            }
+                if (reqMustHave && typeof reqMustHave === 'object' && !Array.isArray(reqMustHave)) {
+                    techSkills = (reqMustHave.technical || []).map(s => typeof s === 'string' ? s : (s?.skill || ''));
+                    softSkills = (reqMustHave.softSkills || []).map(s => typeof s === 'string' ? s : (s?.skill || ''));
+                } else if (Array.isArray(reqMustHave)) {
+                    techSkills = reqMustHave.map(s => typeof s === 'string' ? s : (s?.skill || ''));
+                }
+
+                const canonicalTechSkillMap = new Map(
+                    techSkills
+                        .map(skill => normalizeSkillLabel(skill))
+                        .filter(Boolean)
+                        .map(skill => [normalizeSkillKey(skill), skill])
+                );
 
             worksheet.eachRow((row, rowNumber) => {
                 if (rowNumber === 1 || (isTwoTier && rowNumber === 2)) return; // Skip headers
@@ -394,14 +452,16 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
                 if (isTwoTier) {
                     // In two-tier, technical skills are specifically under "Technical Skills (Experience)"
-                    Object.keys(headers).forEach(header => {
-                        const colIdx = headers[header]; // This is already a number from eachCell
+                    Object.keys(headerLabels).forEach(colIdxStr => {
+                        const colIdx = Number(colIdxStr);
                         const tier1 = tier1Headers[colIdx];
-                        if (tier1 === 'Technical Skills (Experience)') {
-                            const val = row.getCell(colIdx).value;
-                            if (val !== undefined && val !== null && val !== '') {
+                        if (normalizeSkillKey(tier1) === 'technical skills (experience)') {
+                            const val = sanitizeCellValue(row.getCell(colIdx).value);
+                            if (hasMeaningfulCellValue(val)) {
+                                const originalHeader = headerLabels[colIdx];
+                                const canonicalSkill = canonicalTechSkillMap.get(normalizeSkillKey(originalHeader)) || originalHeader;
                                 mappedRow.mustHaveSkills.push({
-                                    skill: header, // Column header is the skill name
+                                    skill: canonicalSkill,
                                     experience: extractNumeric(val)
                                 });
                             }
@@ -412,10 +472,11 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     Object.keys(headers).forEach(header => {
                         const h = header.toLowerCase();
                         if (!standardHeaders.includes(h)) {
-                            const val = row.getCell(headers[header]).value;
-                            if (val !== undefined && val !== null && val !== '') {
+                            const colIdx = headers[header];
+                            const val = sanitizeCellValue(row.getCell(colIdx).value);
+                            if (hasMeaningfulCellValue(val)) {
                                 mappedRow.mustHaveSkills.push({
-                                    skill: header,
+                                    skill: headerLabels[colIdx] || header,
                                     experience: extractNumeric(val)
                                 });
                             }
