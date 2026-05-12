@@ -63,6 +63,7 @@ const Onboarding = () => {
   const [checkedSections, setCheckedSections] = useState(new Set());
   const [checkedDocuments, setCheckedDocuments] = useState(new Set());
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [emailDeadline, setEmailDeadline] = useState('');
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
@@ -125,6 +126,94 @@ const Onboarding = () => {
     });
   };
 
+  const getRequestedLabel = useCallback((item) => {
+    if (typeof item === 'string') return item;
+    return item?.label || '';
+  }, []);
+
+  const getDetailSections = useCallback((employee) => ([
+    { id: 'personal', label: 'Personal Details', done: employee?.personalDetails?.isComplete, data: employee?.personalDetails },
+    { id: 'emergency', label: 'Emergency Contact', done: employee?.emergencyContact?.isComplete, data: employee?.emergencyContact },
+    { id: 'bank', label: 'Bank Details', done: employee?.bankDetails?.isComplete, data: employee?.bankDetails },
+    { id: 'offer', label: 'Offer Declaration', done: employee?.offerDeclaration?.isComplete, data: employee?.offerDeclaration }
+  ]), []);
+
+  const getDetailDocuments = useCallback((employee) => {
+    if (!employee) return [];
+
+    const requestedDocuments = employee.requestedDocuments || [];
+    const getRequestedDoc = (label) => requestedDocuments.find((entry) => getRequestedLabel(entry) === label);
+
+    return [
+      ...(employee.documents || [])
+        .filter((d) => d.type !== 'custom_file')
+        .map((d) => ({ ...d, itemType: 'document' })),
+      ...(onboardingSettings.policies || []).map((policy) => {
+        const req = getRequestedDoc(policy.name);
+        return {
+          label: policy.name,
+          status: 'Policy',
+          itemType: 'policy',
+          _id: policy._id,
+          isAccepted: (employee.offerDeclaration?.acceptedPolicies || []).some((acceptedPolicy) => acceptedPolicy.policyId === policy._id),
+          emailSentAt: req?.emailSentAt,
+          url: policy.url
+        };
+      }),
+      ...(onboardingSettings.dynamicTemplates || []).map((template) => {
+        const req = getRequestedDoc(template.name);
+        return {
+          label: template.name,
+          status: 'Template',
+          itemType: 'template',
+          _id: template._id,
+          isAccepted: (employee.offerDeclaration?.acceptedTemplates || []).some((acceptedTemplate) => acceptedTemplate.templateId === template._id),
+          emailSentAt: req?.emailSentAt,
+          url: template.url
+        };
+      }),
+      ...(onboardingSettings.offerLetterTemplateUrl ? [{
+        label: 'Offer Letter',
+        status: 'Template',
+        itemType: 'template',
+        _id: 'offer-letter-default',
+        isAccepted: employee.offerDeclaration?.hasReadOfferLetter,
+        emailSentAt: getRequestedDoc('Offer Letter')?.emailSentAt,
+        url: onboardingSettings.offerLetterTemplateUrl
+      }] : []),
+      ...(onboardingSettings.declarationTemplateUrl ? [{
+        label: 'Declaration',
+        status: 'Template',
+        itemType: 'template',
+        _id: 'declaration-default',
+        isAccepted: employee.offerDeclaration?.isComplete,
+        emailSentAt: getRequestedDoc('Declaration')?.emailSentAt,
+        url: onboardingSettings.declarationTemplateUrl
+      }] : []),
+      ...(employee.documents || [])
+        .filter((d) => d.type === 'custom_file')
+        .map((d) => ({ ...d, itemType: 'document', isCustomSentFile: true }))
+    ];
+  }, [getRequestedLabel, onboardingSettings.declarationTemplateUrl, onboardingSettings.dynamicTemplates, onboardingSettings.offerLetterTemplateUrl, onboardingSettings.policies]);
+
+  const detailSections = getDetailSections(selectedEmployee);
+  const detailDocuments = getDetailDocuments(selectedEmployee);
+  const allSectionLabels = detailSections.map((section) => section.label);
+  const allDocumentLabels = detailDocuments.map((item) => item.label);
+  const totalSelectableItems = allSectionLabels.length + allDocumentLabels.length;
+  const selectedItemCount = checkedSections.size + checkedDocuments.size;
+  const allItemsSelected = totalSelectableItems > 0 && selectedItemCount === totalSelectableItems;
+
+  const handleSelectAllItems = useCallback(() => {
+    setCheckedSections(new Set(allSectionLabels));
+    setCheckedDocuments(new Set(allDocumentLabels));
+  }, [allDocumentLabels, allSectionLabels]);
+
+  const handleClearAllItems = useCallback(() => {
+    setCheckedSections(new Set());
+    setCheckedDocuments(new Set());
+  }, []);
+
   const handleSendOnboardingEmail = async () => {
     if (checkedSections.size === 0 && checkedDocuments.size === 0) {
       toast.error('Please select at least one section or document');
@@ -150,6 +239,32 @@ const Onboarding = () => {
       toast.error(err.response?.data?.message || 'Failed to send email');
     } finally {
       setSendingEmail(false);
+    }
+  };
+
+  const handleSaveSelectionDraft = async () => {
+    if (!selectedEmployee?._id) return;
+
+    try {
+      setSavingDraft(true);
+      const res = await api.patch(`/onboarding/employees/${selectedEmployee._id}`, {
+        selectionDraft: {
+          sections: [...checkedSections],
+          documents: [...checkedDocuments]
+        },
+        documentDeadline: emailDeadline || null
+      });
+
+      toast.success('Selection draft saved');
+
+      if (res.data?.employee) {
+        setSelectedEmployee(res.data.employee);
+        syncEmployeeState(res.data.employee, 'update');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save draft');
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -525,10 +640,19 @@ const Onboarding = () => {
     try {
       setDetailLoading(true);
       setShowDetailModal(true);
+      setCustomFiles([]);
+      if (customFileInputRef.current) customFileInputRef.current.value = '';
       fetchSettings(); // Refresh settings to show latest templates/policies in selection
       const res = await api.get(`/onboarding/employees/${emp._id}`);
       setSelectedEmployee(res.data);
       setEmailDeadline(res.data.documentDeadline ? res.data.documentDeadline.split('T')[0] : '');
+      const hasSavedDraft = Boolean(res.data.selectionDraft?.updatedAt);
+      const draftSections = res.data.selectionDraft?.sections || [];
+      const draftDocuments = res.data.selectionDraft?.documents || [];
+      const requestedSectionLabels = (hasSavedDraft ? draftSections : (res.data.requestedSections || []).map((item) => getRequestedLabel(item))).filter(Boolean);
+      const requestedDocumentLabels = (hasSavedDraft ? draftDocuments : (res.data.requestedDocuments || []).map((item) => getRequestedLabel(item))).filter(Boolean);
+      setCheckedSections(new Set(requestedSectionLabels));
+      setCheckedDocuments(new Set(requestedDocumentLabels));
     } catch {
       toast.error('Failed to load details');
     } finally {
@@ -1243,7 +1367,7 @@ const Onboarding = () => {
           <div style={{ background: '#fff', width: '100%', maxWidth: '640px', height: '100vh', overflow: 'auto', boxShadow: '-4px 0 20px rgba(0,0,0,0.1)', animation: 'slideIn 0.3s ease-out' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
               <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Employee Details</h2>
-              <button onClick={() => { setShowDetailModal(false); setSelectedEmployee(null); setCheckedSections(new Set()); setCheckedDocuments(new Set()); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
+              <button onClick={() => { setShowDetailModal(false); setSelectedEmployee(null); setCheckedSections(new Set()); setCheckedDocuments(new Set()); setCustomFiles([]); if (customFileInputRef.current) customFileInputRef.current.value = ''; }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
             </div>
 
             {detailLoading ? (
@@ -1339,15 +1463,30 @@ const Onboarding = () => {
                 )}
 
                 {/* Section Completion & Details */}
-                <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>Form Sections</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Form Sections</h4>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handleSelectAllItems}
+                      disabled={totalSelectableItems === 0 || allItemsSelected}
+                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1d4ed8', fontSize: '12px', fontWeight: '700', cursor: totalSelectableItems === 0 || allItemsSelected ? 'not-allowed' : 'pointer', opacity: totalSelectableItems === 0 || allItemsSelected ? 0.6 : 1 }}
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearAllItems}
+                      disabled={selectedItemCount === 0}
+                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontSize: '12px', fontWeight: '700', cursor: selectedItemCount === 0 ? 'not-allowed' : 'pointer', opacity: selectedItemCount === 0 ? 0.6 : 1 }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
                 <div style={{ display: 'grid', gap: '10px', marginBottom: '24px' }}>
-                  {[
-                    { id: 'personal', label: 'Personal Details', done: selectedEmployee.personalDetails?.isComplete, data: selectedEmployee.personalDetails },
-                    { id: 'emergency', label: 'Emergency Contact', done: selectedEmployee.emergencyContact?.isComplete, data: selectedEmployee.emergencyContact },
-                    { id: 'bank', label: 'Bank Details', done: selectedEmployee.bankDetails?.isComplete, data: selectedEmployee.bankDetails },
-                    { id: 'offer', label: 'Offer Declaration', done: selectedEmployee.offerDeclaration?.isComplete, data: selectedEmployee.offerDeclaration }
-                  ].map((s) => {
-                    const isRequested = Array.isArray(selectedEmployee.requestedSections) && selectedEmployee.requestedSections.find(rs => (typeof rs === 'string' ? rs === s.label : rs.label === s.label));
+                  {detailSections.map((s) => {
+                    const isRequested = Array.isArray(selectedEmployee.requestedSections) && selectedEmployee.requestedSections.find((rs) => getRequestedLabel(rs) === s.label);
                     const isComplete = s.done;
                     const sentDate = isRequested?.emailSentAt;
                     let statusText = isComplete ? 'Complete' : (sentDate ? 'Mail Sent' : 'Pending');
@@ -1425,56 +1564,7 @@ const Onboarding = () => {
                 {/* Documents */}
                 <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>Documents & Requirements</h4>
                 <div style={{ display: 'grid', gap: '8px' }}>
-                  {[
-                    ...(selectedEmployee.documents || [])
-                      .filter((d) => d.type !== 'custom_file')
-                      .map(d => ({ ...d, itemType: 'document' })),
-                    ...(onboardingSettings.policies || []).map(p => {
-                      const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === p.name);
-                      return {
-                        label: p.name,
-                        status: 'Policy',
-                        itemType: 'policy',
-                        _id: p._id,
-                        isAccepted: (selectedEmployee.offerDeclaration?.acceptedPolicies || []).some(ap => ap.policyId === p._id),
-                        emailSentAt: req?.emailSentAt,
-                        url: p.url
-                      };
-                    }),
-                    ...(onboardingSettings.dynamicTemplates || []).map(t => {
-                      const req = (selectedEmployee.requestedDocuments || []).find(rd => rd.label === t.name);
-                      return {
-                        label: t.name,
-                        status: 'Template',
-                        itemType: 'template',
-                        _id: t._id,
-                        isAccepted: (selectedEmployee.offerDeclaration?.acceptedTemplates || []).some(at => at.templateId === t._id),
-                        emailSentAt: req?.emailSentAt,
-                        url: t.url
-                      };
-                    }),
-                    ...(onboardingSettings.offerLetterTemplateUrl ? [{
-                      label: 'Offer Letter',
-                      status: 'Template',
-                      itemType: 'template',
-                      _id: 'offer-letter-default',
-                      isAccepted: selectedEmployee.offerDeclaration?.hasReadOfferLetter,
-                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Offer Letter')?.emailSentAt,
-                      url: onboardingSettings.offerLetterTemplateUrl
-                    }] : []),
-                    ...(onboardingSettings.declarationTemplateUrl ? [{
-                      label: 'Declaration',
-                      status: 'Template',
-                      itemType: 'template',
-                      _id: 'declaration-default',
-                      isAccepted: selectedEmployee.offerDeclaration?.isComplete,
-                      emailSentAt: (selectedEmployee.requestedDocuments || []).find(rd => rd.label === 'Declaration')?.emailSentAt,
-                      url: onboardingSettings.declarationTemplateUrl
-                    }] : []),
-                    ...(selectedEmployee.documents || [])
-                      .filter((d) => d.type === 'custom_file')
-                      .map(d => ({ ...d, itemType: 'document', isCustomSentFile: true }))
-                  ].map((item, idx) => {
+                  {detailDocuments.map((item, idx) => {
                     const isDoc = item.itemType === 'document';
                     const badge = isDoc ? (DOC_BADGE[item.status] || DOC_BADGE.Pending) : { bg: '#f0fdf4', text: '#16a34a' };
                     return (
@@ -1555,16 +1645,26 @@ const Onboarding = () => {
 
                 {/* Send Pre-Onboarding Email Button */}
                 <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-                  <button
-                    onClick={handleSendOnboardingEmail}
-                    disabled={sendingEmail}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: sendingEmail ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', opacity: sendingEmail ? 0.7 : 1, transition: 'all 0.2s' }}
-                  >
-                    <Mail size={18} /> {sendingEmail ? 'Sending...' : 'Send Pre-Onboarding Email'}
-                  </button>
-                  {(checkedSections.size > 0 || checkedDocuments.size > 0) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={handleSaveSelectionDraft}
+                      disabled={savingDraft}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: savingDraft ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', opacity: savingDraft ? 0.7 : 1 }}
+                    >
+                      <FileDown size={18} /> {savingDraft ? 'Saving Draft...' : 'Save as Draft'}
+                    </button>
+                    <button
+                      onClick={handleSendOnboardingEmail}
+                      disabled={sendingEmail}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: sendingEmail ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', opacity: sendingEmail ? 0.7 : 1, transition: 'all 0.2s' }}
+                    >
+                      <Mail size={18} /> {sendingEmail ? 'Sending...' : 'Send Pre-Onboarding Email'}
+                    </button>
+                  </div>
+                  {selectedItemCount > 0 && (
                     <p style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', marginTop: '8px' }}>
-                      {checkedSections.size + checkedDocuments.size} item(s) selected
+                      {selectedItemCount} item(s) selected
                     </p>
                   )}
                 </div>
