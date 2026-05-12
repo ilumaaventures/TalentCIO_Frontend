@@ -15,7 +15,8 @@ import Button from '../components/Button';
 const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required }) => {
     if (!isEditing && !value && hideIfEmpty) return null;
 
-    const currentValue = valueOverride !== undefined ? valueOverride : (formData?.[section]?.[field] || '');
+    const rawCurrentValue = valueOverride !== undefined ? valueOverride : formData?.[section]?.[field];
+    const currentValue = rawCurrentValue ?? '';
     const handleChange = onChangeOverride || ((e) => onChange(section, field, e.target.value));
 
     return (
@@ -243,14 +244,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         };
     }, [previewUrl]);
 
-    // Initialize formData when entering edit mode if it's empty
+    // Initialize editable state when a section enters edit mode.
+    // Avoid rehydrating on every formData change, which would wipe in-progress edits.
     useEffect(() => {
-        if (editMode && profile && (Object.keys(formData).length === 0 || editMode !== 'hris')) {
-            // If it's a section-specific edit, we might want to just target that? 
-            // But usually formData is the whole profile for simplicity in this component.
+        if (editMode && profile) {
             setFormData(JSON.parse(JSON.stringify(profile)));
         }
-    }, [editMode, formData, profile]);
+    }, [editMode, profile]);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -1103,7 +1103,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             label="Company Name"
                                             section="experience"
                                             value={exp.companyName}
-                                            valueOverride={formData.experience?.[idx]?.companyName || exp.companyName}
+                                            valueOverride={formData.experience?.[idx]?.companyName ?? exp.companyName}
                                             isEditing={isEditing}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'companyName', e.target.value)}
                                         />
@@ -1111,7 +1111,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             label="Designation"
                                             section="experience"
                                             value={exp.designation}
-                                            valueOverride={formData.experience?.[idx]?.designation || exp.designation}
+                                            valueOverride={formData.experience?.[idx]?.designation ?? exp.designation}
                                             isEditing={isEditing}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'designation', e.target.value)}
                                         />
@@ -1120,7 +1120,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             section="experience"
                                             type="date"
                                             value={exp.startDate}
-                                            valueOverride={formData.experience?.[idx]?.startDate || exp.startDate}
+                                            valueOverride={formData.experience?.[idx]?.startDate ?? exp.startDate}
                                             isEditing={isEditing}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'startDate', e.target.value)}
                                         />
@@ -1129,7 +1129,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             section="experience"
                                             type="date"
                                             value={exp.endDate}
-                                            valueOverride={formData.experience?.[idx]?.endDate || exp.endDate}
+                                            valueOverride={formData.experience?.[idx]?.endDate ?? exp.endDate}
                                             isEditing={isEditing}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'endDate', e.target.value)}
                                         />
@@ -1138,7 +1138,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                 label="Reason for Leaving"
                                                 section="experience"
                                                 value={exp.reasonForLeaving}
-                                                valueOverride={formData.experience?.[idx]?.reasonForLeaving || exp.reasonForLeaving}
+                                                valueOverride={formData.experience?.[idx]?.reasonForLeaving ?? exp.reasonForLeaving}
                                                 isEditing={isEditing}
                                                 onChangeOverride={(e) => handleArrayChange('experience', idx, 'reasonForLeaving', e.target.value)}
                                             />
@@ -2031,23 +2031,23 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 <div key={idx} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex gap-6">
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
                                         <Field section="experience" isEditing={isEditing} label="Company Name" field={`comp_${idx}`}
-                                            value={exp.companyName} valueOverride={formData.experience?.[idx]?.companyName || exp.companyName}
+                                            value={exp.companyName} valueOverride={formData.experience?.[idx]?.companyName ?? exp.companyName}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'companyName', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="Designation" field={`desig_${idx}`}
-                                            value={exp.designation} valueOverride={formData.experience?.[idx]?.designation || exp.designation}
+                                            value={exp.designation} valueOverride={formData.experience?.[idx]?.designation ?? exp.designation}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'designation', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="Start Date" field={`start_${idx}`} type="date"
-                                            value={exp.startDate} valueOverride={formData.experience?.[idx]?.startDate || exp.startDate}
+                                            value={exp.startDate} valueOverride={formData.experience?.[idx]?.startDate ?? exp.startDate}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'startDate', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="End Date" field={`end_${idx}`} type="date"
-                                            value={exp.endDate} valueOverride={formData.experience?.[idx]?.endDate || exp.endDate}
+                                            value={exp.endDate} valueOverride={formData.experience?.[idx]?.endDate ?? exp.endDate}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'endDate', e.target.value)}
                                         />
                                         <Field section="experience" isEditing={isEditing} label="Total Work Experience" field={`total_${idx}`}
-                                            value={exp.totalExperience} valueOverride={formData.experience?.[idx]?.totalExperience || exp.totalExperience}
+                                            value={exp.totalExperience} valueOverride={formData.experience?.[idx]?.totalExperience ?? exp.totalExperience}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'totalExperience', e.target.value)}
                                         />
                                     </div>
