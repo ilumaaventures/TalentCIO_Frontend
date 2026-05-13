@@ -1,17 +1,65 @@
 export const TEMPLATE_PLACEHOLDERS = [
     'candidateName',
+    'firstName',
+    'lastName',
+    'fullName',
     'email',
+    'workEmail',
     'mobile',
+    'phoneNumber',
     'jobTitle',
+    'designation',
     'client',
     'department',
+    'location',
+    'managerName',
+    'managerEmail',
     'recruiterName',
     'companyName',
     'requestId',
     'currentStatus',
     'interviewDate',
     'interviewLink',
-    'customNote'
+    'customNote',
+    'employeeFirstName',
+    'employeeFullName',
+    'employeeId',
+    'joiningDate',
+    'submissionDeadline',
+    'portalLink'
+];
+
+export const GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS = [
+    'firstName',
+    'lastName',
+    'fullName',
+    'email',
+    'workEmail',
+    'mobile',
+    'phoneNumber',
+    'jobTitle',
+    'designation',
+    'department',
+    'location',
+    'managerName',
+    'managerEmail',
+    'companyName'
+];
+
+export const ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
+    'firstName',
+    'lastName',
+    'fullName',
+    'email',
+    'phone',
+    'designation',
+    'department',
+    'offerDate',
+    'dateOfOffer',
+    'joiningDate',
+    'workLocation',
+    'submissionDeadline',
+    'portalLink'
 ];
 
 export const getSupportedPlaceholderTokens = (placeholders = TEMPLATE_PLACEHOLDERS) => placeholders.map((placeholder) => `{{${placeholder}}}`);

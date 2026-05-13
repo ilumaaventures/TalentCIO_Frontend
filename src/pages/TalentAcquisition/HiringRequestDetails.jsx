@@ -370,7 +370,7 @@ const HiringRequestDetails = () => {
 
                             {/* Role Information Card */}
                             <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
-                                <div className="px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
+                                <div className="px-5 py-3.5 border-b border-slate-100 bg-linear-to-r from-slate-50 to-white flex items-center justify-between">
                                     <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                         <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
                                             <Briefcase size={14} />
@@ -420,7 +420,7 @@ const HiringRequestDetails = () => {
 
                             {/* Requirements Card */}
                             <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
-                                <div className="px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                                <div className="px-5 py-3.5 border-b border-slate-100 bg-linear-to-r from-slate-50 to-white">
                                     <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                         <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg">
                                             <CheckCircle size={14} />
@@ -488,7 +488,7 @@ const HiringRequestDetails = () => {
                             {/* Job Description Card */}
                             {(request.jobDescription || request.jobDescriptionFile) && (
                                 <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
-                                    <div className="px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex justify-between items-center">
+                                    <div className="px-5 py-3.5 border-b border-slate-100 bg-linear-to-r from-slate-50 to-white flex justify-between items-center">
                                         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                             <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
                                                 <FileText size={14} />
@@ -523,7 +523,7 @@ const HiringRequestDetails = () => {
                             {/* Approval History - Enhanced Timeline */}
                             {(isDynamic || request.approvals?.l1?.status !== 'Pending' || request.approvals?.final?.status !== 'Pending') && (
                                 <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
-                                    <div className="px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                                    <div className="px-5 py-3.5 border-b border-slate-100 bg-linear-to-r from-slate-50 to-white">
                                         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                             <div className="p-1.5 bg-purple-100 text-purple-600 rounded-lg">
                                                 <Clock size={14} />

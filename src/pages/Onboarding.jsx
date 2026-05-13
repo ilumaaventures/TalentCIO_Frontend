@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import axios from 'axios';
@@ -7,6 +7,13 @@ import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import {
+  ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
+  getSupportedPlaceholderTokens,
+  renderTemplateBody,
+  resolveTemplate,
+  validateTemplateSyntax
+} from '../utils/templatePlaceholders';
 
 const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
 const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
@@ -19,6 +26,19 @@ const CUSTOM_FILE_ALLOWED_MIME_TYPES = new Set([
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 ]);
+
+const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Action Required: Complete Your Pre-Onboarding';
+const DEFAULT_ONBOARDING_EMAIL_BODY = `
+<p>Hello <strong>{{firstName}}</strong>,</p>
+<p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+`;
+const DEFAULT_ONBOARDING_TEMPLATE_OPTION = {
+  _id: '',
+  name: 'Default Onboarding Template',
+  category: 'built_in',
+  subject: DEFAULT_ONBOARDING_EMAIL_SUBJECT,
+  htmlBody: DEFAULT_ONBOARDING_EMAIL_BODY
+};
 
 const STATUS_COLORS = {
   Pending: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' },
@@ -67,6 +87,10 @@ const Onboarding = () => {
   const [emailDeadline, setEmailDeadline] = useState('');
   const [emailSenderOptions, setEmailSenderOptions] = useState([]);
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('platform');
+  const [emailTemplates, setEmailTemplates] = useState([]);
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState('');
+  const [customEmailSubject, setCustomEmailSubject] = useState(DEFAULT_ONBOARDING_EMAIL_SUBJECT);
+  const [customEmailBody, setCustomEmailBody] = useState(DEFAULT_ONBOARDING_EMAIL_BODY);
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [sendingCustomFile, setSendingCustomFile] = useState(false);
@@ -205,6 +229,54 @@ const Onboarding = () => {
   const totalSelectableItems = allSectionLabels.length + allDocumentLabels.length;
   const selectedItemCount = checkedSections.size + checkedDocuments.size;
   const allItemsSelected = totalSelectableItems > 0 && selectedItemCount === totalSelectableItems;
+  const templatePlaceholderHelp = getSupportedPlaceholderTokens(ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS).join(', ');
+  const onboardingPreviewData = {
+    candidateName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak',
+    firstName: selectedEmployee?.firstName || 'Sarthak',
+    lastName: selectedEmployee?.lastName || 'Sharma',
+    fullName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak Sharma',
+    email: selectedEmployee?.email || 'sarthak@example.com',
+    phone: selectedEmployee?.phone || '9876543210',
+    mobile: selectedEmployee?.phone || '9876543210',
+    jobTitle: selectedEmployee?.designation || 'Software Engineer',
+    designation: selectedEmployee?.designation || 'Software Engineer',
+    client: '',
+    department: selectedEmployee?.department || 'Engineering',
+    offerDate: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
+    dateOfOffer: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
+    workLocation: selectedEmployee?.workLocation || 'Bengaluru',
+    employmentDetails: [
+      selectedEmployee?.designation || 'Software Engineer',
+      selectedEmployee?.department || 'Engineering',
+      selectedEmployee?.workLocation || 'Bengaluru'
+    ].filter(Boolean).join(' | '),
+    recruiterName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'HR Team',
+    companyName: user?.company?.name || 'Your Company',
+    requestId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
+    currentStatus: selectedEmployee?.status || 'Pending',
+    interviewDate: '',
+    interviewLink: '',
+    customNote: '',
+    employeeFirstName: selectedEmployee?.firstName || 'Sarthak',
+    employeeFullName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak Sharma',
+    employeeId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
+    joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '15 Jun 2026',
+    submissionDeadline: emailDeadline || '2026-06-10',
+    portalLink: `${window.location.origin}/pre-onboarding/login`
+  };
+  const onboardingPreviewSubject = resolveTemplate(customEmailSubject, onboardingPreviewData);
+  const onboardingPreviewHtml = renderTemplateBody(customEmailBody, onboardingPreviewData);
+  const onboardingTemplateOptions = useMemo(
+    () => [DEFAULT_ONBOARDING_TEMPLATE_OPTION, ...emailTemplates],
+    [emailTemplates]
+  );
+
+  const applyEmailTemplateDraft = useCallback((templateId, templates, draftSubject = '', draftBody = '') => {
+    const selectedTemplate = (templates || []).find((template) => template._id === templateId);
+    setSelectedEmailTemplateId(templateId || '');
+    setCustomEmailSubject(draftSubject || selectedTemplate?.subject || DEFAULT_ONBOARDING_EMAIL_SUBJECT);
+    setCustomEmailBody(draftBody || selectedTemplate?.htmlBody || DEFAULT_ONBOARDING_EMAIL_BODY);
+  }, []);
 
   const handleSelectAllItems = useCallback(() => {
     setCheckedSections(new Set(allSectionLabels));
@@ -221,13 +293,33 @@ const Onboarding = () => {
       toast.error('Please select at least one section or document');
       return;
     }
+    if (!customEmailSubject.trim() || !customEmailBody.trim()) {
+      toast.error('Email subject and body are required');
+      return;
+    }
+
+    const subjectValidation = validateTemplateSyntax(customEmailSubject);
+    if (!subjectValidation.valid) {
+      toast.error(`Subject: ${subjectValidation.message}`);
+      return;
+    }
+
+    const bodyValidation = validateTemplateSyntax(customEmailBody);
+    if (!bodyValidation.valid) {
+      toast.error(`Body: ${bodyValidation.message}`);
+      return;
+    }
+
     try {
       setSendingEmail(true);
       const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-onboarding-email`, {
         sections: [...checkedSections],
         documents: [...checkedDocuments],
         submissionDeadline: emailDeadline,
-        emailAccountId: selectedEmailAccountId
+        emailAccountId: selectedEmailAccountId,
+        emailTemplateId: selectedEmailTemplateId || '',
+        emailSubject: customEmailSubject,
+        emailHtmlBody: customEmailBody
       });
       toast.success('Pre-onboarding email sent successfully!');
       setCheckedSections(new Set());
@@ -253,7 +345,10 @@ const Onboarding = () => {
       const res = await api.patch(`/onboarding/employees/${selectedEmployee._id}`, {
         selectionDraft: {
           sections: [...checkedSections],
-          documents: [...checkedDocuments]
+          documents: [...checkedDocuments],
+          emailTemplateId: selectedEmailTemplateId || '',
+          emailSubject: customEmailSubject,
+          emailHtmlBody: customEmailBody
         },
         documentDeadline: emailDeadline || null
       });
@@ -653,6 +748,9 @@ const Onboarding = () => {
       const hasSavedDraft = Boolean(res.data.selectionDraft?.updatedAt);
       const draftSections = res.data.selectionDraft?.sections || [];
       const draftDocuments = res.data.selectionDraft?.documents || [];
+      const draftEmailTemplateId = res.data.selectionDraft?.emailTemplateId || '';
+      const draftEmailSubject = res.data.selectionDraft?.emailSubject || '';
+      const draftEmailBody = res.data.selectionDraft?.emailHtmlBody || '';
       const requestedSectionLabels = (hasSavedDraft ? draftSections : (res.data.requestedSections || []).map((item) => getRequestedLabel(item))).filter(Boolean);
       const requestedDocumentLabels = (hasSavedDraft ? draftDocuments : (res.data.requestedDocuments || []).map((item) => getRequestedLabel(item))).filter(Boolean);
       setCheckedSections(new Set(requestedSectionLabels));
@@ -679,6 +777,21 @@ const Onboarding = () => {
           fromAddress: 'no-reply@talentcio.in'
         }]);
         setSelectedEmailAccountId('platform');
+      }
+
+      try {
+        const templatesRes = await api.get('/email-templates?active=true&templateType=onboarding');
+        const nextTemplates = Array.isArray(templatesRes.data) ? templatesRes.data : [];
+        setEmailTemplates(nextTemplates);
+        applyEmailTemplateDraft(
+          draftEmailTemplateId,
+          [DEFAULT_ONBOARDING_TEMPLATE_OPTION, ...nextTemplates],
+          draftEmailSubject,
+          draftEmailBody
+        );
+      } catch {
+        setEmailTemplates([]);
+        applyEmailTemplateDraft('', [DEFAULT_ONBOARDING_TEMPLATE_OPTION], draftEmailSubject, draftEmailBody);
       }
     } catch {
       toast.error('Failed to load details');
@@ -1668,6 +1781,59 @@ const Onboarding = () => {
                     style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
                   />
                   <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>The candidate's portal access and deadline in the email will be updated to this date.</p>
+                </div>
+
+                <div style={{ marginTop: '16px', padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Edit2 size={16} style={{ color: '#3b82f6' }} /> Onboarding Email Template
+                  </label>
+                  <select
+                    value={selectedEmailTemplateId}
+                    onChange={(e) => applyEmailTemplateDraft(e.target.value, onboardingTemplateOptions)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', marginBottom: '12px' }}
+                  >
+                    {onboardingTemplateOptions.map((template) => (
+                      <option key={template._id} value={template._id}>
+                        {template.name}{template.category ? ` (${template.category === 'built_in' ? 'Built in' : template.category})` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
+                    Subject
+                  </label>
+                  <input
+                    type="text"
+                    value={customEmailSubject}
+                    onChange={(e) => setCustomEmailSubject(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', marginBottom: '12px' }}
+                  />
+
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
+                    Intro / Message
+                  </label>
+                  <textarea
+                    value={customEmailBody}
+                    onChange={(e) => setCustomEmailBody(e.target.value)}
+                    rows={6}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                  <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                    You can personalize the onboarding message here. The selected logo comes from Email Settings → Email Branding. Supported placeholders: {templatePlaceholderHelp}
+                  </p>
+
+                  <div style={{ marginTop: '14px', padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                      Preview
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>
+                      {onboardingPreviewSubject || '(empty subject)'}
+                    </div>
+                    <div
+                      style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}
+                      dangerouslySetInnerHTML={{ __html: onboardingPreviewHtml || '<p>(empty body)</p>' }}
+                    />
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '16px', padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>

@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+    AlignCenter,
+    AlignLeft,
+    AlignRight,
     AlertTriangle,
     CheckCircle2,
     Edit,
@@ -23,9 +26,10 @@ import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import {
+    GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS,
+    ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
     getSupportedPlaceholderTokens,
     renderTemplateBody,
-    TEMPLATE_PLACEHOLDERS,
     resolveTemplate,
     validateTemplateSyntax
 } from '../../utils/templatePlaceholders';
@@ -39,21 +43,32 @@ const TABS = [
     { id: 'preview', label: 'Preview', icon: Eye }
 ];
 
-const CATEGORY_LABELS = {
-    interview_invite: 'Interview Invite',
-    rejection: 'Rejection',
-    offer: 'Offer',
-    shortlist: 'Shortlist',
-    general: 'General'
-};
+const EMAIL_TEMPLATE_TYPE_TABS = [
+    { id: 'general', label: 'General' },
+    { id: 'onboarding', label: 'Onboarding' }
+];
 
 const SAMPLE_DATA = {
     candidateName: 'Aarav Mehta',
+    firstName: 'Aarav',
+    lastName: 'Mehta',
+    fullName: 'Aarav Mehta',
     email: 'aarav@example.com',
+    phone: '9876543210',
+    workEmail: 'aarav.mehta@yourcompany.com',
     mobile: '9876543210',
+    phoneNumber: '9876543210',
     jobTitle: 'Frontend Engineer',
+    designation: 'Frontend Engineer',
     client: 'Demo Client',
     department: 'Engineering',
+    offerDate: '10 May 2026',
+    dateOfOffer: '10 May 2026',
+    workLocation: 'Bengaluru',
+    employmentDetails: 'Frontend Engineer | Engineering | Bengaluru',
+    location: 'Bengaluru',
+    managerName: 'Priya Sharma',
+    managerEmail: 'priya.sharma@yourcompany.com',
     recruiterName: 'Talent Acquisition Team',
     companyName: 'Your Company',
     requestId: 'HRR-2026-001',
@@ -62,6 +77,58 @@ const SAMPLE_DATA = {
     interviewLink: 'https://meet.example.com/interview',
     customNote: 'Please join 10 minutes early.'
 };
+
+const DEFAULT_EMAIL_LOGO_WIDTH = 200;
+const DEFAULT_EMAIL_LOGO_HEIGHT = 44;
+const DEFAULT_EMAIL_LOGO_ALIGNMENT = 'center';
+
+const LOGO_ALIGNMENT_OPTIONS = [
+    { value: 'left', label: 'Left', icon: AlignLeft },
+    { value: 'center', label: 'Center', icon: AlignCenter },
+    { value: 'right', label: 'Right', icon: AlignRight }
+];
+
+const getPreviewJustifyContent = (alignment = DEFAULT_EMAIL_LOGO_ALIGNMENT) => {
+    if (alignment === 'left') return 'flex-start';
+    if (alignment === 'right') return 'flex-end';
+    return 'center';
+};
+
+const SliderField = ({
+    label,
+    value,
+    min,
+    max,
+    step = 1,
+    unit = 'px',
+    description,
+    disabled,
+    onChange
+}) => (
+    <div>
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+            <label className="block text-sm font-semibold text-slate-700">{label}</label>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                {value}{unit}
+            </span>
+        </div>
+        <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={onChange}
+            disabled={disabled}
+            className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <div className="mt-2 flex justify-between text-[11px] text-slate-400">
+            <span>{min}{unit}</span>
+            <span>{max}{unit}</span>
+        </div>
+        {description && <p className="mt-1 text-xs text-slate-400">{description}</p>}
+    </div>
+);
 
 const createEmptyAccount = () => ({
     _id: '',
@@ -671,6 +738,9 @@ const BrandingTab = ({ canManage }) => {
     const [branding, setBranding] = useState({
         displayName: '',
         logoUrl: '',
+        logoWidth: DEFAULT_EMAIL_LOGO_WIDTH,
+        logoHeight: DEFAULT_EMAIL_LOGO_HEIGHT,
+        logoAlignment: DEFAULT_EMAIL_LOGO_ALIGNMENT,
         brandColor: '#6366f1',
         footerText: '',
         replyTo: '',
@@ -707,6 +777,9 @@ const BrandingTab = ({ canManage }) => {
         try {
             await api.put('/email-branding', {
                 displayName: branding.displayName,
+                logoWidth: branding.logoWidth,
+                logoHeight: branding.logoHeight,
+                logoAlignment: branding.logoAlignment,
                 brandColor: branding.brandColor,
                 footerText: branding.footerText,
                 replyTo: branding.replyTo
@@ -785,8 +858,20 @@ const BrandingTab = ({ canManage }) => {
                     <div className="space-y-4 p-5">
                         {branding.logoUrl ? (
                             <div className="flex items-center gap-4">
-                                <div className="flex h-16 w-36 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                                    <img src={branding.logoUrl} alt="Email logo" className="max-h-12 max-w-full object-contain" />
+                                <div
+                                    className="flex h-16 w-36 items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 px-2"
+                                    style={{ justifyContent: getPreviewJustifyContent(branding.logoAlignment) }}
+                                >
+                                    <img
+                                        src={branding.logoUrl}
+                                        alt="Email logo"
+                                        style={{
+                                            width: `${branding.logoWidth || DEFAULT_EMAIL_LOGO_WIDTH}px`,
+                                            height: `${branding.logoHeight || DEFAULT_EMAIL_LOGO_HEIGHT}px`,
+                                            maxWidth: '100%',
+                                            objectFit: 'contain'
+                                        }}
+                                    />
                                 </div>
                                 {canManage && (
                                     <div className="space-y-2">
@@ -849,7 +934,7 @@ const BrandingTab = ({ canManage }) => {
                             onChange={(event) => handleLogoUpload(event.target.files?.[0])}
                         />
                         <p className="text-xs text-slate-400">
-                            JPG, PNG, SVG, WEBP - Max 3MB - Displayed at 44px height in email header
+                            JPG, PNG, SVG, WEBP - Max 3MB - Size is controlled by the width and height settings below
                         </p>
                     </div>
                 </section>
@@ -894,6 +979,47 @@ const BrandingTab = ({ canManage }) => {
                                 />
                             </div>
                             <p className="mt-1 text-xs text-slate-400">Used as the email header background color.</p>
+                        </div>
+
+                        <SliderField
+                            label="Logo Width"
+                            value={Number(branding.logoWidth) || DEFAULT_EMAIL_LOGO_WIDTH}
+                            min={40}
+                            max={400}
+                            description="Drag to set the email logo width."
+                            disabled={!canManage}
+                            onChange={(event) => setBranding((current) => ({ ...current, logoWidth: Number(event.target.value) }))}
+                        />
+
+                        <SliderField
+                            label="Logo Height"
+                            value={Number(branding.logoHeight) || DEFAULT_EMAIL_LOGO_HEIGHT}
+                            min={20}
+                            max={160}
+                            description="Drag to set the email logo height."
+                            disabled={!canManage}
+                            onChange={(event) => setBranding((current) => ({ ...current, logoHeight: Number(event.target.value) }))}
+                        />
+
+                        <div className="sm:col-span-2">
+                            <label className="mb-2 block text-sm font-semibold text-slate-700">Logo Alignment</label>
+                            <div className="grid gap-2 sm:grid-cols-3">
+                                {LOGO_ALIGNMENT_OPTIONS.map(({ value, label, icon: Icon }) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => canManage && setBranding((current) => ({ ...current, logoAlignment: value }))}
+                                        disabled={!canManage}
+                                        className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition ${branding.logoAlignment === value
+                                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'} disabled:cursor-not-allowed disabled:opacity-60`}
+                                    >
+                                        <Icon size={16} />
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="mt-1 text-xs text-slate-400">Choose whether the logo sits on the left, center, or right of the email header.</p>
                         </div>
 
                         <div>
@@ -944,9 +1070,25 @@ const BrandingTab = ({ canManage }) => {
                     Live Email Preview
                 </h3>
                 <div className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-                    <div style={{ backgroundColor: branding.brandColor }} className="px-6 py-4 text-center">
+                    <div
+                        style={{
+                            backgroundColor: branding.brandColor,
+                            textAlign: branding.logoAlignment || DEFAULT_EMAIL_LOGO_ALIGNMENT
+                        }}
+                        className="px-6 py-4"
+                    >
                         {branding.logoUrl ? (
-                            <img src={branding.logoUrl} alt="logo" className="mx-auto max-h-11 max-w-[180px] object-contain" />
+                            <img
+                                src={branding.logoUrl}
+                                alt="logo"
+                                style={{
+                                    width: `${branding.logoWidth || DEFAULT_EMAIL_LOGO_WIDTH}px`,
+                                    height: `${branding.logoHeight || DEFAULT_EMAIL_LOGO_HEIGHT}px`,
+                                    maxWidth: '100%',
+                                    objectFit: 'contain',
+                                    display: 'inline-block'
+                                }}
+                            />
                         ) : (
                             <span className="text-lg font-bold text-white">{branding.displayName || 'Your Company'}</span>
                         )}
@@ -981,13 +1123,47 @@ const BrandingTab = ({ canManage }) => {
 
 const DEFAULT_TEMPLATE_FORM = {
     name: '',
+    templateType: 'general',
     category: 'general',
     subject: '',
     htmlBody: '',
     isActive: true
 };
+const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Action Required: Complete Your Pre-Onboarding';
+const DEFAULT_ONBOARDING_EMAIL_BODY = `
+<p>Hello <strong>{{firstName}}</strong>,</p>
+<p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+`;
+const BUILT_IN_ONBOARDING_TEMPLATE_ID = '__built_in_onboarding_template__';
+const BUILT_IN_ONBOARDING_TEMPLATE = {
+    _id: BUILT_IN_ONBOARDING_TEMPLATE_ID,
+    name: 'Default Onboarding Template',
+    templateType: 'onboarding',
+    category: 'built_in',
+    subject: DEFAULT_ONBOARDING_EMAIL_SUBJECT,
+    htmlBody: DEFAULT_ONBOARDING_EMAIL_BODY,
+    isActive: true,
+    isBuiltIn: true
+};
 
-const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) => {
+const getEmailTemplateType = (template = {}) => template?.templateType === 'onboarding' ? 'onboarding' : 'general';
+const isBuiltInEmailTemplate = (template = {}) => Boolean(template?.isBuiltIn) || template?._id === BUILT_IN_ONBOARDING_TEMPLATE_ID;
+const getEmailTemplatePlaceholderSet = (templateType = 'general') => (
+    templateType === 'onboarding'
+        ? ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS
+        : GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS
+);
+const getEmailTemplateOptionsForType = (templates = [], templateType = 'general') => {
+    const filteredTemplates = (Array.isArray(templates) ? templates : []).filter((template) => getEmailTemplateType(template) === templateType);
+
+    if (templateType !== 'onboarding') {
+        return filteredTemplates;
+    }
+
+    return [BUILT_IN_ONBOARDING_TEMPLATE, ...filteredTemplates];
+};
+
+const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, onSaved, canManage }) => {
     const [form, setForm] = useState(DEFAULT_TEMPLATE_FORM);
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState('edit');
@@ -1000,12 +1176,16 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
         setActiveTab('edit');
         setForm(template ? {
             name: template.name || '',
+            templateType: getEmailTemplateType(template),
             category: template.category || 'general',
             subject: template.subject || '',
             htmlBody: template.htmlBody || '',
             isActive: template.isActive !== false
-        } : DEFAULT_TEMPLATE_FORM);
-    }, [isOpen, template]);
+        } : {
+            ...DEFAULT_TEMPLATE_FORM,
+            templateType: defaultTemplateType === 'onboarding' ? 'onboarding' : 'general'
+        });
+    }, [defaultTemplateType, isOpen, template]);
 
     const insertPlaceholder = (field, placeholder) => {
         const token = `{{${placeholder}}}`;
@@ -1038,7 +1218,12 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
         () => renderTemplateBody(form.htmlBody, SAMPLE_DATA),
         [form.htmlBody]
     );
-    const placeholderTokens = getSupportedPlaceholderTokens();
+    const activeTemplateType = form.templateType === 'onboarding' ? 'onboarding' : 'general';
+    const allowedPlaceholders = useMemo(
+        () => getEmailTemplatePlaceholderSet(activeTemplateType),
+        [activeTemplateType]
+    );
+    const placeholderTokens = getSupportedPlaceholderTokens(allowedPlaceholders);
 
     const handleSubmit = async (event) => {
         event.preventDefault();
@@ -1049,13 +1234,13 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
             return;
         }
 
-        const subjectValidation = validateTemplateSyntax(form.subject, TEMPLATE_PLACEHOLDERS);
+        const subjectValidation = validateTemplateSyntax(form.subject, allowedPlaceholders);
         if (!subjectValidation.valid) {
             toast.error(`Subject: ${subjectValidation.message}`);
             return;
         }
 
-        const bodyValidation = validateTemplateSyntax(form.htmlBody, TEMPLATE_PLACEHOLDERS);
+        const bodyValidation = validateTemplateSyntax(form.htmlBody, allowedPlaceholders);
         if (!bodyValidation.valid) {
             toast.error(`Body: ${bodyValidation.message}`);
             return;
@@ -1097,10 +1282,27 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5 p-6">
+                    <div>
+                        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Template Type</p>
+                        <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                            {EMAIL_TEMPLATE_TYPE_TABS.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => canManage && setForm((current) => ({ ...current, templateType: tab.id }))}
+                                    disabled={!canManage}
+                                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${activeTemplateType === tab.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-800'} disabled:cursor-default`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
                         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-blue-700">Insert Placeholder</p>
                         <div className="flex flex-wrap gap-2">
-                            {TEMPLATE_PLACEHOLDERS.map((placeholder) => (
+                            {allowedPlaceholders.map((placeholder) => (
                                 <div key={placeholder} className="flex items-center gap-1">
                                     <button
                                         type="button"
@@ -1125,29 +1327,16 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-3">
-                        <div className="sm:col-span-2">
+                        <div className="sm:col-span-3">
                             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Template Name</label>
                             <input
                                 type="text"
                                 value={form.name}
                                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                                placeholder="Interview Invite - Engineering"
+                                placeholder={activeTemplateType === 'onboarding' ? 'Pre-Onboarding Reminder' : 'Employee Policy Update'}
                                 disabled={!canManage}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                             />
-                        </div>
-                        <div>
-                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Category</label>
-                            <select
-                                value={form.category}
-                                onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                                disabled={!canManage}
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                            >
-                                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                                    <option key={value} value={value}>{label}</option>
-                                ))}
-                            </select>
                         </div>
                     </div>
 
@@ -1158,7 +1347,7 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
                             type="text"
                             value={form.subject}
                             onChange={(event) => setForm((current) => ({ ...current, subject: event.target.value }))}
-                            placeholder="Interview Invitation - {{jobTitle}} at {{client}}"
+                            placeholder={activeTemplateType === 'onboarding' ? 'Complete Your Pre-Onboarding' : 'Update Regarding {{designation}}'}
                             disabled={!canManage}
                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                         />
@@ -1184,7 +1373,9 @@ const TemplateEditorModal = ({ isOpen, template, onClose, onSaved, canManage }) 
                                     ref={bodyRef}
                                     value={form.htmlBody}
                                     onChange={(event) => setForm((current) => ({ ...current, htmlBody: event.target.value }))}
-                                    placeholder={'<p>Dear {{candidateName}},</p>\n<p>We would like to invite you for an interview...</p>'}
+                                    placeholder={activeTemplateType === 'onboarding'
+                                        ? '<p>Hello <strong>{{firstName}}</strong>,</p>\n<p>Please complete your pending onboarding items before {{submissionDeadline}}.</p>'
+                                        : '<p>Dear {{firstName}},</p>\n<p>Welcome to {{companyName}}. Please review the update shared below.</p>'}
                                     disabled={!canManage}
                                     rows={12}
                                     className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
@@ -1251,7 +1442,7 @@ const TemplatesTab = ({ canManage }) => {
     const [loading, setLoading] = useState(true);
     const [editorOpen, setEditorOpen] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [filter, setFilter] = useState('all');
+    const [templateTypeFilter, setTemplateTypeFilter] = useState('general');
 
     const fetchTemplates = async () => {
         setLoading(true);
@@ -1283,10 +1474,12 @@ const TemplatesTab = ({ canManage }) => {
 
     const handleToggle = async (template) => {
         if (!canManage) return;
+        if (isBuiltInEmailTemplate(template)) return;
 
         try {
             await api.put(`/email-templates/${template._id}`, {
                 name: template.name,
+                templateType: getEmailTemplateType(template),
                 category: template.category,
                 subject: template.subject,
                 htmlBody: template.htmlBody,
@@ -1298,24 +1491,27 @@ const TemplatesTab = ({ canManage }) => {
         }
     };
 
-    const filteredTemplates = filter === 'all'
-        ? templates
-        : templates.filter((template) => template.category === filter);
+    const filteredTemplates = useMemo(
+        () => getEmailTemplateOptionsForType(templates, templateTypeFilter),
+        [templateTypeFilter, templates]
+    );
 
     return (
         <div className="space-y-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
-                    <select
-                        value={filter}
-                        onChange={(event) => setFilter(event.target.value)}
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="all">All categories</option>
-                        {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
+                    <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                        {EMAIL_TEMPLATE_TYPE_TABS.map((tab) => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setTemplateTypeFilter(tab.id)}
+                                className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${templateTypeFilter === tab.id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                            >
+                                {tab.label}
+                            </button>
                         ))}
-                    </select>
+                    </div>
                     <span className="text-sm text-slate-500">
                         {filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''}
                     </span>
@@ -1343,14 +1539,14 @@ const TemplatesTab = ({ canManage }) => {
                     </div>
                 ) : filteredTemplates.length === 0 ? (
                     <div className="py-12 text-center text-sm text-slate-500">
-                        {templates.length === 0 ? 'No email templates yet. Create your first one.' : 'No templates in this category.'}
+                        {templates.length === 0 ? 'No email templates yet. Create your first one.' : `No ${templateTypeFilter} templates yet.`}
                     </div>
                 ) : (
                     <table className="min-w-full">
                         <thead className="border-b border-slate-200 bg-slate-50">
                             <tr>
                                 <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Category</th>
+                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Type</th>
                                 <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Subject</th>
                                 <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
                                 {canManage && (
@@ -1364,7 +1560,7 @@ const TemplatesTab = ({ canManage }) => {
                                     <td className="px-4 py-3 text-sm font-semibold text-slate-800">{template.name}</td>
                                     <td className="px-4 py-3">
                                         <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                                            {CATEGORY_LABELS[template.category] || template.category}
+                                            {EMAIL_TEMPLATE_TYPE_TABS.find((tab) => tab.id === getEmailTemplateType(template))?.label || 'General'}
                                         </span>
                                     </td>
                                     <td className="max-w-xs truncate px-4 py-3 text-sm text-slate-600">{template.subject}</td>
@@ -1372,33 +1568,37 @@ const TemplatesTab = ({ canManage }) => {
                                         <button
                                             type="button"
                                             onClick={() => handleToggle(template)}
-                                            disabled={!canManage}
-                                            className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${template.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'} disabled:cursor-default`}
+                                            disabled={!canManage || isBuiltInEmailTemplate(template)}
+                                            className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${isBuiltInEmailTemplate(template) || template.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'} disabled:cursor-default`}
                                         >
-                                            {template.isActive ? 'Active' : 'Archived'}
+                                            {isBuiltInEmailTemplate(template) ? 'Built in' : (template.isActive ? 'Active' : 'Archived')}
                                         </button>
                                     </td>
                                     {canManage && (
                                         <td className="px-4 py-3">
-                                            <div className="flex justify-end gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setEditing(template);
-                                                        setEditorOpen(true);
-                                                    }}
-                                                    className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
-                                                >
-                                                    <Edit size={14} />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleArchive(template._id)}
-                                                    className="rounded-lg border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
+                                            {isBuiltInEmailTemplate(template) ? (
+                                                <div className="text-right text-xs font-semibold text-slate-400">System default</div>
+                                            ) : (
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditing(template);
+                                                            setEditorOpen(true);
+                                                        }}
+                                                        className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
+                                                    >
+                                                        <Edit size={14} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleArchive(template._id)}
+                                                        className="rounded-lg border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
                                     )}
                                 </tr>
@@ -1411,6 +1611,7 @@ const TemplatesTab = ({ canManage }) => {
             <TemplateEditorModal
                 isOpen={editorOpen}
                 template={editing}
+                defaultTemplateType={templateTypeFilter}
                 onClose={() => setEditorOpen(false)}
                 onSaved={fetchTemplates}
                 canManage={canManage}
@@ -1423,6 +1624,7 @@ const PreviewTab = () => {
     const [branding, setBranding] = useState(null);
     const [templates, setTemplates] = useState([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
+    const [templateTypeFilter, setTemplateTypeFilter] = useState('general');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -1442,7 +1644,11 @@ const PreviewTab = () => {
             .finally(() => setLoading(false));
     }, []);
 
-    const selectedTemplate = templates.find((template) => template._id === selectedTemplateId);
+    const filteredTemplates = useMemo(
+        () => getEmailTemplateOptionsForType(templates, templateTypeFilter),
+        [templateTypeFilter, templates]
+    );
+    const selectedTemplate = filteredTemplates.find((template) => template._id === selectedTemplateId) || filteredTemplates[0] || null;
     const previewBody = useMemo(
         () => (selectedTemplate ? renderTemplateBody(selectedTemplate.htmlBody, SAMPLE_DATA) : ''),
         [selectedTemplate]
@@ -1452,6 +1658,17 @@ const PreviewTab = () => {
         [selectedTemplate]
     );
     const brandColor = branding?.brandColor || '#6366f1';
+    const logoWidth = branding?.logoWidth || DEFAULT_EMAIL_LOGO_WIDTH;
+    const logoHeight = branding?.logoHeight || DEFAULT_EMAIL_LOGO_HEIGHT;
+    const logoAlignment = branding?.logoAlignment || DEFAULT_EMAIL_LOGO_ALIGNMENT;
+
+    useEffect(() => {
+        if (filteredTemplates.some((template) => template._id === selectedTemplateId)) {
+            return;
+        }
+
+        setSelectedTemplateId(filteredTemplates[0]?._id || '');
+    }, [filteredTemplates, selectedTemplateId]);
 
     if (loading) {
         return (
@@ -1464,6 +1681,18 @@ const PreviewTab = () => {
     return (
         <div className="grid gap-6 lg:grid-cols-[280px,1fr]">
             <div className="space-y-4">
+                <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                    {EMAIL_TEMPLATE_TYPE_TABS.map((tab) => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setTemplateTypeFilter(tab.id)}
+                            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${templateTypeFilter === tab.id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
                 <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Select Template</label>
                     <select
@@ -1471,8 +1700,8 @@ const PreviewTab = () => {
                         onChange={(event) => setSelectedTemplateId(event.target.value)}
                         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                        {templates.length === 0 && <option value="">No active templates</option>}
-                        {templates.map((template) => (
+                        {filteredTemplates.length === 0 && <option value="">No active templates</option>}
+                        {filteredTemplates.map((template) => (
                             <option key={template._id} value={template._id}>{template.name}</option>
                         ))}
                     </select>
@@ -1481,8 +1710,8 @@ const PreviewTab = () => {
                 {selectedTemplate && (
                     <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
                         <p>
-                            <span className="font-semibold text-slate-700">Category:</span>{' '}
-                            <span className="text-slate-600">{CATEGORY_LABELS[selectedTemplate.category]}</span>
+                            <span className="font-semibold text-slate-700">Type:</span>{' '}
+                            <span className="text-slate-600">{EMAIL_TEMPLATE_TYPE_TABS.find((tab) => tab.id === getEmailTemplateType(selectedTemplate))?.label || 'General'}</span>
                         </p>
                         <p>
                             <span className="font-semibold text-slate-700">Subject:</span>{' '}
@@ -1492,16 +1721,26 @@ const PreviewTab = () => {
                 )}
 
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-700">
-                    Preview uses sample data. Real emails use actual candidate and job data.
+                    Preview uses sample data. Real emails use actual employee or onboarding data.
                 </div>
             </div>
 
             <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-slate-700">Full Email Preview</h3>
                 <div className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-                    <div style={{ backgroundColor: brandColor }} className="px-8 py-5 text-center">
+                    <div style={{ backgroundColor: brandColor, textAlign: logoAlignment }} className="px-8 py-5">
                         {branding?.logoUrl ? (
-                            <img src={branding.logoUrl} alt="logo" className="mx-auto max-h-12 max-w-[200px] object-contain" />
+                            <img
+                                src={branding.logoUrl}
+                                alt="logo"
+                                style={{
+                                    width: `${logoWidth}px`,
+                                    height: `${logoHeight}px`,
+                                    maxWidth: '100%',
+                                    objectFit: 'contain',
+                                    display: 'inline-block'
+                                }}
+                            />
                         ) : (
                             <span className="text-xl font-bold text-white">{branding?.displayName || 'Your Company'}</span>
                         )}

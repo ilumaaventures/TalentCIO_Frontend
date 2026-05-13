@@ -863,13 +863,13 @@ const Users = () => {
                                                 </span>
                                             ))}
                                         </td>
-                                        <td className="px-3 py-2 text-slate-600 truncate max-w-[100px]">{employee.department || '-'}</td>
+                                        <td className="px-3 py-2 text-slate-600 truncate max-w-25">{employee.department || '-'}</td>
                                         <td className="px-3 py-2">
                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
                                                 {employee.employmentType || 'Full Time'}
                                             </span>
                                         </td>
-                                        <td className="px-3 py-2 text-slate-600">
+                                        <tsd className="px-3 py-2 text-slate-600">
                                             {employee.reportingManagers && employee.reportingManagers.length > 0 ? (
                                                 <div className="flex flex-col">
                                                     {employee.reportingManagers.map(mgr => (
@@ -879,7 +879,7 @@ const Users = () => {
                                             ) : (
                                                 <span className="text-[11px] text-slate-400 italic">None</span>
                                             )}
-                                        </td>
+                                        </tsd>
                                         <td className="px-3 py-2">
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
                                                 {employee.isActive ? 'Active' : (employee.isDeleted ? 'In Bin' : 'Inactive')}
