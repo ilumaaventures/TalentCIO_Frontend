@@ -91,6 +91,8 @@ const MassMailModal = ({
     const [customNote, setCustomNote] = useState('');
     const [sendToAllMatching, setSendToAllMatching] = useState(initialSelectedIds.length === 0);
     const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
+    const [senderOptions, setSenderOptions] = useState([]);
+    const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('platform');
     const [filters, setFilters] = useState({
         status: [],
         decision: [],
@@ -106,6 +108,8 @@ const MassMailModal = ({
         setCustomSubject('');
         setCustomHtmlBody('');
         setCustomNote('');
+        setSenderOptions([]);
+        setSelectedEmailAccountId('platform');
         setSelectedIds(initialSelectedIds);
         setSendToAllMatching(initialSelectedIds.length === 0);
         setFilters({ status: [], decision: [], phase2Decision: [], phase3Decision: [] });
@@ -114,20 +118,35 @@ const MassMailModal = ({
     useEffect(() => {
         if (!isOpen) return;
         let active = true;
-        const loadTemplates = async () => {
+        const loadTemplatesAndSenders = async () => {
             try {
                 setLoadingTemplates(true);
-                const response = await api.get('/ta/email-templates?active=true');
+                const [templateResponse, senderResponse] = await Promise.all([
+                    api.get('/ta/email-templates?active=true'),
+                    api.get('/company/email-settings/senders')
+                ]);
                 if (!active) return;
-                setTemplates(Array.isArray(response.data) ? response.data : []);
+                setTemplates(Array.isArray(templateResponse.data) ? templateResponse.data : []);
+
+                const senderData = senderResponse.data || {};
+                const nextSenderOptions = [
+                    senderData.platformOption,
+                    ...((senderData.accounts || []).filter((account) => account.ready))
+                ].filter(Boolean);
+                setSenderOptions(nextSenderOptions);
+                setSelectedEmailAccountId(
+                    nextSenderOptions.some((option) => option._id === senderData.defaultAccountId)
+                        ? senderData.defaultAccountId
+                        : (nextSenderOptions[0]?._id || 'platform')
+                );
             } catch (error) {
                 console.error('Failed to load templates', error);
-                toast.error('Failed to load email templates');
+                toast.error(error.response?.data?.message || 'Failed to load mass mail setup');
             } finally {
                 if (active) setLoadingTemplates(false);
             }
         };
-        loadTemplates();
+        loadTemplatesAndSenders();
         return () => {
             active = false;
         };
@@ -222,6 +241,7 @@ const MassMailModal = ({
             setSending(true);
             const payload = {
                 templateId: templateMode === 'saved' ? templateId : undefined,
+                emailAccountId: selectedEmailAccountId,
                 customSubject,
                 customHtmlBody,
                 candidateIds: sendToAllMatching ? [] : selectedIds,
@@ -360,6 +380,21 @@ const MassMailModal = ({
                                 )}
 
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Sender Account</label>
+                                    <select
+                                        value={selectedEmailAccountId}
+                                        onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        {senderOptions.map((option) => (
+                                            <option key={option._id} value={option._id}>
+                                                {option.name} - {option.fromAddress}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Subject</label>
                                     <input
                                         type="text"
@@ -429,6 +464,7 @@ const MassMailModal = ({
                                     <p>Total recipients: <span className="font-bold text-slate-900">{sendToAllMatching ? filteredCandidates.length : selectedIds.length}</span></p>
                                     <p>Template mode: <span className="font-bold text-slate-900">{templateMode === 'saved' ? 'Saved template' : 'Custom'}</span></p>
                                     <p>Template: <span className="font-bold text-slate-900">{activeTemplate?.name || 'Custom email'}</span></p>
+                                    <p>Sender: <span className="font-bold text-slate-900">{senderOptions.find((option) => option._id === selectedEmailAccountId)?.name || 'TalentCIO Platform'}</span></p>
                                 </div>
                                 <div className="rounded-xl bg-slate-50 p-4">
                                     <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Subject</p>

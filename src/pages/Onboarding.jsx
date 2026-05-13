@@ -65,6 +65,8 @@ const Onboarding = () => {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [emailDeadline, setEmailDeadline] = useState('');
+  const [emailSenderOptions, setEmailSenderOptions] = useState([]);
+  const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('platform');
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [sendingCustomFile, setSendingCustomFile] = useState(false);
@@ -224,7 +226,8 @@ const Onboarding = () => {
       const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-onboarding-email`, {
         sections: [...checkedSections],
         documents: [...checkedDocuments],
-        submissionDeadline: emailDeadline
+        submissionDeadline: emailDeadline,
+        emailAccountId: selectedEmailAccountId
       });
       toast.success('Pre-onboarding email sent successfully!');
       setCheckedSections(new Set());
@@ -281,6 +284,7 @@ const Onboarding = () => {
       customFiles.forEach(file => {
         formData.append('documents', file);
       });
+      formData.append('emailAccountId', selectedEmailAccountId);
 
       const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-custom-file`, formData, {
         headers: {
@@ -653,6 +657,29 @@ const Onboarding = () => {
       const requestedDocumentLabels = (hasSavedDraft ? draftDocuments : (res.data.requestedDocuments || []).map((item) => getRequestedLabel(item))).filter(Boolean);
       setCheckedSections(new Set(requestedSectionLabels));
       setCheckedDocuments(new Set(requestedDocumentLabels));
+
+      try {
+        const emailSettingsRes = await api.get('/company/email-settings/senders');
+        const senderData = emailSettingsRes.data || {};
+        const senderOptions = [
+          senderData.platformOption,
+          ...((senderData.accounts || []).filter((account) => account.ready))
+        ].filter(Boolean);
+        const preferredSenderId = senderOptions.some((option) => option._id === senderData.defaultAccountId)
+          ? senderData.defaultAccountId
+          : (senderOptions[0]?._id || 'platform');
+
+        setEmailSenderOptions(senderOptions);
+        setSelectedEmailAccountId(preferredSenderId);
+      } catch {
+        setEmailSenderOptions([{
+          _id: 'platform',
+          name: 'TalentCIO Platform',
+          provider: 'platform',
+          fromAddress: 'no-reply@talentcio.in'
+        }]);
+        setSelectedEmailAccountId('platform');
+      }
     } catch {
       toast.error('Failed to load details');
     } finally {
@@ -1641,6 +1668,26 @@ const Onboarding = () => {
                     style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
                   />
                   <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>The candidate's portal access and deadline in the email will be updated to this date.</p>
+                </div>
+
+                <div style={{ marginTop: '16px', padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Mail size={16} style={{ color: '#3b82f6' }} /> Sender Account
+                  </label>
+                  <select
+                    value={selectedEmailAccountId}
+                    onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
+                  >
+                    {emailSenderOptions.map((option) => (
+                      <option key={option._id} value={option._id}>
+                        {option.name} ({option.provider === 'platform' ? 'Platform' : option.provider.toUpperCase()}) - {option.fromAddress}
+                      </option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                    This sender will be used for the onboarding email and manual file sends from this panel.
+                  </p>
                 </div>
 
                 {/* Send Pre-Onboarding Email Button */}

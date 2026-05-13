@@ -80,6 +80,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showMainSection = showDashboard || showAttendance || showLeaves || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
+  const showEmailSettings = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('settings.email.view')
+    || user?.permissions?.includes('settings.email.manage')
+    || user?.permissions?.includes('*');
   const homeRoute = showDashboard ? '/' : (showAttendance ? '/attendance' : '/');
   const sectionLabelClass = isTalentAcquisitionRoute
     ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-100/55'
@@ -374,6 +378,16 @@ const Sidebar = ({ isOpen, onClose }) => {
                     <Briefcase size={18} />
                     <span>Projects</span>
                   </Link>}
+                </>
+              )}
+
+              {showEmailSettings && (
+                <>
+                  <div className="mt-8"><div className={sectionLabelClass}>Settings</div></div>
+                  <Link to="/settings/email" className={getSidebarLinkClass(location.pathname === '/settings/email')} onClick={onClose}>
+                    <Mail size={18} />
+                    <span>Email Settings</span>
+                  </Link>
                 </>
               )}
             </>
