@@ -1,8 +1,53 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, FileText, CheckCircle, XCircle, AlertCircle, Loader, ArrowRight, FileArchive, Settings } from 'lucide-react';
+import { X, Upload, CheckCircle, XCircle, AlertCircle, Loader, ArrowRight, FileArchive } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import JSZip from 'jszip';
+
+const normalizeDuplicateValue = (value) => String(value || '').trim().toLowerCase();
+
+const buildDuplicateSignature = (row = {}) => {
+    const candidateName = normalizeDuplicateValue(row.candidateName);
+    const email = normalizeDuplicateValue(row.email);
+    const mobile = normalizeDuplicateValue(row.mobile);
+
+    if (!candidateName || !email || !mobile) {
+        return '';
+    }
+
+    return `${candidateName}::${email}::${mobile}`;
+};
+
+const applyBatchDuplicateFlags = (rows = []) => {
+    const signatureMap = new Map();
+
+    rows.forEach((row, index) => {
+        const signature = buildDuplicateSignature(row);
+        if (!signature) {
+            return;
+        }
+
+        if (!signatureMap.has(signature)) {
+            signatureMap.set(signature, []);
+        }
+
+        signatureMap.get(signature).push(index);
+    });
+
+    return rows.map((row, index) => {
+        const signature = buildDuplicateSignature(row);
+        const duplicateIndexes = signature ? (signatureMap.get(signature) || []) : [];
+        const duplicateRows = duplicateIndexes
+            .filter((duplicateIndex) => duplicateIndex !== index)
+            .map((duplicateIndex) => duplicateIndex + 1);
+
+        return {
+            ...row,
+            isDuplicateInBatch: duplicateRows.length > 0,
+            duplicateRows
+        };
+    });
+};
 
 const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess }) => {
     const fileInputRef = useRef(null);
@@ -41,6 +86,8 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
             (mobile && String(c.mobile || '').trim() === String(mobile || '').trim())
         );
     };
+
+    const hasBatchDuplicates = parsedData.some((row) => row.isDuplicateInBatch);
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -165,16 +212,16 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
             }
         }
         
-        setParsedData(newParsedData);
+        setParsedData(applyBatchDuplicateFlags(newParsedData));
         setIsParsing(false);
     };
 
     const handleDataChange = (index, field, value) => {
-        setParsedData(prev => prev.map((row, i) => {
+        setParsedData(prev => applyBatchDuplicateFlags(prev.map((row, i) => {
             if (i !== index) return row;
-            
-            const updatedRow = { 
-                ...row, 
+
+            const updatedRow = {
+                ...row,
                 [field]: value,
                 // Reset status to pending so user can retry after editing
                 importStatus: row.importStatus === 'failed' ? 'pending' : row.importStatus
@@ -183,15 +230,15 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
             // Re-validate and check existing status
             updatedRow.isValid = !!(updatedRow.candidateName && updatedRow.email && updatedRow.mobile);
             updatedRow.isExisting = checkIsExisting(updatedRow.email, updatedRow.mobile);
-            
+
             return updatedRow;
-        }));
+        })));
     };
 
     const removeRow = (index) => {
         const newData = [...parsedData];
         newData.splice(index, 1);
-        setParsedData(newData);
+        setParsedData(applyBatchDuplicateFlags(newData));
         if (newData.length === 0) {
             setActiveTab('upload');
         }
@@ -202,6 +249,11 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
         const validData = parsedData.filter(d => d.isValid && d.importStatus === 'pending');
         if (validData.length === 0) {
             toast.error('No valid candidates to import. Ensure Name, Email, and Phone are filled.');
+            return;
+        }
+
+        if (hasBatchDuplicates) {
+            toast.error('Duplicate candidates found in this batch. Fix or remove duplicate rows before importing.');
             return;
         }
 
@@ -371,6 +423,18 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                                 )}
                             </div>
 
+                            {activeTab === 'review' && hasBatchDuplicates && (
+                                <div className="flex items-start gap-3 border border-amber-200 bg-amber-50 text-amber-900 rounded-xl p-4">
+                                    <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="font-semibold">Duplicate candidates found in this batch</p>
+                                        <p className="text-sm mt-1">
+                                            Rows with the same name, email, and mobile number are marked below. Remove or edit them before importing.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             {activeTab === 'summary' && !isImporting && (
                                 <div className="grid grid-cols-3 gap-4 mb-6 animate-in slide-in-from-top-2 duration-300">
                                     <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-center">
@@ -409,13 +473,27 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {parsedData.map((row, index) => (
-                                            <tr key={index} className={row.isValid ? 'hover:bg-slate-50/50' : 'bg-red-50/30'}>
+                                            <tr
+                                                key={index}
+                                                className={
+                                                    row.isDuplicateInBatch
+                                                        ? 'bg-amber-50/80 hover:bg-amber-50'
+                                                        : (row.isValid ? 'hover:bg-slate-50/50' : 'bg-red-50/30')
+                                                }
+                                            >
                                                 <td className="px-4 py-3 max-w-[180px] truncate font-medium text-slate-800" title={row.fileName}>
                                                     {row.fileName}
                                                     {row.error && activeTab === 'review' && <p className="text-xs text-red-500 mt-1">{row.error}</p>}
+                                                    {row.isDuplicateInBatch && activeTab === 'review' && (
+                                                        <p className="text-xs text-amber-700 mt-1">
+                                                            Duplicate of row {row.duplicateRows.join(', ')}
+                                                        </p>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    {row.isExisting ? (
+                                                    {row.isDuplicateInBatch ? (
+                                                        <span className="text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded text-[10px]">DUPLICATE</span>
+                                                    ) : row.isExisting ? (
                                                         <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded text-[10px]">UPDATE</span>
                                                     ) : (
                                                         <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[10px]">NEW</span>
@@ -508,7 +586,7 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                     {activeTab === 'review' && (
                         <button
                             onClick={startImporting}
-                            disabled={isParsing || parsedData.filter(d => d.isValid).length === 0}
+                            disabled={isParsing || hasBatchDuplicates || parsedData.filter(d => d.isValid).length === 0}
                             className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg font-medium transition-colors"
                         >
                             {isParsing ? (
