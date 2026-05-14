@@ -91,6 +91,7 @@ const Onboarding = () => {
   const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState('');
   const [customEmailSubject, setCustomEmailSubject] = useState(DEFAULT_ONBOARDING_EMAIL_SUBJECT);
   const [customEmailBody, setCustomEmailBody] = useState(DEFAULT_ONBOARDING_EMAIL_BODY);
+  const [showEmailTemplateEditor, setShowEmailTemplateEditor] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [sendingCustomFile, setSendingCustomFile] = useState(false);
@@ -973,6 +974,15 @@ const Onboarding = () => {
     }
   };
 
+  const closeDetailModal = useCallback(() => {
+    setShowDetailModal(false);
+    setSelectedEmployee(null);
+    setCheckedSections(new Set());
+    setCheckedDocuments(new Set());
+    setCustomFiles([]);
+    if (customFileInputRef.current) customFileInputRef.current.value = '';
+  }, []);
+
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
       {/* Header */}
@@ -1503,37 +1513,29 @@ const Onboarding = () => {
 
       {/* Detail Modal / Slide-out */}
       {showDetailModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'flex-end', zIndex: 1000 }}>
-          <div style={{ background: '#fff', width: '100%', maxWidth: '640px', height: '100vh', overflow: 'auto', boxShadow: '-4px 0 20px rgba(0,0,0,0.1)', animation: 'slideIn 0.3s ease-out' }}>
+        <div onClick={closeDetailModal} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'flex-end', zIndex: 1000 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '720px', height: '100vh', overflow: 'auto', boxShadow: '-8px 0 32px rgba(15,23,42,0.12)', animation: 'slideIn 0.3s ease-out' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
               <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Employee Details</h2>
-              <button onClick={() => { setShowDetailModal(false); setSelectedEmployee(null); setCheckedSections(new Set()); setCheckedDocuments(new Set()); setCustomFiles([]); if (customFileInputRef.current) customFileInputRef.current.value = ''; }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
+              <button onClick={closeDetailModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
             </div>
 
             {detailLoading ? (
               <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading...</div>
             ) : selectedEmployee && (
-              <div style={{ padding: '24px' }}>
+              <div style={{ padding: '24px', background: '#f8fafc', minHeight: '100%' }}>
                 {/* Employee Info */}
-                <div style={{ background: 'linear-gradient(135deg, #eff6ff, #f5f3ff)', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ background: '#ffffff', borderRadius: '18px', padding: '22px', marginBottom: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 28px rgba(15,23,42,0.05)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
                     <div>
-                      <h3 style={{ margin: '0 0 4px', fontSize: '20px', color: '#0f172a' }}>{selectedEmployee.firstName} {selectedEmployee.lastName}</h3>
-                      <p style={{ margin: '0 0 2px', color: '#64748b', fontSize: '14px' }}>{selectedEmployee.email}</p>
-                      <code style={{ background: '#e0e7ff', padding: '2px 8px', borderRadius: '4px', fontWeight: '600', fontSize: '13px' }}>{selectedEmployee.tempEmployeeId}</code>
+                      <h3 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: '700', color: '#0f172a', lineHeight: 1.2 }}>{selectedEmployee.firstName} {selectedEmployee.lastName}</h3>
+                      <p style={{ margin: '0 0 8px', color: '#475569', fontSize: '14px', wordBreak: 'break-word' }}>{selectedEmployee.email}</p>
+                      <code style={{ display: 'inline-block', background: '#eff6ff', color: '#1d4ed8', padding: '6px 10px', borderRadius: '10px', fontWeight: '700', fontSize: '12px', border: '1px solid #bfdbfe' }}>{selectedEmployee.tempEmployeeId}</code>
                     </div>
-                    <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).bg, color: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).text }}>
+                    <span style={{ padding: '6px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).bg, color: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).text }}>
                       {selectedEmployee.status}
                     </span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px', fontSize: '13px' }}>
-                    <div><span style={{ color: '#94a3b8' }}>Department:</span> <strong>{selectedEmployee.department || '—'}</strong></div>
-                    <div><span style={{ color: '#94a3b8' }}>Designation:</span> <strong>{selectedEmployee.designation || '—'}</strong></div>
-                    <div><span style={{ color: '#94a3b8' }}>Joining:</span> <strong>{selectedEmployee.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN') : '—'}</strong></div>
-                    <div><span style={{ color: '#94a3b8' }}>Deadline:</span> <strong>{selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline).toLocaleDateString('en-IN') : '—'}</strong></div>
-                  </div>
-
-
                 </div>
 
                 {/* Deadline & Expiry Alerts */}
@@ -1603,25 +1605,29 @@ const Onboarding = () => {
                 )}
 
                 {/* Section Completion & Details */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                  <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Form Sections</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  <div>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Form Sections</h4>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>Select the items this employee should complete before joining.</p>
+                  </div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={handleSelectAllItems}
                       disabled={totalSelectableItems === 0 || allItemsSelected}
-                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1d4ed8', fontSize: '12px', fontWeight: '700', cursor: totalSelectableItems === 0 || allItemsSelected ? 'not-allowed' : 'pointer', opacity: totalSelectableItems === 0 || allItemsSelected ? 0.6 : 1 }}
+                      style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: '12px', fontWeight: '700', cursor: totalSelectableItems === 0 || allItemsSelected ? 'not-allowed' : 'pointer', opacity: totalSelectableItems === 0 || allItemsSelected ? 0.6 : 1 }}
                     >
-                      Select All
+                      Select Everything
                     </button>
                     <button
                       type="button"
                       onClick={handleClearAllItems}
                       disabled={selectedItemCount === 0}
-                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontSize: '12px', fontWeight: '700', cursor: selectedItemCount === 0 ? 'not-allowed' : 'pointer', opacity: selectedItemCount === 0 ? 0.6 : 1 }}
+                      style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontSize: '12px', fontWeight: '700', cursor: selectedItemCount === 0 ? 'not-allowed' : 'pointer', opacity: selectedItemCount === 0 ? 0.6 : 1 }}
                     >
-                      Clear All
+                      Clear Selection
                     </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 12px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '700', color: '#475569' }}>{selectedItemCount} selected</div>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gap: '10px', marginBottom: '24px' }}>
@@ -1635,8 +1641,8 @@ const Onboarding = () => {
                     let iconColor = isComplete ? '#22c55e' : (statusText === 'Mail Sent' ? '#f59e0b' : '#94a3b8');
 
                     return (
-                      <div key={s.id} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', cursor: 'pointer', background: s.done ? '#f0fdf4' : '#fefce8' }}>
+                      <div key={s.id} style={{ borderRadius: '16px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden', boxShadow: '0 8px 20px rgba(15,23,42,0.04)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', cursor: 'pointer', background: s.done ? '#f0fdf4' : '#fffbea' }}>
                           <div onClick={(e) => { e.stopPropagation(); toggleCheckedSection(s.label); }} style={{ cursor: 'pointer', flexShrink: 0 }}>
                             {checkedSections.has(s.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
                           </div>
@@ -1644,15 +1650,15 @@ const Onboarding = () => {
                             {s.done ? <CheckCircle size={16} style={{ color: iconColor }} /> : <Clock size={16} style={{ color: iconColor }} />}
                             <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{s.label}</span>
                             <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                              <span style={{ fontSize: '11px', fontWeight: '600', color: badgeColor, background: badgeBg, padding: '2px 8px', borderRadius: '4px' }}>{statusText}</span>
-                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '2px' }}>📧 Sent: {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}
+                              <span style={{ fontSize: '11px', fontWeight: '700', color: badgeColor, background: badgeBg, padding: '4px 10px', borderRadius: '999px' }}>{statusText}</span>
+                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '4px' }}>Sent on {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}
                             </div>
                             <ChevronDown size={16} style={{ color: '#94a3b8', transform: expandedSections[s.id] ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
                           </div>
                         </div>
 
                         {expandedSections[s.id] && (
-                          <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0', background: '#fff', fontSize: '13px' }}>
+                          <div style={{ padding: '18px', borderTop: '1px solid #e2e8f0', background: '#fff', fontSize: '13px' }}>
                             {s.id === 'personal' && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div><span style={{ color: '#94a3b8' }}>Full Name:</span> <br /> <strong>{s.data?.fullName || '—'}</strong></div>
@@ -1702,7 +1708,10 @@ const Onboarding = () => {
                 </div>
 
                 {/* Documents */}
-                <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>Documents & Requirements</h4>
+                <div style={{ marginBottom: '12px' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Documents & Requirements</h4>
+                  <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>Review what has been shared, what is still pending, and what needs your approval.</p>
+                </div>
                 <div style={{ display: 'grid', gap: '8px' }}>
                   {detailDocuments.map((item, idx) => {
                     const isDoc = item.itemType === 'document';
@@ -1789,7 +1798,10 @@ const Onboarding = () => {
                   </label>
                   <select
                     value={selectedEmailTemplateId}
-                    onChange={(e) => applyEmailTemplateDraft(e.target.value, onboardingTemplateOptions)}
+                    onChange={(e) => {
+                      applyEmailTemplateDraft(e.target.value, onboardingTemplateOptions);
+                      setShowEmailTemplateEditor(false);
+                    }}
                     style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', marginBottom: '12px' }}
                   >
                     {onboardingTemplateOptions.map((template) => (
@@ -1799,6 +1811,27 @@ const Onboarding = () => {
                     ))}
                   </select>
 
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailTemplateEditor((prev) => !prev)}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', borderRadius: '10px', border: '1px solid #dbe3f0', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', textAlign: 'left', marginBottom: '12px' }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                        Email Content
+                      </div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {customEmailSubject || 'No subject added'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>
+                        {showEmailTemplateEditor ? 'Hide subject, message, and preview' : 'Open subject, message, and preview'}
+                      </div>
+                    </div>
+                    {showEmailTemplateEditor ? <ChevronUp size={18} color="#64748b" /> : <ChevronDown size={18} color="#64748b" />}
+                  </button>
+
+                  {showEmailTemplateEditor && (
+                  <>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
                     Subject
                   </label>
@@ -1834,6 +1867,8 @@ const Onboarding = () => {
                       dangerouslySetInnerHTML={{ __html: onboardingPreviewHtml || '<p>(empty body)</p>' }}
                     />
                   </div>
+                  </>
+                  )}
                 </div>
 
                 <div style={{ marginTop: '16px', padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
