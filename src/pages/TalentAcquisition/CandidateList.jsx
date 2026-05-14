@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -168,6 +168,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterPulledBy, setFilterPulledBy] = useState('All');
     const [filterUploadedBy, setFilterUploadedBy] = useState('All');
     const [filterUploadType, setFilterUploadType] = useState('All');
+    const [dateFilterField, setDateFilterField] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [filterTransferred, setFilterTransferred] = useState('All');
     const [filterProfileShared, setFilterProfileShared] = useState(false);
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
@@ -190,6 +193,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
+    const filtersScrollRef = useRef(null);
+    const dateFilterControlsRef = useRef(null);
     const isAdmin = user?.roles?.includes('Admin');
     const canEditCandidates = isAdmin
         || user?.permissions?.includes('ta.edit')
@@ -261,7 +266,25 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, filterProfileShared]);
+    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
+
+    useEffect(() => {
+        if (!dateFilterField) return;
+
+        const frameId = window.requestAnimationFrame(() => {
+            const scrollContainer = filtersScrollRef.current;
+            const dateControls = dateFilterControlsRef.current;
+            if (!scrollContainer || !dateControls) return;
+
+            const targetLeft = Math.max(0, dateControls.offsetLeft - 120);
+            scrollContainer.scrollTo({
+                left: targetLeft,
+                behavior: 'smooth'
+            });
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [dateFilterField]);
 
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
@@ -528,9 +551,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         try {
             setLoading(true);
             const endpoint = isLegacyView
-                ? `/ta/hiring-request/${hiringRequestId}/previous-candidates?t=${Date.now()}`
-                : `/ta/candidates/${hiringRequestId}?t=${Date.now()}`;
-            const response = await api.get(endpoint);
+                ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
+                : `/ta/candidates/${hiringRequestId}`;
+            const params = { t: Date.now() };
+            if (dateFilterField) params.dateField = dateFilterField;
+            if (dateFrom) params.startDate = dateFrom;
+            if (dateTo) params.endDate = dateTo;
+            const response = await api.get(endpoint, { params });
             setCandidates(isLegacyView ? response.data : response.data.candidates || []);
         } catch (error) {
             console.error('Error fetching candidates:', error);
@@ -538,7 +565,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } finally {
             setLoading(false);
         }
-    }, [hiringRequestId, isLegacyView]);
+    }, [dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView]);
 
     useEffect(() => {
         if (hiringRequestId) {
@@ -1715,7 +1742,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                     {/* Filters - Only show when no candidate is selected */}
                     {!selectedCandidateId && (
-                        <div className="scrollbar-hide bg-white p-4 rounded-xl border border-slate-200 overflow-x-auto">
+                        <div ref={filtersScrollRef} className="scrollbar-hide bg-white p-4 rounded-xl border border-slate-200 overflow-x-auto">
                             <div className="flex flex-nowrap gap-4 items-end min-w-max">
                                 <div className="shrink-0">
                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Candidate Name</label>
@@ -1883,7 +1910,49 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-28"
                                     />
                                 </div>
-                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterUploadedBy !== 'All' || filterUploadType !== 'All' || filterTransferred !== 'All') && (
+                                <div ref={dateFilterControlsRef} className="shrink-0">
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Date Filter</label>
+                                    <select
+                                        value={dateFilterField}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            setDateFilterField(value);
+                                            if (!value) {
+                                                setDateFrom('');
+                                                setDateTo('');
+                                            }
+                                        }}
+                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                                    >
+                                        <option value="">None</option>
+                                        <option value="createdAt">Created At</option>
+                                        <option value="updatedAt">Updated At</option>
+                                    </select>
+                                </div>
+                                {dateFilterField && (
+                                    <>
+                                        <div className="shrink-0">
+                                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">From</label>
+                                            <input
+                                                type="date"
+                                                value={dateFrom}
+                                                onChange={(e) => setDateFrom(e.target.value)}
+                                                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                            />
+                                        </div>
+                                        <div className="shrink-0">
+                                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">To</label>
+                                            <input
+                                                type="date"
+                                                value={dateTo}
+                                                onChange={(e) => setDateTo(e.target.value)}
+                                                min={dateFrom || undefined}
+                                                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterUploadedBy !== 'All' || filterUploadType !== 'All' || dateFilterField !== '' || dateFrom !== '' || dateTo !== '' || filterTransferred !== 'All') && (
                                     <button
                                         onClick={() => {
                                             if (activePhase === 1) setFilterStatus('Interested');
@@ -1897,6 +1966,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             setFilterPulledBy('All');
                                             setFilterUploadedBy('All');
                                             setFilterUploadType('All');
+                                            setDateFilterField('');
+                                            setDateFrom('');
+                                            setDateTo('');
                                             setFilterTransferred('All');
                                         }}
                                         className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
