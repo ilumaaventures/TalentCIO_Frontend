@@ -478,7 +478,7 @@ const PreOnboardingPortal = () => {
       case 'documents': {
         const targetDocs = p.documents?.filter(d => rdLabels.length === 0 || rdLabels.includes(d.label)) || [];
         if (targetDocs.length === 0) return true;
-        return targetDocs.every(d => (d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'));
+        return targetDocs.every(d => d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport');
       }
       case 'policies': {
         const targetPolicies = p.companyPolicies?.filter(p => rdLabels.length === 0 || rdLabels.includes(p.name)) || [];
@@ -669,7 +669,7 @@ const PreOnboardingPortal = () => {
                         const targetDocs = profile?.documents?.filter(d => reqDocsLabels.length === 0 || reqDocsLabels.includes(d.label)) || [];
                         if (targetDocs.length === 0) return true;
                         // Section is only complete if ALL requested docs are Uploaded or Approved (and not flagged)
-                        return targetDocs.every(d => (d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'));
+                        return targetDocs.every(d => (d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'));
                       })() :
                         step.id === 'bankDetails' ? profile?.bankDetails?.isComplete :
                           step.id === 'policies' ? (() => {
@@ -840,8 +840,9 @@ const PreOnboardingPortal = () => {
                         const isApproved = doc.status === 'Approved';
                         const isUploaded = doc.status === 'Uploaded';
                         const needsUpload = doc.status === 'Pending' || doc.status === 'Mail Sent' || doc.status === 'Re-upload Required';
+                        const isSharedCustomFile = doc.type === 'custom_file';
                         const isDocRequested = reqDocsLabels.includes(doc.label) || reqDocsLabels.some(rl => doc.label.startsWith(rl));
-                        const canUpload = (doc.status === 'Re-upload Required') || (!isGlobalReadOnly && needsUpload && isDocRequested);
+                        const canUpload = !isSharedCustomFile && ((doc.status === 'Re-upload Required') || (!isGlobalReadOnly && needsUpload && isDocRequested));
                         const badgeColor = isUploaded ? { bg: '#dbeafe', text: '#1d4ed8' } : isApproved ? { bg: '#dcfce7', text: '#16a34a' } : doc.status === 'Re-upload Required' ? { bg: '#fee2e2', text: '#dc2626' } : { bg: '#f1f5f9', text: '#64748b' };
                         const preview = docPreview[doc._id];
                         const isLastOfMultiType = multiFileTypes.includes(doc.type) && docsByType[doc.type]?.[docsByType[doc.type].length - 1]?._id === doc._id;
@@ -853,6 +854,7 @@ const PreOnboardingPortal = () => {
                               <FileText size={16} style={{ color: isApproved ? '#16a34a' : '#64748b', flexShrink: 0 }} />
                               <div style={{ flex: 1, minWidth: '120px' }}>
                                 <div style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>{doc.label}</div>
+                                {isSharedCustomFile && <div style={{ fontSize: '11px', color: '#0369a1', marginTop: '2px', fontWeight: '600' }}>Shared by HR for your reference</div>}
                                 {doc.rejectionReason && <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '1px' }}><AlertTriangle size={10} style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {doc.rejectionReason}</div>}
                                 {preview && <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '1px' }}>📄 {preview.fileName} ({(preview.file.size / 1024).toFixed(0)} KB)</div>}
                               </div>
