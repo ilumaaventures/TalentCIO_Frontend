@@ -161,6 +161,32 @@ const normalizeAccount = (account = {}) => ({
 
 const createDraftId = () => `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const buildSenderSelectionSnapshot = (account = {}) => ({
+    _id: String(account?._id || ''),
+    name: String(account?.name || '').trim().toLowerCase(),
+    provider: String(account?.provider || '').trim().toLowerCase(),
+    fromAddress: String(account?.fromAddress || '').trim().toLowerCase()
+});
+
+const findMatchingSender = (accounts = [], preferredAccount = null) => {
+    if (!preferredAccount) return null;
+
+    const preferredSnapshot = buildSenderSelectionSnapshot(preferredAccount);
+
+    return (
+        accounts.find((account) => String(account._id) === preferredSnapshot._id)
+        || accounts.find((account) => {
+            const accountSnapshot = buildSenderSelectionSnapshot(account);
+            return (
+                accountSnapshot.name === preferredSnapshot.name
+                && accountSnapshot.provider === preferredSnapshot.provider
+                && accountSnapshot.fromAddress === preferredSnapshot.fromAddress
+            );
+        })
+        || null
+    );
+};
+
 const formatDateTime = (value) => {
     if (!value) return 'Not yet';
 
@@ -184,7 +210,7 @@ const SendersTab = ({ canManage }) => {
         name: 'TalentCIO Platform',
         provider: 'platform',
         fromName: 'TalentCIO',
-        fromAddress: 'no-reply@talentcio.in',
+        fromAddress: 'ilumaaventures@gmail.com',
         verified: true,
         ready: true
     });
@@ -205,10 +231,13 @@ const SendersTab = ({ canManage }) => {
         () => accounts.find((account) => account._id === selectedAccountId) || null,
         [accounts, selectedAccountId]
     );
+    const isPlatformSelected = selectedAccountId === PLATFORM_ID;
+    const selectedDisplayAccount = isPlatformSelected ? platformOption : selectedSavedAccount;
 
     const isBrevo = form.provider === 'brevo';
     const isSmtp = form.provider === 'smtp';
     const selectedSavedAccountIsPersisted = selectedSavedAccount && !String(selectedSavedAccount._id).startsWith('draft-');
+    const canSendTestForSelectedAccount = isPlatformSelected || selectedSavedAccountIsPersisted;
     const formHasContent = Boolean(
         form.name.trim() ||
         form.fromName.trim() ||
@@ -232,11 +261,41 @@ const SendersTab = ({ canManage }) => {
         }));
     };
 
-    const loadSettings = async () => {
+    const selectAccount = (accountId, accountList = accounts) => {
+        if (accountId === 'new') {
+            if (selectedAccountId === 'new' && !formHasContent) return;
+
+            setSelectedAccountId('new');
+            setForm(createEmptyAccount());
+            return;
+        }
+
+        if (accountId === selectedAccountId) return;
+
+        const account = accountList.find((item) => item._id === accountId);
+        if (!account) return;
+
+        setSelectedAccountId(accountId);
+        setForm(normalizeAccount(account));
+    };
+
+    const loadSettings = async (preferredAccount = null) => {
         const { data } = await api.get('/company/email-settings');
         const nextAccounts = Array.isArray(data?.accounts) ? data.accounts.map(normalizeAccount) : [];
         setAccounts(nextAccounts);
         setDefaultAccountId(data?.defaultAccountId || PLATFORM_ID);
+
+        if (String(preferredAccount?._id || '') === PLATFORM_ID) {
+            setSelectedAccountId(PLATFORM_ID);
+            return;
+        }
+
+        const matchingAccount = findMatchingSender(nextAccounts, preferredAccount);
+        if (matchingAccount) {
+            setSelectedAccountId(matchingAccount._id);
+            setForm(normalizeAccount(matchingAccount));
+            return;
+        }
 
         if (nextAccounts.length > 0) {
             setSelectedAccountId(nextAccounts[0]._id);
@@ -252,20 +311,6 @@ const SendersTab = ({ canManage }) => {
             .catch((error) => toast.error(error.response?.data?.message || 'Failed to load senders'))
             .finally(() => setLoading(false));
     }, []);
-
-    const selectAccount = (accountId) => {
-        if (accountId === 'new') {
-            setSelectedAccountId('new');
-            setForm(createEmptyAccount());
-            return;
-        }
-
-        const account = accounts.find((item) => item._id === accountId);
-        if (!account) return;
-
-        setSelectedAccountId(accountId);
-        setForm(normalizeAccount(account));
-    };
 
     const validateForm = () => {
         if (!form.name.trim()) return 'Sender name is required.';
@@ -311,12 +356,21 @@ const SendersTab = ({ canManage }) => {
     const removeSelectedSender = () => {
         if (!canManage || !selectedSavedAccount) return;
 
-        setAccounts((current) => current.filter((account) => account._id !== selectedSavedAccount._id));
+        const remainingAccounts = accounts.filter((account) => account._id !== selectedSavedAccount._id);
+        setAccounts(remainingAccounts);
         if (defaultAccountId === selectedSavedAccount._id) {
             setDefaultAccountId(PLATFORM_ID);
         }
-        setSelectedAccountId('new');
-        setForm(createEmptyAccount());
+
+        if (remainingAccounts.length > 0) {
+            const nextSelectedAccount = remainingAccounts.find((account) => account._id !== selectedSavedAccount._id) || remainingAccounts[0];
+            setSelectedAccountId(nextSelectedAccount._id);
+            setForm(normalizeAccount(nextSelectedAccount));
+        } else {
+            setSelectedAccountId('new');
+            setForm(createEmptyAccount());
+        }
+
         toast.success('Sender removed');
     };
 
@@ -324,6 +378,9 @@ const SendersTab = ({ canManage }) => {
         if (!canManage) return;
 
         let accountsToSave = [...accounts];
+        const preferredAccountAfterSave = selectedAccountId === 'new'
+            ? (formHasContent ? form : null)
+            : (selectedSavedAccount || form);
 
         if (selectedAccountId === 'new' && formHasContent) {
             const validationMessage = validateForm();
@@ -352,7 +409,7 @@ const SendersTab = ({ canManage }) => {
             });
             await refreshProfile();
             toast.success('Email settings saved');
-            await loadSettings();
+            await loadSettings(preferredAccountAfterSave);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to save');
         } finally {
@@ -362,7 +419,7 @@ const SendersTab = ({ canManage }) => {
 
     const handleSendTest = async () => {
         if (!canManage) return;
-        if (!selectedSavedAccountIsPersisted) {
+        if (!canSendTestForSelectedAccount) {
             toast.error('Save settings first.');
             return;
         }
@@ -371,10 +428,10 @@ const SendersTab = ({ canManage }) => {
         try {
             const { data } = await api.post('/company/email-settings/test', {
                 recipientEmail,
-                emailAccountId: selectedSavedAccount._id
+                emailAccountId: isPlatformSelected ? PLATFORM_ID : selectedSavedAccount._id
             });
             toast.success(data?.message || 'Test email sent');
-            await loadSettings();
+            await loadSettings(selectedDisplayAccount);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to send test');
         } finally {
@@ -395,12 +452,32 @@ const SendersTab = ({ canManage }) => {
                 emailAccountId: selectedSavedAccount._id
             });
             toast.success('Sender marked as verified');
-            await loadSettings();
+            await loadSettings(selectedSavedAccount);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to verify');
         } finally {
             setVerifying(false);
         }
+    };
+
+    const activateSenderRow = (accountId, accountList = accounts) => {
+        if (canManage) {
+            setDefaultAccountId(accountId);
+        }
+
+        if (accountId === PLATFORM_ID) {
+            setSelectedAccountId(PLATFORM_ID);
+            return;
+        }
+
+        selectAccount(accountId, accountList);
+    };
+
+    const handleSenderRowKeyDown = (event, accountId) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+
+        event.preventDefault();
+        activateSenderRow(accountId);
     };
 
     if (loading) {
@@ -450,7 +527,10 @@ const SendersTab = ({ canManage }) => {
                     </div>
 
                     <div className="space-y-2 p-5">
-                        <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${defaultAccountId === PLATFORM_ID ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                        <label
+                            className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${selectedAccountId === PLATFORM_ID ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                            onClick={() => activateSenderRow(PLATFORM_ID)}
+                        >
                             <input
                                 type="radio"
                                 name="default-sender"
@@ -473,7 +553,11 @@ const SendersTab = ({ canManage }) => {
                         {accounts.map((account) => (
                             <div
                                 key={account._id}
-                                className={`rounded-xl border p-4 transition ${selectedAccountId === account._id ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => activateSenderRow(account._id)}
+                                onKeyDown={(event) => handleSenderRowKeyDown(event, account._id)}
+                                className={`cursor-pointer rounded-xl border p-4 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedAccountId === account._id ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
                             >
                                 <div className="flex items-center gap-3">
                                     <input
@@ -481,14 +565,11 @@ const SendersTab = ({ canManage }) => {
                                         name="default-sender"
                                         checked={defaultAccountId === account._id}
                                         onChange={() => canManage && setDefaultAccountId(account._id)}
+                                        onClick={(event) => event.stopPropagation()}
                                         disabled={!canManage}
                                         className="mt-0.5"
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => selectAccount(account._id)}
-                                        className="min-w-0 flex-1 text-left"
-                                    >
+                                    <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="truncate text-sm font-semibold text-slate-800">{account.name}</span>
                                             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${account.ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -498,7 +579,7 @@ const SendersTab = ({ canManage }) => {
                                         <p className="mt-0.5 text-xs text-slate-500">
                                             {account.fromAddress} - {account.provider.toUpperCase()}
                                         </p>
-                                    </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -515,10 +596,69 @@ const SendersTab = ({ canManage }) => {
                     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
                             <Server size={16} className="text-blue-600" />
-                            <h3 className="font-bold text-slate-800">{selectedSavedAccount ? 'Edit Sender' : 'New Sender'}</h3>
+                            <div>
+                                <h3 className="font-bold text-slate-800">
+                                    {selectedDisplayAccount
+                                        ? (isPlatformSelected ? 'Sender Details' : 'Edit Sender')
+                                        : 'New Sender'}
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                    {selectedDisplayAccount
+                                        ? `${selectedDisplayAccount.name} - ${selectedDisplayAccount.fromAddress}`
+                                        : 'Create a sender or select one from the saved list to edit it.'}
+                                </p>
+                            </div>
                         </div>
 
                         <div className="space-y-4 p-5">
+                            {isPlatformSelected && (
+                                <div className="space-y-4">
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Sender Label</label>
+                                            <input
+                                                type="text"
+                                                value={platformOption.name}
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Provider</label>
+                                            <input
+                                                type="text"
+                                                value="Platform"
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">From Name</label>
+                                            <input
+                                                type="text"
+                                                value={platformOption.fromName}
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">From Address</label>
+                                            <input
+                                                type="text"
+                                                value={platformOption.fromAddress}
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                                        This is the built-in TalentCIO sender. You can choose it as the default sender, but its credentials are managed by the platform and are not editable here.
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isPlatformSelected && (
+                                <>
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div>
                                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Sender Label</label>
@@ -659,27 +799,29 @@ const SendersTab = ({ canManage }) => {
                                     )}
                                 </div>
                             )}
+                                </>
+                            )}
                         </div>
                     </section>
 
-                    <section className={`rounded-2xl border p-4 text-sm ${selectedSavedAccount?.verified ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                    <section className={`rounded-2xl border p-4 text-sm ${selectedDisplayAccount?.verified ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
                         <div className="flex items-center justify-between gap-4">
                             <div className="flex items-start gap-2">
-                                {selectedSavedAccount?.verified ? (
+                                {selectedDisplayAccount?.verified ? (
                                     <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
                                 ) : (
                                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                                 )}
                                 <div>
                                     <p className="font-semibold">
-                                        {selectedSavedAccount
-                                            ? (selectedSavedAccount.verified
-                                                ? `Verified - ${selectedSavedAccount.fromAddress}`
+                                        {selectedDisplayAccount
+                                            ? (selectedDisplayAccount.verified
+                                                ? `Verified - ${selectedDisplayAccount.fromAddress}`
                                                 : 'Not verified - send a test to confirm')
                                             : 'Select a sender to test or verify'}
                                     </p>
                                     <p className="mt-0.5 text-xs opacity-75">
-                                        Last test: {formatDateTime(selectedSavedAccount?.testSentAt)} - Verified: {formatDateTime(selectedSavedAccount?.verifiedAt)}
+                                        Last test: {formatDateTime(selectedDisplayAccount?.testSentAt)} - Verified: {formatDateTime(selectedDisplayAccount?.verifiedAt)}
                                     </p>
                                 </div>
                             </div>
@@ -718,7 +860,7 @@ const SendersTab = ({ canManage }) => {
                                 <button
                                     type="button"
                                     onClick={handleSendTest}
-                                    disabled={sendingTest || !selectedSavedAccountIsPersisted}
+                                    disabled={sendingTest || !canSendTestForSelectedAccount}
                                     className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
                                 >
                                     {sendingTest ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
