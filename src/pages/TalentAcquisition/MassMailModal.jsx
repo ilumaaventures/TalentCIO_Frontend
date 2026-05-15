@@ -14,23 +14,39 @@ import {
 
 const SUPPORTED_PLACEHOLDER_HELPER = getSupportedPlaceholderTokens().join(', ');
 
-const buildPreviewData = (candidate, requestMeta, customNote = '') => ({
-    candidateName: candidate?.candidateName || '',
-    email: candidate?.email || '',
-    mobile: candidate?.mobile || '',
-    jobTitle: requestMeta?.roleDetails?.title || requestMeta?.positionName || '',
-    client: requestMeta?.client || '',
-    department: requestMeta?.roleDetails?.department || '',
-    recruiterName: requestMeta?.ownership?.recruiter
+const buildPreviewData = (candidate, requestMeta, customNote = '') => {
+    const fullName = candidate?.candidateName || '';
+    const [firstName = '', ...lastNameParts] = fullName.trim().split(/\s+/).filter(Boolean);
+    const lastName = lastNameParts.join(' ');
+    const recruiterName = requestMeta?.ownership?.recruiter
         ? `${requestMeta.ownership.recruiter.firstName || ''} ${requestMeta.ownership.recruiter.lastName || ''}`.trim()
-        : (candidate?.profilePulledBy || ''),
-    companyName: requestMeta?.companyName || 'TalentCIO',
-    requestId: requestMeta?.requestId || '',
-    currentStatus: candidate?.status || '',
-    interviewDate: '',
-    interviewLink: '',
-    customNote
-});
+        : (candidate?.profilePulledBy || '');
+
+    return {
+        candidateName: fullName,
+        firstName,
+        lastName,
+        fullName,
+        email: candidate?.email || '',
+        workEmail: candidate?.email || '',
+        mobile: candidate?.mobile || '',
+        phoneNumber: candidate?.mobile || '',
+        jobTitle: requestMeta?.roleDetails?.title || requestMeta?.positionName || '',
+        designation: requestMeta?.roleDetails?.title || requestMeta?.positionName || '',
+        client: requestMeta?.client || '',
+        department: requestMeta?.roleDetails?.department || '',
+        location: requestMeta?.location || '',
+        managerName: '',
+        managerEmail: '',
+        recruiterName,
+        companyName: requestMeta?.companyName || 'TalentCIO',
+        requestId: requestMeta?.requestId || '',
+        currentStatus: candidate?.status || '',
+        interviewDate: '',
+        interviewLink: '',
+        customNote
+    };
+};
 
 const applyCandidateFilters = (candidates, filters) => (
     (Array.isArray(candidates) ? candidates : []).filter((candidate) => {

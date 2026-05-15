@@ -1611,7 +1611,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
                                                         <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
                                                         {holiday && (
-                                                            <div className="text-[8px] text-green-600 font-bold truncate max-w-[50px] mt-1" title={holiday.name}>
+                                                            <div className="text-[8px] text-green-600 font-bold truncate max-w-12.5 mt-1" title={holiday.name}>
                                                                 {holiday.name}
                                                             </div>
                                                         )}
@@ -2164,7 +2164,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             <textarea
                                                                 value={editDescription}
                                                                 onChange={e => setEditDescription(e.target.value)}
-                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none h-[38px] min-h-[38px] resize-none text-sm leading-tight"
+                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none h-9.5 min-h-9.5 resize-none text-sm leading-tight"
                                                             />
                                                         </div>
                                                     </div>

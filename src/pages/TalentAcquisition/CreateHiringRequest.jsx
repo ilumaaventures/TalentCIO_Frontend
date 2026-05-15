@@ -96,7 +96,7 @@ const TagInput = ({ label, tags = [], onTagsChange, placeholder, gridCols = 1 })
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                 {label}
             </label>
-            <div className={`w-full border border-slate-300 rounded-lg p-1.5 min-h-[42px] bg-slate-50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all flex flex-wrap gap-2 items-center`}>
+            <div className={`w-full border border-slate-300 rounded-lg p-1.5 min-h-10.5 bg-slate-50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all flex flex-wrap gap-2 items-center`}>
                 {tags.map((tag, index) => (
                     <span key={index} className="bg-blue-600 text-white text-xs font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
                         {tag}
@@ -111,7 +111,7 @@ const TagInput = ({ label, tags = [], onTagsChange, placeholder, gridCols = 1 })
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={tags.length === 0 ? placeholder : ""}
-                    className="flex-1 bg-transparent border-none outline-none text-sm p-1 placeholder:text-slate-400 min-w-[120px]"
+                    className="flex-1 bg-transparent border-none outline-none text-sm p-1 placeholder:text-slate-400 min-w-30"
                 />
             </div>
             <p className="text-[10px] text-slate-400 mt-1 italic">Type a skill and press Enter to add</p>
@@ -852,7 +852,7 @@ const CreateHiringRequest = () => {
                             <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <FileText className="text-blue-600" size={18} />
-                                    <span className="text-xs font-medium text-blue-800 truncate max-w-[200px]">JD_Attachment.pdf</span>
+                                    <span className="text-xs font-medium text-blue-800 truncate max-w-50">JD_Attachment.pdf</span>
                                 </div>
                                 <a 
                                     href={formData.jobDescriptionFile} 

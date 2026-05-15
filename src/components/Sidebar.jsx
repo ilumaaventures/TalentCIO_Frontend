@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   BarChart3,
   Briefcase,
-  BriefcaseBusiness,
   Building,
   Building2,
   Calendar,
@@ -208,27 +207,18 @@ const Sidebar = ({ isOpen, onClose }) => {
         <div className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide">
           {isTalentAcquisitionRoute ? (
             <>
-              <div className={`${sidebarCardClass} mb-6 p-3`}>
+              <div className="mb-6 px-1">
                 <Link
                   to="/"
-                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-white transition hover:bg-white/10"
+                  className={`inline-flex items-center gap-2 text-[12px] font-semibold transition ${sidebarSubtleTextClass} hover:text-white`}
                   onClick={onClose}
                 >
-                  <span className="flex items-center gap-3">
-                    <span className={sidebarIconBadgeClass}>
-                      <BriefcaseBusiness size={16} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className={`block text-[10px] font-semibold uppercase tracking-[0.18em] ${sidebarSubtleTextClass}`}>
-                        Workspace
-                      </span>
-                      <span className="block truncate text-[13px] font-semibold text-white">
-                        Talent Acquisition
-                      </span>
-                    </span>
-                  </span>
-                  <ArrowLeft size={16} />
+                  <ArrowLeft size={14} />
+                  <span>Back to workspace</span>
                 </Link>
+                <h2 className="mt-3 text-lg font-semibold text-white">
+                  Talent Acquisition
+                </h2>
               </div>
 
               <div className={sectionLabelClass}>Main</div>

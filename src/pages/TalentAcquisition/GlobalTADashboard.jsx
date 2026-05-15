@@ -119,8 +119,8 @@ const GlobalTADashboard = () => {
                     ))}
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="h-[400px] bg-white rounded-2xl border border-slate-200 animate-pulse"></div>
-                    <div className="h-[400px] bg-white rounded-2xl border border-slate-200 animate-pulse"></div>
+                    <div className="h-100 bg-white rounded-2xl border border-slate-200 animate-pulse"></div>
+                    <div className="h-100 bg-white rounded-2xl border border-slate-200 animate-pulse"></div>
                 </div>
             </div>
         );
@@ -137,7 +137,7 @@ const GlobalTADashboard = () => {
         <div className="min-h-screen bg-[#f8fafc] pb-24">
             {/* Header Area */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-                <div className="max-w-[1600px] mx-auto px-6 py-4">
+                <div className="max-w-400 mx-auto px-6 py-4">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
                             <button
@@ -331,7 +331,7 @@ const GlobalTADashboard = () => {
             </div>
 
 
-            <div className="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
+            <div className="max-w-400 mx-auto px-6 py-8 space-y-8">
 
                 {/* 1. TOP METRICS CARDS */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -360,7 +360,7 @@ const GlobalTADashboard = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* 2. PIPELINE DISTRIBUTION (Donut) */}
                     <DashboardCard title="Pipeline Distribution" sub="Candidate spread across stages" icon={<PieIcon />} color="indigo" className="lg:col-span-1">
-                        <div className="h-[300px]">
+                        <div className="h-75">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie
@@ -382,7 +382,7 @@ const GlobalTADashboard = () => {
 
                     {/* 3. RECRUITMENT FUNNEL */}
                     <DashboardCard title="Recruitment Funnel" sub="Conversion efficiency through levels" icon={<Filter />} color="emerald" className="lg:col-span-2">
-                        <div className="h-[300px]">
+                        <div className="h-75">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart layout="vertical" data={recruitmentFunnel} margin={{ top: 10, right: 60, left: 20, bottom: 10 }}>
                                     <XAxis type="number" hide />
@@ -412,7 +412,7 @@ const GlobalTADashboard = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* 4. DEPARTMENT HIRING ANALYSIS */}
                     <DashboardCard title="Department Analysis" sub="Hiring volume by functional area" icon={<Inbox />} color="blue">
-                        <div className="h-[350px]">
+                        <div className="h-87.5">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={departmentAnalysis} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -431,7 +431,7 @@ const GlobalTADashboard = () => {
 
                     {/* 10. MONTHLY HIRING TREND */}
                     <DashboardCard title="Hiring Trend" sub="Month-over-month performance" icon={<TrendingUp />} color="pink">
-                        <div className="h-[350px]">
+                        <div className="h-87.5">
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={monthlyTrend}>
                                     <defs>
@@ -511,7 +511,7 @@ const GlobalTADashboard = () => {
                                                 <td className="px-4 py-3 text-center text-slate-600">{pos.interviewed}</td>
                                                 <td className="px-4 py-3 text-center text-emerald-600 font-bold">{pos.joined}</td>
                                                 <td className="px-4 py-3 text-right">
-                                                    <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1.5 overflow-hidden min-w-[60px]">
+                                                    <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1.5 overflow-hidden min-w-15">
                                                         <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(100, health)}%` }}></div>
                                                     </div>
                                                 </td>
@@ -527,7 +527,7 @@ const GlobalTADashboard = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* 7. TIME METRICS */}
                     <DashboardCard title="Time to Hire" sub="Processing speeds (Avg Days)" icon={<Clock />} color="slate">
-                        <div className="h-[250px]">
+                        <div className="h-62.5">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={timeMetrics} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -544,7 +544,7 @@ const GlobalTADashboard = () => {
 
                     {/* 8. SOURCE ANALYSIS */}
                     <DashboardCard title="Sourcing Effectiveness" sub="High-yield channels" icon={<Users />} color="cyan">
-                        <div className="h-[250px]">
+                        <div className="h-62.5">
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={sourceAnalysis} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -559,7 +559,7 @@ const GlobalTADashboard = () => {
                     </DashboardCard>
 
                     {/* 9. JOINING EFFICIENCY METRIC */}
-                    <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-[32px] p-8 text-white shadow-xl flex flex-col justify-between relative overflow-hidden h-full min-h-[350px]">
+                    <div className="bg-linear-to-br from-indigo-600 to-indigo-800 rounded-4xl p-8 text-white shadow-xl flex flex-col justify-between relative overflow-hidden h-full min-h-87.5">
                         <div className="relative z-10">
                             <div className="p-3 bg-white/10 w-fit rounded-2xl mb-6">
                                 <TrendingUp size={24} />
@@ -575,7 +575,7 @@ const GlobalTADashboard = () => {
                                     <span className="text-indigo-300 font-bold mb-1 opacity-60">Sourced Candidates</span>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <div className="flex-grow h-3 bg-white/10 rounded-full overflow-hidden">
+                                    <div className="grow h-3 bg-white/10 rounded-full overflow-hidden">
                                         <div
                                             className="h-full bg-indigo-300 shadow-[0_0_20px_rgba(165,180,252,0.5)] transition-all duration-1000"
                                             style={{ width: `${topMetrics?.joiningConversionRate}%` }}
@@ -645,7 +645,7 @@ const DashboardCard = ({ title, sub, icon, color, children, className = '' }) =>
     };
 
     return (
-        <div className={`bg-white rounded-[32px] p-8 shadow-sm border border-slate-100 flex flex-col ${className}`}>
+        <div className={`bg-white rounded-4xl p-8 shadow-sm border border-slate-100 flex flex-col ${className}`}>
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
                     <div className={`p-3 rounded-2xl ${colorMap[color]}`}>
@@ -660,7 +660,7 @@ const DashboardCard = ({ title, sub, icon, color, children, className = '' }) =>
                     <Download size={20} />
                 </button>
             </div>
-            <div className="flex-grow">
+            <div className="grow">
                 {children}
             </div>
         </div>

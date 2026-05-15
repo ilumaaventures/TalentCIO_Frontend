@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRightLeft, Calendar, CheckCircle, Clock3, Download, Eye, FileText, Loader, Mail, Menu, MoreVertical, Plus, Search, SlidersHorizontal, ThumbsDown, ThumbsUp, Upload, Users, UserCheck, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -180,6 +180,9 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [pulledByFilter, setPulledByFilter] = useState('All');
     const [uploadedByFilter, setUploadedByFilter] = useState('All');
     const [uploadTypeFilter, setUploadTypeFilter] = useState('All');
+    const [dateFilterField, setDateFilterField] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [pulledByUsers, setPulledByUsers] = useState([]);
     const [actionLoadingId, setActionLoadingId] = useState('');
     const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
@@ -196,6 +199,8 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [showCardVisibilityModal, setShowCardVisibilityModal] = useState(false);
     const [visibilityEditorPhaseOrder, setVisibilityEditorPhaseOrder] = useState(phases[0]?.order || 1);
     const [savingCardVisibility, setSavingCardVisibility] = useState(false);
+    const filtersScrollRef = useRef(null);
+    const dateFilterControlsRef = useRef(null);
 
     const isAdmin = user?.roles?.includes('Admin');
     const canEdit = isAdmin
@@ -250,7 +255,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const fetchCandidates = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await api.get(`/ta/candidates/${hiringRequest._id}`);
+            const params = { t: Date.now() };
+            if (dateFilterField) params.dateField = dateFilterField;
+            if (dateFrom) params.startDate = dateFrom;
+            if (dateTo) params.endDate = dateTo;
+            const response = await api.get(`/ta/candidates/${hiringRequest._id}`, { params });
             setCandidates(response.data?.candidates || []);
         } catch (error) {
             console.error('Failed to fetch dynamic candidates:', error);
@@ -258,7 +267,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         } finally {
             setLoading(false);
         }
-    }, [hiringRequest._id]);
+    }, [dateFilterField, dateFrom, dateTo, hiringRequest._id]);
 
     useEffect(() => {
         if (hiringRequest?._id) {
@@ -321,6 +330,24 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             window.removeEventListener('scroll', handleClose, true);
         };
     }, []);
+
+    useEffect(() => {
+        if (!dateFilterField) return;
+
+        const frameId = window.requestAnimationFrame(() => {
+            const scrollContainer = filtersScrollRef.current;
+            const dateControls = dateFilterControlsRef.current;
+            if (!scrollContainer || !dateControls) return;
+
+            const targetLeft = Math.max(0, dateControls.offsetLeft - 120);
+            scrollContainer.scrollTo({
+                left: targetLeft,
+                behavior: 'smooth'
+            });
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [dateFilterField]);
 
     const phaseCounts = useMemo(() => {
         const counts = new Map();
@@ -1298,7 +1325,8 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="grid flex-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+                    <div ref={filtersScrollRef} className="flex-1 overflow-x-auto">
+                    <div className="flex min-w-max flex-nowrap gap-4 items-end">
                         <div className="md:col-span-1">
                             <label className="mb-2 block text-xs font-semibold text-slate-500">Search</label>
                             <div className="relative">
@@ -1381,10 +1409,55 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                 <option value="Excel">Excel</option>
                             </select>
                         </div>
+                        <div ref={dateFilterControlsRef}>
+                            <label className="mb-2 block text-xs font-semibold text-slate-500">Date Filter</label>
+                            <select
+                                value={dateFilterField}
+                                onChange={(event) => {
+                                    const value = event.target.value;
+                                    setDateFilterField(value);
+                                    if (!value) {
+                                        setDateFrom('');
+                                        setDateTo('');
+                                    }
+                                }}
+                                className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            >
+                                <option value="">None</option>
+                                <option value="createdAt">Created At</option>
+                                <option value="updatedAt">Updated At</option>
+                            </select>
+                        </div>
+
+                        {dateFilterField && (
+                            <>
+                                <div>
+                                    <label className="mb-2 block text-xs font-semibold text-slate-500">From</label>
+                                    <input
+                                        type="date"
+                                        value={dateFrom}
+                                        onChange={(event) => setDateFrom(event.target.value)}
+                                        className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="mb-2 block text-xs font-semibold text-slate-500">To</label>
+                                    <input
+                                        type="date"
+                                        value={dateTo}
+                                        min={dateFrom || undefined}
+                                        onChange={(event) => setDateTo(event.target.value)}
+                                        className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                        {(search || statusFilter !== 'All' || decisionFilter !== 'All' || pulledByFilter !== 'All' || uploadedByFilter !== 'All' || uploadTypeFilter !== 'All') && (
+                        {(search || statusFilter !== 'All' || decisionFilter !== 'All' || pulledByFilter !== 'All' || uploadedByFilter !== 'All' || uploadTypeFilter !== 'All' || dateFilterField !== '' || dateFrom !== '' || dateTo !== '') && (
                             <button
                                 type="button"
                                 onClick={() => {
@@ -1394,6 +1467,9 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     setPulledByFilter('All');
                                     setUploadedByFilter('All');
                                     setUploadTypeFilter('All');
+                                    setDateFilterField('');
+                                    setDateFrom('');
+                                    setDateTo('');
                                 }}
                                 className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
                             >

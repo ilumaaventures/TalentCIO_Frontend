@@ -507,7 +507,7 @@ const TalentAcquisitionDashboard = () => {
             <div className="grid gap-6 xl:grid-cols-2">
                 <SectionCard
                     title="Recent Requisitions"
-                    action={<Link to="/ta/clients" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open client workspace</Link>}
+                    action={<Link to="/ta?tab=clients" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open client workspace</Link>}
                 >
                     <div className="scrollbar-hide overflow-x-auto">
                         {recentRequests.length ? (

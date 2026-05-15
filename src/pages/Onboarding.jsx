@@ -1,12 +1,19 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, UploadCloud, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
+import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import {
+  ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
+  getSupportedPlaceholderTokens,
+  renderTemplateBody,
+  resolveTemplate,
+  validateTemplateSyntax
+} from '../utils/templatePlaceholders';
 
 const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
 const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
@@ -19,6 +26,19 @@ const CUSTOM_FILE_ALLOWED_MIME_TYPES = new Set([
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 ]);
+
+const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Action Required: Complete Your Pre-Onboarding';
+const DEFAULT_ONBOARDING_EMAIL_BODY = `
+<p>Hello <strong>{{firstName}}</strong>,</p>
+<p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+`;
+const DEFAULT_ONBOARDING_TEMPLATE_OPTION = {
+  _id: '',
+  name: 'Default Onboarding Template',
+  category: 'built_in',
+  subject: DEFAULT_ONBOARDING_EMAIL_SUBJECT,
+  htmlBody: DEFAULT_ONBOARDING_EMAIL_BODY
+};
 
 const STATUS_COLORS = {
   Pending: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' },
@@ -67,9 +87,15 @@ const Onboarding = () => {
   const [emailDeadline, setEmailDeadline] = useState('');
   const [emailSenderOptions, setEmailSenderOptions] = useState([]);
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('platform');
+  const [emailTemplates, setEmailTemplates] = useState([]);
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState('');
+  const [customEmailSubject, setCustomEmailSubject] = useState(DEFAULT_ONBOARDING_EMAIL_SUBJECT);
+  const [customEmailBody, setCustomEmailBody] = useState(DEFAULT_ONBOARDING_EMAIL_BODY);
+  const [showEmailTemplateEditor, setShowEmailTemplateEditor] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
-  const [sendingCustomFile, setSendingCustomFile] = useState(false);
+  const [uploadingCustomFiles, setUploadingCustomFiles] = useState(false);
+  const [showCustomFileUploader, setShowCustomFileUploader] = useState(false);
   const [customFiles, setCustomFiles] = useState([]);
   const customFileInputRef = useRef(null);
   const initialEmployeesFetchDoneRef = useRef(false);
@@ -205,6 +231,54 @@ const Onboarding = () => {
   const totalSelectableItems = allSectionLabels.length + allDocumentLabels.length;
   const selectedItemCount = checkedSections.size + checkedDocuments.size;
   const allItemsSelected = totalSelectableItems > 0 && selectedItemCount === totalSelectableItems;
+  const templatePlaceholderHelp = getSupportedPlaceholderTokens(ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS).join(', ');
+  const onboardingPreviewData = {
+    candidateName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak',
+    firstName: selectedEmployee?.firstName || 'Sarthak',
+    lastName: selectedEmployee?.lastName || 'Sharma',
+    fullName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak Sharma',
+    email: selectedEmployee?.email || 'sarthak@example.com',
+    phone: selectedEmployee?.phone || '9876543210',
+    mobile: selectedEmployee?.phone || '9876543210',
+    jobTitle: selectedEmployee?.designation || 'Software Engineer',
+    designation: selectedEmployee?.designation || 'Software Engineer',
+    client: '',
+    department: selectedEmployee?.department || 'Engineering',
+    offerDate: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
+    dateOfOffer: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
+    workLocation: selectedEmployee?.workLocation || 'Bengaluru',
+    employmentDetails: [
+      selectedEmployee?.designation || 'Software Engineer',
+      selectedEmployee?.department || 'Engineering',
+      selectedEmployee?.workLocation || 'Bengaluru'
+    ].filter(Boolean).join(' | '),
+    recruiterName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'HR Team',
+    companyName: user?.company?.name || 'Your Company',
+    requestId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
+    currentStatus: selectedEmployee?.status || 'Pending',
+    interviewDate: '',
+    interviewLink: '',
+    customNote: '',
+    employeeFirstName: selectedEmployee?.firstName || 'Sarthak',
+    employeeFullName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak Sharma',
+    employeeId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
+    joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '15 Jun 2026',
+    submissionDeadline: emailDeadline || '2026-06-10',
+    portalLink: `${window.location.origin}/pre-onboarding/login`
+  };
+  const onboardingPreviewSubject = resolveTemplate(customEmailSubject, onboardingPreviewData);
+  const onboardingPreviewHtml = renderTemplateBody(customEmailBody, onboardingPreviewData);
+  const onboardingTemplateOptions = useMemo(
+    () => [DEFAULT_ONBOARDING_TEMPLATE_OPTION, ...emailTemplates],
+    [emailTemplates]
+  );
+
+  const applyEmailTemplateDraft = useCallback((templateId, templates, draftSubject = '', draftBody = '') => {
+    const selectedTemplate = (templates || []).find((template) => template._id === templateId);
+    setSelectedEmailTemplateId(templateId || '');
+    setCustomEmailSubject(draftSubject || selectedTemplate?.subject || DEFAULT_ONBOARDING_EMAIL_SUBJECT);
+    setCustomEmailBody(draftBody || selectedTemplate?.htmlBody || DEFAULT_ONBOARDING_EMAIL_BODY);
+  }, []);
 
   const handleSelectAllItems = useCallback(() => {
     setCheckedSections(new Set(allSectionLabels));
@@ -221,13 +295,33 @@ const Onboarding = () => {
       toast.error('Please select at least one section or document');
       return;
     }
+    if (!customEmailSubject.trim() || !customEmailBody.trim()) {
+      toast.error('Email subject and body are required');
+      return;
+    }
+
+    const subjectValidation = validateTemplateSyntax(customEmailSubject, ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS);
+    if (!subjectValidation.valid) {
+      toast.error(`Subject: ${subjectValidation.message}`);
+      return;
+    }
+
+    const bodyValidation = validateTemplateSyntax(customEmailBody, ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS);
+    if (!bodyValidation.valid) {
+      toast.error(`Body: ${bodyValidation.message}`);
+      return;
+    }
+
     try {
       setSendingEmail(true);
       const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-onboarding-email`, {
         sections: [...checkedSections],
         documents: [...checkedDocuments],
         submissionDeadline: emailDeadline,
-        emailAccountId: selectedEmailAccountId
+        emailAccountId: selectedEmailAccountId,
+        emailTemplateId: selectedEmailTemplateId || '',
+        emailSubject: customEmailSubject,
+        emailHtmlBody: customEmailBody
       });
       toast.success('Pre-onboarding email sent successfully!');
       setCheckedSections(new Set());
@@ -253,7 +347,10 @@ const Onboarding = () => {
       const res = await api.patch(`/onboarding/employees/${selectedEmployee._id}`, {
         selectionDraft: {
           sections: [...checkedSections],
-          documents: [...checkedDocuments]
+          documents: [...checkedDocuments],
+          emailTemplateId: selectedEmailTemplateId || '',
+          emailSubject: customEmailSubject,
+          emailHtmlBody: customEmailBody
         },
         documentDeadline: emailDeadline || null
       });
@@ -271,29 +368,32 @@ const Onboarding = () => {
     }
   };
 
-  const handleSendCustomFile = async () => {
+  const handleAddCustomFiles = async () => {
     if (customFiles.length === 0) {
       toast.error('Please select at least one file first');
       return;
     }
 
     try {
-      setSendingCustomFile(true);
+      setUploadingCustomFiles(true);
       const formData = new FormData();
-      // Append all files using the same field name 'documents' as expected by upload.array
       customFiles.forEach(file => {
         formData.append('documents', file);
       });
-      formData.append('emailAccountId', selectedEmailAccountId);
 
-      const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/send-custom-file`, formData, {
+      const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/custom-files`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
 
-      toast.success(res.data.message || 'File(s) sent successfully!');
+      toast.success(res.data.message || 'File(s) added successfully!');
+      const addedLabels = (res.data?.createdDocuments || []).map((doc) => doc.label).filter(Boolean);
+      if (addedLabels.length > 0) {
+        setCheckedDocuments(prev => new Set([...prev, ...addedLabels]));
+      }
       setCustomFiles([]);
+      setShowCustomFileUploader(false);
       if (customFileInputRef.current) customFileInputRef.current.value = '';
 
       if (res.data.employee) {
@@ -301,9 +401,30 @@ const Onboarding = () => {
         syncEmployeeState(res.data.employee);
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to send file(s)');
+      toast.error(err.response?.data?.message || 'Failed to add file(s)');
     } finally {
-      setSendingCustomFile(false);
+      setUploadingCustomFiles(false);
+    }
+  };
+
+  const handleDeleteCustomFile = async (docId, label) => {
+    if (!selectedEmployee?._id) return;
+    if (!window.confirm(`Delete "${label}" from this employee's document list?`)) return;
+
+    try {
+      const res = await api.delete(`/onboarding/employees/${selectedEmployee._id}/custom-files/${docId}`);
+      toast.success('Custom file deleted');
+      setCheckedDocuments(prev => {
+        const next = new Set(prev);
+        next.delete(label);
+        return next;
+      });
+      if (res.data?.employee) {
+        setSelectedEmployee(res.data.employee);
+        syncEmployeeState(res.data.employee, 'update');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete custom file');
     }
   };
 
@@ -645,6 +766,7 @@ const Onboarding = () => {
       setDetailLoading(true);
       setShowDetailModal(true);
       setCustomFiles([]);
+      setShowCustomFileUploader(false);
       if (customFileInputRef.current) customFileInputRef.current.value = '';
       fetchSettings(); // Refresh settings to show latest templates/policies in selection
       const res = await api.get(`/onboarding/employees/${emp._id}`);
@@ -653,6 +775,9 @@ const Onboarding = () => {
       const hasSavedDraft = Boolean(res.data.selectionDraft?.updatedAt);
       const draftSections = res.data.selectionDraft?.sections || [];
       const draftDocuments = res.data.selectionDraft?.documents || [];
+      const draftEmailTemplateId = res.data.selectionDraft?.emailTemplateId || '';
+      const draftEmailSubject = res.data.selectionDraft?.emailSubject || '';
+      const draftEmailBody = res.data.selectionDraft?.emailHtmlBody || '';
       const requestedSectionLabels = (hasSavedDraft ? draftSections : (res.data.requestedSections || []).map((item) => getRequestedLabel(item))).filter(Boolean);
       const requestedDocumentLabels = (hasSavedDraft ? draftDocuments : (res.data.requestedDocuments || []).map((item) => getRequestedLabel(item))).filter(Boolean);
       setCheckedSections(new Set(requestedSectionLabels));
@@ -679,6 +804,21 @@ const Onboarding = () => {
           fromAddress: 'no-reply@talentcio.in'
         }]);
         setSelectedEmailAccountId('platform');
+      }
+
+      try {
+        const templatesRes = await api.get('/email-templates?active=true&templateType=onboarding');
+        const nextTemplates = Array.isArray(templatesRes.data) ? templatesRes.data : [];
+        setEmailTemplates(nextTemplates);
+        applyEmailTemplateDraft(
+          draftEmailTemplateId,
+          [DEFAULT_ONBOARDING_TEMPLATE_OPTION, ...nextTemplates],
+          draftEmailSubject,
+          draftEmailBody
+        );
+      } catch {
+        setEmailTemplates([]);
+        applyEmailTemplateDraft('', [DEFAULT_ONBOARDING_TEMPLATE_OPTION], draftEmailSubject, draftEmailBody);
       }
     } catch {
       toast.error('Failed to load details');
@@ -859,6 +999,16 @@ const Onboarding = () => {
       toast.error(err.response?.data?.message || 'Transfer failed');
     }
   };
+
+  const closeDetailModal = useCallback(() => {
+    setShowDetailModal(false);
+    setSelectedEmployee(null);
+    setCheckedSections(new Set());
+    setCheckedDocuments(new Set());
+    setShowCustomFileUploader(false);
+    setCustomFiles([]);
+    if (customFileInputRef.current) customFileInputRef.current.value = '';
+  }, []);
 
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -1390,37 +1540,29 @@ const Onboarding = () => {
 
       {/* Detail Modal / Slide-out */}
       {showDetailModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'flex-end', zIndex: 1000 }}>
-          <div style={{ background: '#fff', width: '100%', maxWidth: '640px', height: '100vh', overflow: 'auto', boxShadow: '-4px 0 20px rgba(0,0,0,0.1)', animation: 'slideIn 0.3s ease-out' }}>
+        <div onClick={closeDetailModal} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'flex-end', zIndex: 1000 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '720px', height: '100vh', overflow: 'auto', boxShadow: '-8px 0 32px rgba(15,23,42,0.12)', animation: 'slideIn 0.3s ease-out' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
               <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Employee Details</h2>
-              <button onClick={() => { setShowDetailModal(false); setSelectedEmployee(null); setCheckedSections(new Set()); setCheckedDocuments(new Set()); setCustomFiles([]); if (customFileInputRef.current) customFileInputRef.current.value = ''; }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
+              <button onClick={closeDetailModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
             </div>
 
             {detailLoading ? (
               <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading...</div>
             ) : selectedEmployee && (
-              <div style={{ padding: '24px' }}>
+              <div style={{ padding: '24px', background: '#f8fafc', minHeight: '100%' }}>
                 {/* Employee Info */}
-                <div style={{ background: 'linear-gradient(135deg, #eff6ff, #f5f3ff)', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ background: '#ffffff', borderRadius: '18px', padding: '22px', marginBottom: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 28px rgba(15,23,42,0.05)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
                     <div>
-                      <h3 style={{ margin: '0 0 4px', fontSize: '20px', color: '#0f172a' }}>{selectedEmployee.firstName} {selectedEmployee.lastName}</h3>
-                      <p style={{ margin: '0 0 2px', color: '#64748b', fontSize: '14px' }}>{selectedEmployee.email}</p>
-                      <code style={{ background: '#e0e7ff', padding: '2px 8px', borderRadius: '4px', fontWeight: '600', fontSize: '13px' }}>{selectedEmployee.tempEmployeeId}</code>
+                      <h3 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: '700', color: '#0f172a', lineHeight: 1.2 }}>{selectedEmployee.firstName} {selectedEmployee.lastName}</h3>
+                      <p style={{ margin: '0 0 8px', color: '#475569', fontSize: '14px', wordBreak: 'break-word' }}>{selectedEmployee.email}</p>
+                      <code style={{ display: 'inline-block', background: '#eff6ff', color: '#1d4ed8', padding: '6px 10px', borderRadius: '10px', fontWeight: '700', fontSize: '12px', border: '1px solid #bfdbfe' }}>{selectedEmployee.tempEmployeeId}</code>
                     </div>
-                    <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).bg, color: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).text }}>
+                    <span style={{ padding: '6px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).bg, color: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).text }}>
                       {selectedEmployee.status}
                     </span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px', fontSize: '13px' }}>
-                    <div><span style={{ color: '#94a3b8' }}>Department:</span> <strong>{selectedEmployee.department || '—'}</strong></div>
-                    <div><span style={{ color: '#94a3b8' }}>Designation:</span> <strong>{selectedEmployee.designation || '—'}</strong></div>
-                    <div><span style={{ color: '#94a3b8' }}>Joining:</span> <strong>{selectedEmployee.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN') : '—'}</strong></div>
-                    <div><span style={{ color: '#94a3b8' }}>Deadline:</span> <strong>{selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline).toLocaleDateString('en-IN') : '—'}</strong></div>
-                  </div>
-
-
                 </div>
 
                 {/* Deadline & Expiry Alerts */}
@@ -1490,25 +1632,29 @@ const Onboarding = () => {
                 )}
 
                 {/* Section Completion & Details */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                  <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Form Sections</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  <div>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Form Sections</h4>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>Select the items this employee should complete before joining.</p>
+                  </div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={handleSelectAllItems}
                       disabled={totalSelectableItems === 0 || allItemsSelected}
-                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#1d4ed8', fontSize: '12px', fontWeight: '700', cursor: totalSelectableItems === 0 || allItemsSelected ? 'not-allowed' : 'pointer', opacity: totalSelectableItems === 0 || allItemsSelected ? 0.6 : 1 }}
+                      style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: '12px', fontWeight: '700', cursor: totalSelectableItems === 0 || allItemsSelected ? 'not-allowed' : 'pointer', opacity: totalSelectableItems === 0 || allItemsSelected ? 0.6 : 1 }}
                     >
-                      Select All
+                      Select Everything
                     </button>
                     <button
                       type="button"
                       onClick={handleClearAllItems}
                       disabled={selectedItemCount === 0}
-                      style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontSize: '12px', fontWeight: '700', cursor: selectedItemCount === 0 ? 'not-allowed' : 'pointer', opacity: selectedItemCount === 0 ? 0.6 : 1 }}
+                      style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontSize: '12px', fontWeight: '700', cursor: selectedItemCount === 0 ? 'not-allowed' : 'pointer', opacity: selectedItemCount === 0 ? 0.6 : 1 }}
                     >
-                      Clear All
+                      Clear Selection
                     </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 12px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '700', color: '#475569' }}>{selectedItemCount} selected</div>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gap: '10px', marginBottom: '24px' }}>
@@ -1522,8 +1668,8 @@ const Onboarding = () => {
                     let iconColor = isComplete ? '#22c55e' : (statusText === 'Mail Sent' ? '#f59e0b' : '#94a3b8');
 
                     return (
-                      <div key={s.id} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', cursor: 'pointer', background: s.done ? '#f0fdf4' : '#fefce8' }}>
+                      <div key={s.id} style={{ borderRadius: '16px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden', boxShadow: '0 8px 20px rgba(15,23,42,0.04)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', cursor: 'pointer', background: s.done ? '#f0fdf4' : '#fffbea' }}>
                           <div onClick={(e) => { e.stopPropagation(); toggleCheckedSection(s.label); }} style={{ cursor: 'pointer', flexShrink: 0 }}>
                             {checkedSections.has(s.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
                           </div>
@@ -1531,15 +1677,15 @@ const Onboarding = () => {
                             {s.done ? <CheckCircle size={16} style={{ color: iconColor }} /> : <Clock size={16} style={{ color: iconColor }} />}
                             <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{s.label}</span>
                             <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                              <span style={{ fontSize: '11px', fontWeight: '600', color: badgeColor, background: badgeBg, padding: '2px 8px', borderRadius: '4px' }}>{statusText}</span>
-                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '2px' }}>📧 Sent: {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}
+                              <span style={{ fontSize: '11px', fontWeight: '700', color: badgeColor, background: badgeBg, padding: '4px 10px', borderRadius: '999px' }}>{statusText}</span>
+                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '4px' }}>Sent on {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}
                             </div>
                             <ChevronDown size={16} style={{ color: '#94a3b8', transform: expandedSections[s.id] ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
                           </div>
                         </div>
 
                         {expandedSections[s.id] && (
-                          <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0', background: '#fff', fontSize: '13px' }}>
+                          <div style={{ padding: '18px', borderTop: '1px solid #e2e8f0', background: '#fff', fontSize: '13px' }}>
                             {s.id === 'personal' && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div><span style={{ color: '#94a3b8' }}>Full Name:</span> <br /> <strong>{s.data?.fullName || '—'}</strong></div>
@@ -1589,7 +1735,12 @@ const Onboarding = () => {
                 </div>
 
                 {/* Documents */}
-                <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>Documents & Requirements</h4>
+                <div style={{ marginBottom: '12px' }}>
+                  <div>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Documents & Requirements</h4>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>Review what has been shared, what is still pending, and what needs your approval.</p>
+                  </div>
+                </div>
                 <div style={{ display: 'grid', gap: '8px' }}>
                   {detailDocuments.map((item, idx) => {
                     const isDoc = item.itemType === 'document';
@@ -1606,7 +1757,7 @@ const Onboarding = () => {
                         <div style={{ flex: 1, minWidth: '120px' }}>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
                           {item.itemType === 'policy' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>STATIC POLICY</span></div>}
-                          {item.isCustomSentFile && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>HR SHARED FILE</span></div>}
+                          {item.isCustomSentFile && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>Added FILE</span></div>}
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
                           {(item.itemType === 'policy' || item.itemType === 'template') && !item.isAccepted && (
                             <div style={{ fontSize: '11px', color: item.emailSentAt ? '#92400e' : '#d97706', marginTop: '2px' }}>
@@ -1649,12 +1800,108 @@ const Onboarding = () => {
                                 <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✕ Flag</button>
                               </>
                             )}
+                            {item.isCustomSentFile && (
+                              <button onClick={() => handleDeleteCustomFile(item._id, item.label)} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fff5f5', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>Delete</button>
+                            )}
                           </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
+
+                <div style={{ marginTop: '16px', marginBottom: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomFileUploader((prev) => !prev)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    <Upload size={16} /> {showCustomFileUploader ? 'Hide Custom File Uploader' : 'Add Custom File'}
+                  </button>
+                </div>
+
+                {showCustomFileUploader && (
+                  <div style={{ marginTop: '16px', marginBottom: '8px', padding: '20px', background: '#f8fafc', borderRadius: '16px', border: '2px dashed #dbe3f0' }}>
+                    <h4 style={{ margin: '0 0 10px', fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>Send Any File to Candidate</h4>
+                    <p style={{ margin: '0 0 16px', fontSize: '14px', color: '#64748b' }}>Upload any manual document (policies, booklets, or reference files) and add it to the checklist before sending the pre-onboarding email.</p>
+
+                    <div
+                      onClick={() => customFileInputRef.current?.click()}
+                      style={{ padding: '22px', border: '1px solid #cbd5e1', borderRadius: '16px', background: '#fff', cursor: 'pointer', textAlign: 'center' }}
+                    >
+                      <input
+                        type="file"
+                        multiple
+                        accept={CUSTOM_FILE_ACCEPT}
+                        ref={customFileInputRef}
+                        onChange={(e) => {
+                          const selectedFiles = Array.from(e.target.files || []);
+                          const invalidTypeFiles = selectedFiles.filter((file) => !isAllowedCustomFile(file));
+                          const oversizedFiles = selectedFiles.filter((file) => file.size > CUSTOM_FILE_MAX_SIZE_BYTES);
+                          const validFiles = selectedFiles.filter((file) => isAllowedCustomFile(file) && file.size <= CUSTOM_FILE_MAX_SIZE_BYTES);
+
+                          if (invalidTypeFiles.length > 0) {
+                            toast.error('Only PDF, Word, Excel, and image files are allowed.');
+                          }
+
+                          if (oversizedFiles.length > 0) {
+                            toast.error('Each file must be 5 MB or smaller.');
+                          }
+
+                          if (validFiles.length === 0) {
+                            if (customFileInputRef.current) customFileInputRef.current.value = '';
+                            return;
+                          }
+
+                          setCustomFiles(prev => {
+                            const combined = [...prev, ...validFiles];
+                            return combined.filter((file, index, self) =>
+                              index === self.findIndex((candidate) => candidate.name === file.name && candidate.size === file.size)
+                            );
+                          });
+
+                          if (customFileInputRef.current) customFileInputRef.current.value = '';
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                      <div style={{ fontSize: '15px', color: '#94a3b8' }}>
+                        {customFiles.length > 0 ? `${customFiles.length} file(s) ready to add` : 'Click to select files...'}
+                      </div>
+                    </div>
+
+                    <p style={{ margin: '14px 0 0', fontSize: '13px', color: '#64748b' }}>Allowed: PDF, Word, Excel, and image files. Max size: 5 MB per file.</p>
+
+                    {customFiles.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '14px' }}>
+                        {customFiles.map((file, idx) => (
+                          <div key={`${file.name}-${file.size}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', padding: '8px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <FileText size={14} color="#2563eb" />
+                            <span style={{ fontSize: '12px', fontWeight: '600', color: '#1e293b', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCustomFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== idx));
+                              }}
+                              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', padding: 0 }}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleAddCustomFiles}
+                      disabled={uploadingCustomFiles || customFiles.length === 0}
+                      style={{ width: '100%', marginTop: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px', borderRadius: '12px', border: 'none', background: customFiles.length === 0 ? '#e2e8f0' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', cursor: uploadingCustomFiles || customFiles.length === 0 ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '15px', opacity: uploadingCustomFiles ? 0.7 : (customFiles.length === 0 ? 0.6 : 1) }}
+                    >
+                      <Upload size={16} /> {uploadingCustomFiles ? 'Adding Files...' : 'Add File(s) to Document List'}
+                    </button>
+                  </div>
+                )}
 
                 {/* Submission Deadline Selection */}
                 <div style={{ marginTop: '24px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -1668,6 +1915,85 @@ const Onboarding = () => {
                     style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
                   />
                   <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>The candidate's portal access and deadline in the email will be updated to this date.</p>
+                </div>
+
+                <div style={{ marginTop: '16px', padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Edit2 size={16} style={{ color: '#3b82f6' }} /> Onboarding Email Template
+                  </label>
+                  <select
+                    value={selectedEmailTemplateId}
+                    onChange={(e) => {
+                      applyEmailTemplateDraft(e.target.value, onboardingTemplateOptions);
+                      setShowEmailTemplateEditor(false);
+                    }}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', marginBottom: '12px' }}
+                  >
+                    {onboardingTemplateOptions.map((template) => (
+                      <option key={template._id} value={template._id}>
+                        {template.name}{template.category ? ` (${template.category === 'built_in' ? 'Built in' : template.category})` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailTemplateEditor((prev) => !prev)}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', borderRadius: '10px', border: '1px solid #dbe3f0', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', textAlign: 'left', marginBottom: '12px' }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                        Email Content
+                      </div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {customEmailSubject || 'No subject added'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>
+                        {showEmailTemplateEditor ? 'Hide subject, message, and preview' : 'Open subject, message, and preview'}
+                      </div>
+                    </div>
+                    {showEmailTemplateEditor ? <ChevronUp size={18} color="#64748b" /> : <ChevronDown size={18} color="#64748b" />}
+                  </button>
+
+                  {showEmailTemplateEditor && (
+                  <>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
+                    Subject
+                  </label>
+                  <input
+                    type="text"
+                    value={customEmailSubject}
+                    onChange={(e) => setCustomEmailSubject(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', marginBottom: '12px' }}
+                  />
+
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
+                    Intro / Message
+                  </label>
+                  <textarea
+                    value={customEmailBody}
+                    onChange={(e) => setCustomEmailBody(e.target.value)}
+                    rows={6}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                  <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                    You can personalize the onboarding message here. The selected logo comes from Email Settings → Email Branding. Supported placeholders: {templatePlaceholderHelp}
+                  </p>
+
+                  <div style={{ marginTop: '14px', padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                      Preview
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>
+                      {onboardingPreviewSubject || '(empty subject)'}
+                    </div>
+                    <div
+                      style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}
+                      dangerouslySetInnerHTML={{ __html: onboardingPreviewHtml || '<p>(empty body)</p>' }}
+                    />
+                  </div>
+                  </>
+                  )}
                 </div>
 
                 <div style={{ marginTop: '16px', padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -1737,91 +2063,6 @@ const Onboarding = () => {
                     <strong>Transferred to Active Employee</strong>
                   </div>
                 )}
-
-                {/* Send Custom File Utility */}
-                <div style={{ marginBottom: '32px', padding: '20px', background: '#f8fafc', borderRadius: '16px', border: '2px dashed #e2e8f0' }}>
-                  <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <UploadCloud size={18} style={{ color: '#3b82f6' }} /> Send Any File to Candidate
-                  </h4>
-                  <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>Upload any manual document (Policies, Info booklets, etc.) to send it directly to the candidate's email.</p>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div
-                      onClick={() => customFileInputRef.current?.click()}
-                      style={{ padding: '16px', border: '1px solid #cbd5e1', borderRadius: '12px', background: '#fff', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s' }}
-                      onMouseOver={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                      onMouseOut={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
-                    >
-                      <input
-                        type="file"
-                        multiple
-                        accept={CUSTOM_FILE_ACCEPT}
-                        ref={customFileInputRef}
-                        onChange={(e) => {
-                          const selectedFiles = Array.from(e.target.files || []);
-                          const invalidTypeFiles = selectedFiles.filter((file) => !isAllowedCustomFile(file));
-                          const oversizedFiles = selectedFiles.filter((file) => file.size > CUSTOM_FILE_MAX_SIZE_BYTES);
-                          const validFiles = selectedFiles.filter((file) => isAllowedCustomFile(file) && file.size <= CUSTOM_FILE_MAX_SIZE_BYTES);
-
-                          if (invalidTypeFiles.length > 0) {
-                            toast.error('Only PDF, Word, Excel, and image files are allowed.');
-                          }
-
-                          if (oversizedFiles.length > 0) {
-                            toast.error('Each file must be 5 MB or smaller.');
-                          }
-
-                          if (validFiles.length === 0) {
-                            if (customFileInputRef.current) customFileInputRef.current.value = '';
-                            return;
-                          }
-
-                          setCustomFiles(prev => {
-                            const combined = [...prev, ...validFiles];
-                            // Filter duplicates by name and size
-                            return combined.filter((file, index, self) =>
-                              index === self.findIndex((t) => (
-                                t.name === file.name && t.size === file.size
-                              ))
-                            );
-                          });
-                          if (customFileInputRef.current) customFileInputRef.current.value = '';
-                        }}
-                        style={{ display: 'none' }}
-                      />
-                      {customFiles.length > 0 ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
-                          {customFiles.map((file, idx) => (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                              <FileText size={14} color="#2563eb" />
-                              <span style={{ fontSize: '12px', fontWeight: '600', color: '#1e293b', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
-                              <button onClick={(e) => {
-                                e.stopPropagation();
-                                setCustomFiles(prev => prev.filter((_, i) => i !== idx));
-                              }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', display: 'flex', alignItems: 'center' }}>
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ))}
-                          <div style={{ width: '100%', marginTop: '8px', fontSize: '12px', color: '#3b82f6', fontWeight: '600' }}>+ Click to add more files</div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '13px', color: '#94a3b8' }}>Click to select files...</span>
-                      )}
-                    </div>
-                    <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
-                      Allowed: PDF, Word, Excel, and image files. Max size: 5 MB per file.
-                    </p>
-
-                    <button
-                      onClick={handleSendCustomFile}
-                      disabled={sendingCustomFile || customFiles.length === 0}
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px', borderRadius: '10px', border: 'none', background: customFiles.length === 0 ? '#e2e8f0' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', cursor: (sendingCustomFile || customFiles.length === 0) ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '14px', transition: 'all 0.2s', opacity: sendingCustomFile ? 0.7 : (customFiles.length === 0 ? 0.6 : 1), boxShadow: customFiles.length > 0 ? '0 4px 12px rgba(37,99,235,0.2)' : 'none' }}
-                    >
-                      <Send size={16} /> {sendingCustomFile ? 'Sending...' : `Send ${customFiles.length > 0 ? customFiles.length : ''} File(s) to Candidate`}
-                    </button>
-                  </div>
-                </div>
 
                 {/* Audit Log */}
                 {selectedEmployee.auditLog && selectedEmployee.auditLog.length > 0 && (

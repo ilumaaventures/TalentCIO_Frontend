@@ -106,7 +106,7 @@ const BulkTransferModal = ({
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
+        <div className="fixed inset-0 z-10000 flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
             <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/30 bg-slate-50 shadow-2xl">
                 <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
                     <div>
@@ -125,7 +125,7 @@ const BulkTransferModal = ({
                                 <h4 className="text-sm font-bold text-slate-800">Select Candidates</h4>
                                 <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">{selectedIds.length} selected</span>
                             </div>
-                            <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
+                            <div className="max-h-90 overflow-y-auto divide-y divide-slate-100">
                                 {candidates.map((candidate) => (
                                     <label key={candidate._id} className="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-slate-50">
                                         <input
@@ -156,7 +156,7 @@ const BulkTransferModal = ({
                                     className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
-                            <div className="mt-4 max-h-[280px] overflow-y-auto space-y-2">
+                            <div className="mt-4 max-h-70 overflow-y-auto space-y-2">
                                 {visibleRequisitions.map((request) => (
                                     <button
                                         key={request._id}
