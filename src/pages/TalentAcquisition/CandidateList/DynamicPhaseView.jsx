@@ -174,7 +174,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const debouncedSearch = useDebouncedValue(search, 300);
+    const debouncedSearch = useDebouncedValue(search, 2000);
     const [statusFilter, setStatusFilter] = useState('All');
     const [decisionFilter, setDecisionFilter] = useState('All');
     const [pulledByFilter, setPulledByFilter] = useState('All');
@@ -208,7 +208,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit');
-    const canMakeDecisions = canEdit || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
+    const canMakeDecisions = canEdit || user?.permissions?.includes('ta.candidate.make_decision');
     const canManualAdvance = isAdmin || canEdit;
     const canCreate = isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
@@ -225,7 +225,10 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.bulk_transfer')
         || user?.permissions?.includes('ta.candidate.transfer');
-    const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const canManageTemplates = isAdmin
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('ta.email_template.manage')
+        || user?.permissions?.includes('*');
 
     useEffect(() => {
         if (hiringRequest?.phases?.length) {

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import Skeleton from '../../components/Skeleton';
 import UserMultiSelect from '../../components/UserMultiSelect';
+import { useAuth } from '../../context/AuthContext';
 
 const tabOptions = [
     { id: 'overview', label: 'Overview', icon: ShieldCheck },
@@ -17,6 +18,7 @@ const TA_PERMISSION_SUB_TABS = [
     { id: 'all', label: 'All' },
     { id: 'requisition', label: 'Requisition' },
     { id: 'candidate', label: 'Candidates' },
+    { id: 'onboarding', label: 'Onboarding' },
     { id: 'manage', label: 'Manage' }
 ];
 
@@ -26,6 +28,7 @@ const USER_CARD_MIN_HEIGHT_PX = 96;
 const getTAPermissionCategory = (permissionKey = '') => {
     if (permissionKey.startsWith('ta.requisition.')) return 'requisition';
     if (permissionKey.startsWith('ta.candidate.')) return 'candidate';
+    if (permissionKey.startsWith('onboarding.')) return 'onboarding';
     return 'manage';
 };
 
@@ -36,10 +39,17 @@ const filterTAPermissionsByTab = (permissionsList = [], activeTab = 'all') => {
 
 const getTAPermissionSections = (permissionsList = [], activeTab = 'all') => {
     const candidatePermissions = permissionsList.filter((permission) => permission.key.startsWith('ta.candidate.'));
+    const onboardingPermissions = permissionsList.filter((permission) => permission.key.startsWith('onboarding.'));
 
     if (activeTab === 'candidate') {
         return [
             { id: 'candidate', label: 'Candidate Permissions', permissions: candidatePermissions }
+        ].filter((section) => section.permissions.length > 0);
+    }
+
+    if (activeTab === 'onboarding') {
+        return [
+            { id: 'onboarding', label: 'Onboarding Permissions', permissions: onboardingPermissions }
         ].filter((section) => section.permissions.length > 0);
     }
 
@@ -48,11 +58,13 @@ const getTAPermissionSections = (permissionsList = [], activeTab = 'all') => {
         const managePermissions = permissionsList.filter((permission) => (
             !permission.key.startsWith('ta.requisition.')
             && !permission.key.startsWith('ta.candidate.')
+            && !permission.key.startsWith('onboarding.')
         ));
 
         return [
             { id: 'requisition', label: 'Requisition Permissions', permissions: requisitionPermissions },
             { id: 'candidate', label: 'Candidate Permissions', permissions: candidatePermissions },
+            { id: 'onboarding', label: 'Onboarding Permissions', permissions: onboardingPermissions },
             { id: 'manage', label: 'Manage Permissions', permissions: managePermissions }
         ].filter((section) => section.permissions.length > 0);
     }
@@ -87,6 +99,10 @@ const formatUserName = (user) => {
 };
 
 const TAAccessSettings = () => {
+    const { user } = useAuth();
+    const canConfigEdit = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('*');
     const [loading, setLoading] = useState(true);
     const [savingRoleId, setSavingRoleId] = useState('');
     const [savingRequestId, setSavingRequestId] = useState('');
@@ -355,11 +371,16 @@ const TAAccessSettings = () => {
     return (
         <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-600">TA Settings</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-600">TA + Onboarding Settings</p>
                 <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">TA Access Settings</h1>
                 <p className="mt-2 max-w-3xl text-sm text-slate-500">
-                    Manage Talent Acquisition role permissions, client assignment, requisition sharing, analytics viewers, and interviewer coverage from one place.
+                    Manage Talent Acquisition and onboarding permissions, client assignment, requisition sharing, analytics viewers, and interviewer coverage from one place.
                 </p>
+                {!canConfigEdit ? (
+                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        This page is in read-only mode. You can review TA access coverage, but saving changes requires TA configuration edit access.
+                    </div>
+                ) : null}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -500,7 +521,7 @@ const TAAccessSettings = () => {
                             <button
                                 type="button"
                                 onClick={handleSaveRolePermissions}
-                                disabled={savingRoleId === selectedRole._id || selectedRole.isSystem}
+                                disabled={!canConfigEdit || savingRoleId === selectedRole._id || selectedRole.isSystem}
                                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                             >
                                 {savingRoleId === selectedRole._id ? <Loader size={16} className="animate-spin" /> : null}
@@ -560,6 +581,7 @@ const TAAccessSettings = () => {
                                                         type="checkbox"
                                                         checked={isChecked}
                                                         onChange={() => toggleRolePermission(permission._id)}
+                                                        disabled={!canConfigEdit}
                                                         className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                                     />
                                                     <div>
@@ -621,7 +643,7 @@ const TAAccessSettings = () => {
                             <button
                                 type="button"
                                 onClick={handleSaveRequestAccess}
-                                disabled={savingRequestId === selectedRequest._id}
+                                disabled={!canConfigEdit || savingRequestId === selectedRequest._id}
                                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                             >
                                 {savingRequestId === selectedRequest._id ? <Loader size={16} className="animate-spin" /> : null}
@@ -649,6 +671,7 @@ const TAAccessSettings = () => {
                                     <select
                                         value={requestAccessDraft.recruiterId}
                                         onChange={(event) => setRequestAccessDraft((current) => ({ ...current, recruiterId: event.target.value }))}
+                                        disabled={!canConfigEdit}
                                         className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                                     >
                                         <option value="">Unassigned</option>
@@ -668,6 +691,7 @@ const TAAccessSettings = () => {
                                             selectedUserIds={requestAccessDraft.assignedUsers}
                                             onChange={(selectedUserIds) => setRequestAccessDraft((current) => ({ ...current, assignedUsers: selectedUserIds }))}
                                             placeholder="Share requisition access"
+                                            disabled={!canConfigEdit}
                                         />
                                     </div>
                                     <div>
@@ -677,6 +701,7 @@ const TAAccessSettings = () => {
                                             selectedUserIds={requestAccessDraft.analyticsViewers}
                                             onChange={(selectedUserIds) => setRequestAccessDraft((current) => ({ ...current, analyticsViewers: selectedUserIds }))}
                                             placeholder="Select analytics viewers"
+                                            disabled={!canConfigEdit}
                                         />
                                     </div>
                                     <div>
@@ -686,6 +711,7 @@ const TAAccessSettings = () => {
                                             selectedUserIds={requestAccessDraft.interviewPanel}
                                             onChange={(selectedUserIds) => setRequestAccessDraft((current) => ({ ...current, interviewPanel: selectedUserIds }))}
                                             placeholder="Select interview panel"
+                                            disabled={!canConfigEdit}
                                         />
                                     </div>
                                 </div>
@@ -740,7 +766,7 @@ const TAAccessSettings = () => {
                             <button
                                 type="button"
                                 onClick={handleSaveClientAssignments}
-                                disabled={savingClientName === selectedClientName}
+                                disabled={!canConfigEdit || savingClientName === selectedClientName}
                                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                             >
                                 {savingClientName === selectedClientName ? <Loader size={16} className="animate-spin" /> : null}
@@ -789,6 +815,7 @@ const TAAccessSettings = () => {
                                                         type="checkbox"
                                                         checked={isChecked}
                                                         onChange={() => toggleClientUserAssignment(user._id)}
+                                                        disabled={!canConfigEdit}
                                                         className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                                     />
                                                     <div>
@@ -820,6 +847,7 @@ const TAAccessSettings = () => {
                                                         type="checkbox"
                                                         checked={isChecked}
                                                         onChange={() => toggleClientUserAssignment(user._id)}
+                                                        disabled={!canConfigEdit}
                                                         className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                                     />
                                                     <div>

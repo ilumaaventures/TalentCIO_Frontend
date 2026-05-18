@@ -110,8 +110,10 @@ const HiringRequestDetails = () => {
 
     const hasSuperApprove = user?.permissions?.includes('ta.super_approve') || user?.permissions?.includes('*');
     const canManageVisibility = user?.roles?.includes('Admin')
-        || user?.permissions?.includes('ta.config.manage')
-        || user?.permissions?.includes('ta.edit');
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('ta.requisition.update')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all');
     const resourceGatewayEnabledForCompany = Boolean(user?.company?.settings?.careers?.enableResourceGatewayPublishing);
     const positionSummary = getHiringPositionSummary(request);
     const canPartialClose = positionSummary.open > 1;

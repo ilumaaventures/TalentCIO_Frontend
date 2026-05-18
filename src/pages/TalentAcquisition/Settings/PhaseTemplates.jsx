@@ -15,6 +15,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../../../api/axios';
 import Skeleton from '../../../components/Skeleton';
+import { useAuth } from '../../../context/AuthContext';
 
 const createLocalId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -198,6 +199,10 @@ const Badge = ({ label, color }) => (
 );
 
 const PhaseTemplates = () => {
+    const { user } = useAuth();
+    const canConfigEdit = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('*');
     const [templates, setTemplates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editorOpen, setEditorOpen] = useState(false);
@@ -383,18 +388,25 @@ const PhaseTemplates = () => {
                         <h1 className="text-2xl font-bold text-slate-900">Phase Templates</h1>
                         <p className="mt-1 text-sm text-slate-500">Build reusable hiring workflows with custom phases, statuses, and decisions.</p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={openCreateEditor}
-                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-                    >
-                        <Plus size={16} />
-                        Create New Template
-                    </button>
+                    {canConfigEdit ? (
+                        <button
+                            type="button"
+                            onClick={openCreateEditor}
+                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                        >
+                            <Plus size={16} />
+                            Create New Template
+                        </button>
+                    ) : null}
                 </div>
             </div>
 
             <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[360px,1fr]">
+                {!canConfigEdit ? (
+                    <div className="lg:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Phase templates are in read-only mode. You can review available templates, but creating, cloning, editing, or deleting templates requires TA configuration edit access.
+                    </div>
+                ) : null}
                 <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="mb-4 flex items-center justify-between">
                         <div>
@@ -450,52 +462,56 @@ const PhaseTemplates = () => {
                                             <span>{template.hiringRequestCount || 0} requests</span>
                                         </div>
 
-                                        <div className="mt-4 flex flex-wrap gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    openEditEditor(template);
-                                                }}
-                                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-white"
-                                            >
-                                                Edit
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    handleClone(template._id);
-                                                }}
-                                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-white"
-                                            >
-                                                Clone
-                                            </button>
-                                            {!template.isDefault && (
+                                        {canConfigEdit ? (
+                                            <div className="mt-4 flex flex-wrap gap-2">
                                                 <button
                                                     type="button"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                        handleSetDefault(template._id);
+                                                        openEditEditor(template);
                                                     }}
-                                                    className="rounded-lg border border-blue-200 px-2.5 py-1 text-xs font-semibold text-blue-700 transition hover:bg-white"
+                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-white"
                                                 >
-                                                    Set as Default
+                                                    Edit
                                                 </button>
-                                            )}
-                                            <button
-                                                type="button"
-                                                title={template.activeHiringRequestCount > 0 ? 'This template is used by active hiring requests and cannot be deleted.' : 'Delete template'}
-                                                disabled={template.activeHiringRequestCount > 0}
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    handleDelete(template);
-                                                }}
-                                                className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                                            >
-                                                Delete
-                                            </button>
-                                        </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleClone(template._id);
+                                                    }}
+                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-white"
+                                                >
+                                                    Clone
+                                                </button>
+                                                {!template.isDefault && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleSetDefault(template._id);
+                                                        }}
+                                                        className="rounded-lg border border-blue-200 px-2.5 py-1 text-xs font-semibold text-blue-700 transition hover:bg-white"
+                                                    >
+                                                        Set as Default
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    title={template.activeHiringRequestCount > 0 ? 'This template is used by active hiring requests and cannot be deleted.' : 'Delete template'}
+                                                    disabled={template.activeHiringRequestCount > 0}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleDelete(template);
+                                                    }}
+                                                    className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="mt-4 text-xs font-semibold text-slate-400">Read only</div>
+                                        )}
                                     </button>
                                 );
                             })}

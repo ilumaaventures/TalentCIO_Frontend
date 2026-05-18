@@ -40,7 +40,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const [recycleBinCount, setRecycleBinCount] = useState(0);
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
-  const canViewTAAnalytics = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global') || user?.isTAAnalyticsViewer;
+  const canViewTAAnalytics = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('ta.analytics.global')
+    || user?.permissions?.includes('ta.analytics.assigned')
+    || user?.permissions?.includes('*')
+    || user?.isTAAnalyticsViewer;
   const requestedTATab = new URLSearchParams(location.search).get('tab');
   const currentTATab = requestedTATab === 'analytics'
     ? (canViewTAAnalytics ? 'overview' : 'requisitions')
@@ -55,15 +59,18 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('ta.candidate.manage.all')
     || user?.permissions?.includes('ta.candidate.view')
     || user?.permissions?.includes('ta.candidate.edit')
-    || user?.permissions?.includes('ta.candidate.evaluate_round')
+    || user?.permissions?.includes('ta.interview.evaluate')
     || user?.permissions?.includes('ta.candidate.make_decision')
     || user?.permissions?.includes('ta.candidate.transfer')
-    || user?.permissions?.includes('ta.config.manage')
+    || user?.permissions?.includes('ta.config.view')
+    || user?.permissions?.includes('ta.config.edit')
     || user?.isTAParticipant
     || canViewTAAnalytics
   );
-  const canManageTAWorkflows = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.edit');
-  const canManagePhaseTemplates = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('*');
+  const canViewTAConfig = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('ta.config.view')
+    || user?.permissions?.includes('ta.config.edit')
+    || user?.permissions?.includes('*');
   const showDashboard = user?.roles?.includes('Admin') || user?.hasAllPermissions;
   const showAttendance = user?.company?.enabledModules?.includes('attendance');
   const showLeaves = user?.company?.enabledModules?.includes('leaves');
@@ -71,10 +78,29 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
-  const showOnboarding = user?.roles?.includes('Admin') || user?.permissions?.includes('onboarding.manage');
+  const showOnboarding = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('onboarding.view')
+    || user?.permissions?.includes('onboarding.document.review')
+    || user?.permissions?.includes('onboarding.document.request')
+    || user?.permissions?.includes('onboarding.credential.manage')
+    || user?.permissions?.includes('onboarding.complete')
+    || user?.permissions?.includes('onboarding.manage')
+    || user?.permissions?.includes('*');
   const showRecycleBin = user?.roles?.includes('Admin') || user?.permissions?.includes('bin.view');
-  const showBusinessUnits = user?.company?.enabledModules?.includes('projectManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.read'));
-  const showClients = user?.company?.enabledModules?.includes('projectManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('client.read'));
+  const showBusinessUnits = user?.company?.enabledModules?.includes('projectManagement') && (
+    user?.roles?.includes('Admin')
+    || user?.permissions?.includes('business_unit.read')
+    || user?.permissions?.includes('business_unit.create')
+    || user?.permissions?.includes('business_unit.update')
+    || user?.permissions?.includes('*')
+  );
+  const showClients = user?.company?.enabledModules?.includes('projectManagement') && (
+    user?.roles?.includes('Admin')
+    || user?.permissions?.includes('client.read')
+    || user?.permissions?.includes('client.create')
+    || user?.permissions?.includes('client.update')
+    || user?.permissions?.includes('*')
+  );
   const showProjects = user?.company?.enabledModules?.includes('projectManagement');
   const showMainSection = showDashboard || showAttendance || showLeaves || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding;
@@ -139,7 +165,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       label: 'Access Settings',
       to: '/ta/settings/access',
       icon: ShieldCheck,
-      visible: user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.edit') || user?.permissions?.includes('role.update') || user?.permissions?.includes('role.create') || user?.permissions?.includes('*'),
+      visible: user?.roles?.includes('Admin') || canViewTAConfig,
       isActive: location.pathname === '/ta/settings/access'
     },
     {
@@ -153,21 +179,21 @@ const Sidebar = ({ isOpen, onClose }) => {
       label: 'Workflow Settings',
       to: '/ta/workflows',
       icon: Workflow,
-      visible: canManageTAWorkflows,
+      visible: canViewTAConfig,
       isActive: location.pathname === '/ta/workflows'
     },
     {
       label: 'Phase Templates',
       to: '/ta/settings/phase-templates',
       icon: Settings,
-      visible: canManagePhaseTemplates,
+      visible: canViewTAConfig,
       isActive: location.pathname === '/ta/settings/phase-templates'
     },
     {
       label: 'Email Templates',
       to: '/ta/email-templates',
       icon: Mail,
-      visible: user?.roles?.includes('Admin') || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit'),
+      visible: user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('*'),
       isActive: location.pathname === '/ta/email-templates'
     }
   ].filter((item) => item.visible);

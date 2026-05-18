@@ -175,7 +175,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterProfileShared, setFilterProfileShared] = useState(false);
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
     const [users, setUsers] = useState([]);
-    const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 300);
+    const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 2000);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCandidateId = searchParams.get('candidateId');
@@ -201,7 +201,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit');
-    const canMakeDecisions = canEditCandidates || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
+    const canMakeDecisions = canEditCandidates || user?.permissions?.includes('ta.candidate.make_decision');
     const canTransferCandidates = isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
@@ -214,7 +214,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.mass_mail')
         || user?.permissions?.includes('ta.edit');
     const canBulkTransfer = canTransferCandidates;
-    const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const canManageTemplates = isAdmin
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('ta.email_template.manage')
+        || user?.permissions?.includes('*');
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
     , []);

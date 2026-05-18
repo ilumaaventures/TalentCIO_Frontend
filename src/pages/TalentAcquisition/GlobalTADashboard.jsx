@@ -57,7 +57,9 @@ const GlobalTADashboard = () => {
         requisitionId: ''
     });
 
-    const hasGlobalAnalyticsAccess = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global');
+    const hasGlobalAnalyticsAccess = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.analytics.global')
+        || user?.permissions?.includes('*');
     const dashboardTitle = hasGlobalAnalyticsAccess ? 'Global Talent Acquisition Analytics' : 'Assigned Requisition Analytics';
     const dashboardSubtitle = hasGlobalAnalyticsAccess ? 'Enterprise Recruitment Intelligence' : 'Performance across requisitions assigned to you';
 

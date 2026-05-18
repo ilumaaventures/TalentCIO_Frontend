@@ -254,6 +254,8 @@ const TalentAcquisitionDashboard = () => {
     const canViewAnalytics = useMemo(() => (
         user?.roles?.includes('Admin') ||
         user?.permissions?.includes('ta.analytics.global') ||
+        user?.permissions?.includes('ta.analytics.assigned') ||
+        user?.permissions?.includes('*') ||
         user?.isTAAnalyticsViewer
     ), [user]);
 

@@ -1,7 +1,7 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Shield, Download } from 'lucide-react';
+import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -35,6 +35,13 @@ const Users = () => {
     });
     const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortOption, setSortOption] = useState('joining_recent');
+    const [showSortMenu, setShowSortMenu] = useState(false);
+    const [showFilterMenu, setShowFilterMenu] = useState(false);
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterDepartment, setFilterDepartment] = useState('all');
+    const [filterEmploymentType, setFilterEmploymentType] = useState('all');
+    const [filterJoiningDate, setFilterJoiningDate] = useState('');
 
     // Helpers for Export
     const formatTime = (dateString, istString) => {
@@ -540,6 +547,7 @@ const Users = () => {
                     email: u.email,
                     employeeCode: u.employeeCode,
                     joiningDate: u.joiningDate,
+                    createdAt: u.createdAt,
                     department: u.department,
                     employmentType: u.employmentType,
                     workLocation: u.workLocation,
@@ -571,22 +579,97 @@ const Users = () => {
 
     const [filterDate, _setFilterDate] = useState('');
 
-    const filteredUsers = users.filter((listedUser) => {
-        if (listedUser.isDeleted) {
-            return false;
+    const departmentOptions = useMemo(
+        () => [...new Set(users.map((listedUser) => listedUser.department).filter(Boolean))].sort((left, right) => left.localeCompare(right)),
+        [users]
+    );
+
+    const employmentTypeOptions = useMemo(
+        () => [...new Set(users.map((listedUser) => listedUser.employmentType).filter(Boolean))].sort((left, right) => left.localeCompare(right)),
+        [users]
+    );
+
+    const filteredUsers = useMemo(() => {
+        const filtered = users.filter((listedUser) => {
+            if (listedUser.isDeleted) {
+                return false;
+            }
+
+            const normalizedSearch = searchTerm.toLowerCase();
+            const matchesSearch = (
+                listedUser.firstName?.toLowerCase().includes(normalizedSearch) ||
+                listedUser.lastName?.toLowerCase().includes(normalizedSearch) ||
+                listedUser.email?.toLowerCase().includes(normalizedSearch) ||
+                listedUser.employeeCode?.toLowerCase().includes(normalizedSearch)
+            );
+
+            const joiningDateValue = listedUser.joiningDate
+                ? new Date(listedUser.joiningDate).toISOString().split('T')[0]
+                : '';
+
+            const matchesDate = !filterDate || joiningDateValue === filterDate;
+            const matchesJoiningDate = !filterJoiningDate || joiningDateValue === filterJoiningDate;
+            const matchesStatus = filterStatus === 'all'
+                || (filterStatus === 'active' && listedUser.isActive)
+                || (filterStatus === 'inactive' && !listedUser.isActive);
+            const matchesDepartment = filterDepartment === 'all' || (listedUser.department || '') === filterDepartment;
+            const matchesEmploymentType = filterEmploymentType === 'all' || (listedUser.employmentType || '') === filterEmploymentType;
+
+            return matchesSearch
+                && matchesDate
+                && matchesJoiningDate
+                && matchesStatus
+                && matchesDepartment
+                && matchesEmploymentType;
+        });
+
+        const sorted = [...filtered];
+        switch (sortOption) {
+            case 'alphabetical_az':
+                sorted.sort((left, right) => (
+                    `${left.firstName || ''} ${left.lastName || ''}`.trim().localeCompare(
+                        `${right.firstName || ''} ${right.lastName || ''}`.trim()
+                    )
+                ));
+                break;
+            case 'employee_code':
+                sorted.sort((left, right) => String(left.employeeCode || '').localeCompare(String(right.employeeCode || ''), undefined, { numeric: true, sensitivity: 'base' }));
+                break;
+            case 'newest':
+                sorted.sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0));
+                break;
+            case 'oldest':
+                sorted.sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0));
+                break;
+            case 'joining_recent':
+            default:
+                sorted.sort((left, right) => new Date(right.joiningDate || 0) - new Date(left.joiningDate || 0));
+                break;
         }
 
-        const matchesSearch = (
-            listedUser.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            listedUser.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            listedUser.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            listedUser.employeeCode?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+        return sorted;
+    }, [
+        users,
+        searchTerm,
+        filterDate,
+        filterJoiningDate,
+        filterStatus,
+        filterDepartment,
+        filterEmploymentType,
+        sortOption
+    ]);
 
-        const matchesDate = !filterDate || (listedUser.joiningDate && new Date(listedUser.joiningDate).toISOString().split('T')[0] === filterDate);
+    const hasActiveFilters = filterStatus !== 'all'
+        || filterDepartment !== 'all'
+        || filterEmploymentType !== 'all'
+        || Boolean(filterJoiningDate);
 
-        return matchesSearch && matchesDate;
-    }).sort((a, b) => new Date(b.joiningDate || 0) - new Date(a.joiningDate || 0));
+    const clearFilters = () => {
+        setFilterStatus('all');
+        setFilterDepartment('all');
+        setFilterEmploymentType('all');
+        setFilterJoiningDate('');
+    };
 
     useEffect(() => {
         fetchData();
@@ -810,8 +893,8 @@ const Users = () => {
 
                 {/* Users List */}
                 <div className="zoho-card overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                        <div className="flex items-center space-x-4">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:space-x-4">
                             <div className="relative">
                                 <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
                                 <input
@@ -822,9 +905,138 @@ const Users = () => {
                                     className="pl-9 pr-4 py-2.5 w-72 bg-white border border-slate-200 rounded-lg text-sm outline-none transition-all shadow-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
                                 />
                             </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowSortMenu((current) => !current);
+                                            setShowFilterMenu(false);
+                                        }}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                                    >
+                                        <ArrowUpDown size={15} />
+                                        Sort
+                                    </button>
+                                    {showSortMenu && (
+                                        <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                                            {[
+                                                { value: 'joining_recent', label: 'Joining date: recent first' },
+                                                { value: 'alphabetical_az', label: 'A-Z alphabetical' },
+                                                { value: 'employee_code', label: 'Employee code' },
+                                                { value: 'newest', label: 'Newest (latest first)' },
+                                                { value: 'oldest', label: 'Oldest (older first)' }
+                                            ].map((option) => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSortOption(option.value);
+                                                        setShowSortMenu(false);
+                                                    }}
+                                                    className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+                                                        sortOption === option.value
+                                                            ? 'bg-blue-50 font-semibold text-blue-700'
+                                                            : 'text-slate-700 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowFilterMenu((current) => !current);
+                                            setShowSortMenu(false);
+                                        }}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                                    >
+                                        <ListFilter size={15} />
+                                        Filter
+                                        {hasActiveFilters ? (
+                                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">On</span>
+                                        ) : null}
+                                    </button>
+                                    {showFilterMenu && (
+                                        <div className="absolute left-0 top-full z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                                            <div className="grid gap-3">
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</label>
+                                                    <select
+                                                        value={filterStatus}
+                                                        onChange={(e) => setFilterStatus(e.target.value)}
+                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                                                    >
+                                                        <option value="all">All statuses</option>
+                                                        <option value="active">Active</option>
+                                                        <option value="inactive">Inactive</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Department</label>
+                                                    <select
+                                                        value={filterDepartment}
+                                                        onChange={(e) => setFilterDepartment(e.target.value)}
+                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                                                    >
+                                                        <option value="all">All departments</option>
+                                                        {departmentOptions.map((department) => (
+                                                            <option key={department} value={department}>{department}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Employment Type</label>
+                                                    <select
+                                                        value={filterEmploymentType}
+                                                        onChange={(e) => setFilterEmploymentType(e.target.value)}
+                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                                                    >
+                                                        <option value="all">All types</option>
+                                                        {employmentTypeOptions.map((employmentType) => (
+                                                            <option key={employmentType} value={employmentType}>{employmentType}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Joining Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={filterJoiningDate}
+                                                        onChange={(e) => setFilterJoiningDate(e.target.value)}
+                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 flex items-center justify-between">
+                                                <button
+                                                    type="button"
+                                                    onClick={clearFilters}
+                                                    className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                                                >
+                                                    <X size={14} />
+                                                    Clear
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowFilterMenu(false)}
+                                                    className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                                                >
+                                                    Done
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                         <div className="text-sm text-slate-500">
-                            Total Users: <strong>{users.length}</strong>
+                            Showing <strong>{filteredUsers.length}</strong> of <strong>{users.length}</strong>
                         </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -833,6 +1045,7 @@ const Users = () => {
                                 <tr className="text-[11px] uppercase tracking-wider">
                                     <th className="px-3 py-2">Employee</th>
                                     <th className="px-3 py-2">Email</th>
+                                    <th className="px-3 py-2">Joining Date</th>
                                     <th className="px-3 py-2">Role</th>
                                     <th className="px-3 py-2">Department</th>
                                     <th className="px-3 py-2">Type</th>
@@ -842,7 +1055,13 @@ const Users = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filteredUsers.map((employee) => (
+                                {filteredUsers.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} className="px-6 py-10 text-center text-sm text-slate-500">
+                                            No employees match the current search or filters.
+                                        </td>
+                                    </tr>
+                                ) : filteredUsers.map((employee) => (
                                     <tr key={employee._id} className="hover:bg-slate-50/50 text-[13px] border-b border-slate-50 last:border-0 transition-colors">
                                         <td className="px-3 py-2">
                                             <div className="flex items-center space-x-2">
@@ -856,6 +1075,9 @@ const Users = () => {
                                             </div>
                                         </td>
                                         <td className="px-3 py-2 text-slate-600 truncate max-w-[150px]" title={employee.email}>{employee.email}</td>
+                                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                                            {employee.joiningDate ? format(new Date(employee.joiningDate), 'dd MMM yyyy') : '-'}
+                                        </td>
                                         <td className="px-3 py-2">
                                             {employee.roles.map(r => (
                                                 <span key={r._id} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 mr-1 whitespace-nowrap">

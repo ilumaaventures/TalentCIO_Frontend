@@ -60,6 +60,29 @@ const isAllowedCustomFile = (file) => file?.type?.startsWith('image/') || CUSTOM
 
 const Onboarding = () => {
   const { user } = useAuth();
+  const permissions = user?.permissions || [];
+  const isOnboardingAdmin = user?.roles?.includes('Admin') || permissions.includes('*');
+  const canViewOnboarding = isOnboardingAdmin
+    || permissions.includes('onboarding.view')
+    || permissions.includes('onboarding.document.review')
+    || permissions.includes('onboarding.document.request')
+    || permissions.includes('onboarding.credential.manage')
+    || permissions.includes('onboarding.complete')
+    || permissions.includes('onboarding.manage');
+  const canRequestOnboarding = isOnboardingAdmin
+    || permissions.includes('onboarding.document.request')
+    || permissions.includes('onboarding.manage');
+  const canReviewOnboarding = isOnboardingAdmin
+    || permissions.includes('onboarding.document.review')
+    || permissions.includes('onboarding.manage');
+  const canManageOnboardingCredentials = isOnboardingAdmin
+    || permissions.includes('onboarding.credential.manage')
+    || permissions.includes('onboarding.manage');
+  const canCompleteOnboarding = isOnboardingAdmin
+    || permissions.includes('onboarding.complete')
+    || permissions.includes('onboarding.manage');
+  const canManageOnboardingSettings = canRequestOnboarding;
+  const canEditEmployees = canRequestOnboarding || canManageOnboardingCredentials;
   const [employees, setEmployees] = useState([]);
   const [stats, setStats] = useState({ Pending: 0, Accepted: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
   const [loading, setLoading] = useState(true);
@@ -606,6 +629,12 @@ const Onboarding = () => {
   };
 
   useEffect(() => {
+    if (activeTab === 'settings' && !canManageOnboardingSettings) {
+      setActiveTab('employees');
+    }
+  }, [activeTab, canManageOnboardingSettings]);
+
+  useEffect(() => {
     if (activeTab === 'employees') {
       initialEmployeesFetchDoneRef.current = true;
       fetchEmployees();
@@ -1010,6 +1039,10 @@ const Onboarding = () => {
     if (customFileInputRef.current) customFileInputRef.current.value = '';
   }, []);
 
+  if (!canViewOnboarding) {
+    return null;
+  }
+
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
       {/* Header */}
@@ -1018,9 +1051,11 @@ const Onboarding = () => {
           <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Pre-Onboarding Portal</h1>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>Manage new hire pre-onboarding and document collection</p>
         </div>
-        <button onClick={handleOpenAddModal} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}>
-          <UserPlus size={18} /> Add Employee
-        </button>
+        {canRequestOnboarding && (
+          <button onClick={handleOpenAddModal} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}>
+            <UserPlus size={18} /> Add Employee
+          </button>
+        )}
       </div>
 
       {/* Tab Switcher */}
@@ -1029,10 +1064,12 @@ const Onboarding = () => {
           Employees
           {activeTab === 'employees' && <div style={{ position: 'absolute', bottom: -1, left: 0, right: 0, height: '2px', background: '#2563eb' }} />}
         </button>
-        <button onClick={() => setActiveTab('settings')} style={{ position: 'relative', padding: '12px 4px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: '600', color: activeTab === 'settings' ? '#2563eb' : '#64748b' }}>
-          Template Settings
-          {activeTab === 'settings' && <div style={{ position: 'absolute', bottom: -1, left: 0, right: 0, height: '2px', background: '#2563eb' }} />}
-        </button>
+        {canManageOnboardingSettings && (
+          <button onClick={() => setActiveTab('settings')} style={{ position: 'relative', padding: '12px 4px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: '600', color: activeTab === 'settings' ? '#2563eb' : '#64748b' }}>
+            Template Settings
+            {activeTab === 'settings' && <div style={{ position: 'absolute', bottom: -1, left: 0, right: 0, height: '2px', background: '#2563eb' }} />}
+          </button>
+        )}
       </div>
 
       {activeTab === 'employees' ? (
@@ -1176,34 +1213,42 @@ const Onboarding = () => {
                                   <Eye size={16} style={{ color: '#3b82f6' }} /> View Details
                                 </button>
 
-                                <button
-                                  onClick={() => { handleEditEmployee(emp); setActiveMenu(null); }}
-                                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                                >
-                                  <Edit2 size={16} style={{ color: '#059669' }} /> Edit Details
-                                </button>
+                                {canEditEmployees && (
+                                  <button
+                                    onClick={() => { handleEditEmployee(emp); setActiveMenu(null); }}
+                                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                  >
+                                    <Edit2 size={16} style={{ color: '#059669' }} /> Edit Details
+                                  </button>
+                                )}
 
-                                <button
-                                  onClick={() => { handleRegenerateCredentials(emp._id); setActiveMenu(null); }}
-                                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                                >
-                                  <Key size={16} style={{ color: '#f59e0b' }} /> Credentials
-                                </button>
+                                {canManageOnboardingCredentials && (
+                                  <button
+                                    onClick={() => { handleRegenerateCredentials(emp._id); setActiveMenu(null); }}
+                                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                  >
+                                    <Key size={16} style={{ color: '#f59e0b' }} /> Credentials
+                                  </button>
+                                )}
 
-                                <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 8px' }} />
+                                {(canManageOnboardingCredentials || canReviewOnboarding) && (
+                                  <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 8px' }} />
+                                )}
 
-                                <button
-                                  onClick={() => { handleDownloadZip(emp); setActiveMenu(null); }}
-                                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                                >
-                                  <Download size={16} style={{ color: '#8b5cf6' }} /> Export Docs
-                                </button>
+                                {canReviewOnboarding && (
+                                  <button
+                                    onClick={() => { handleDownloadZip(emp); setActiveMenu(null); }}
+                                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#1e293b', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                  >
+                                    <Download size={16} style={{ color: '#8b5cf6' }} /> Export Docs
+                                  </button>
+                                )}
                               </div>,
                               document.body
                             )}
@@ -1572,9 +1617,11 @@ const Onboarding = () => {
                       <AlertTriangle size={16} />
                       <strong>Candidate Requested New Credentials:</strong> {selectedEmployee.credentialRegenerationRequest.reason || 'Expired or lost'}
                     </div>
-                    <button onClick={() => handleRegenerateCredentials(selectedEmployee._id)} style={{ padding: '4px 10px', fontSize: '12px', fontWeight: '600', color: '#fff', background: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                      Regenerate & Resolve
-                    </button>
+                    {canManageOnboardingCredentials && (
+                      <button onClick={() => handleRegenerateCredentials(selectedEmployee._id)} style={{ padding: '4px 10px', fontSize: '12px', fontWeight: '600', color: '#fff', background: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                        Regenerate & Resolve
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1586,8 +1633,9 @@ const Onboarding = () => {
                         <strong>Extension Requested:</strong> {ext.requestedDays} days. Reason: "{ext.reason}"
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={async () => {
+                    {canManageOnboardingCredentials && (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={async () => {
                         try {
                           const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' });
                           toast.success('Extension rejected');
@@ -1595,8 +1643,8 @@ const Onboarding = () => {
                           else fetchEmployees();
                           setSelectedEmployee(prev => ({ ...prev, extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? { ...r, status: 'Rejected' } : r) }));
                         } catch { toast.error('Failed to reject extension'); }
-                      }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
-                      <button onClick={() => {
+                        }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
+                        <button onClick={() => {
                         const currentDeadline = selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline) : new Date();
                         currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
                         api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
@@ -1612,8 +1660,9 @@ const Onboarding = () => {
                             }));
                           })
                           .catch(() => toast.error('Failed to approve extension'));
-                      }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#fff', background: '#2563eb', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Approve ({ext.requestedDays} Days)</button>
-                    </div>
+                        }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#fff', background: '#2563eb', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Approve ({ext.requestedDays} Days)</button>
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -2019,21 +2068,25 @@ const Onboarding = () => {
                 {/* Send Pre-Onboarding Email Button */}
                 <div style={{ marginTop: '24px', marginBottom: '24px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-                    <button
-                      type="button"
-                      onClick={handleSaveSelectionDraft}
-                      disabled={savingDraft}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: savingDraft ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', opacity: savingDraft ? 0.7 : 1 }}
-                    >
-                      <FileDown size={18} /> {savingDraft ? 'Saving Draft...' : 'Save as Draft'}
-                    </button>
-                    <button
-                      onClick={handleSendOnboardingEmail}
-                      disabled={sendingEmail}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: sendingEmail ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', opacity: sendingEmail ? 0.7 : 1, transition: 'all 0.2s' }}
-                    >
-                      <Mail size={18} /> {sendingEmail ? 'Sending...' : 'Send Pre-Onboarding Email'}
-                    </button>
+                    {canEditEmployees && (
+                      <button
+                        type="button"
+                        onClick={handleSaveSelectionDraft}
+                        disabled={savingDraft}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: savingDraft ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', opacity: savingDraft ? 0.7 : 1 }}
+                      >
+                        <FileDown size={18} /> {savingDraft ? 'Saving Draft...' : 'Save as Draft'}
+                      </button>
+                    )}
+                    {canRequestOnboarding && (
+                      <button
+                        onClick={handleSendOnboardingEmail}
+                        disabled={sendingEmail}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: sendingEmail ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', opacity: sendingEmail ? 0.7 : 1, transition: 'all 0.2s' }}
+                      >
+                        <Mail size={18} /> {sendingEmail ? 'Sending...' : 'Send Pre-Onboarding Email'}
+                      </button>
+                    )}
                   </div>
                   {selectedItemCount > 0 && (
                     <p style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', marginTop: '8px' }}>
@@ -2043,7 +2096,7 @@ const Onboarding = () => {
                 </div>
 
                 {/* Transfer to Active Employee */}
-                {!selectedEmployee.transferredToUserId && (
+                {!selectedEmployee.transferredToUserId && canCompleteOnboarding && (
                   <div style={{ marginBottom: '24px' }}>
                     <button
                       onClick={() => handleTransferToActive(selectedEmployee._id)}

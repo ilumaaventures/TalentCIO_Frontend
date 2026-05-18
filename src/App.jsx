@@ -96,10 +96,10 @@ function App() {
                   <Route path="/ta" element={<TalentAcquisitionDashboard />} />
                   <Route path="/ta/clients" element={<ClientSelection />} />
                   <Route path="/ta/hiring-requests/:clientName" element={<HiringRequestList />} />
-                  <Route path="/ta/workflows" element={<WorkflowSettings />} />
+                  <Route path="/ta/workflows" element={<WorkflowSettingsAccessWrapper />} />
                   <Route path="/ta/settings/phase-templates" element={<PhaseTemplatesAccessWrapper />} />
                   <Route path="/ta/settings/access" element={<TAAccessSettingsAccessWrapper />} />
-                  <Route path="/ta/email-templates" element={<EmailTemplates />} />
+                  <Route path="/ta/email-templates" element={<TAEmailTemplatesAccessWrapper />} />
                   <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                   <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
                   <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
@@ -136,13 +136,11 @@ function App() {
 
                 {/* Project Management Routes */}
                 <Route element={<ModuleRoute moduleName="projectManagement" />}>
-                  <Route element={<RoleRoute requiredPermissions={['project.read', 'project.create']} requiredRoles={['Admin']} />}>
-                    <Route path="/business-units" element={<BusinessUnits />} />
-                    <Route path="/clients" element={<Clients />} />
-                    <Route path="/clients/new" element={<ClientForm />} />
-                    <Route path="/clients/:id/edit" element={<ClientForm />} />
-                    <Route path="/clients/:id/view" element={<ClientView />} />
-                  </Route>
+                  <Route path="/business-units" element={<BusinessUnitsAccessWrapper />} />
+                  <Route path="/clients" element={<ClientsAccessWrapper />} />
+                  <Route path="/clients/new" element={<ClientCreateAccessWrapper />} />
+                  <Route path="/clients/:id/edit" element={<ClientEditAccessWrapper />} />
+                  <Route path="/clients/:id/view" element={<ClientViewAccessWrapper />} />
 
                   {/* Accessible to all (backend filtered) */}
                   <Route path="/projects" element={<Projects />} />
@@ -206,7 +204,13 @@ const OnboardingAccessWrapper = ({ Component: ComponentProp }) => {
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('onboarding.manage');
+    user.permissions?.includes('onboarding.view') ||
+    user.permissions?.includes('onboarding.document.review') ||
+    user.permissions?.includes('onboarding.document.request') ||
+    user.permissions?.includes('onboarding.credential.manage') ||
+    user.permissions?.includes('onboarding.complete') ||
+    user.permissions?.includes('onboarding.manage') ||
+    user.permissions?.includes('*');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
 };
@@ -218,7 +222,22 @@ const PhaseTemplatesAccessWrapper = ({ Component: ComponentProp }) => {
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('ta.config.manage') ||
+    user.permissions?.includes('ta.config.view') ||
+    user.permissions?.includes('ta.config.edit') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const WorkflowSettingsAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || WorkflowSettings;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.config.view') ||
+    user.permissions?.includes('ta.config.edit') ||
     user.permissions?.includes('*');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
@@ -232,6 +251,8 @@ const TAAnalyticsAccessWrapper = ({ Component: ComponentProp }) => {
 
   const canAccess = user.roles?.includes('Admin') ||
     user.permissions?.includes('ta.analytics.global') ||
+    user.permissions?.includes('ta.analytics.assigned') ||
+    user.permissions?.includes('*') ||
     user.isTAAnalyticsViewer;
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
@@ -244,10 +265,8 @@ const TAAccessSettingsAccessWrapper = ({ Component: ComponentProp }) => {
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('ta.config.manage') ||
-    user.permissions?.includes('ta.edit') ||
-    user.permissions?.includes('role.update') ||
-    user.permissions?.includes('role.create') ||
+    user.permissions?.includes('ta.config.view') ||
+    user.permissions?.includes('ta.config.edit') ||
     user.permissions?.includes('*');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
@@ -273,6 +292,89 @@ const EmailSettingsAccessWrapper = ({ Component: ComponentProp }) => {
   const canAccess = user.roles?.includes('Admin') ||
     user.permissions?.includes('settings.email.view') ||
     user.permissions?.includes('settings.email.manage') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const TAEmailTemplatesAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || EmailTemplates;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.email_template.manage') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const BusinessUnitsAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || BusinessUnits;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('business_unit.read') ||
+    user.permissions?.includes('business_unit.create') ||
+    user.permissions?.includes('business_unit.update') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const ClientsAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || Clients;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('client.read') ||
+    user.permissions?.includes('client.create') ||
+    user.permissions?.includes('client.update') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const ClientCreateAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || ClientForm;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('client.create') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const ClientEditAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || ClientForm;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('client.update') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const ClientViewAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || ClientView;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('client.read') ||
+    user.permissions?.includes('client.update') ||
     user.permissions?.includes('*');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;

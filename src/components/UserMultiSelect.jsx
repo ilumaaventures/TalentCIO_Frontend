@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, Check } from 'lucide-react';
 
-const UserMultiSelect = ({ users = [], selectedUserIds = [], onChange, placeholder = "Select users..." }) => {
+const UserMultiSelect = ({ users = [], selectedUserIds = [], onChange, placeholder = "Select users...", disabled = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const dropdownRef = useRef(null);
@@ -12,6 +12,7 @@ const UserMultiSelect = ({ users = [], selectedUserIds = [], onChange, placehold
     );
 
     const toggleUser = (userId) => {
+        if (disabled) return;
         const newSelected = selectedUserIds.includes(userId)
             ? selectedUserIds.filter(id => id !== userId)
             : [...selectedUserIds, userId];
@@ -20,6 +21,7 @@ const UserMultiSelect = ({ users = [], selectedUserIds = [], onChange, placehold
 
     const handleSelectAll = (e) => {
         e.stopPropagation();
+        if (disabled) return;
         if (selectedUserIds.length === users.length) {
             onChange([]);
         } else {
@@ -40,8 +42,12 @@ const UserMultiSelect = ({ users = [], selectedUserIds = [], onChange, placehold
     return (
         <div className="relative" ref={dropdownRef}>
             <div
-                onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer hover:border-blue-400 transition-all min-w-[180px] shadow-sm"
+                onClick={() => {
+                    if (!disabled) {
+                        setIsOpen(!isOpen);
+                    }
+                }}
+                className={`flex items-center justify-between rounded-lg border px-3 py-1.5 min-w-[180px] shadow-sm transition-all ${disabled ? 'cursor-not-allowed bg-gray-100 border-gray-200 text-gray-400' : 'cursor-pointer bg-white border-gray-200 hover:border-blue-400'}`}
             >
                 <div className="flex flex-wrap gap-1 items-center overflow-hidden">
                     {selectedUserIds.length === 0 ? (
@@ -66,7 +72,8 @@ const UserMultiSelect = ({ users = [], selectedUserIds = [], onChange, placehold
                                 type="text"
                                 placeholder="Search employees..."
                                 value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            disabled={disabled}
                                 className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 autoFocus
                             />
@@ -113,7 +120,12 @@ const UserMultiSelect = ({ users = [], selectedUserIds = [], onChange, placehold
                     {selectedUserIds.length > 0 && (
                         <div className="p-2 border-t border-gray-50 bg-gray-50/30 flex justify-end">
                             <button
-                                onClick={(e) => { e.stopPropagation(); onChange([]); }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!disabled) {
+                                        onChange([]);
+                                    }
+                                }}
                                 className="text-[9px] font-bold text-gray-400 hover:text-red-500 uppercase tracking-widest px-2 py-1 transition-colors"
                             >
                                 Clear Selection
