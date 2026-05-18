@@ -463,6 +463,16 @@ const CreateHiringRequest = () => {
     const selectedPhaseTemplate = phaseTemplates.find((template) => template._id === selectedPhaseTemplateId);
     const workflowSelectionLocked = Boolean(id);
     const isEditMode = Boolean(id);
+    const canCreateRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.requisition.create')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all')
+        || user?.permissions?.includes('ta.create');
+    const canEditRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.requisition.update')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all')
+        || user?.permissions?.includes('ta.edit');
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -481,7 +491,7 @@ const CreateHiringRequest = () => {
                     {/* Permission Check for Actions */}
                     {id ? (
                         // Edit Mode
-                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                        canEditRequisition && (
                             <>
                                 <button
                                     onClick={() => handleSubmit(true)}
@@ -501,7 +511,7 @@ const CreateHiringRequest = () => {
                         )
                     ) : (
                         // Create Mode
-                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        canCreateRequisition && (
                             <>
                                 <button
                                     onClick={() => handleSubmit(true)}
