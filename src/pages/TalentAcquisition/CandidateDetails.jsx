@@ -53,9 +53,6 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [internalRemarkText, setInternalRemarkText] = useState('');
     const [internalRemarkEditing, setInternalRemarkEditing] = useState(false);
     const [internalRemarkLoading, setInternalRemarkLoading] = useState(false);
-    const [phase2FeedbackText, setPhase2FeedbackText] = useState('');
-    const [phase2FeedbackEditing, setPhase2FeedbackEditing] = useState(false);
-    const [phase2FeedbackLoading, setPhase2FeedbackLoading] = useState(false);
 
     // Users List for Assessment assignment
     const [users, setUsers] = useState([]);
@@ -86,7 +83,6 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                 setCandidate(candRes.data);
                 setInternalRemarkText(candRes.data.internalRemark || '');
-                setPhase2FeedbackText(candRes.data.phase2InterviewerFeedback || '');
                 setUsers(usersRes.data.data || usersRes.data || []);
                 setRoles(rolesRes.data || []);
                 setInterviewWorkflows(workflowsRes.data || []);
@@ -237,12 +233,12 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 status: evaluationForm.status,
                 feedback: evaluationForm.feedback,
                 skillRatings: evaluationForm.skillRatings,
-                ...(evaluationForm.status === 'Passed' && evaluationForm.rating ? { rating: evaluationForm.rating } : {})
+                ...(evaluationForm.rating ? { rating: evaluationForm.rating } : {})
             };
             await api.patch(`/ta/candidates/${candidateId}/rounds/${roundId}/evaluate`, payload);
             toast.success('Evaluation submitted');
             setEvaluatingRoundId(null);
-            setEvaluationForm({ status: 'Passed', feedback: '', rating: '' });
+            setEvaluationForm({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
             fetchCandidate();
             if (onUpdate) onUpdate();
         } catch (error) {
@@ -282,27 +278,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         }
     };
 
-    const handleUpdatePhase2Feedback = async () => {
-        try {
-            setPhase2FeedbackLoading(true);
-            await api.put(`/ta/candidates/${candidateId}`, { phase2InterviewerFeedback: phase2FeedbackText });
-            setCandidate(prev => ({ ...prev, phase2InterviewerFeedback: phase2FeedbackText }));
-            setPhase2FeedbackEditing(false);
-            if (onUpdate) onUpdate();
-            toast.success('Phase 2 feedback saved successfully');
-        } catch (error) {
-            console.error('Error saving Phase 2 feedback:', error);
-            toast.error(error.response?.data?.message || 'Failed to save Phase 2 feedback');
-        } finally {
-            setPhase2FeedbackLoading(false);
-        }
-    };
-
 
 
     const getEffectiveRoundStatus = useCallback((round) => {
+        if (round.displayStatusLabel) return round.displayStatusLabel;
+        if (round.status === 'Passed') return 'Passed';
         if (round.status === 'Failed') return 'Failed';
         if (round.status === 'Skipped') return 'Skipped';
+        if (round.status === 'Scheduled') return 'Scheduled';
 
         // Only mark as Passed if both feedback and rating are present
         const isCompleted = round.feedback && (round.rating || round.rating === 0);
@@ -317,7 +300,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const getStatusBadgeColor = useCallback((status) => {
         switch (status) {
             case 'Passed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+            case 'Shortlisted': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
             case 'Failed': return 'bg-red-100 text-red-700 border-red-200';
+            case 'Rejected': return 'bg-red-100 text-red-700 border-red-200';
             case 'Scheduled': return 'bg-blue-100 text-blue-700 border-blue-200';
             case 'Skipped': return 'bg-slate-100 text-slate-700 border-slate-200';
             default: return 'bg-amber-100 text-amber-700 border-amber-200'; // Pending
@@ -327,7 +312,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const getStatusIcon = useCallback((status) => {
         switch (status) {
             case 'Passed': return <CheckCircle size={16} className="text-emerald-600" />;
+            case 'Shortlisted': return <CheckCircle size={16} className="text-emerald-600" />;
             case 'Failed': return <XCircle size={16} className="text-red-600" />;
+            case 'Rejected': return <XCircle size={16} className="text-red-600" />;
             case 'Scheduled': return <Calendar size={16} className="text-blue-600" />;
             case 'Skipped': return <Clock size={16} className="text-slate-500" />;
             default: return <Clock size={16} className="text-amber-600" />;
@@ -546,6 +533,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                     'bg-amber-50 text-amber-700 border-amber-200'
                                                 }`}>
                                                 Phase 2: {candidate.phase2Decision}
+                                            </span>
+                                        )}
+                                        {currentPhase === 2 && candidate.phase2InterviewStatus && candidate.phase2InterviewStatus !== 'None' && (
+                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase2InterviewStatus === 'Shortlisted' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                candidate.phase2InterviewStatus === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                    'bg-blue-50 text-blue-700 border-blue-200'
+                                                }`}>
+                                                Phase 2 Interview: {candidate.phase2InterviewStatus}
                                             </span>
                                         )}
                                         {currentPhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && (
@@ -994,19 +989,54 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                         {/* Timeline */}
                         <div className="space-y-8 relative">
-                            {(!candidate.interviewRounds || candidate.interviewRounds.length === 0) ? (
-                                <div className="text-center py-12 text-slate-500">
-                                    No interview rounds have been scheduled yet.
-                                </div>
-                            ) : (
-                                (() => {
-                                    const displayedRounds = candidate.interviewRounds.filter(r => (r.phase || 1) === currentPhase);
-                                    return displayedRounds.map((round, index) => {
+                            {(() => {
+                                const phaseRounds = Array.isArray(candidate.interviewRounds)
+                                    ? candidate.interviewRounds.filter(r => (r.phase || 1) === currentPhase)
+                                    : [];
+                                const hasPhase2ImportedCard = currentPhase === 2
+                                    && (
+                                        Boolean(String(candidate.phase2InterviewerFeedback || '').trim())
+                                        || ['Scheduled', 'Rejected', 'Shortlisted'].includes(candidate.phase2InterviewStatus)
+                                    );
+                                const displayedRounds = hasPhase2ImportedCard
+                                    ? [...phaseRounds, {
+                                        _id: 'phase2-imported-interview',
+                                        levelName: 'Phase 2 Interview',
+                                        assignedTo: [],
+                                        scheduledDate: null,
+                                        feedback: candidate.phase2InterviewerFeedback || '',
+                                        rating: null,
+                                        skillRatings: [],
+                                        displayStatusLabel: ['Scheduled', 'Rejected', 'Shortlisted'].includes(candidate.phase2InterviewStatus)
+                                            ? candidate.phase2InterviewStatus
+                                            : 'Scheduled',
+                                        isSyntheticPhase2: true
+                                    }]
+                                    : phaseRounds;
+
+                                if (displayedRounds.length === 0) {
+                                    return (
+                                        <div className="text-center py-12 text-slate-500">
+                                            No interview rounds have been scheduled yet.
+                                        </div>
+                                    );
+                                }
+
+                                return displayedRounds.map((round, index) => {
                                         const isAssigned = round.assignedTo?.some(u => u._id === user?._id || u._id?.toString() === user?._id?.toString());
-                                        const canEvaluate = (isAssigned || hasSuperApprove) && ['Pending', 'Scheduled'].includes(round.status);
-                                        const canEditFeedback = (isAssigned || hasSuperApprove) && ['Passed', 'Failed'].includes(round.status);
+                                        const canManageEvaluation = isAssigned || hasSuperApprove;
+                                        const hasExistingEvaluationData = Boolean(String(round.feedback || '').trim())
+                                            || Boolean(round.rating || round.rating === 0)
+                                            || (Array.isArray(round.skillRatings) && round.skillRatings.some(sr => sr.rating > 0));
+                                        const canEvaluate = !round.isSyntheticPhase2 && canManageEvaluation && ['Pending', 'Scheduled'].includes(round.status) && !hasExistingEvaluationData;
+                                        const canEditFeedback = !round.isSyntheticPhase2 && canManageEvaluation && (
+                                            ['Passed', 'Failed'].includes(round.status) || hasExistingEvaluationData
+                                        );
                                         const isEvaluating = evaluatingRoundId === round._id;
                                         const isEditingRound = editingRoundId === round._id;
+                                        const hasVisibleFeedback = Boolean(String(round.feedback || '').trim())
+                                            || (Array.isArray(round.skillRatings) && round.skillRatings.some(sr => sr.rating > 0));
+                                        const effectiveRoundStatus = getEffectiveRoundStatus(round);
 
                                         return (
                                             <div key={round._id} className="relative pl-8">
@@ -1016,21 +1046,21 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                 )}
 
                                                 {/* Dot */}
-                                                <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-500' :
-                                                    getEffectiveRoundStatus(round) === 'Failed' ? 'bg-red-500' :
+                                                <div className={`absolute top-1 left-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${['Passed', 'Shortlisted'].includes(effectiveRoundStatus) ? 'bg-emerald-500' :
+                                                    ['Failed', 'Rejected'].includes(effectiveRoundStatus) ? 'bg-red-500' :
                                                         'bg-amber-400'
                                                     }`}></div>
 
                                                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                                     {/* Round Header */}
-                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-50/50 border-emerald-100' :
-                                                        getEffectiveRoundStatus(round) === 'Failed' ? 'bg-red-50/50 border-red-100' :
+                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${['Passed', 'Shortlisted'].includes(effectiveRoundStatus) ? 'bg-emerald-50/50 border-emerald-100' :
+                                                        ['Failed', 'Rejected'].includes(effectiveRoundStatus) ? 'bg-red-50/50 border-red-100' :
                                                             'bg-slate-50/50 border-slate-100'
                                                         }`}>
                                                         <div>
                                                             <h4 className="font-bold text-slate-800 flex items-center gap-2">
                                                                 {round.levelName}
-                                                                {getStatusIcon(getEffectiveRoundStatus(round))}
+                                                                {getStatusIcon(effectiveRoundStatus)}
                                                             </h4>
                                                             {round.scheduledDate && (
                                                                 <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
@@ -1039,10 +1069,10 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-3">
-                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(getEffectiveRoundStatus(round))}`}>
-                                                                {getEffectiveRoundStatus(round)}
+                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(effectiveRoundStatus)}`}>
+                                                                {effectiveRoundStatus}
                                                             </span>
-                                                            {canManageRounds && ['Pending', 'Scheduled'].includes(round.status) && (
+                                                            {canManageRounds && !round.isSyntheticPhase2 && ['Pending', 'Scheduled'].includes(round.status) && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
                                                                     <button
                                                                         onClick={() => {
@@ -1095,15 +1125,15 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                         </div>
 
                                                         {/* Evaluation Results Overlay */}
-                                                        {['Passed', 'Failed'].includes(getEffectiveRoundStatus(round)) && !isEvaluating && (
-                                                            <div className={`rounded-lg p-4 border ${getEffectiveRoundStatus(round) === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
+                                                        {hasVisibleFeedback && !isEvaluating && (
+                                                            <div className={`rounded-lg p-4 border ${['Passed', 'Shortlisted'].includes(effectiveRoundStatus) ? 'bg-emerald-50/60 border-emerald-100' : ['Failed', 'Rejected'].includes(effectiveRoundStatus) ? 'bg-red-50/60 border-red-100' : 'bg-slate-50 border-slate-200'}`}>
                                                                 <div className="flex items-start gap-2">
                                                                     <MessageSquare size={16} className="text-slate-400 mt-0.5" />
                                                                     <div className="flex-1">
                                                                         <div className="flex items-center justify-between mb-1">
                                                                             <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Evaluator Feedback</p>
-                                                                            {round.status === 'Passed' && round.rating && (
-                                                                                <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
+                                                                            {round.rating && (
+                                                                                <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${['Failed', 'Rejected'].includes(effectiveRoundStatus) ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
                                                                                     ⭐ {round.rating}/10
                                                                                 </span>
                                                                             )}
@@ -1166,12 +1196,16 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                         onClick={() => {
                                                                             setEvaluatingRoundId(round._id);
                                                                             setEvaluationForm({
-                                                                                status: round.status,
+                                                                                status: ['Passed', 'Failed'].includes(round.status)
+                                                                                    ? round.status
+                                                                                    : 'Passed',
                                                                                 feedback: round.feedback || '',
                                                                                 rating: round.rating || '',
                                                                                 skillRatings: round.skillRatings && round.skillRatings.length > 0
                                                                                     ? round.skillRatings
-                                                                                    : (candidate.skillRatings || [])
+                                                                                    : (candidate.skillRatings || []),
+                                                                                showAssessment: Boolean(round.skillRatings && round.skillRatings.length > 0),
+                                                                                manualSkillName: ''
                                                                             });
                                                                         }}
                                                                         className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors"
@@ -1269,7 +1303,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                         name={`status-${round._id}`}
                                                                                         value="Failed"
                                                                                         checked={evaluationForm.status === 'Failed'}
-                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value, rating: '' })}
+                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value })}
                                                                                         className="w-4 h-4 text-red-600 border-slate-300 focus:ring-red-500"
                                                                                     />
                                                                                     <span className="text-sm font-medium text-slate-800">Fail</span>
@@ -1277,8 +1311,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* Rating dropdown — shown only when Pass is selected */}
-                                                                        {evaluationForm.status === 'Passed' && (
+                                                                        {/* Assessment and rating are available for both pass and fail outcomes */}
+                                                                        {['Passed', 'Failed'].includes(evaluationForm.status) && (
                                                                             <>
                                                                                 <div className="mb-4">
                                                                                     <button
@@ -1390,7 +1424,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 <div>
                                                                                     <label className="block text-sm font-medium text-slate-700 mb-1">
                                                                                         Performance Rating
-                                                                                        <span className="ml-1 text-xs text-slate-400 font-normal">(Optional, 1–10)</span>
+                                                                                        <span className="ml-1 text-xs text-slate-400 font-normal">(Optional, 1-10)</span>
                                                                                     </label>
                                                                                     <select
                                                                                         value={evaluationForm.rating}
@@ -1432,7 +1466,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 className="px-5 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
                                                                             >
                                                                                 {actionLoading && <Loader size={14} className="animate-spin" />}
-                                                                                {['Passed', 'Failed'].includes(round.status) ? 'Update Feedback' : 'Submit Decision'}
+                                                                                {canEditFeedback ? 'Update Feedback' : 'Submit Decision'}
                                                                             </button>
                                                                         </div>
                                                                     </div>
@@ -1443,9 +1477,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                 </div>
                                             </div>
                                         );
-                                    })
-                                })()
-                            )}
+                                });
+                            })()}
                         </div>
                     </div>
 
@@ -1497,50 +1530,6 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         )}
                     </div>
 
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Interviewer Feedback (Phase 2)</h3>
-                            {canManageRounds && !phase2FeedbackEditing && (
-                                <button
-                                    onClick={() => { setPhase2FeedbackText(candidate.phase2InterviewerFeedback || ''); setPhase2FeedbackEditing(true); }}
-                                    className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-medium"
-                                >
-                                    <Edit2 size={12} /> {candidate.phase2InterviewerFeedback ? 'Edit' : 'Add Feedback'}
-                                </button>
-                            )}
-                        </div>
-                        {phase2FeedbackEditing ? (
-                            <div className="space-y-2">
-                                <textarea
-                                    rows={4}
-                                    value={phase2FeedbackText}
-                                    onChange={(e) => setPhase2FeedbackText(e.target.value)}
-                                    placeholder="Add Phase 2 interviewer feedback..."
-                                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none"
-                                    autoFocus
-                                />
-                                <div className="flex justify-end gap-2">
-                                    <button
-                                        onClick={() => setPhase2FeedbackEditing(false)}
-                                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={handleUpdatePhase2Feedback}
-                                        disabled={phase2FeedbackLoading}
-                                        className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
-                                    >
-                                        {phase2FeedbackLoading && <Loader size={12} className="animate-spin" />} Save Feedback
-                                    </button>
-                                </div>
-                            </div>
-                        ) : candidate.phase2InterviewerFeedback ? (
-                            <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.phase2InterviewerFeedback}</p>
-                        ) : (
-                            <p className="text-slate-400 text-sm italic">No Phase 2 feedback added yet.</p>
-                        )}
-                    </div>
                 </div>
             </div>
 

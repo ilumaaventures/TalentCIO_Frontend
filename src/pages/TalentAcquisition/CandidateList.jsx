@@ -53,6 +53,50 @@ const getRoundsForPhase = (candidate, phase) => (
         : []
 );
 
+const getPhase2InterviewStatusValue = (candidate = {}) => {
+    const normalized = String(candidate?.phase2InterviewStatus || '').trim();
+    if (['Scheduled', 'Rejected', 'Shortlisted'].includes(normalized)) {
+        return normalized;
+    }
+
+    if (candidate?.phase2Decision === 'Rejected') {
+        return 'Rejected';
+    }
+
+    if (candidate?.phase2Decision === 'Shortlisted' || candidate?.phase2Decision === 'Selected') {
+        return 'Shortlisted';
+    }
+
+    return '';
+};
+
+const getDisplayInterviewRoundsForPhase = (candidate, phase) => {
+    const rounds = getRoundsForPhase(candidate, phase);
+    if (phase !== 2 || rounds.length > 0) {
+        return rounds;
+    }
+
+    const phase2InterviewStatus = getPhase2InterviewStatusValue(candidate);
+    const phase2Feedback = String(candidate?.phase2InterviewerFeedback || '').trim();
+    if (!phase2InterviewStatus && !phase2Feedback) {
+        return [];
+    }
+
+    return [{
+        _id: 'phase2-imported-interview-summary',
+        phase: 2,
+        status: phase2InterviewStatus === 'Rejected'
+            ? 'Failed'
+            : phase2InterviewStatus === 'Shortlisted'
+                ? 'Passed'
+                : 'Scheduled',
+        displayStatusLabel: phase2InterviewStatus || 'Scheduled',
+        feedback: candidate?.phase2InterviewerFeedback || '',
+        rating: null,
+        skillRatings: []
+    }];
+};
+
 const getInterviewFilterValue = (rounds = []) => {
     if (!Array.isArray(rounds) || rounds.length === 0) {
         return null;
@@ -75,6 +119,39 @@ const getInterviewFilterValue = (rounds = []) => {
 
     return 'Scheduled';
 };
+
+const getInterviewSummaryValue = (rounds = []) => {
+    if (!Array.isArray(rounds) || rounds.length === 0) {
+        return null;
+    }
+
+    if (rounds.some((round) => round.status === 'Failed')) {
+        return 'Failed';
+    }
+
+    if (rounds.some((round) => round.status === 'Pending')) {
+        return 'Pending';
+    }
+
+    if (rounds.some((round) => round.status === 'Scheduled')) {
+        return 'Scheduled';
+    }
+
+    const allClosed = rounds.every((round) => ['Passed', 'Skipped'].includes(round.status));
+    if (allClosed) {
+        return 'Shortlisted';
+    }
+
+    return 'Pending';
+};
+
+const getRoundExportInterviewStatus = (round = {}) => {
+    if (round.status === 'Failed') return 'Rejected';
+    if (round.status === 'Passed' || round.status === 'Skipped') return 'Shortlisted';
+    return 'Scheduled';
+};
+
+const getPhase2InterviewStatusExportValue = (candidate = {}) => getPhase2InterviewStatusValue(candidate);
 
 const matchesInterviewFilter = (rounds = [], filterValue = 'All') => {
     if (filterValue === 'All') {
@@ -459,7 +536,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     : (candidate.phase2Decision || 'None') === filterDecision);
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = getRoundsForPhase(candidate, 2);
+                const rounds = getDisplayInterviewRoundsForPhase(candidate, 2);
                 matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
             }
             return matchDecision && matchInterviewStatus;
@@ -472,9 +549,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
             selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
             rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
-            interviewScheduled: structuralPhase2Candidates.filter(c =>
-                getRoundsForPhase(c, 2).length > 0
-            ).length
+            interviewScheduled: structuralPhase2Candidates.filter(c => {
+                const rounds = getDisplayInterviewRoundsForPhase(c, 2);
+                return rounds.some((round) => (
+                    round.displayStatusLabel === 'Scheduled'
+                    || ['Pending', 'Scheduled'].includes(round.status)
+                ));
+            }).length
         };
     }, [structuralPhase2Candidates]);
 
@@ -739,9 +820,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         'Interview date',
                         'Interviewer Name',
                         ...softSkillsHeaders,
-                        ...techSkillsHeaders
+                        ...techSkillsHeaders,
+                        'Performance Rating',
+                        'Interview Status'
                     ],
-                    width: 3 + softSkillsHeaders.length + techSkillsHeaders.length
+                    width: 5 + softSkillsHeaders.length + techSkillsHeaders.length
                 });
             }
 
@@ -759,7 +842,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
                 ...roundSections,
-                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
+                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(sec => sec.width > 0);
 
             const workbook = new ExcelJS.Workbook();
@@ -788,6 +871,95 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 }
                 currentCol += sec.width;
             });
+
+            const applyRoundColumnValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title.startsWith('Round ')) {
+                        const performanceRatingOffset = section.subHeaders.indexOf('Performance Rating');
+                        const interviewStatusOffset = section.subHeaders.indexOf('Interview Status');
+
+                        if (performanceRatingOffset >= 0) {
+                            const performanceRatingCol = sectionStartCol + performanceRatingOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, performanceRatingCol).dataValidation = {
+                                    type: 'whole',
+                                    operator: 'between',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [1, 10],
+                                    errorTitle: 'Invalid Rating',
+                                    error: 'Performance Rating must be a whole number between 1 and 10.'
+                                };
+                            }
+                        }
+
+                        if (interviewStatusOffset >= 0) {
+                            const interviewStatusCol = sectionStartCol + interviewStatusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, interviewStatusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: ['"Shortlisted,Rejected,Scheduled"'],
+                                    errorTitle: 'Invalid Interview Status',
+                                    error: 'Interview Status must be one of: Shortlisted, Rejected, Scheduled.'
+                                };
+                            }
+                        }
+                    }
+
+                    sectionStartCol += section.width;
+                });
+            };
+
+            const applyPhase2InterviewStatusValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title === 'Final Status & Decision') {
+                        const phase2InterviewStatusOffset = section.subHeaders.indexOf('Interview Status (Phase2)');
+                        if (phase2InterviewStatusOffset >= 0) {
+                            const phase2InterviewStatusCol = sectionStartCol + phase2InterviewStatusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, phase2InterviewStatusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: ['"Shortlisted,Rejected,Scheduled"'],
+                                    errorTitle: 'Invalid Phase 2 Interview Status',
+                                    error: 'Interview Status (Phase2) must be one of: Shortlisted, Rejected, Scheduled.'
+                                };
+                            }
+                        }
+                    }
+                    sectionStartCol += section.width;
+                });
+            };
+
+            const applyFinalDecisionValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title === 'Final Status & Decision') {
+                        ['Profile Shortlisted (Yes/No)', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
+                            const offset = section.subHeaders.indexOf(headerName);
+                            if (offset >= 0) {
+                                const targetCol = sectionStartCol + offset;
+                                for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                    sheet.getCell(rowNumber, targetCol).dataValidation = {
+                                        type: 'list',
+                                        allowBlank: true,
+                                        showErrorMessage: true,
+                                        formulae: ['"Yes,No"'],
+                                        errorTitle: 'Invalid Value',
+                                        error: `${headerName} must be either Yes or No.`
+                                    };
+                                }
+                            }
+                        });
+                    }
+                    sectionStartCol += section.width;
+                });
+            };
 
             // Set Column Widths and Formatting
             row2Data.forEach((_, i) => {
@@ -853,6 +1025,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         const interviewer = r.evaluatedBy
                             ? `${r.evaluatedBy.firstName || ''} ${r.evaluatedBy.lastName || ''}`.trim()
                             : toEmptyCell(r.interviewerName);
+                        const performanceRating = toEmptyCell(r.rating, { zeroIsEmpty: true });
+                        const roundInterviewStatus = getRoundExportInterviewStatus(r);
 
                         const rSoftSkillRatings = softSkillsHeaders.map(skillName => {
                             const rating = (r.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
@@ -864,10 +1038,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             return sr ? `${sr.rating}/10` : null;
                         });
 
-                        roundsData.push(feedback, date, toEmptyCell(interviewer), ...rSoftSkillRatings, ...rTechSkillRatings);
+                        roundsData.push(feedback, date, toEmptyCell(interviewer), ...rSoftSkillRatings, ...rTechSkillRatings, performanceRating, roundInterviewStatus);
                     } else {
                         // Empty round padding
-                        const fieldCount = 3 + softSkillsHeaders.length + techSkillsHeaders.length;
+                        const fieldCount = 5 + softSkillsHeaders.length + techSkillsHeaders.length;
                         for (let j = 0; j < fieldCount; j++) roundsData.push(null);
                     }
                 }
@@ -875,6 +1049,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : (candidate.decision === 'Rejected' ? 'No' : '');
                 const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected') ? 'Yes' : null;
                 const phase2Selected = candidate.phase2Decision === 'Selected' ? 'Yes' : null;
+                const phase2InterviewStatus = getPhase2InterviewStatusExportValue(candidate);
                 const statusSummary = getInterviewStatusSummary(rounds);
                 const interviewStatusLabel = toEmptyCell(statusSummary.label);
 
@@ -924,7 +1099,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     phase2Shortlisted,
                     phase2Selected,
                     toEmptyCell(candidate.phase2InterviewerFeedback),
-                    interviewStatusLabel,
+                    toEmptyCell(phase2InterviewStatus),
                     toEmptyCell(candidate.rejectionReason),
                     null // Decision Status
                 ];
@@ -949,6 +1124,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     row.getCell(decisionStatusColIndex).value = null;
                 }
             });
+
+            const lastCandidateRow = Math.max(3, dataToExport.length + 2);
+            applyRoundColumnValidation(3, lastCandidateRow);
+            applyPhase2InterviewStatusValidation(3, lastCandidateRow);
+            applyFinalDecisionValidation(3, lastCandidateRow);
 
             const buffer = await workbook.xlsx.writeBuffer();
             
@@ -1038,10 +1218,29 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const getInterviewStatusSummary = (rounds = []) => {
         if (!rounds || rounds.length === 0) return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
 
-        const interviewStatus = getInterviewFilterValue(rounds);
+        if (rounds.length === 1 && rounds[0]?.displayStatusLabel) {
+            const displayStatus = rounds[0].displayStatusLabel;
+            if (displayStatus === 'Rejected') {
+                return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
+            }
+
+            if (displayStatus === 'Scheduled') {
+                return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+            }
+
+            if (displayStatus === 'Shortlisted') {
+                return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+            }
+        }
+
+        const interviewStatus = getInterviewSummaryValue(rounds);
 
         if (interviewStatus === 'Failed') {
             return { label: 'Failed', color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+
+        if (interviewStatus === 'Pending') {
+            return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
         }
 
         if (interviewStatus === 'Scheduled') {
@@ -2097,7 +2296,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
                                                                 {(() => {
-                                                                    const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+                                                                    const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase);
 
                                                                     const summary = getInterviewStatusSummary(rounds);
 

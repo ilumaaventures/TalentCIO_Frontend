@@ -32,20 +32,84 @@ const getPhaseEntryForOrder = (candidate, phaseOrder) => {
     })[0];
 };
 
+const getPhase2InterviewStatusValue = (candidate = {}) => {
+    const normalized = String(candidate?.phase2InterviewStatus || '').trim();
+    if (['Scheduled', 'Rejected', 'Shortlisted'].includes(normalized)) {
+        return normalized;
+    }
+
+    if (candidate?.phase2Decision === 'Rejected') {
+        return 'Rejected';
+    }
+
+    if (candidate?.phase2Decision === 'Shortlisted' || candidate?.phase2Decision === 'Selected') {
+        return 'Shortlisted';
+    }
+
+    return '';
+};
+
+const getDisplayInterviewRoundsForPhase = (candidate, phaseOrder) => {
+    const rounds = (candidate?.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(phaseOrder || 1));
+    if (Number(phaseOrder || 1) !== 2 || rounds.length > 0) {
+        return rounds;
+    }
+
+    const phase2InterviewStatus = getPhase2InterviewStatusValue(candidate);
+    const phase2Feedback = String(candidate?.phase2InterviewerFeedback || '').trim();
+    if (!phase2InterviewStatus && !phase2Feedback) {
+        return [];
+    }
+
+    return [{
+        _id: 'phase2-imported-interview-summary',
+        phase: 2,
+        status: phase2InterviewStatus === 'Rejected'
+            ? 'Failed'
+            : phase2InterviewStatus === 'Shortlisted'
+                ? 'Passed'
+                : 'Scheduled',
+        displayStatusLabel: phase2InterviewStatus || 'Scheduled',
+        feedback: candidate?.phase2InterviewerFeedback || '',
+        rating: null,
+        skillRatings: []
+    }];
+};
+
 const getInterviewStatusSummary = (rounds = []) => {
     if (!rounds || rounds.length === 0) {
         return { label: 'No rounds', color: 'text-slate-400 bg-slate-50 border-slate-200' };
+    }
+
+    if (rounds.length === 1 && rounds[0]?.displayStatusLabel) {
+        const displayStatus = rounds[0].displayStatusLabel;
+        if (displayStatus === 'Rejected') {
+            return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+
+        if (displayStatus === 'Scheduled') {
+            return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+        }
+
+        if (displayStatus === 'Shortlisted') {
+            return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+        }
     }
 
     const total = rounds.length;
     const completedRounds = rounds.filter((round) => round.feedback && (round.rating || round.rating === 0));
     const completedCount = completedRounds.length;
     const failedRounds = rounds.filter((round) => round.status === 'Failed');
-    const scheduledRounds = rounds.filter((round) => (round.status === 'Scheduled' || round.status === 'Pending') && !round.feedback);
+    const pendingRounds = rounds.filter((round) => round.status === 'Pending' && !round.feedback);
+    const scheduledRounds = rounds.filter((round) => round.status === 'Scheduled' && !round.feedback);
 
     if (failedRounds.length > 0) {
         const failedNames = failedRounds.map((round) => round.levelName).join(', ');
         return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+    }
+
+    if (pendingRounds.length > 0 && completedCount === 0) {
+        return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
     }
 
     if (scheduledRounds.length > 0 && completedCount === 0) {
@@ -505,7 +569,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const normalizedSearch = debouncedSearch.trim().toLowerCase();
             const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
-            const rounds = (candidate.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(activePhase?.order || 1));
+            const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase?.order);
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
             const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
@@ -1526,7 +1590,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                 filteredCandidates.map((candidate) => {
                                     const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
                                     const isBusy = actionLoadingId === candidate._id;
-                                    const rounds = (candidate.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(activePhase?.order || 1));
+                                    const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase?.order);
                                     const interviewSummary = getInterviewStatusSummary(rounds);
                                     const isActiveInViewedPhase = !phaseEntry?.exitedAt && Number(candidate.currentPhaseOrder) === Number(activePhase?.order);
 
