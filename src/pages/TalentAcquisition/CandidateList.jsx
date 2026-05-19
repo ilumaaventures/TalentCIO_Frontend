@@ -97,6 +97,10 @@ const getDisplayInterviewRoundsForPhase = (candidate, phase) => {
     }];
 };
 
+const hasPhase2InterviewActivity = (candidate = {}) => {
+    return getDisplayInterviewRoundsForPhase(candidate, 2).length > 0;
+};
+
 const getInterviewFilterValue = (rounds = []) => {
     if (!Array.isArray(rounds) || rounds.length === 0) {
         return null;
@@ -298,6 +302,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
     , []);
+    const hasMovedToPhase2 = useCallback((candidate) => (
+        isProfileSharedCandidate(candidate)
+        || Boolean(String(candidate?.phase2Decision || '').trim() && candidate?.phase2Decision !== 'None')
+        || Boolean(String(candidate?.phase2InterviewStatus || '').trim() && candidate?.phase2InterviewStatus !== 'None')
+        || Boolean(String(candidate?.phase2InterviewerFeedback || '').trim())
+    ), [isProfileSharedCandidate]);
 
     const handleSelectCandidate = (candId) => {
         const newParams = new URLSearchParams(searchParams);
@@ -536,8 +546,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     : (candidate.phase2Decision || 'None') === filterDecision);
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = getDisplayInterviewRoundsForPhase(candidate, 2);
-                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
+                matchInterviewStatus = filterInterviewStatus === 'Scheduled'
+                    ? hasPhase2InterviewActivity(candidate)
+                    : matchesInterviewFilter(getDisplayInterviewRoundsForPhase(candidate, 2), filterInterviewStatus);
             }
             return matchDecision && matchInterviewStatus;
         });
@@ -549,13 +560,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
             selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
             rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
-            interviewScheduled: structuralPhase2Candidates.filter(c => {
-                const rounds = getDisplayInterviewRoundsForPhase(c, 2);
-                return rounds.some((round) => (
-                    round.displayStatusLabel === 'Scheduled'
-                    || ['Pending', 'Scheduled'].includes(round.status)
-                ));
-            }).length
+            interviewScheduled: structuralPhase2Candidates.filter(hasPhase2InterviewActivity).length
         };
     }, [structuralPhase2Candidates]);
 
@@ -747,6 +752,19 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } catch (error) {
             console.error('Transfer error:', error);
             toast.error(error.response?.data?.message || 'Failed to transfer candidate');
+        }
+    }, [fetchCandidates]);
+
+    const handleMoveBackToPreviousPhase = useCallback(async (candidateId) => {
+        if (!window.confirm('Move this candidate back to Phase 1? This will clear Phase 2 status, feedback, and Phase 2 interview rounds.')) return;
+
+        try {
+            await api.patch(`/ta/candidates/${candidateId}/move-back-phase`);
+            toast.success('Candidate moved back to Phase 1');
+            fetchCandidates();
+        } catch (error) {
+            console.error('Error moving candidate back to previous phase:', error);
+            toast.error(error.response?.data?.message || 'Failed to move candidate back to Phase 1');
         }
     }, [fetchCandidates]);
 
@@ -1153,7 +1171,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             ));
         } catch (error) {
             console.error('Error updating decision:', error);
-            toast.error('Failed to update decision');
+            toast.error(error.response?.data?.message || 'Failed to update decision');
         }
     };
 
@@ -1161,9 +1179,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         try {
             await api.put(`/ta/candidates/${candidateId}`, { profileShared: true });
             toast.success('Candidate moved to next phase');
-            setCandidates(prev => prev.map(c =>
-                c._id === candidateId ? { ...c, profileShared: true } : c
-            ));
+            fetchCandidates();
         } catch (error) {
             console.error('Error moving candidate to next phase:', error);
             toast.error(error.response?.data?.message || 'Failed to move candidate to next phase');
@@ -2346,7 +2362,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!canMakeDecisions}
+                                                                            disabled={!canMakeDecisions || hasMovedToPhase2(candidate)}
+                                                                            title={hasMovedToPhase2(candidate) ? 'Phase 1 decision is locked after moving to Phase 2' : undefined}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -2517,6 +2534,19 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         >
                                                                             <Briefcase size={16} className="text-blue-500" />
                                                                             Transfer Candidate
+                                                                        </button>
+                                                                    )}
+
+                                                                    {activePhase === 2 && canEditCandidates && !candidate.isTransferredToOnboarding && (!candidate.phase3Decision || candidate.phase3Decision === 'None') && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleMoveBackToPreviousPhase(candidate._id);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors text-left font-semibold"
+                                                                        >
+                                                                            <ArrowRightLeft size={16} className="text-amber-500" />
+                                                                            Move Back to Previous Phase
                                                                         </button>
                                                                     )}
 

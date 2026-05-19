@@ -33,6 +33,13 @@ const Phase1Candidates = () => {
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
     const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
+    const hasMovedToPhase2 = useCallback((candidate) => (
+        candidate?.profileShared === true
+        || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
+        || Boolean(String(candidate?.phase2Decision || '').trim() && candidate?.phase2Decision !== 'None')
+        || Boolean(String(candidate?.phase2InterviewStatus || '').trim() && candidate?.phase2InterviewStatus !== 'None')
+        || Boolean(String(candidate?.phase2InterviewerFeedback || '').trim())
+    ), []);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -207,7 +214,7 @@ const Phase1Candidates = () => {
             fetchCandidates();
         } catch (error) {
             console.error('Error updating decision:', error);
-            toast.error('Failed to update decision');
+            toast.error(error.response?.data?.message || 'Failed to update decision');
         }
     };
 
@@ -552,7 +559,8 @@ const Phase1Candidates = () => {
                                                                 onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                                 className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) || hasMovedToPhase2(candidate)}
+                                                                title={hasMovedToPhase2(candidate) ? 'Phase 1 decision is locked after moving to Phase 2' : undefined}
                                                             >
                                                                 <option value="None" className="text-slate-600">None</option>
                                                                 <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>

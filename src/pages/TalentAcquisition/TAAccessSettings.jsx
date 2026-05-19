@@ -98,6 +98,49 @@ const formatUserName = (user) => {
     return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Unassigned';
 };
 
+const AccessUserList = ({ title, users = [], emptyLabel }) => (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</p>
+        {users.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+                {users.map((user) => (
+                    <span
+                        key={user._id || user.email || `${title}-${formatUserName(user)}`}
+                        className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+                    >
+                        {formatUserName(user)}
+                    </span>
+                ))}
+            </div>
+        ) : (
+            <p className="mt-2 text-sm font-medium text-slate-500">{emptyLabel}</p>
+        )}
+    </div>
+);
+
+const AccessRequestList = ({ title, requests = [], emptyLabel }) => (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</p>
+        {requests.length ? (
+            <div className="mt-3 space-y-2">
+                {requests.map((request) => (
+                    <div
+                        key={`${title}-${request._id}`}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    >
+                        <p className="text-sm font-semibold text-slate-800">{request.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                            {request.requestId} • {request.client || 'No client'}
+                        </p>
+                    </div>
+                ))}
+            </div>
+        ) : (
+            <p className="mt-2 text-sm font-medium text-slate-500">{emptyLabel}</p>
+        )}
+    </div>
+);
+
 const TAAccessSettings = () => {
     const { user } = useAuth();
     const canConfigEdit = user?.roles?.includes('Admin')
@@ -118,6 +161,7 @@ const TAAccessSettings = () => {
     const [taPermissionTab, setTaPermissionTab] = useState('all');
     const [selectedRequestId, setSelectedRequestId] = useState('');
     const [selectedClientName, setSelectedClientName] = useState('');
+    const [selectedUserId, setSelectedUserId] = useState('');
     const [clientAssignedUserIdsDraft, setClientAssignedUserIdsDraft] = useState([]);
     const [requestAccessDraft, setRequestAccessDraft] = useState({
         recruiterId: '',
@@ -251,6 +295,73 @@ const TAAccessSettings = () => {
             || String(user.employeeCode || '').toLowerCase().includes(query)
         ));
     }, [userSearch, users]);
+
+    useEffect(() => {
+        setSelectedUserId((current) => {
+            if (current && filteredUsers.some((user) => user._id === current)) {
+                return current;
+            }
+            return filteredUsers[0]?._id || '';
+        });
+    }, [filteredUsers]);
+
+    const usersById = useMemo(
+        () => new Map(users.map((user) => [String(user._id), user])),
+        [users]
+    );
+
+    const selectedRequestAssignedUsers = useMemo(
+        () => requestAccessDraft.assignedUsers
+            .map((userId) => usersById.get(String(userId)))
+            .filter(Boolean),
+        [requestAccessDraft.assignedUsers, usersById]
+    );
+
+    const selectedRequestAnalyticsViewers = useMemo(
+        () => requestAccessDraft.analyticsViewers
+            .map((userId) => usersById.get(String(userId)))
+            .filter(Boolean),
+        [requestAccessDraft.analyticsViewers, usersById]
+    );
+
+    const selectedRequestInterviewPanel = useMemo(
+        () => requestAccessDraft.interviewPanel
+            .map((userId) => usersById.get(String(userId)))
+            .filter(Boolean),
+        [requestAccessDraft.interviewPanel, usersById]
+    );
+
+    const selectedUser = useMemo(
+        () => filteredUsers.find((user) => user._id === selectedUserId)
+            || users.find((user) => user._id === selectedUserId)
+            || null,
+        [filteredUsers, selectedUserId, users]
+    );
+
+    const userCoverage = useMemo(() => {
+        if (!selectedUser) {
+            return {
+                assignedRequests: [],
+                recruiterOn: [],
+                hiringManagerOn: [],
+                analyticsViewerOn: [],
+                interviewPanelOn: [],
+                interviewRoundsOn: []
+            };
+        }
+
+        const normalizedUserId = String(selectedUser._id);
+        const includesUser = (list = []) => list.some((entry) => String(entry?._id || entry) === normalizedUserId);
+
+        return {
+            assignedRequests: requests.filter((request) => includesUser(request.assignedUsers || [])),
+            recruiterOn: requests.filter((request) => String(request.ownership?.recruiter?._id || request.ownership?.recruiter || '') === normalizedUserId),
+            hiringManagerOn: requests.filter((request) => String(request.ownership?.hiringManager?._id || request.ownership?.hiringManager || '') === normalizedUserId),
+            analyticsViewerOn: requests.filter((request) => includesUser(request.analyticsViewers || [])),
+            interviewPanelOn: requests.filter((request) => includesUser(request.ownership?.interviewPanel || [])),
+            interviewRoundsOn: requests.filter((request) => includesUser(request.interviewerIds || []))
+        };
+    }, [requests, selectedUser]);
 
     const stats = useMemo(() => {
         const uniqueInterviewerIds = new Set();
@@ -611,8 +722,10 @@ const TAAccessSettings = () => {
                     <SectionCard
                         title="Requisitions"
                         description="Select a requisition to manage recruiter assignment, shared users, analytics viewers, and interview panel members."
+                        className="xl:max-h-[calc(100vh-8.5rem)]"
+                        bodyClassName="max-h-[calc(100vh-15rem)] overflow-y-auto overflow-x-hidden pr-3 pb-2"
                     >
-                        <div className="space-y-2">
+                        <div className="space-y-2 pr-1">
                             {requests.map((request) => (
                                 <button
                                     key={request._id}
@@ -664,6 +777,24 @@ const TAAccessSettings = () => {
                                         <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Candidate Coverage</p>
                                         <p className="mt-2 text-sm font-semibold text-slate-800">{selectedRequest.candidateCount || 0} candidates • {selectedRequest.interviewRoundsCount || 0} interview rounds</p>
                                     </div>
+                                </div>
+
+                                <div className="grid gap-4 xl:grid-cols-3">
+                                    <AccessUserList
+                                        title="Assigned Users"
+                                        users={selectedRequestAssignedUsers}
+                                        emptyLabel="No assigned users yet"
+                                    />
+                                    <AccessUserList
+                                        title="Analytics Viewers"
+                                        users={selectedRequestAnalyticsViewers}
+                                        emptyLabel="No analytics viewers yet"
+                                    />
+                                    <AccessUserList
+                                        title="Interview Panel"
+                                        users={selectedRequestInterviewPanel}
+                                        emptyLabel="No interview panel members yet"
+                                    />
                                 </div>
 
                                 <div>
@@ -898,7 +1029,13 @@ const TAAccessSettings = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
                                 {filteredUsers.map((user) => (
-                                    <tr key={user._id}>
+                                    <tr
+                                        key={user._id}
+                                        onClick={() => setSelectedUserId(user._id)}
+                                        className={`cursor-pointer transition-colors ${
+                                            selectedUserId === user._id ? 'bg-blue-50' : 'hover:bg-slate-50'
+                                        }`}
+                                    >
                                         <td className="px-4 py-3">
                                             <p className="font-semibold text-slate-800">{formatUserName(user)}</p>
                                             <p className="text-xs text-slate-500">{user.email}</p>
@@ -915,6 +1052,79 @@ const TAAccessSettings = () => {
                             </tbody>
                         </table>
                     </div>
+
+                    {selectedUser ? (
+                        <div className="mt-6 space-y-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900">{formatUserName(selectedUser)} Access Details</h3>
+                                    <p className="mt-1 text-sm text-slate-500">
+                                        {selectedUser.email}{selectedUser.employeeCode ? ` • ${selectedUser.employeeCode}` : ''}
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {(selectedUser.roles || []).map((role) => (
+                                        <span
+                                            key={`${selectedUser._id}-${role}`}
+                                            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+                                        >
+                                            {role}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Clients</p>
+                                    <p className="mt-2 text-sm font-semibold text-slate-800">
+                                        {(selectedUser.taAssignedClients || []).length ? selectedUser.taAssignedClients.join(', ') : 'No client assignments'}
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Requests</p>
+                                    <p className="mt-2 text-sm font-semibold text-slate-800">{userCoverage.assignedRequests.length}</p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Interview Rounds</p>
+                                    <p className="mt-2 text-sm font-semibold text-slate-800">{selectedUser.interviewRoundsAssigned || 0}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 xl:grid-cols-2">
+                                <AccessRequestList
+                                    title="Shared Requisitions"
+                                    requests={userCoverage.assignedRequests}
+                                    emptyLabel="No shared requisitions"
+                                />
+                                <AccessRequestList
+                                    title="Recruiter On"
+                                    requests={userCoverage.recruiterOn}
+                                    emptyLabel="Not assigned as recruiter on any requisition"
+                                />
+                                <AccessRequestList
+                                    title="Hiring Manager On"
+                                    requests={userCoverage.hiringManagerOn}
+                                    emptyLabel="Not acting as hiring manager on any requisition"
+                                />
+                                <AccessRequestList
+                                    title="Analytics Viewer On"
+                                    requests={userCoverage.analyticsViewerOn}
+                                    emptyLabel="No analytics viewer access yet"
+                                />
+                                <AccessRequestList
+                                    title="Interview Panel On"
+                                    requests={userCoverage.interviewPanelOn}
+                                    emptyLabel="Not part of any interview panel"
+                                />
+                                <AccessRequestList
+                                    title="Interview Round Coverage"
+                                    requests={userCoverage.interviewRoundsOn}
+                                    emptyLabel="No interview rounds assigned"
+                                />
+                            </div>
+                        </div>
+                    ) : null}
                 </SectionCard>
             )}
         </div>
