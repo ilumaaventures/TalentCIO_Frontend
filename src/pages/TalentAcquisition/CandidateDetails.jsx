@@ -321,16 +321,30 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         }
     }, []);
 
-    const { hasSuperApprove, canManageRounds } = useMemo(() => {
+    const { hasSuperApprove, canManageCandidateEdits, canScheduleRounds, canManagePhase3Decision } = useMemo(() => {
         const admin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
         const perms = user?.permissions || [];
         const superApprove = perms.includes('ta.super_approve') || perms.includes('*') || admin;
-        const manageRounds = admin
+        const analyticsCandidateAccess = perms.includes('ta.analytics.assigned') || perms.includes('ta.analytics.global');
+        const manageCandidateEdits = admin
             || perms.includes('ta.edit')
             || perms.includes('ta.candidate.manage.assigned')
             || perms.includes('ta.candidate.manage.all')
-            || perms.includes('ta.candidate.edit');
-        return { hasSuperApprove: superApprove, canManageRounds: manageRounds };
+            || perms.includes('ta.candidate.edit')
+            || analyticsCandidateAccess;
+        const scheduleRounds = manageCandidateEdits;
+        const managePhase3Decision = admin
+            || perms.includes('ta.edit')
+            || perms.includes('ta.candidate.manage.assigned')
+            || perms.includes('ta.candidate.manage.all')
+            || perms.includes('ta.candidate.edit')
+            || perms.includes('ta.candidate.make_decision');
+        return {
+            hasSuperApprove: superApprove,
+            canManageCandidateEdits: manageCandidateEdits,
+            canScheduleRounds: scheduleRounds,
+            canManagePhase3Decision: managePhase3Decision
+        };
     }, [user]);
 
     const skillExperienceList = useMemo(() => {
@@ -466,7 +480,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                     <Download size={18} /> View Resume
                                 </a>
                             )}
-                            {canManageRounds && (
+                                          {((currentPhase === 3 && canManagePhase3Decision) || (currentPhase !== 3 && canManageCandidateEdits)) && (
                                 <button
                                     onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
                                     className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
@@ -493,7 +507,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 <Eye size={16} /> Review Complete Profile
                             </button>
                         )}
-                        {canManageRounds && (
+                          {canManageCandidateEdits && (
                             <button
                                 onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
                                 className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm"
@@ -554,7 +568,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                         )}
 
                                         {/* Dropdown to change decision based on active phase */}
-                                        {canManageRounds && (
+                                        {((currentPhase === 3 && canManagePhase3Decision) || (currentPhase !== 3 && canManageCandidateEdits)) && (
                                             <div className="mt-2 w-full max-w-50">
                                                 {currentPhase === 1 ? (
                                                     <select
@@ -824,7 +838,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-slate-800">Interview Timeline</h3>
-                            {canManageRounds && (
+                            {canScheduleRounds && (
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => { setIsApplyingWorkflow(true); setIsAddingRound(false); }}
@@ -1072,7 +1086,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                             <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(effectiveRoundStatus)}`}>
                                                                 {effectiveRoundStatus}
                                                             </span>
-                                                            {canManageRounds && !round.isSyntheticPhase2 && ['Pending', 'Scheduled'].includes(round.status) && (
+                                                            {canScheduleRounds && !round.isSyntheticPhase2 && ['Pending', 'Scheduled'].includes(round.status) && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
                                                                     <button
                                                                         onClick={() => {

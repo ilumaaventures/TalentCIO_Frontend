@@ -353,7 +353,7 @@ const TalentAcquisitionDashboard = () => {
         () => (analytics?.monthlyTrend || []).map((entry) => ({ ...entry, label: monthLabel(entry.month) })),
         [analytics]
     );
-    const recruiterPerformance = useMemo(() => (analytics?.recruiterPerformance || []).slice(0, 5), [analytics]);
+    const sourcingPerformance = useMemo(() => (analytics?.sourcingPerformance || []).slice(0, 5), [analytics]);
     const sourceAnalysis = useMemo(
         () => (analytics?.sourceAnalysis || []).map((item) => ({
             ...item,
@@ -561,29 +561,29 @@ const TalentAcquisitionDashboard = () => {
                 </SectionCard>
 
                 <SectionCard
-                    title="Top Recruiters"
+                    title="Top Sourcers"
                     action={<Link to="/ta/analysis" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open analytics</Link>}
                 >
                     <div className="space-y-4">
-                        {recruiterPerformance.length ? recruiterPerformance.map((recruiter, index) => (
-                            <div key={recruiter.name} className="flex items-center justify-between rounded-[1.35rem] bg-slate-50 px-4 py-4">
+                        {sourcingPerformance.length ? sourcingPerformance.map((member, index) => (
+                            <div key={member.name} className="flex items-center justify-between rounded-[1.35rem] bg-slate-50 px-4 py-4">
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-[13px] font-black text-white">
                                         {index + 1}
                                     </div>
                                     <div>
-                                        <p className="text-[12px] font-bold text-slate-900 sm:text-[14px]">{recruiter.name}</p>
+                                        <p className="text-[12px] font-bold text-slate-900 sm:text-[14px]">{member.name}</p>
                                         <p className="mt-0.5 text-[11px] text-slate-500">
-                                            {recruiter.sourced} sourced / {recruiter.joined} joined
+                                            {member.sourced} sourced / {member.joined} joined
                                         </p>
                                     </div>
                                 </div>
                                 <span className="font-ta-head text-[1.8rem] font-black tracking-tight text-slate-950">
-                                    {recruiter.conversion}%
+                                    {member.conversion}%
                                 </span>
                             </div>
                         )) : (
-                            <p className="text-[11px] text-slate-500">Recruiter conversion data is not available yet.</p>
+                            <p className="text-[11px] text-slate-500">Sourcing conversion data is not available yet.</p>
                         )}
                     </div>
                 </SectionCard>

@@ -13,6 +13,13 @@ const ClientSelection = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const navigate = useNavigate();
     const CLIENT_CACHE_TTL_MS = 60 * 1000;
+    const canCreateRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('ta.manage')
+        || user?.permissions?.includes('ta.requisition.create')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all')
+        || user?.permissions?.includes('ta.create');
 
     const filteredClients = clients.filter(client => 
         client.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -60,7 +67,7 @@ const ClientSelection = () => {
                         >
                             <TrendingUp size={16} className="text-blue-600" /> Global Analysis
                         </Link>
-                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        {canCreateRequisition && (
                             <Link
                                 to="/ta/create-request"
                                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-bold text-xs uppercase tracking-wider shadow-sm"

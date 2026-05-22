@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 const WorkflowSettings = () => {
     const { user } = useAuth();
     const canConfigEdit = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.config.edit')
         || user?.permissions?.includes('*');
     // Tabs Support

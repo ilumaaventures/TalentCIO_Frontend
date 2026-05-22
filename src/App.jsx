@@ -222,6 +222,7 @@ const PhaseTemplatesAccessWrapper = ({ Component: ComponentProp }) => {
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.manage') ||
     user.permissions?.includes('ta.config.view') ||
     user.permissions?.includes('ta.config.edit') ||
     user.permissions?.includes('*');
@@ -236,6 +237,7 @@ const WorkflowSettingsAccessWrapper = ({ Component: ComponentProp }) => {
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.manage') ||
     user.permissions?.includes('ta.config.view') ||
     user.permissions?.includes('ta.config.edit') ||
     user.permissions?.includes('*');
@@ -250,6 +252,7 @@ const TAAnalyticsAccessWrapper = ({ Component: ComponentProp }) => {
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.manage') ||
     user.permissions?.includes('ta.analytics.global') ||
     user.permissions?.includes('ta.analytics.assigned') ||
     user.permissions?.includes('*') ||
@@ -265,6 +268,7 @@ const TAAccessSettingsAccessWrapper = ({ Component: ComponentProp }) => {
   if (!user) return null;
 
   const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('ta.manage') ||
     user.permissions?.includes('ta.config.view') ||
     user.permissions?.includes('ta.config.edit') ||
     user.permissions?.includes('*');

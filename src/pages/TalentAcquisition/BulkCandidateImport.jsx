@@ -5,6 +5,7 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
+import { useAuth } from '../../context/AuthContext';
 
 const normalizeSkillLabel = (value) => String(value || '').trim();
 const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();
@@ -59,6 +60,7 @@ const hasInvalidYesNoValue = (rawValue, parsedValue) => {
 };
 
 const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess }) => {
+    const { user } = useAuth();
     const [, setFile] = useState(null);
     const [previewData, setPreviewData] = useState([]);
     const [isParsing, setIsParsing] = useState(false);
@@ -76,6 +78,18 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
         .trim()
         .toLowerCase()
         .replace(/\s+/g, '_');
+    const normalizeEntityId = (value) => String(value?._id || value || '');
+    const getUploaderName = (candidate) => {
+        const uploadedBy = candidate?.uploadedBy;
+        if (!uploadedBy) return '';
+
+        const fullName = [uploadedBy.firstName, uploadedBy.lastName]
+            .map((part) => String(part || '').trim())
+            .filter(Boolean)
+            .join(' ');
+
+        return fullName || String(uploadedBy.email || '').trim();
+    };
 
     const getImportErrorReason = (error) => {
         const payload = error?.response?.data;
@@ -721,6 +735,15 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 }
 
                 // Basic Validation
+                const matchedCandidate = existingCandidates.find(c =>
+                    (mappedRow.email && String(c.email || '').toLowerCase() === String(mappedRow.email || '').toLowerCase()) ||
+                    (mappedRow.mobile && String(c.mobile || '') === String(mappedRow.mobile || ''))
+                );
+                const isExisting = Boolean(matchedCandidate);
+                const ownedByCurrentUser = matchedCandidate
+                    ? normalizeEntityId(matchedCandidate.uploadedBy) === normalizeEntityId(user?._id)
+                    : false;
+                const uploaderName = getUploaderName(matchedCandidate);
                 const errors = [];
                 if (!mappedRow.candidateName) errors.push('Name missing');
                 if (!mappedRow.email) errors.push('Email missing');
@@ -743,16 +766,20 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     }
                 });
                 // Removed Experience check - defaults to 0 if missing
-
-                const isExisting = existingCandidates.some(c =>
-                    (mappedRow.email && String(c.email || '').toLowerCase() === String(mappedRow.email || '').toLowerCase()) ||
-                    (mappedRow.mobile && String(c.mobile || '') === String(mappedRow.mobile || ''))
-                );
+                if (isExisting && !ownedByCurrentUser) {
+                    errors.push(
+                        uploaderName
+                            ? `Candidate already exists and was uploaded by ${uploaderName}`
+                            : 'Candidate already exists and was uploaded by another user'
+                    );
+                }
 
                 rows.push({
                     data: mappedRow,
                     isValid: errors.length === 0,
-                    isExisting: isExisting,
+                    isExisting,
+                    ownedByCurrentUser,
+                    matchedCandidate,
                     errors: errors,
                     rowNumber: rowNumber
                 });
@@ -818,6 +845,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
                 const importPayload = {
                     ...row.data,
+                    allowOwnedDuplicateUpdate: true,
                     status: normalizeDynamicImportStatus(row.data.status),
                     interviewRounds: processedRounds
                 };
@@ -1176,8 +1204,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                                 <tr key={idx} className={row.isValid ? 'hover:bg-slate-50' : 'bg-red-50/50'}>
                                                     <td className="px-4 py-3 text-sm text-slate-600">{row.rowNumber}</td>
                                                     <td className="px-4 py-3">
-                                                        {row.isExisting ? (
+                                                        {row.isExisting && row.ownedByCurrentUser ? (
                                                             <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded text-[10px]">UPDATE</span>
+                                                        ) : row.isExisting ? (
+                                                            <span className="text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded text-[10px]">EXISTS</span>
                                                         ) : (
                                                             <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[10px]">NEW</span>
                                                         )}

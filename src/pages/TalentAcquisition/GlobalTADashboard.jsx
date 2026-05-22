@@ -130,7 +130,7 @@ const GlobalTADashboard = () => {
 
     const {
         topMetrics, pipelineDistribution, recruitmentFunnel,
-        departmentAnalysis, recruiterPerformance,
+        departmentAnalysis, sourcingPerformance,
         positionPerformance, timeMetrics, sourceAnalysis, monthlyTrend,
         filterOptions // New: dynamic options for dropdowns
     } = data || {};
@@ -456,12 +456,12 @@ const GlobalTADashboard = () => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* 5. RECRUITER PERFORMANCE */}
-                    <DashboardCard title="Recruiter Productivity" sub="Efficiency ranking for sourcing team" icon={<Award />} color="purple">
+                    <DashboardCard title="Sourcing Productivity" sub="Efficiency ranking for sourcing team" icon={<Award />} color="purple">
                         <div className="overflow-x-auto rounded-xl border border-slate-100">
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-100">
-                                        <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Recruiter</th>
+                                        <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Team Member</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Source</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Intv.</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Offer</th>
@@ -470,7 +470,7 @@ const GlobalTADashboard = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {recruiterPerformance?.map((rec, i) => (
+                                    {sourcingPerformance?.map((rec, i) => (
                                         <tr key={i} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 font-medium">
                                             <td className="px-4 py-3 text-slate-800 font-bold">{rec.name}</td>
                                             <td className="px-4 py-3 text-center text-slate-600">{rec.sourced}</td>

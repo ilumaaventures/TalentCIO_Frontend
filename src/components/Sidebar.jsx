@@ -41,6 +41,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const [recycleBinCount, setRecycleBinCount] = useState(0);
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
   const canViewTAAnalytics = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('ta.manage')
     || user?.permissions?.includes('ta.analytics.global')
     || user?.permissions?.includes('ta.analytics.assigned')
     || user?.permissions?.includes('*')
@@ -62,12 +63,14 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('ta.interview.evaluate')
     || user?.permissions?.includes('ta.candidate.make_decision')
     || user?.permissions?.includes('ta.candidate.transfer')
+    || user?.permissions?.includes('ta.manage')
     || user?.permissions?.includes('ta.config.view')
     || user?.permissions?.includes('ta.config.edit')
     || user?.isTAParticipant
     || canViewTAAnalytics
   );
   const canViewTAConfig = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('ta.manage')
     || user?.permissions?.includes('ta.config.view')
     || user?.permissions?.includes('ta.config.edit')
     || user?.permissions?.includes('*');

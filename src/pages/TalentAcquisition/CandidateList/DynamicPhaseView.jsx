@@ -267,17 +267,26 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const dateFilterControlsRef = useRef(null);
 
     const isAdmin = user?.roles?.includes('Admin');
+    const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
+        || user?.permissions?.includes('ta.analytics.global');
     const canEdit = isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
-        || user?.permissions?.includes('ta.candidate.edit');
-    const canMakeDecisions = canEdit || user?.permissions?.includes('ta.candidate.make_decision');
+        || user?.permissions?.includes('ta.candidate.edit')
+        || hasAnalyticsCandidateAccess;
+    const canMakeDecisions = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit')
+        || user?.permissions?.includes('ta.candidate.make_decision');
     const canManualAdvance = isAdmin || canEdit;
     const canCreate = isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
-        || user?.permissions?.includes('ta.create');
+        || user?.permissions?.includes('ta.create')
+        || hasAnalyticsCandidateAccess;
     const canMassMail = isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
@@ -290,6 +299,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         || user?.permissions?.includes('ta.bulk_transfer')
         || user?.permissions?.includes('ta.candidate.transfer');
     const canManageTemplates = isAdmin
+        || user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.config.edit')
         || user?.permissions?.includes('ta.email_template.manage')
         || user?.permissions?.includes('*');
@@ -359,7 +369,12 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                     return (candidateUser.roles || []).some((role) => (
                         Array.isArray(role.permissions) && role.permissions
                             .map((permission) => (typeof permission === 'string' ? permission : permission.key))
-                            .some((key) => key === 'ta.create' || key === '*')
+                            .some((key) => (
+                                key === '*'
+                                || key === 'ta.create'
+                                || key === 'ta.candidate.manage.assigned'
+                                || key === 'ta.candidate.manage.all'
+                            ))
                     ));
                 });
 
@@ -451,11 +466,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     ), [candidates, activePhase]);
 
     const pulledByOptions = useMemo(() => {
-        const recruiterNames = pulledByUsers
+        const pulledByNames = pulledByUsers
             .map((candidateUser) => `${candidateUser.firstName || ''} ${candidateUser.lastName || ''}`.trim())
             .filter(Boolean);
 
-        const options = [...new Set(recruiterNames)].sort((left, right) => left.localeCompare(right));
+        const options = [...new Set(pulledByNames)].sort((left, right) => left.localeCompare(right));
         if (pulledByFilter !== 'All' && pulledByFilter && !options.includes(pulledByFilter)) {
             return [...options, pulledByFilter].sort((left, right) => left.localeCompare(right));
         }

@@ -616,44 +616,6 @@ const CreateHiringRequest = () => {
                     </div>
                 )}
 
-                {isEditMode && (
-                    <>
-                        <Section title="Access Assignment" icon={Users} fullWidth>
-                            <div className="col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                                    Assigned Users
-                                </label>
-                                <UserMultiSelect
-                                    users={availableUsers}
-                                    selectedUserIds={formData.assignedUsers}
-                                    onChange={(selectedUserIds) => setFormData((prev) => ({ ...prev, assignedUsers: selectedUserIds }))}
-                                    placeholder="Select users who can access this requisition"
-                                />
-                                <p className="mt-2 text-xs text-slate-500">
-                                    Assigned users receive working access to this requisition and its candidates. Recruiters, hiring managers, and admins can also retain access based on their role.
-                                </p>
-                            </div>
-                        </Section>
-
-                        <Section title="Performance Visibility" icon={Users} fullWidth>
-                            <div className="col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                                    Requisition Performance Viewers
-                                </label>
-                                <UserMultiSelect
-                                    users={availableUsers}
-                                    selectedUserIds={formData.analyticsViewers}
-                                    onChange={(selectedUserIds) => setFormData((prev) => ({ ...prev, analyticsViewers: selectedUserIds }))}
-                                    placeholder="Select users who can view this requisition's analytics"
-                                />
-                                <p className="mt-2 text-xs text-slate-500">
-                                    These users can open performance analytics for this requisition. This does not grant candidate access unless they are also assigned through a working access role.
-                                </p>
-                            </div>
-                        </Section>
-                    </>
-                )}
-
                 <Section title="Recruitment Workflow" icon={Users} fullWidth>
                     <div className="col-span-1">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
