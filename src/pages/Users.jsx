@@ -42,6 +42,7 @@ const Users = () => {
     const [filterDepartment, setFilterDepartment] = useState('all');
     const [filterEmploymentType, setFilterEmploymentType] = useState('all');
     const [filterJoiningDate, setFilterJoiningDate] = useState('');
+    const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
 
     // Helpers for Export
     const formatTime = (dateString, istString) => {
@@ -80,6 +81,11 @@ const Users = () => {
         return `${hours}h ${minutes}m`;
     };
 
+    const toDateKey = (value) => format(new Date(value), 'yyyy-MM-dd');
+
+    const isAttendanceApproved = (record) =>
+        record?.approvalStatus === 'APPROVED' || Boolean(record?.approvedBy);
+
     const _handleExportAttendance = async (targetUser) => {
         const toastId = toast.loading('Generating Report...');
         try {
@@ -93,7 +99,7 @@ const Users = () => {
                 api.get('/holidays')
             ]);
 
-            const history = historyRes.data;
+            const history = historyRes.data?.history || historyRes.data || [];
             const holidaysData = holidaysRes.data;
 
             const workbook = new ExcelJS.Workbook();
@@ -127,31 +133,26 @@ const Users = () => {
 
             days.forEach(day => {
                 const dateStr = format(day, 'yyyy-MM-dd');
-                const record = history.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                const weeklyOffDays = user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+                const record = history.find(h => toDateKey(h.date) === dateStr);
+                const weeklyOffDays = historyRes.data?.weeklyOff || user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
                 const isWeeklyOff = weeklyOffDays.includes(format(day, 'EEEE'));
-                const isFuture = day > new Date();
-
                 let status = 'Absent';
                 let rowColor = 'FFF2DCDB'; // Red by default
 
                 const joiningDate = targetUser.joiningDate ? new Date(targetUser.joiningDate) : null;
                 if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
 
-                const holiday = holidaysData.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
+                const holiday = holidaysData.find(h => toDateKey(h.date) === dateStr);
 
                 if (joiningDate && day < joiningDate) {
                     status = 'Not Applicable';
                     rowColor = 'FFFFFFFF';
-                } else if (isFuture) {
-                    status = '-';
-                    rowColor = 'FFFFFFFF';
+                } else if (isAttendanceApproved(record)) {
+                    status = 'Present';
+                    rowColor = 'FFEBF1DE';
                 } else if (holiday) {
                     status = holiday.name;
                     rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
-                } else if (record) {
-                    status = 'Present';
-                    rowColor = 'FFEBF1DE';
                 } else if (isWeeklyOff) {
                     status = 'Weekoff';
                     rowColor = 'FFF2F2F2';
@@ -189,6 +190,11 @@ const Users = () => {
     const handleExportTeamAttendance = async () => {
         const toastId = toast.loading('Generating Team Report...');
         try {
+            if (selectedEmployeeIds.length === 0) {
+                toast.error('Select at least one employee to export.', { id: toastId });
+                return;
+            }
+
             const [year, month] = exportMonth.split('-');
 
             // Fetch data
@@ -232,8 +238,7 @@ const Users = () => {
             const attendanceMap = {};
             attendanceRecords.forEach(record => {
                 const userId = record.user.toString();
-                // Use IST time for date mapping to fix mismatch
-                const dateStr = new Date(record.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+                const dateStr = toDateKey(record.date);
                 if (!attendanceMap[userId]) attendanceMap[userId] = {};
                 attendanceMap[userId][dateStr] = record;
             });
@@ -248,7 +253,7 @@ const Users = () => {
                     const start = new Date(leave.startDate);
                     const end = new Date(leave.endDate);
                     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                        const dStr = d.toISOString().split('T')[0];
+                        const dStr = toDateKey(d);
                         leaveMap[userId][dStr] = { type: leave.leaveType, sandwich: leave.sandwichRule };
                     }
                 });
@@ -258,7 +263,7 @@ const Users = () => {
             const holidayMap = {};
             if (holidays && holidays.length > 0) {
                 holidays.forEach(h => {
-                    const dateStr = new Date(h.date).toISOString().split('T')[0];
+                    const dateStr = toDateKey(h.date);
                     holidayMap[dateStr] = h.name;
                 });
             }
@@ -268,10 +273,14 @@ const Users = () => {
             const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
             // 3. Add Data Rows (Grouped)
-            // Filter teamMembers based on current filteredUsers
-            const usersToExport = teamMembers.filter(tm =>
-                filteredUsers.some(fu => fu._id === tm._id)
+            const usersToExport = teamMembers.filter((teamMember) =>
+                selectedEmployeeIds.includes(teamMember._id)
             );
+
+            if (usersToExport.length === 0) {
+                toast.error('None of the selected employees are available in this export view.', { id: toastId });
+                return;
+            }
 
             usersToExport.forEach(user => {
                 const userLogs = attendanceMap[user._id] || {};
@@ -291,21 +300,20 @@ const Users = () => {
                 const checkOutRow = { name: '   ↳ Check Out' };
                 const durationRow = { name: '   ↳ Duration' };
                 const leavesRow = { name: '   ↳ Leaves' };
+                const approvedRow = { name: '   ↳ Approved' };
 
                 // Color Map for Cells
                 const _cellRefMap = {}; // store cell refs to apply color later (or apply directly if possible)
 
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateObj = new Date(year, month - 1, d);
-                    // Match the key format used in map (YYYY-MM-DD in IST/Local)
-                    const dateStr = dateObj.toLocaleDateString('en-CA');
+                    const dateStr = toDateKey(dateObj);
                     const record = userLogs[dateStr];
                     const colKey = `day_${d}`;
 
                     const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
                     const dayName = format(dateObj, 'EEEE');
                     const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
-                    const isFuture = dateObj > new Date();
                     const leaveData = userLeaves[dateStr];
                     const holidayName = holidayMap[dateStr];
 
@@ -323,25 +331,12 @@ const Users = () => {
                     const isOffDay = !!holidayName || isWeeklyOff;
                     const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
 
-                    if (isFuture) {
-                        statusShort = '-';
-                        _cellColor = 'FFFFFFFF'; // White
-                    }
-                    else if (showLeave) {
-                        statusShort = `L (${leaveData.type})`; // Show Leave Type
-                        _cellColor = 'FFFFE0B2'; // Orange/Yellowish
-                    }
-                    else if (holidayName) {
-                        statusShort = holidayName; // Show Holiday Name
-                        _cellColor = 'FFD1F2EB'; // Light Cyan/Greenish
-                    }
-                    else if (isWeeklyOff) {
-                        statusShort = 'Weekoff';
-                        _cellColor = 'FFF2F2F2'; // Light Grey
-                    }
-                    else if (record) {
+                    if (isAttendanceApproved(record)) {
                         statusShort = 'Present';
                         _cellColor = 'FFEBF1DE'; // Light Green
+                    } else if (showLeave || holidayName || isWeeklyOff) {
+                        statusShort = '';
+                        _cellColor = 'FFFFFFFF';
                     }
 
                     if (exportOptions.status) {
@@ -380,10 +375,12 @@ const Users = () => {
                                 durationRow[colKey] += ' (Half Day)';
                             }
                         }
+                        approvedRow[colKey] = isAttendanceApproved(record) ? 'Approved' : '';
                     } else {
                         checkInRow[colKey] = '-';
                         checkOutRow[colKey] = '-';
                         durationRow[colKey] = '-';
+                        approvedRow[colKey] = '';
                     }
                 }
 
@@ -395,6 +392,7 @@ const Users = () => {
                 }
                 if (exportOptions.duration) rowsToAdd.push(durationRow);
                 if (exportOptions.leaves) rowsToAdd.push(leavesRow);
+                rowsToAdd.push(approvedRow);
 
                 // Add to Worksheet and Style
                 rowsToAdd.forEach(rowData => {
@@ -408,16 +406,13 @@ const Users = () => {
                     if (rowData.name === '   ↳ Status') {
                         for (let d = 1; d <= daysInMonth; d++) {
                             const dateObj = new Date(year, month - 1, d);
-                            // Match the key format
-                            const dateStr = dateObj.toLocaleDateString('en-CA');
+                            const dateStr = toDateKey(dateObj);
                             const record = userLogs[dateStr];
                             const leaveData = userLeaves[dateStr];
                             const holidayName = holidayMap[dateStr];
                             const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
                             const dayName = format(dateObj, 'EEEE');
                             const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
-                            const isFuture = dateObj > new Date();
-
                             // -- Apply Same Logic for Coloring --
                             let _durationHours = 0;
                             if (record && record.clockIn && record.clockOut) {
@@ -430,11 +425,8 @@ const Users = () => {
                             const isOffDay = !!holidayName || isWeeklyOff;
                             const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
 
-                            if (isFuture) cellColor = 'FFFFFFFF';
-                            else if (showLeave) cellColor = 'FFFFE0B2';
-                            else if (holidayName) cellColor = 'FFD1F2EB';
-                            else if (isWeeklyOff) cellColor = 'FFF2F2F2';
-                            else if (record) cellColor = 'FFEBF1DE';
+                            if (isAttendanceApproved(record)) cellColor = 'FFEBF1DE';
+                            else if (showLeave || holidayName || isWeeklyOff) cellColor = 'FFFFFFFF';
 
                             const colKey = `day_${d}`;
                             // This library might not support key-based cell access directly on 'row' object efficiently if strictly column indexed?
@@ -675,11 +667,36 @@ const Users = () => {
         fetchData();
     }, [fetchData]);
 
+    useEffect(() => {
+        setSelectedEmployeeIds((current) => current.filter((id) => users.some((listedUser) => listedUser._id === id)));
+    }, [users]);
+
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
     const attendanceShiftOptions = user?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
+    const visibleEmployeeIds = filteredUsers.map((employee) => employee._id);
+    const allVisibleSelected = visibleEmployeeIds.length > 0 && visibleEmployeeIds.every((id) => selectedEmployeeIds.includes(id));
+    const hasSelection = selectedEmployeeIds.length > 0;
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const toggleEmployeeSelection = (employeeId) => {
+        setSelectedEmployeeIds((current) => (
+            current.includes(employeeId)
+                ? current.filter((id) => id !== employeeId)
+                : [...current, employeeId]
+        ));
+    };
+
+    const toggleSelectAllVisible = () => {
+        setSelectedEmployeeIds((current) => {
+            if (allVisibleSelected) {
+                return current.filter((id) => !visibleEmployeeIds.includes(id));
+            }
+
+            return Array.from(new Set([...current, ...visibleEmployeeIds]));
+        });
     };
 
     const _handleEdit = (user) => {
@@ -1035,14 +1052,30 @@ const Users = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="text-sm text-slate-500">
-                            Showing <strong>{filteredUsers.length}</strong> of <strong>{users.length}</strong>
+                        <div className="text-sm text-slate-500 text-right">
+                            <div>
+                                Showing <strong>{filteredUsers.length}</strong> of <strong>{users.length}</strong>
+                            </div>
+                            {hasSelection && (
+                                <div className="mt-1 text-xs font-medium text-blue-600">
+                                    Selected: {selectedEmployeeIds.length}
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
                                 <tr className="text-[11px] uppercase tracking-wider">
+                                    <th className="px-3 py-2 w-10">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleSelected}
+                                            onChange={toggleSelectAllVisible}
+                                            className="rounded text-blue-600 focus:ring-blue-500"
+                                            aria-label="Select all visible employees"
+                                        />
+                                    </th>
                                     <th className="px-3 py-2">Employee</th>
                                     <th className="px-3 py-2">Email</th>
                                     <th className="px-3 py-2">Joining Date</th>
@@ -1057,12 +1090,21 @@ const Users = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {filteredUsers.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="px-6 py-10 text-center text-sm text-slate-500">
+                                        <td colSpan={10} className="px-6 py-10 text-center text-sm text-slate-500">
                                             No employees match the current search or filters.
                                         </td>
                                     </tr>
                                 ) : filteredUsers.map((employee) => (
                                     <tr key={employee._id} className="hover:bg-slate-50/50 text-[13px] border-b border-slate-50 last:border-0 transition-colors">
+                                        <td className="px-3 py-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedEmployeeIds.includes(employee._id)}
+                                                onChange={() => toggleEmployeeSelection(employee._id)}
+                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                                aria-label={`Select ${employee.firstName} ${employee.lastName || ''}`}
+                                            />
+                                        </td>
                                         <td className="px-3 py-2">
                                             <div className="flex items-center space-x-2">
                                                 <div className="h-7 w-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] shrink-0">
