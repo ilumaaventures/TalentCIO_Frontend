@@ -28,8 +28,8 @@ const Clients = () => {
                 if (!force && isCacheFresh(cachedData, CLIENT_CACHE_TTL_MS)) return;
             }
 
-            const bootstrapRes = await api.get('/projects/bootstrap');
-            const clientData = bootstrapRes.data?.clients || [];
+            const clientsRes = await api.get('/projects/clients');
+            const clientData = clientsRes.data || [];
 
             const newFingerprint = JSON.stringify({ c: clientData.length, first: clientData[0]?._id });
             const oldFingerprint = cachedData?.fingerprint || null;

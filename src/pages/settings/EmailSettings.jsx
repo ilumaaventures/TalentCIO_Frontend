@@ -75,7 +75,47 @@ const SAMPLE_DATA = {
     currentStatus: 'Interested',
     interviewDate: '10 May 2026, 04:00 PM',
     interviewLink: 'https://meet.example.com/interview',
-    customNote: 'Please join 10 minutes early.'
+    customNote: 'Please join 10 minutes early.',
+    submissionDeadline: '30 May 2026',
+    portalLink: 'https://workspace.example.com/pre-onboarding/login',
+    credentialsSection: `
+<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+    <h3 style="color: #1e293b; font-size: 15px; margin: 0 0 12px; font-weight: 700;">Your Login Credentials</h3>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Employee ID:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">EMP-2026-0052</code></p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Temporary Password:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">DemoPass52</code></p>
+    <p style="margin: 12px 0 0; font-size: 13px; color: #dc2626;"><strong>Credentials Expire On:</strong> 30 May 2026, 05:30 AM</p>
+    <p style="color: #64748b; font-size: 12px; margin-top: 8px;">You will be asked to change your password on first login. Please keep these credentials secure.</p>
+</div>`,
+    requestedSectionsBlock: `
+<div style="margin-bottom: 24px;">
+    <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">Forms to Complete</h3>
+    <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        <li style="padding: 6px 0; font-size: 14px;">Personal Details</li>
+        <li style="padding: 6px 0; font-size: 14px;">Emergency Contact</li>
+    </ul>
+</div>`,
+    requestedDocumentsBlock: `
+<div style="margin-bottom: 24px;">
+    <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #8b5cf6; padding-bottom: 8px;">Items to Complete</h3>
+    <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        <li style="padding: 6px 0; font-size: 14px;">PAN Card</li>
+        <li style="padding: 6px 0; font-size: 14px;">Aadhaar Card (Front)</li>
+    </ul>
+</div>`,
+    sharedFilesBlock: `
+<div style="margin-bottom: 24px;">
+    <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #0ea5e9; padding-bottom: 8px;">Files Shared by HR</h3>
+    <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        <li style="padding: 6px 0; font-size: 14px;">Welcome Kit.pdf</li>
+    </ul>
+    <p style="margin: 10px 0 0; font-size: 12px; color: #0369a1;">These files are attached with this email for your reference.</p>
+</div>`,
+    deadlineBlock: `
+<div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 13px; color: #92400e;">
+    <strong>Submission Deadline:</strong> 30 May 2026
+</div>`,
+    portalButton: '<a href="https://workspace.example.com/pre-onboarding/login" style="background: linear-gradient(135deg, #2563eb, #7c3aed); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 15px;">Open Pre-Onboarding Portal</a>',
+    currentYear: '2026'
 };
 
 const DEFAULT_EMAIL_LOGO_WIDTH = 200;
@@ -161,6 +201,32 @@ const normalizeAccount = (account = {}) => ({
 
 const createDraftId = () => `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const buildSenderSelectionSnapshot = (account = {}) => ({
+    _id: String(account?._id || ''),
+    name: String(account?.name || '').trim().toLowerCase(),
+    provider: String(account?.provider || '').trim().toLowerCase(),
+    fromAddress: String(account?.fromAddress || '').trim().toLowerCase()
+});
+
+const findMatchingSender = (accounts = [], preferredAccount = null) => {
+    if (!preferredAccount) return null;
+
+    const preferredSnapshot = buildSenderSelectionSnapshot(preferredAccount);
+
+    return (
+        accounts.find((account) => String(account._id) === preferredSnapshot._id)
+        || accounts.find((account) => {
+            const accountSnapshot = buildSenderSelectionSnapshot(account);
+            return (
+                accountSnapshot.name === preferredSnapshot.name
+                && accountSnapshot.provider === preferredSnapshot.provider
+                && accountSnapshot.fromAddress === preferredSnapshot.fromAddress
+            );
+        })
+        || null
+    );
+};
+
 const formatDateTime = (value) => {
     if (!value) return 'Not yet';
 
@@ -184,7 +250,7 @@ const SendersTab = ({ canManage }) => {
         name: 'TalentCIO Platform',
         provider: 'platform',
         fromName: 'TalentCIO',
-        fromAddress: 'no-reply@talentcio.in',
+        fromAddress: 'ilumaaventures@gmail.com',
         verified: true,
         ready: true
     });
@@ -205,10 +271,13 @@ const SendersTab = ({ canManage }) => {
         () => accounts.find((account) => account._id === selectedAccountId) || null,
         [accounts, selectedAccountId]
     );
+    const isPlatformSelected = selectedAccountId === PLATFORM_ID;
+    const selectedDisplayAccount = isPlatformSelected ? platformOption : selectedSavedAccount;
 
     const isBrevo = form.provider === 'brevo';
     const isSmtp = form.provider === 'smtp';
     const selectedSavedAccountIsPersisted = selectedSavedAccount && !String(selectedSavedAccount._id).startsWith('draft-');
+    const canSendTestForSelectedAccount = isPlatformSelected || selectedSavedAccountIsPersisted;
     const formHasContent = Boolean(
         form.name.trim() ||
         form.fromName.trim() ||
@@ -232,11 +301,41 @@ const SendersTab = ({ canManage }) => {
         }));
     };
 
-    const loadSettings = async () => {
+    const selectAccount = (accountId, accountList = accounts) => {
+        if (accountId === 'new') {
+            if (selectedAccountId === 'new' && !formHasContent) return;
+
+            setSelectedAccountId('new');
+            setForm(createEmptyAccount());
+            return;
+        }
+
+        if (accountId === selectedAccountId) return;
+
+        const account = accountList.find((item) => item._id === accountId);
+        if (!account) return;
+
+        setSelectedAccountId(accountId);
+        setForm(normalizeAccount(account));
+    };
+
+    const loadSettings = async (preferredAccount = null) => {
         const { data } = await api.get('/company/email-settings');
         const nextAccounts = Array.isArray(data?.accounts) ? data.accounts.map(normalizeAccount) : [];
         setAccounts(nextAccounts);
         setDefaultAccountId(data?.defaultAccountId || PLATFORM_ID);
+
+        if (String(preferredAccount?._id || '') === PLATFORM_ID) {
+            setSelectedAccountId(PLATFORM_ID);
+            return;
+        }
+
+        const matchingAccount = findMatchingSender(nextAccounts, preferredAccount);
+        if (matchingAccount) {
+            setSelectedAccountId(matchingAccount._id);
+            setForm(normalizeAccount(matchingAccount));
+            return;
+        }
 
         if (nextAccounts.length > 0) {
             setSelectedAccountId(nextAccounts[0]._id);
@@ -252,20 +351,6 @@ const SendersTab = ({ canManage }) => {
             .catch((error) => toast.error(error.response?.data?.message || 'Failed to load senders'))
             .finally(() => setLoading(false));
     }, []);
-
-    const selectAccount = (accountId) => {
-        if (accountId === 'new') {
-            setSelectedAccountId('new');
-            setForm(createEmptyAccount());
-            return;
-        }
-
-        const account = accounts.find((item) => item._id === accountId);
-        if (!account) return;
-
-        setSelectedAccountId(accountId);
-        setForm(normalizeAccount(account));
-    };
 
     const validateForm = () => {
         if (!form.name.trim()) return 'Sender name is required.';
@@ -311,12 +396,21 @@ const SendersTab = ({ canManage }) => {
     const removeSelectedSender = () => {
         if (!canManage || !selectedSavedAccount) return;
 
-        setAccounts((current) => current.filter((account) => account._id !== selectedSavedAccount._id));
+        const remainingAccounts = accounts.filter((account) => account._id !== selectedSavedAccount._id);
+        setAccounts(remainingAccounts);
         if (defaultAccountId === selectedSavedAccount._id) {
             setDefaultAccountId(PLATFORM_ID);
         }
-        setSelectedAccountId('new');
-        setForm(createEmptyAccount());
+
+        if (remainingAccounts.length > 0) {
+            const nextSelectedAccount = remainingAccounts.find((account) => account._id !== selectedSavedAccount._id) || remainingAccounts[0];
+            setSelectedAccountId(nextSelectedAccount._id);
+            setForm(normalizeAccount(nextSelectedAccount));
+        } else {
+            setSelectedAccountId('new');
+            setForm(createEmptyAccount());
+        }
+
         toast.success('Sender removed');
     };
 
@@ -324,6 +418,9 @@ const SendersTab = ({ canManage }) => {
         if (!canManage) return;
 
         let accountsToSave = [...accounts];
+        const preferredAccountAfterSave = selectedAccountId === 'new'
+            ? (formHasContent ? form : null)
+            : (selectedSavedAccount || form);
 
         if (selectedAccountId === 'new' && formHasContent) {
             const validationMessage = validateForm();
@@ -352,7 +449,7 @@ const SendersTab = ({ canManage }) => {
             });
             await refreshProfile();
             toast.success('Email settings saved');
-            await loadSettings();
+            await loadSettings(preferredAccountAfterSave);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to save');
         } finally {
@@ -362,7 +459,7 @@ const SendersTab = ({ canManage }) => {
 
     const handleSendTest = async () => {
         if (!canManage) return;
-        if (!selectedSavedAccountIsPersisted) {
+        if (!canSendTestForSelectedAccount) {
             toast.error('Save settings first.');
             return;
         }
@@ -371,10 +468,10 @@ const SendersTab = ({ canManage }) => {
         try {
             const { data } = await api.post('/company/email-settings/test', {
                 recipientEmail,
-                emailAccountId: selectedSavedAccount._id
+                emailAccountId: isPlatformSelected ? PLATFORM_ID : selectedSavedAccount._id
             });
             toast.success(data?.message || 'Test email sent');
-            await loadSettings();
+            await loadSettings(selectedDisplayAccount);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to send test');
         } finally {
@@ -395,12 +492,32 @@ const SendersTab = ({ canManage }) => {
                 emailAccountId: selectedSavedAccount._id
             });
             toast.success('Sender marked as verified');
-            await loadSettings();
+            await loadSettings(selectedSavedAccount);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to verify');
         } finally {
             setVerifying(false);
         }
+    };
+
+    const activateSenderRow = (accountId, accountList = accounts) => {
+        if (canManage) {
+            setDefaultAccountId(accountId);
+        }
+
+        if (accountId === PLATFORM_ID) {
+            setSelectedAccountId(PLATFORM_ID);
+            return;
+        }
+
+        selectAccount(accountId, accountList);
+    };
+
+    const handleSenderRowKeyDown = (event, accountId) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+
+        event.preventDefault();
+        activateSenderRow(accountId);
     };
 
     if (loading) {
@@ -450,7 +567,10 @@ const SendersTab = ({ canManage }) => {
                     </div>
 
                     <div className="space-y-2 p-5">
-                        <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${defaultAccountId === PLATFORM_ID ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                        <label
+                            className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${selectedAccountId === PLATFORM_ID ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                            onClick={() => activateSenderRow(PLATFORM_ID)}
+                        >
                             <input
                                 type="radio"
                                 name="default-sender"
@@ -473,7 +593,11 @@ const SendersTab = ({ canManage }) => {
                         {accounts.map((account) => (
                             <div
                                 key={account._id}
-                                className={`rounded-xl border p-4 transition ${selectedAccountId === account._id ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => activateSenderRow(account._id)}
+                                onKeyDown={(event) => handleSenderRowKeyDown(event, account._id)}
+                                className={`cursor-pointer rounded-xl border p-4 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedAccountId === account._id ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
                             >
                                 <div className="flex items-center gap-3">
                                     <input
@@ -481,14 +605,11 @@ const SendersTab = ({ canManage }) => {
                                         name="default-sender"
                                         checked={defaultAccountId === account._id}
                                         onChange={() => canManage && setDefaultAccountId(account._id)}
+                                        onClick={(event) => event.stopPropagation()}
                                         disabled={!canManage}
                                         className="mt-0.5"
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => selectAccount(account._id)}
-                                        className="min-w-0 flex-1 text-left"
-                                    >
+                                    <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="truncate text-sm font-semibold text-slate-800">{account.name}</span>
                                             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${account.ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -498,7 +619,7 @@ const SendersTab = ({ canManage }) => {
                                         <p className="mt-0.5 text-xs text-slate-500">
                                             {account.fromAddress} - {account.provider.toUpperCase()}
                                         </p>
-                                    </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -515,10 +636,69 @@ const SendersTab = ({ canManage }) => {
                     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
                             <Server size={16} className="text-blue-600" />
-                            <h3 className="font-bold text-slate-800">{selectedSavedAccount ? 'Edit Sender' : 'New Sender'}</h3>
+                            <div>
+                                <h3 className="font-bold text-slate-800">
+                                    {selectedDisplayAccount
+                                        ? (isPlatformSelected ? 'Sender Details' : 'Edit Sender')
+                                        : 'New Sender'}
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                    {selectedDisplayAccount
+                                        ? `${selectedDisplayAccount.name} - ${selectedDisplayAccount.fromAddress}`
+                                        : 'Create a sender or select one from the saved list to edit it.'}
+                                </p>
+                            </div>
                         </div>
 
                         <div className="space-y-4 p-5">
+                            {isPlatformSelected && (
+                                <div className="space-y-4">
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Sender Label</label>
+                                            <input
+                                                type="text"
+                                                value={platformOption.name}
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Provider</label>
+                                            <input
+                                                type="text"
+                                                value="Platform"
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">From Name</label>
+                                            <input
+                                                type="text"
+                                                value={platformOption.fromName}
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">From Address</label>
+                                            <input
+                                                type="text"
+                                                value={platformOption.fromAddress}
+                                                disabled
+                                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                                        This is the built-in TalentCIO sender. You can choose it as the default sender, but its credentials are managed by the platform and are not editable here.
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isPlatformSelected && (
+                                <>
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div>
                                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Sender Label</label>
@@ -659,27 +839,29 @@ const SendersTab = ({ canManage }) => {
                                     )}
                                 </div>
                             )}
+                                </>
+                            )}
                         </div>
                     </section>
 
-                    <section className={`rounded-2xl border p-4 text-sm ${selectedSavedAccount?.verified ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                    <section className={`rounded-2xl border p-4 text-sm ${selectedDisplayAccount?.verified ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
                         <div className="flex items-center justify-between gap-4">
                             <div className="flex items-start gap-2">
-                                {selectedSavedAccount?.verified ? (
+                                {selectedDisplayAccount?.verified ? (
                                     <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
                                 ) : (
                                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                                 )}
                                 <div>
                                     <p className="font-semibold">
-                                        {selectedSavedAccount
-                                            ? (selectedSavedAccount.verified
-                                                ? `Verified - ${selectedSavedAccount.fromAddress}`
+                                        {selectedDisplayAccount
+                                            ? (selectedDisplayAccount.verified
+                                                ? `Verified - ${selectedDisplayAccount.fromAddress}`
                                                 : 'Not verified - send a test to confirm')
                                             : 'Select a sender to test or verify'}
                                     </p>
                                     <p className="mt-0.5 text-xs opacity-75">
-                                        Last test: {formatDateTime(selectedSavedAccount?.testSentAt)} - Verified: {formatDateTime(selectedSavedAccount?.verifiedAt)}
+                                        Last test: {formatDateTime(selectedDisplayAccount?.testSentAt)} - Verified: {formatDateTime(selectedDisplayAccount?.verifiedAt)}
                                     </p>
                                 </div>
                             </div>
@@ -718,7 +900,7 @@ const SendersTab = ({ canManage }) => {
                                 <button
                                     type="button"
                                     onClick={handleSendTest}
-                                    disabled={sendingTest || !selectedSavedAccountIsPersisted}
+                                    disabled={sendingTest || !canSendTestForSelectedAccount}
                                     className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
                                 >
                                     {sendingTest ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -1131,8 +1313,29 @@ const DEFAULT_TEMPLATE_FORM = {
 };
 const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Action Required: Complete Your Pre-Onboarding';
 const DEFAULT_ONBOARDING_EMAIL_BODY = `
-<p>Hello <strong>{{firstName}}</strong>,</p>
-<p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+    <div style="background: linear-gradient(135deg, #2563eb, #7c3aed); padding: 32px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 22px;">Pre-Onboarding Action Required</h1>
+        <p style="color: #e0e7ff; margin-top: 8px; font-size: 14px;">Please complete the following items on your portal</p>
+    </div>
+    <div style="padding: 32px;">
+        <div style="font-size: 14px; line-height: 1.6;">
+            <p>Hello <strong>{{firstName}}</strong>,</p>
+            <p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+        </div>
+        {{credentialsSection}}
+        {{requestedSectionsBlock}}
+        {{requestedDocumentsBlock}}
+        {{sharedFilesBlock}}
+        {{deadlineBlock}}
+        <div style="text-align: center; margin: 28px 0;">
+            {{portalButton}}
+        </div>
+    </div>
+    <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #94a3b8; font-size: 12px;">
+        &copy; {{currentYear}} TalentCio. All rights reserved.
+    </div>
+</div>
 `;
 const BUILT_IN_ONBOARDING_TEMPLATE_ID = '__built_in_onboarding_template__';
 const BUILT_IN_ONBOARDING_TEMPLATE = {
@@ -1169,6 +1372,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
     const [activeTab, setActiveTab] = useState('edit');
     const subjectRef = useRef(null);
     const bodyRef = useRef(null);
+    const isExistingTemplate = Boolean(template?._id);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -1183,7 +1387,9 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
             isActive: template.isActive !== false
         } : {
             ...DEFAULT_TEMPLATE_FORM,
-            templateType: defaultTemplateType === 'onboarding' ? 'onboarding' : 'general'
+            templateType: defaultTemplateType === 'onboarding' ? 'onboarding' : 'general',
+            subject: defaultTemplateType === 'onboarding' ? DEFAULT_ONBOARDING_EMAIL_SUBJECT : '',
+            htmlBody: defaultTemplateType === 'onboarding' ? DEFAULT_ONBOARDING_EMAIL_BODY : ''
         });
     }, [defaultTemplateType, isOpen, template]);
 
@@ -1271,7 +1477,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-                    <h2 className="font-bold text-slate-800">{template ? 'Edit Template' : 'New Email Template'}</h2>
+                    <h2 className="font-bold text-slate-800">{isExistingTemplate ? 'Edit Template' : 'New Email Template'}</h2>
                     <button
                         type="button"
                         onClick={onClose}
@@ -1322,7 +1528,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                             ))}
                         </div>
                         <p className="mt-2 text-xs text-blue-600">
-                            Click &quot;S&quot; for subject or a token for body. Supported: {placeholderTokens.join(', ')}
+                            Click &quot;S&quot; for subject or a token for the HTML editor. Supported: {placeholderTokens.join(', ')}
                         </p>
                     </div>
 
@@ -1374,14 +1580,14 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                                     value={form.htmlBody}
                                     onChange={(event) => setForm((current) => ({ ...current, htmlBody: event.target.value }))}
                                     placeholder={activeTemplateType === 'onboarding'
-                                        ? '<p>Hello <strong>{{firstName}}</strong>,</p>\n<p>Please complete your pending onboarding items before {{submissionDeadline}}.</p>'
+                                        ? '<div>...full onboarding email HTML with {{credentialsSection}}, {{requestedDocumentsBlock}}, {{deadlineBlock}}, and {{portalButton}}...</div>'
                                         : '<p>Dear {{firstName}},</p>\n<p>Welcome to {{companyName}}. Please review the update shared below.</p>'}
                                     disabled={!canManage}
                                     rows={12}
                                     className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                                 />
                                 <p className="mt-1 text-xs text-slate-400">
-                                    Supports plain text and HTML. Use {'{{placeholder}}'} tokens for dynamic content.
+                                    Supports plain text and HTML. For onboarding templates, you can edit the complete email layout here and use {'{{placeholder}}'} tokens for dynamic sections.
                                 </p>
                             </div>
                         ) : (
@@ -1426,7 +1632,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                                 disabled={saving}
                                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                             >
-                                {saving ? 'Saving...' : (template ? 'Update Template' : 'Create Template')}
+                                {saving ? 'Saving...' : (isExistingTemplate ? 'Update Template' : 'Create Template')}
                             </button>
                         )}
                     </div>
@@ -1577,7 +1783,23 @@ const TemplatesTab = ({ canManage }) => {
                                     {canManage && (
                                         <td className="px-4 py-3">
                                             {isBuiltInEmailTemplate(template) ? (
-                                                <div className="text-right text-xs font-semibold text-slate-400">System default</div>
+                                                <div className="flex justify-end">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditing({
+                                                                ...template,
+                                                                _id: '',
+                                                                isBuiltIn: false,
+                                                                name: `${template.name} Copy`
+                                                            });
+                                                            setEditorOpen(true);
+                                                        }}
+                                                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                                    >
+                                                        Customize
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <div className="flex justify-end gap-2">
                                                     <button

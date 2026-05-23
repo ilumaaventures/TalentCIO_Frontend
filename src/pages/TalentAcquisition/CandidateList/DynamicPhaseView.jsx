@@ -32,20 +32,84 @@ const getPhaseEntryForOrder = (candidate, phaseOrder) => {
     })[0];
 };
 
+const getPhase2InterviewStatusValue = (candidate = {}) => {
+    const normalized = String(candidate?.phase2InterviewStatus || '').trim();
+    if (['Scheduled', 'Rejected', 'Shortlisted'].includes(normalized)) {
+        return normalized;
+    }
+
+    if (candidate?.phase2Decision === 'Rejected') {
+        return 'Rejected';
+    }
+
+    if (candidate?.phase2Decision === 'Shortlisted' || candidate?.phase2Decision === 'Selected') {
+        return 'Shortlisted';
+    }
+
+    return '';
+};
+
+const getDisplayInterviewRoundsForPhase = (candidate, phaseOrder) => {
+    const rounds = (candidate?.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(phaseOrder || 1));
+    if (Number(phaseOrder || 1) !== 2 || rounds.length > 0) {
+        return rounds;
+    }
+
+    const phase2InterviewStatus = getPhase2InterviewStatusValue(candidate);
+    const phase2Feedback = String(candidate?.phase2InterviewerFeedback || '').trim();
+    if (!phase2InterviewStatus && !phase2Feedback) {
+        return [];
+    }
+
+    return [{
+        _id: 'phase2-imported-interview-summary',
+        phase: 2,
+        status: phase2InterviewStatus === 'Rejected'
+            ? 'Failed'
+            : phase2InterviewStatus === 'Shortlisted'
+                ? 'Passed'
+                : 'Scheduled',
+        displayStatusLabel: phase2InterviewStatus || 'Scheduled',
+        feedback: candidate?.phase2InterviewerFeedback || '',
+        rating: null,
+        skillRatings: []
+    }];
+};
+
 const getInterviewStatusSummary = (rounds = []) => {
     if (!rounds || rounds.length === 0) {
         return { label: 'No rounds', color: 'text-slate-400 bg-slate-50 border-slate-200' };
+    }
+
+    if (rounds.length === 1 && rounds[0]?.displayStatusLabel) {
+        const displayStatus = rounds[0].displayStatusLabel;
+        if (displayStatus === 'Rejected') {
+            return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+
+        if (displayStatus === 'Scheduled') {
+            return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+        }
+
+        if (displayStatus === 'Shortlisted') {
+            return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+        }
     }
 
     const total = rounds.length;
     const completedRounds = rounds.filter((round) => round.feedback && (round.rating || round.rating === 0));
     const completedCount = completedRounds.length;
     const failedRounds = rounds.filter((round) => round.status === 'Failed');
-    const scheduledRounds = rounds.filter((round) => (round.status === 'Scheduled' || round.status === 'Pending') && !round.feedback);
+    const pendingRounds = rounds.filter((round) => round.status === 'Pending' && !round.feedback);
+    const scheduledRounds = rounds.filter((round) => round.status === 'Scheduled' && !round.feedback);
 
     if (failedRounds.length > 0) {
         const failedNames = failedRounds.map((round) => round.levelName).join(', ');
         return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+    }
+
+    if (pendingRounds.length > 0 && completedCount === 0) {
+        return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
     }
 
     if (scheduledRounds.length > 0 && completedCount === 0) {
@@ -174,7 +238,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const debouncedSearch = useDebouncedValue(search, 300);
+    const debouncedSearch = useDebouncedValue(search, 2000);
     const [statusFilter, setStatusFilter] = useState('All');
     const [decisionFilter, setDecisionFilter] = useState('All');
     const [pulledByFilter, setPulledByFilter] = useState('All');
@@ -203,17 +267,26 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const dateFilterControlsRef = useRef(null);
 
     const isAdmin = user?.roles?.includes('Admin');
+    const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
+        || user?.permissions?.includes('ta.analytics.global');
     const canEdit = isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
-        || user?.permissions?.includes('ta.candidate.edit');
-    const canMakeDecisions = canEdit || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
+        || user?.permissions?.includes('ta.candidate.edit')
+        || hasAnalyticsCandidateAccess;
+    const canMakeDecisions = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit')
+        || user?.permissions?.includes('ta.candidate.make_decision');
     const canManualAdvance = isAdmin || canEdit;
     const canCreate = isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
-        || user?.permissions?.includes('ta.create');
+        || user?.permissions?.includes('ta.create')
+        || hasAnalyticsCandidateAccess;
     const canMassMail = isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
@@ -225,7 +298,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.bulk_transfer')
         || user?.permissions?.includes('ta.candidate.transfer');
-    const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const canManageTemplates = isAdmin
+        || user?.permissions?.includes('ta.manage')
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('ta.email_template.manage')
+        || user?.permissions?.includes('*');
 
     useEffect(() => {
         if (hiringRequest?.phases?.length) {
@@ -292,7 +369,12 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                     return (candidateUser.roles || []).some((role) => (
                         Array.isArray(role.permissions) && role.permissions
                             .map((permission) => (typeof permission === 'string' ? permission : permission.key))
-                            .some((key) => key === 'ta.create' || key === '*')
+                            .some((key) => (
+                                key === '*'
+                                || key === 'ta.create'
+                                || key === 'ta.candidate.manage.assigned'
+                                || key === 'ta.candidate.manage.all'
+                            ))
                     ));
                 });
 
@@ -384,11 +466,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     ), [candidates, activePhase]);
 
     const pulledByOptions = useMemo(() => {
-        const recruiterNames = pulledByUsers
+        const pulledByNames = pulledByUsers
             .map((candidateUser) => `${candidateUser.firstName || ''} ${candidateUser.lastName || ''}`.trim())
             .filter(Boolean);
 
-        const options = [...new Set(recruiterNames)].sort((left, right) => left.localeCompare(right));
+        const options = [...new Set(pulledByNames)].sort((left, right) => left.localeCompare(right));
         if (pulledByFilter !== 'All' && pulledByFilter && !options.includes(pulledByFilter)) {
             return [...options, pulledByFilter].sort((left, right) => left.localeCompare(right));
         }
@@ -502,7 +584,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             const normalizedSearch = debouncedSearch.trim().toLowerCase();
             const matchesSearch = !normalizedSearch || haystack.includes(normalizedSearch);
             const matchesDecision = decisionFilter === 'All' || currentDecision === decisionFilter;
-            const rounds = (candidate.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(activePhase?.order || 1));
+            const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase?.order);
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
             const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
@@ -1523,7 +1605,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                 filteredCandidates.map((candidate) => {
                                     const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
                                     const isBusy = actionLoadingId === candidate._id;
-                                    const rounds = (candidate.interviewRounds || []).filter((round) => Number(round.phase || 1) === Number(activePhase?.order || 1));
+                                    const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase?.order);
                                     const interviewSummary = getInterviewStatusSummary(rounds);
                                     const isActiveInViewedPhase = !phaseEntry?.exitedAt && Number(candidate.currentPhaseOrder) === Number(activePhase?.order);
 

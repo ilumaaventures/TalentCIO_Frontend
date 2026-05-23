@@ -161,7 +161,7 @@ const CandidateForm = () => {
 
     // Duplicate detection state: { email: null | 'checking' | string, mobile: null | 'checking' | string }
     const [dupCheck, setDupCheck] = useState({ email: null, mobile: null });
-    const [duplicateCandidates, setDuplicateCandidates] = useState({ email: null, mobile: null });
+    const [, setDuplicateCandidates] = useState({ email: null, mobile: null });
 
     const isDynamicRequest = Boolean(requestMeta?.useDynamicPhases && Array.isArray(requestMeta?.phases) && requestMeta.phases.length > 0);
     const activeDynamicPhase = useMemo(
@@ -169,14 +169,6 @@ const CandidateForm = () => {
         [requestMeta, candidatePhaseState]
     );
     const dynamicStatusOptions = Array.isArray(activeDynamicPhase?.statusOptions) ? activeDynamicPhase.statusOptions : [];
-
-    const candidateHasResume = useCallback((candidate) => (
-        Boolean(candidate?.resumeUrl && String(candidate.resumeUrl).startsWith('http'))
-    ), []);
-
-    const canAttachResumeToDuplicate = useCallback((candidate) => (
-        Boolean(candidate && !candidateHasResume(candidate) && (resumeFile || (resumeUrl && String(resumeUrl).startsWith('http'))))
-    ), [candidateHasResume, resumeFile, resumeUrl]);
 
     // Handle click outside to close dropdown
     useEffect(() => {
@@ -200,26 +192,33 @@ const CandidateForm = () => {
                 fetchedUsers = res.data;
             }
 
-            // Filter users who have 'ta.create' permission or are 'Admin'
+            // Filter users who can add/manage candidates for TA requisitions or are Admin
             const filteredUsers = fetchedUsers.filter(u => {
                 // Check if the user is an Admin
                 const roleNames = u.roles?.map(r => r.name) || [];
                 if (roleNames.includes('Admin')) return true;
 
                 // Check permissions inside roles
-                let hasTaCreate = false;
+                let hasCandidateAccess = false;
                 if (u.roles && Array.isArray(u.roles)) {
                     u.roles.forEach(role => {
                         if (role.permissions && Array.isArray(role.permissions)) {
                             // Backend populates permissions with { _id, key } so we check 'key'
                             const keys = role.permissions.map(p => typeof p === 'string' ? p : p.key);
-                            if (keys.includes('ta.create') || keys.includes('*')) {
-                                hasTaCreate = true;
+                            if (
+                                keys.includes('*')
+                                || keys.includes('ta.create')
+                                || keys.includes('ta.candidate.manage.assigned')
+                                || keys.includes('ta.candidate.manage.all')
+                                || keys.includes('ta.analytics.assigned')
+                                || keys.includes('ta.analytics.global')
+                            ) {
+                                hasCandidateAccess = true;
                             }
                         }
                     });
                 }
-                return hasTaCreate;
+                return hasCandidateAccess;
             });
 
             setUsers(filteredUsers);
@@ -519,21 +518,20 @@ const CandidateForm = () => {
         if (isEditMode || !value || !hiringRequestId) return;
         setDupCheck(prev => ({ ...prev, [field]: 'checking' }));
         try {
-            const res = await api.get(`/ta/candidates/${hiringRequestId}`);
-            const allCandidates = res.data.candidates || [];
-            const trimmed = value.trim().toLowerCase();
-            const duplicate = allCandidates.find(c =>
-                field === 'email'
-                    ? c.email?.toLowerCase() === trimmed
-                    : c.mobile?.trim() === value.trim()
-            );
-            if (duplicate) {
-                setDuplicateCandidates(prev => ({ ...prev, [field]: duplicate }));
+            const params = { hiringRequestId };
+            if (field === 'email') {
+                params.email = value;
+            } else {
+                params.mobile = value;
+            }
+
+            const res = await api.get('/ta/candidates/duplicate-check', { params });
+            if (res.data?.exists) {
+                const duplicateMessage = res.data?.message || 'This candidate already exists in the system.';
+                setDuplicateCandidates(prev => ({ ...prev, [field]: true }));
                 setDupCheck(prev => ({
                     ...prev,
-                    [field]: canAttachResumeToDuplicate(duplicate)
-                        ? `"${duplicate.candidateName}" already exists with this ${field === 'email' ? 'email' : 'mobile number'}. The uploaded resume will be attached to that existing profile.`
-                        : `"${duplicate.candidateName}" is already added with this ${field === 'email' ? 'email' : 'mobile number'}.`
+                    [field]: duplicateMessage
                 }));
             } else {
                 setDupCheck(prev => ({ ...prev, [field]: null }));
@@ -604,18 +602,24 @@ const CandidateForm = () => {
             return;
         }
 
-        // Block submission if a duplicate was detected, unless we're attaching a resume to an existing profile with no resume yet.
-        if (dupCheck.email && dupCheck.email !== 'checking' && !canAttachResumeToDuplicate(duplicateCandidates.email)) {
-            toast.error('Please resolve the duplicate email before submitting.');
-            return;
-        }
-        if (dupCheck.mobile && dupCheck.mobile !== 'checking' && !canAttachResumeToDuplicate(duplicateCandidates.mobile)) {
-            toast.error('Please resolve the duplicate mobile number before submitting.');
-            return;
-        }
-
         try {
             setLoading(true);
+
+            if (!isEditMode) {
+                const duplicateResponse = await api.get('/ta/candidates/duplicate-check', {
+                    params: {
+                        hiringRequestId,
+                        email: formData.email,
+                        mobile: formData.mobile
+                    }
+                });
+
+                if (duplicateResponse.data?.exists) {
+                    toast.error(duplicateResponse.data?.message || 'This candidate already exists in the system.');
+                    setLoading(false);
+                    return;
+                }
+            }
 
             let uploadedResumeUrl = resumeUrl;
             let uploadedResumePublicId = resumePublicId;
@@ -868,14 +872,14 @@ const CandidateForm = () => {
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Profile Pulled By</label>
                                             <select name="profilePulledBy" value={formData.profilePulledBy} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-50" disabled={isViewMode}>
-                                                <option value="">Select Recruiter</option>
+                                                <option value="">Select User</option>
                                                 {users.map(u => <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>{u.firstName} {u.lastName}</option>)}
                                             </select>
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Called By</label>
                                             <select name="calledBy" value={formData.calledBy} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-50" disabled={isViewMode}>
-                                                <option value="">Select Recruiter</option>
+                                                <option value="">Select User</option>
                                                 {users.map(u => <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>{u.firstName} {u.lastName}</option>)}
                                             </select>
                                         </div>

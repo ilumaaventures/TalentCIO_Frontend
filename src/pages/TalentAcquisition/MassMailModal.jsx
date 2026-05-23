@@ -18,9 +18,10 @@ const buildPreviewData = (candidate, requestMeta, customNote = '') => {
     const fullName = candidate?.candidateName || '';
     const [firstName = '', ...lastNameParts] = fullName.trim().split(/\s+/).filter(Boolean);
     const lastName = lastNameParts.join(' ');
-    const recruiterName = requestMeta?.ownership?.recruiter
-        ? `${requestMeta.ownership.recruiter.firstName || ''} ${requestMeta.ownership.recruiter.lastName || ''}`.trim()
-        : (candidate?.profilePulledBy || '');
+    const hiringManagerName = requestMeta?.ownership?.hiringManager
+        ? `${requestMeta.ownership.hiringManager.firstName || ''} ${requestMeta.ownership.hiringManager.lastName || ''}`.trim()
+        : '';
+    const taContactName = candidate?.profilePulledBy || hiringManagerName || 'Talent Acquisition Team';
 
     return {
         candidateName: fullName,
@@ -38,7 +39,7 @@ const buildPreviewData = (candidate, requestMeta, customNote = '') => {
         location: requestMeta?.location || '',
         managerName: '',
         managerEmail: '',
-        recruiterName,
+        recruiterName: taContactName,
         companyName: requestMeta?.companyName || 'TalentCIO',
         requestId: requestMeta?.requestId || '',
         currentStatus: candidate?.status || '',

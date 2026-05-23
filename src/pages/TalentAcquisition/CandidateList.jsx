@@ -53,6 +53,54 @@ const getRoundsForPhase = (candidate, phase) => (
         : []
 );
 
+const getPhase2InterviewStatusValue = (candidate = {}) => {
+    const normalized = String(candidate?.phase2InterviewStatus || '').trim();
+    if (['Scheduled', 'Rejected', 'Shortlisted'].includes(normalized)) {
+        return normalized;
+    }
+
+    if (candidate?.phase2Decision === 'Rejected') {
+        return 'Rejected';
+    }
+
+    if (candidate?.phase2Decision === 'Shortlisted' || candidate?.phase2Decision === 'Selected') {
+        return 'Shortlisted';
+    }
+
+    return '';
+};
+
+const getDisplayInterviewRoundsForPhase = (candidate, phase) => {
+    const rounds = getRoundsForPhase(candidate, phase);
+    if (phase !== 2 || rounds.length > 0) {
+        return rounds;
+    }
+
+    const phase2InterviewStatus = getPhase2InterviewStatusValue(candidate);
+    const phase2Feedback = String(candidate?.phase2InterviewerFeedback || '').trim();
+    if (!phase2InterviewStatus && !phase2Feedback) {
+        return [];
+    }
+
+    return [{
+        _id: 'phase2-imported-interview-summary',
+        phase: 2,
+        status: phase2InterviewStatus === 'Rejected'
+            ? 'Failed'
+            : phase2InterviewStatus === 'Shortlisted'
+                ? 'Passed'
+                : 'Scheduled',
+        displayStatusLabel: phase2InterviewStatus || 'Scheduled',
+        feedback: candidate?.phase2InterviewerFeedback || '',
+        rating: null,
+        skillRatings: []
+    }];
+};
+
+const hasPhase2InterviewActivity = (candidate = {}) => {
+    return getDisplayInterviewRoundsForPhase(candidate, 2).length > 0;
+};
+
 const getInterviewFilterValue = (rounds = []) => {
     if (!Array.isArray(rounds) || rounds.length === 0) {
         return null;
@@ -76,6 +124,39 @@ const getInterviewFilterValue = (rounds = []) => {
     return 'Scheduled';
 };
 
+const getInterviewSummaryValue = (rounds = []) => {
+    if (!Array.isArray(rounds) || rounds.length === 0) {
+        return null;
+    }
+
+    if (rounds.some((round) => round.status === 'Failed')) {
+        return 'Failed';
+    }
+
+    if (rounds.some((round) => round.status === 'Pending')) {
+        return 'Pending';
+    }
+
+    if (rounds.some((round) => round.status === 'Scheduled')) {
+        return 'Scheduled';
+    }
+
+    const allClosed = rounds.every((round) => ['Passed', 'Skipped'].includes(round.status));
+    if (allClosed) {
+        return 'Shortlisted';
+    }
+
+    return 'Pending';
+};
+
+const getRoundExportInterviewStatus = (round = {}) => {
+    if (round.status === 'Failed') return 'Rejected';
+    if (round.status === 'Passed' || round.status === 'Skipped') return 'Shortlisted';
+    return 'Scheduled';
+};
+
+const getPhase2InterviewStatusExportValue = (candidate = {}) => getPhase2InterviewStatusValue(candidate);
+
 const matchesInterviewFilter = (rounds = [], filterValue = 'All') => {
     if (filterValue === 'All') {
         return true;
@@ -86,6 +167,172 @@ const matchesInterviewFilter = (rounds = [], filterValue = 'All') => {
     }
 
     return getInterviewFilterValue(rounds) === filterValue;
+};
+
+const normalizeMultiValueFilter = (values = []) => [...new Set(
+    (Array.isArray(values) ? values : [values])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+)];
+
+const matchesMultiValueFilter = (selectedValues = [], candidateValue = '') => {
+    const normalizedSelections = normalizeMultiValueFilter(selectedValues);
+    if (normalizedSelections.length === 0) {
+        return true;
+    }
+
+    const normalizedCandidateValue = String(candidateValue || '').trim();
+    return normalizedCandidateValue ? normalizedSelections.includes(normalizedCandidateValue) : false;
+};
+
+const getMultiFilterLabel = (selectedValues = [], fallbackLabel) => {
+    if (selectedValues.length === 0) {
+        return fallbackLabel;
+    }
+
+    if (selectedValues.length === 1) {
+        return selectedValues[0];
+    }
+
+    return `${selectedValues.length} selected`;
+};
+
+const formatDateInputValue = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const getCreatedAtPresetRange = (preset) => {
+    if (!preset) {
+        return { dateField: '', startDate: '', endDate: '' };
+    }
+
+    const today = new Date();
+    const startDate = new Date(today);
+
+    switch (preset) {
+        case 'last3days':
+            startDate.setDate(today.getDate() - 2);
+            break;
+        case 'last7days':
+            startDate.setDate(today.getDate() - 6);
+            break;
+        case 'last2weeks':
+            startDate.setDate(today.getDate() - 13);
+            break;
+        case 'thisMonth':
+            startDate.setDate(1);
+            break;
+        default:
+            return { dateField: '', startDate: '', endDate: '' };
+    }
+
+    return {
+        dateField: 'createdAt',
+        startDate: formatDateInputValue(startDate),
+        endDate: formatDateInputValue(today)
+    };
+};
+
+const createdDatePresetOptions = [
+    { value: 'last3days', label: 'Last 3 Days' },
+    { value: 'last7days', label: 'Last 7 Days' },
+    { value: 'last2weeks', label: 'Last 2 Weeks' },
+    { value: 'thisMonth', label: 'This Month' }
+];
+
+const getCreatedDatePresetLabel = (preset) => (
+    createdDatePresetOptions.find((option) => option.value === preset)?.label || 'Sort'
+);
+
+const MultiSelectFilter = ({
+    label,
+    options = [],
+    selectedValues = [],
+    onToggleValue,
+    onClear,
+    isOpen,
+    onToggleOpen,
+    emptyLabel,
+    widthClass = 'w-40'
+}) => {
+    const normalizedSelectedValues = normalizeMultiValueFilter(selectedValues);
+    const triggerRef = useRef(null);
+    const [panelPosition, setPanelPosition] = useState(null);
+
+    useEffect(() => {
+        if (!isOpen || !triggerRef.current || typeof window === 'undefined') {
+            setPanelPosition(null);
+            return;
+        }
+
+        const rect = triggerRef.current.getBoundingClientRect();
+        setPanelPosition({
+            top: rect.bottom + 8,
+            left: rect.left,
+            width: rect.width
+        });
+    }, [isOpen]);
+
+    return (
+        <div className={`shrink-0 relative ${widthClass}`}>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">{label}</label>
+            <button
+                ref={triggerRef}
+                type="button"
+                onClick={() => onToggleOpen(isOpen ? null : label)}
+                data-multi-filter-trigger="true"
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-xs text-slate-700 outline-none transition hover:border-slate-400 focus:ring-2 focus:ring-blue-500"
+            >
+                <span className="truncate">{getMultiFilterLabel(normalizedSelectedValues, emptyLabel)}</span>
+                <svg className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+            </button>
+            {isOpen && panelPosition && typeof document !== 'undefined' && createPortal(
+                <div
+                    data-multi-filter-panel="true"
+                    className="fixed z-[10000] max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+                    style={panelPosition}
+                >
+                    <div className="mb-2 flex items-center justify-between px-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Choose users</span>
+                        <button
+                            type="button"
+                            onClick={onClear}
+                            className="text-[10px] font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                            Clear
+                        </button>
+                    </div>
+                    <div className="space-y-1">
+                        {options.length > 0 ? options.map((option) => {
+                            const isChecked = normalizedSelectedValues.includes(option);
+                            return (
+                                <label
+                                    key={option}
+                                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => onToggleValue(option)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="truncate">{option}</span>
+                                </label>
+                            );
+                        }) : (
+                            <div className="px-2 py-3 text-xs text-slate-400">No users found</div>
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+        </div>
+    );
 };
 
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
@@ -165,9 +412,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterExperience, setFilterExperience] = useState('');
     const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
     const [filterRating, setFilterRating] = useState('All');
-    const [filterPulledBy, setFilterPulledBy] = useState('All');
-    const [filterUploadedBy, setFilterUploadedBy] = useState('All');
+    const [filterPulledBy, setFilterPulledBy] = useState([]);
+    const [filterUploadedBy, setFilterUploadedBy] = useState([]);
     const [filterUploadType, setFilterUploadType] = useState('All');
+    const [createdDatePreset, setCreatedDatePreset] = useState('');
     const [dateFilterField, setDateFilterField] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
@@ -175,7 +423,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterProfileShared, setFilterProfileShared] = useState(false);
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
     const [users, setUsers] = useState([]);
-    const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 300);
+    const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 2000);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCandidateId = searchParams.get('candidateId');
@@ -191,17 +439,40 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
+    const [showCreatedDateSortMenu, setShowCreatedDateSortMenu] = useState(false);
+    const [openMultiFilter, setOpenMultiFilter] = useState(null);
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
     const filtersScrollRef = useRef(null);
     const dateFilterControlsRef = useRef(null);
     const isAdmin = user?.roles?.includes('Admin');
+    const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
+        || user?.permissions?.includes('ta.analytics.global');
     const canEditCandidates = isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit')
+        || hasAnalyticsCandidateAccess;
+    const canCreateCandidates = isAdmin
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('ta.create')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || hasAnalyticsCandidateAccess;
+    const canDeleteCandidates = isAdmin
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('ta.delete')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit');
-    const canMakeDecisions = canEditCandidates || user?.permissions?.includes('ta.decision') || user?.permissions?.includes('ta.candidate.make_decision');
+    const canMakeDecisions = isAdmin
+        || user?.permissions?.includes('ta.edit')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit')
+        || user?.permissions?.includes('ta.candidate.make_decision');
+    const canManagePhase3Decisions = canMakeDecisions;
     const canTransferCandidates = isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
@@ -214,10 +485,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.mass_mail')
         || user?.permissions?.includes('ta.edit');
     const canBulkTransfer = canTransferCandidates;
-    const canManageTemplates = isAdmin || user?.permissions?.includes('ta.config.manage') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('ta.edit');
+    const canManageTemplates = isAdmin
+        || user?.permissions?.includes('ta.manage')
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('ta.email_template.manage')
+        || user?.permissions?.includes('*');
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
     , []);
+    const hasMovedToPhase2 = useCallback((candidate) => (
+        isProfileSharedCandidate(candidate)
+        || Boolean(String(candidate?.phase2Decision || '').trim() && candidate?.phase2Decision !== 'None')
+        || Boolean(String(candidate?.phase2InterviewStatus || '').trim() && candidate?.phase2InterviewStatus !== 'None')
+        || Boolean(String(candidate?.phase2InterviewerFeedback || '').trim())
+    ), [isProfileSharedCandidate]);
 
     const handleSelectCandidate = (candId) => {
         const newParams = new URLSearchParams(searchParams);
@@ -247,9 +528,21 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const target = event?.target;
             const clickedMenuTrigger = target?.closest?.('[data-legacy-action-menu-trigger="true"]');
             const clickedMenuContent = target?.closest?.('[data-legacy-action-menu-content="true"]');
+            const clickedMultiFilterTrigger = target?.closest?.('[data-multi-filter-trigger="true"]');
+            const clickedMultiFilterPanel = target?.closest?.('[data-multi-filter-panel="true"]');
+            const clickedSortTrigger = target?.closest?.('[data-created-sort-trigger="true"]');
+            const clickedSortPanel = target?.closest?.('[data-created-sort-panel="true"]');
 
             if (clickedMenuTrigger || clickedMenuContent) {
                 return;
+            }
+
+            if (!clickedMultiFilterTrigger && !clickedMultiFilterPanel) {
+                setOpenMultiFilter(null);
+            }
+
+            if (!clickedSortTrigger && !clickedSortPanel) {
+                setShowCreatedDateSortMenu(false);
             }
 
             setActiveMenu(null);
@@ -266,7 +559,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
+    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
 
     useEffect(() => {
         if (!dateFilterField) return;
@@ -295,18 +588,23 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         return String(candidate?.candidateName || '').toLowerCase().includes(normalizedCandidateNameSearch);
     }, [normalizedCandidateNameSearch]);
 
+    const pulledByOptions = useMemo(() => {
+        const options = normalizeMultiValueFilter([
+            ...users.map((userItem) => `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()),
+            ...candidates.map((candidate) => candidate.profilePulledBy),
+            ...filterPulledBy
+        ]);
+
+        return options.sort((left, right) => left.localeCompare(right));
+    }, [users, candidates, filterPulledBy]);
+
     const uploadedByOptions = useMemo(() => {
-        const options = [...new Set(
-            candidates
-                .map((candidate) => getCandidateUploadedByName(candidate))
-                .filter(Boolean)
-        )].sort((left, right) => left.localeCompare(right));
+        const options = normalizeMultiValueFilter([
+            ...candidates.map((candidate) => getCandidateUploadedByName(candidate)),
+            ...filterUploadedBy
+        ]);
 
-        if (filterUploadedBy !== 'All' && filterUploadedBy && !options.includes(filterUploadedBy)) {
-            return [...options, filterUploadedBy].sort((left, right) => left.localeCompare(right));
-        }
-
-        return options;
+        return options.sort((left, right) => left.localeCompare(right));
     }, [candidates, filterUploadedBy]);
 
     const fetchUsers = useCallback(async () => {
@@ -323,18 +621,23 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 const roleNames = u.roles?.map(r => r.name) || [];
                 if (roleNames.includes('Admin')) return true;
 
-                let hasTaCreate = false;
+                let hasCandidateCreateAccess = false;
                 if (u.roles && Array.isArray(u.roles)) {
                     u.roles.forEach(role => {
                         if (role.permissions && Array.isArray(role.permissions)) {
                             const keys = role.permissions.map(p => typeof p === 'string' ? p : p.key);
-                            if (keys.includes('ta.create') || keys.includes('*')) {
-                                hasTaCreate = true;
+                            if (
+                                keys.includes('*')
+                                || keys.includes('ta.create')
+                                || keys.includes('ta.candidate.manage.assigned')
+                                || keys.includes('ta.candidate.manage.all')
+                            ) {
+                                hasCandidateCreateAccess = true;
                             }
                         }
                     });
                 }
-                return hasTaCreate;
+                return hasCandidateCreateAccess;
             });
 
             setUsers(filteredUsers);
@@ -349,8 +652,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const structuralPhase1Candidates = useMemo(() => {
         return candidates.filter(candidate => {
             const matchCandidateName = matchesCandidateNameSearch(candidate);
-            const matchPulledBy = filterPulledBy === 'All' || candidate.profilePulledBy === filterPulledBy;
-            const matchUploadedBy = filterUploadedBy === 'All' || getCandidateUploadedByName(candidate) === filterUploadedBy;
+            const matchPulledBy = matchesMultiValueFilter(filterPulledBy, candidate.profilePulledBy);
+            const matchUploadedBy = matchesMultiValueFilter(filterUploadedBy, getCandidateUploadedByName(candidate));
             const matchUploadType = filterUploadType === 'All' || getCandidateUploadType(candidate) === filterUploadType;
             const matchTransferred = filterTransferred === 'All'
                 ? true
@@ -421,8 +724,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         return candidates.filter(c => {
             const isShortlisted = isProfileSharedCandidate(c);
             const matchCandidateName = matchesCandidateNameSearch(c);
-            const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
-            const matchUploadedBy = filterUploadedBy === 'All' || getCandidateUploadedByName(c) === filterUploadedBy;
+            const matchPulledBy = matchesMultiValueFilter(filterPulledBy, c.profilePulledBy);
+            const matchUploadedBy = matchesMultiValueFilter(filterUploadedBy, getCandidateUploadedByName(c));
             const matchUploadType = filterUploadType === 'All' || getCandidateUploadType(c) === filterUploadType;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
             return isShortlisted && matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
@@ -456,8 +759,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     : (candidate.phase2Decision || 'None') === filterDecision);
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
-                const rounds = getRoundsForPhase(candidate, 2);
-                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
+                matchInterviewStatus = filterInterviewStatus === 'Scheduled'
+                    ? hasPhase2InterviewActivity(candidate)
+                    : matchesInterviewFilter(getDisplayInterviewRoundsForPhase(candidate, 2), filterInterviewStatus);
             }
             return matchDecision && matchInterviewStatus;
         });
@@ -469,9 +773,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
             selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
             rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
-            interviewScheduled: structuralPhase2Candidates.filter(c =>
-                getRoundsForPhase(c, 2).length > 0
-            ).length
+            interviewScheduled: structuralPhase2Candidates.filter(hasPhase2InterviewActivity).length
         };
     }, [structuralPhase2Candidates]);
 
@@ -480,8 +782,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         return candidates.filter(c => {
             const isSelected = c.phase2Decision === 'Selected';
             const matchCandidateName = matchesCandidateNameSearch(c);
-            const matchPulledBy = filterPulledBy === 'All' || c.profilePulledBy === filterPulledBy;
-            const matchUploadedBy = filterUploadedBy === 'All' || getCandidateUploadedByName(c) === filterUploadedBy;
+            const matchPulledBy = matchesMultiValueFilter(filterPulledBy, c.profilePulledBy);
+            const matchUploadedBy = matchesMultiValueFilter(filterUploadedBy, getCandidateUploadedByName(c));
             const matchUploadType = filterUploadType === 'All' || getCandidateUploadType(c) === filterUploadType;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
             return isSelected && matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
@@ -666,6 +968,19 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [fetchCandidates]);
 
+    const handleMoveBackToPreviousPhase = useCallback(async (candidateId) => {
+        if (!window.confirm('Move this candidate back to Phase 1? This will clear Phase 2 status, feedback, and Phase 2 interview rounds.')) return;
+
+        try {
+            await api.patch(`/ta/candidates/${candidateId}/move-back-phase`);
+            toast.success('Candidate moved back to Phase 1');
+            fetchCandidates();
+        } catch (error) {
+            console.error('Error moving candidate back to previous phase:', error);
+            toast.error(error.response?.data?.message || 'Failed to move candidate back to Phase 1');
+        }
+    }, [fetchCandidates]);
+
     const handleExportExcel = async () => {
         try {
             toast.loading('Preparing export...', { id: 'export-excel' });
@@ -736,9 +1051,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         'Interview date',
                         'Interviewer Name',
                         ...softSkillsHeaders,
-                        ...techSkillsHeaders
+                        ...techSkillsHeaders,
+                        'Performance Rating',
+                        'Interview Status'
                     ],
-                    width: 3 + softSkillsHeaders.length + techSkillsHeaders.length
+                    width: 5 + softSkillsHeaders.length + techSkillsHeaders.length
                 });
             }
 
@@ -756,7 +1073,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
                 ...roundSections,
-                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
+                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(sec => sec.width > 0);
 
             const workbook = new ExcelJS.Workbook();
@@ -785,6 +1102,95 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 }
                 currentCol += sec.width;
             });
+
+            const applyRoundColumnValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title.startsWith('Round ')) {
+                        const performanceRatingOffset = section.subHeaders.indexOf('Performance Rating');
+                        const interviewStatusOffset = section.subHeaders.indexOf('Interview Status');
+
+                        if (performanceRatingOffset >= 0) {
+                            const performanceRatingCol = sectionStartCol + performanceRatingOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, performanceRatingCol).dataValidation = {
+                                    type: 'whole',
+                                    operator: 'between',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [1, 10],
+                                    errorTitle: 'Invalid Rating',
+                                    error: 'Performance Rating must be a whole number between 1 and 10.'
+                                };
+                            }
+                        }
+
+                        if (interviewStatusOffset >= 0) {
+                            const interviewStatusCol = sectionStartCol + interviewStatusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, interviewStatusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: ['"Shortlisted,Rejected,Scheduled"'],
+                                    errorTitle: 'Invalid Interview Status',
+                                    error: 'Interview Status must be one of: Shortlisted, Rejected, Scheduled.'
+                                };
+                            }
+                        }
+                    }
+
+                    sectionStartCol += section.width;
+                });
+            };
+
+            const applyPhase2InterviewStatusValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title === 'Final Status & Decision') {
+                        const phase2InterviewStatusOffset = section.subHeaders.indexOf('Interview Status (Phase2)');
+                        if (phase2InterviewStatusOffset >= 0) {
+                            const phase2InterviewStatusCol = sectionStartCol + phase2InterviewStatusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, phase2InterviewStatusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: ['"Shortlisted,Rejected,Scheduled"'],
+                                    errorTitle: 'Invalid Phase 2 Interview Status',
+                                    error: 'Interview Status (Phase2) must be one of: Shortlisted, Rejected, Scheduled.'
+                                };
+                            }
+                        }
+                    }
+                    sectionStartCol += section.width;
+                });
+            };
+
+            const applyFinalDecisionValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title === 'Final Status & Decision') {
+                        ['Profile Shortlisted (Yes/No)', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
+                            const offset = section.subHeaders.indexOf(headerName);
+                            if (offset >= 0) {
+                                const targetCol = sectionStartCol + offset;
+                                for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                    sheet.getCell(rowNumber, targetCol).dataValidation = {
+                                        type: 'list',
+                                        allowBlank: true,
+                                        showErrorMessage: true,
+                                        formulae: ['"Yes,No"'],
+                                        errorTitle: 'Invalid Value',
+                                        error: `${headerName} must be either Yes or No.`
+                                    };
+                                }
+                            }
+                        });
+                    }
+                    sectionStartCol += section.width;
+                });
+            };
 
             // Set Column Widths and Formatting
             row2Data.forEach((_, i) => {
@@ -850,6 +1256,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         const interviewer = r.evaluatedBy
                             ? `${r.evaluatedBy.firstName || ''} ${r.evaluatedBy.lastName || ''}`.trim()
                             : toEmptyCell(r.interviewerName);
+                        const performanceRating = toEmptyCell(r.rating, { zeroIsEmpty: true });
+                        const roundInterviewStatus = getRoundExportInterviewStatus(r);
 
                         const rSoftSkillRatings = softSkillsHeaders.map(skillName => {
                             const rating = (r.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
@@ -861,10 +1269,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             return sr ? `${sr.rating}/10` : null;
                         });
 
-                        roundsData.push(feedback, date, toEmptyCell(interviewer), ...rSoftSkillRatings, ...rTechSkillRatings);
+                        roundsData.push(feedback, date, toEmptyCell(interviewer), ...rSoftSkillRatings, ...rTechSkillRatings, performanceRating, roundInterviewStatus);
                     } else {
                         // Empty round padding
-                        const fieldCount = 3 + softSkillsHeaders.length + techSkillsHeaders.length;
+                        const fieldCount = 5 + softSkillsHeaders.length + techSkillsHeaders.length;
                         for (let j = 0; j < fieldCount; j++) roundsData.push(null);
                     }
                 }
@@ -872,6 +1280,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : (candidate.decision === 'Rejected' ? 'No' : '');
                 const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected') ? 'Yes' : null;
                 const phase2Selected = candidate.phase2Decision === 'Selected' ? 'Yes' : null;
+                const phase2InterviewStatus = getPhase2InterviewStatusExportValue(candidate);
                 const statusSummary = getInterviewStatusSummary(rounds);
                 const interviewStatusLabel = toEmptyCell(statusSummary.label);
 
@@ -921,7 +1330,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     phase2Shortlisted,
                     phase2Selected,
                     toEmptyCell(candidate.phase2InterviewerFeedback),
-                    interviewStatusLabel,
+                    toEmptyCell(phase2InterviewStatus),
                     toEmptyCell(candidate.rejectionReason),
                     null // Decision Status
                 ];
@@ -947,6 +1356,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 }
             });
 
+            const lastCandidateRow = Math.max(3, dataToExport.length + 2);
+            applyRoundColumnValidation(3, lastCandidateRow);
+            applyPhase2InterviewStatusValidation(3, lastCandidateRow);
+            applyFinalDecisionValidation(3, lastCandidateRow);
+
             const buffer = await workbook.xlsx.writeBuffer();
             
             // Generate dynamic filename: [Job Title] Candidate List.xlsx
@@ -970,7 +1384,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             ));
         } catch (error) {
             console.error('Error updating decision:', error);
-            toast.error('Failed to update decision');
+            toast.error(error.response?.data?.message || 'Failed to update decision');
         }
     };
 
@@ -978,9 +1392,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         try {
             await api.put(`/ta/candidates/${candidateId}`, { profileShared: true });
             toast.success('Candidate moved to next phase');
-            setCandidates(prev => prev.map(c =>
-                c._id === candidateId ? { ...c, profileShared: true } : c
-            ));
+            fetchCandidates();
         } catch (error) {
             console.error('Error moving candidate to next phase:', error);
             toast.error(error.response?.data?.message || 'Failed to move candidate to next phase');
@@ -1035,10 +1447,29 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const getInterviewStatusSummary = (rounds = []) => {
         if (!rounds || rounds.length === 0) return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
 
-        const interviewStatus = getInterviewFilterValue(rounds);
+        if (rounds.length === 1 && rounds[0]?.displayStatusLabel) {
+            const displayStatus = rounds[0].displayStatusLabel;
+            if (displayStatus === 'Rejected') {
+                return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
+            }
+
+            if (displayStatus === 'Scheduled') {
+                return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+            }
+
+            if (displayStatus === 'Shortlisted') {
+                return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+            }
+        }
+
+        const interviewStatus = getInterviewSummaryValue(rounds);
 
         if (interviewStatus === 'Failed') {
             return { label: 'Failed', color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+
+        if (interviewStatus === 'Pending') {
+            return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
         }
 
         if (interviewStatus === 'Scheduled') {
@@ -1161,10 +1592,78 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         </div>
                     </div>
                     <div className="relative flex items-center gap-2">
+                        <div className="relative min-w-34">
+                            <button
+                                type="button"
+                                data-created-sort-trigger="true"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    setShowToolbarMenu(false);
+                                    setShowCreatedDateSortMenu((prev) => !prev);
+                                }}
+                                className={`flex w-full items-center justify-between rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500 ${
+                                    createdDatePreset
+                                        ? 'border-blue-200 text-blue-700'
+                                        : 'border-slate-200 text-slate-600'
+                                }`}
+                            >
+                                <span className="truncate">{getCreatedDatePresetLabel(createdDatePreset)}</span>
+                                <svg className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showCreatedDateSortMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                            {showCreatedDateSortMenu && (
+                                <div
+                                    data-created-sort-panel="true"
+                                    className="absolute left-0 top-14 z-30 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
+                                    onClick={(event) => event.stopPropagation()}
+                                >
+                                    <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+                                        Sort
+                                    </div>
+                                    {createdDatePresetOptions.map((option) => (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => {
+                                                setCreatedDatePreset(option.value);
+                                                const range = getCreatedAtPresetRange(option.value);
+                                                setDateFilterField(range.dateField);
+                                                setDateFrom(range.startDate);
+                                                setDateTo(range.endDate);
+                                                setShowCreatedDateSortMenu(false);
+                                            }}
+                                            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                                                createdDatePreset === option.value
+                                                    ? 'bg-blue-50 text-blue-700'
+                                                    : 'text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                    <div className="my-2 border-t border-slate-100" />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setCreatedDatePreset('');
+                                            setDateFilterField('');
+                                            setDateFrom('');
+                                            setDateTo('');
+                                            setShowCreatedDateSortMenu(false);
+                                        }}
+                                        className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                                    >
+                                        Clear
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                         <button
                             type="button"
                             onClick={(event) => {
                                 event.stopPropagation();
+                                setShowCreatedDateSortMenu(false);
                                 setShowToolbarMenu(prev => !prev);
                             }}
                             className={toolbarMenuButtonClass}
@@ -1250,7 +1749,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
-                                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                {canCreateCandidates && (
                                     <button
                                         onClick={() => {
                                             setShowToolbarMenu(false);
@@ -1266,7 +1765,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
-                                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                {canCreateCandidates && (
                                     <button
                                         onClick={() => {
                                             setShowToolbarMenu(false);
@@ -1282,7 +1781,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
-                                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                                {canCreateCandidates && (
                                     <button
                                         onClick={() => {
                                             setShowToolbarMenu(false);
@@ -1436,10 +1935,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 });
                             }
 
-                            if (filterPulledBy !== 'All') {
-                                const pulledCount = basePhase1Candidates.filter(c => c.profilePulledBy === filterPulledBy).length;
+                            if (filterPulledBy.length > 0) {
+                                const pulledCount = basePhase1Candidates.filter(c => matchesMultiValueFilter(filterPulledBy, c.profilePulledBy)).length;
                                 dynamicCards.push({
-                                    label: `By: ${filterPulledBy.split(' ')[0]}`,
+                                    label: filterPulledBy.length === 1
+                                        ? `By: ${filterPulledBy[0].split(' ')[0]}`
+                                        : `${filterPulledBy.length} Users`,
                                     value: pulledCount,
                                     icon: Users,
                                     color: 'indigo',
@@ -1837,42 +2338,46 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         <option value="3">3+ (Below Avg)</option>
                                     </select>
                                 </div>
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Pulled By</label>
-                                    <select
-                                        value={filterPulledBy}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            setFilterPulledBy(val);
-                                            if (val !== 'All') {
-                                                setFilterStatus('All');
-                                                setFilterDecision('All');
-                                                setFilterInterviewStatus('All');
-                                            }
-                                        }}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-34"
-                                    >
-                                        <option value="All">All Users</option>
-                                        {users.map(u => (
-                                            <option key={u._id} value={`${u.firstName || ''} ${u.lastName || ''}`.trim()}>
-                                                {u.firstName} {u.lastName}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Uploaded By</label>
-                                    <select
-                                        value={filterUploadedBy}
-                                        onChange={(e) => setFilterUploadedBy(e.target.value)}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                                    >
-                                        <option value="All">All Uploaders</option>
-                                        {uploadedByOptions.map((name) => (
-                                            <option key={name} value={name}>{name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <MultiSelectFilter
+                                    label="Pulled By"
+                                    options={pulledByOptions}
+                                    selectedValues={filterPulledBy}
+                                    onToggleValue={(value) => {
+                                        const alreadySelected = filterPulledBy.includes(value);
+                                        const nextValues = alreadySelected
+                                            ? filterPulledBy.filter((item) => item !== value)
+                                            : [...filterPulledBy, value];
+                                        setFilterPulledBy(nextValues);
+                                        if (!alreadySelected) {
+                                            setFilterStatus('All');
+                                            setFilterDecision('All');
+                                            setFilterInterviewStatus('All');
+                                        }
+                                    }}
+                                    onClear={() => setFilterPulledBy([])}
+                                    isOpen={openMultiFilter === 'Pulled By'}
+                                    onToggleOpen={setOpenMultiFilter}
+                                    emptyLabel="All Users"
+                                    widthClass="w-40"
+                                />
+                                <MultiSelectFilter
+                                    label="Uploaded By"
+                                    options={uploadedByOptions}
+                                    selectedValues={filterUploadedBy}
+                                    onToggleValue={(value) => {
+                                        const alreadySelected = filterUploadedBy.includes(value);
+                                        setFilterUploadedBy(
+                                            alreadySelected
+                                                ? filterUploadedBy.filter((item) => item !== value)
+                                                : [...filterUploadedBy, value]
+                                        );
+                                    }}
+                                    onClear={() => setFilterUploadedBy([])}
+                                    isOpen={openMultiFilter === 'Uploaded By'}
+                                    onToggleOpen={setOpenMultiFilter}
+                                    emptyLabel="All Uploaders"
+                                    widthClass="w-44"
+                                />
                                 <div className="shrink-0">
                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Upload Type</label>
                                     <select
@@ -1916,6 +2421,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         value={dateFilterField}
                                         onChange={(e) => {
                                             const value = e.target.value;
+                                            setCreatedDatePreset('');
                                             setDateFilterField(value);
                                             if (!value) {
                                                 setDateFrom('');
@@ -1936,7 +2442,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             <input
                                                 type="date"
                                                 value={dateFrom}
-                                                onChange={(e) => setDateFrom(e.target.value)}
+                                                onChange={(e) => {
+                                                    setCreatedDatePreset('');
+                                                    setDateFrom(e.target.value);
+                                                }}
                                                 className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
                                             />
                                         </div>
@@ -1945,14 +2454,17 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             <input
                                                 type="date"
                                                 value={dateTo}
-                                                onChange={(e) => setDateTo(e.target.value)}
+                                                onChange={(e) => {
+                                                    setCreatedDatePreset('');
+                                                    setDateTo(e.target.value);
+                                                }}
                                                 min={dateFrom || undefined}
                                                 className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
                                             />
                                         </div>
                                     </>
                                 )}
-                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy !== 'All' || filterUploadedBy !== 'All' || filterUploadType !== 'All' || dateFilterField !== '' || dateFrom !== '' || dateTo !== '' || filterTransferred !== 'All') && (
+                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy.length > 0 || filterUploadedBy.length > 0 || filterUploadType !== 'All' || dateFilterField !== '' || dateFrom !== '' || dateTo !== '' || filterTransferred !== 'All') && (
                                     <button
                                         onClick={() => {
                                             if (activePhase === 1) setFilterStatus('Interested');
@@ -1963,13 +2475,16 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             setFilterExperience('');
                                             setFilterInterviewStatus('All');
                                             setFilterRating('All');
-                                            setFilterPulledBy('All');
-                                            setFilterUploadedBy('All');
+                                            setFilterPulledBy([]);
+                                            setFilterUploadedBy([]);
                                             setFilterUploadType('All');
+                                            setCreatedDatePreset('');
                                             setDateFilterField('');
                                             setDateFrom('');
                                             setDateTo('');
                                             setFilterTransferred('All');
+                                            setShowCreatedDateSortMenu(false);
+                                            setOpenMultiFilter(null);
                                         }}
                                         className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
                                     >
@@ -1987,7 +2502,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             <Upload className="mx-auto text-slate-300 mb-4" size={48} />
                             <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
                             <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
-                            {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                            {canCreateCandidates && (
                                 <button
                                     onClick={handleAddNew}
                                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
@@ -2094,7 +2609,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
                                                                 {(() => {
-                                                                    const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+                                                                    const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase);
 
                                                                     const summary = getInterviewStatusSummary(rounds);
 
@@ -2144,7 +2659,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!canMakeDecisions}
+                                                                            disabled={!canMakeDecisions || hasMovedToPhase2(candidate)}
+                                                                            title={hasMovedToPhase2(candidate) ? 'Phase 1 decision is locked after moving to Phase 2' : undefined}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -2157,7 +2673,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
                                                                             className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!canMakeDecisions}
+                                                                            disabled={!canManagePhase3Decisions}
                                                                         >
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -2197,7 +2713,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         title={candidate.profilePulledBy || '-'}
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            if (candidate.profilePulledBy) setFilterPulledBy(candidate.profilePulledBy);
+                                                                            if (candidate.profilePulledBy) {
+                                                                                setFilterPulledBy([candidate.profilePulledBy]);
+                                                                                setFilterStatus('All');
+                                                                                setFilterDecision('All');
+                                                                                setFilterInterviewStatus('All');
+                                                                                setOpenMultiFilter(null);
+                                                                            }
                                                                         }}
                                                                     >
                                                                         {candidate.profilePulledBy || '-'}
@@ -2208,7 +2730,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             className="w-fit text-left text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
-                                                                                setFilterUploadedBy(getCandidateUploadedByName(candidate));
+                                                                                setFilterUploadedBy([getCandidateUploadedByName(candidate)]);
+                                                                                setOpenMultiFilter(null);
                                                                             }}
                                                                             title={`Filter by uploader ${getCandidateUploadedByName(candidate)}`}
                                                                         >
@@ -2318,6 +2841,19 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         </button>
                                                                     )}
 
+                                                                    {activePhase === 2 && canEditCandidates && !candidate.isTransferredToOnboarding && (!candidate.phase3Decision || candidate.phase3Decision === 'None') && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleMoveBackToPreviousPhase(candidate._id);
+                                                                                setActiveMenu(null);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors text-left font-semibold"
+                                                                        >
+                                                                            <ArrowRightLeft size={16} className="text-amber-500" />
+                                                                            Move Back to Previous Phase
+                                                                        </button>
+                                                                    )}
+
                                                                     {((activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None') || (activePhase === 2 && candidate.phase2Decision === 'Selected')) && !candidate.isTransferredToOnboarding && canTransferCandidates && (
                                                                         <button
                                                                             onClick={() => {
@@ -2333,7 +2869,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                                                                     <div className="border-t border-slate-100 my-1"></div>
 
-                                                                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.delete')) && (
+                                                                    {canDeleteCandidates && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 handleDelete(candidate._id);

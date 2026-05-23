@@ -14,6 +14,7 @@ const PreOnboardingLogin = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showRegenModal, setShowRegenModal] = useState(false);
   const [regenReason, setRegenReason] = useState('');
+  const [resolvedWorkspace, setResolvedWorkspace] = useState('');
 
   const [credentials, setCredentials] = useState({ tempEmployeeId: '', password: '' });
   const [newPassword, setNewPassword] = useState('');
@@ -21,13 +22,13 @@ const PreOnboardingLogin = () => {
   const [token, setToken] = useState('');
 
   // Add tenant header like the main app does
-  const getHeaders = (authToken) => {
+  const getHeaders = (authToken, tenantOverride = '') => {
     const headers = { 'Content-Type': 'application/json' };
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
-    let tenant = urlParams.get('tenant');
+    let tenant = tenantOverride || urlParams.get('tenant');
     const parts = hostname.split('.');
     if (!tenant && hostname.endsWith('localhost') && parts.length > 1 && parts[0] !== 'localhost') {
       tenant = parts[0];
@@ -59,6 +60,10 @@ const PreOnboardingLogin = () => {
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Login failed';
+      const workspaceSubdomain = err.response?.data?.workspaceSubdomain || '';
+      if (workspaceSubdomain) {
+        setResolvedWorkspace(workspaceSubdomain);
+      }
       toast.error(msg);
       if (msg.toLowerCase().includes('expired')) {
         setShowRegenModal(true);
@@ -79,7 +84,7 @@ const PreOnboardingLogin = () => {
       const res = await axios.post(`${API_URL}/request-regeneration`, {
         tempEmployeeId: credentials.tempEmployeeId,
         reason: regenReason
-      }, { headers: getHeaders() });
+      }, { headers: getHeaders(undefined, resolvedWorkspace) });
       toast.success(res.data.message || 'Request sent!');
       setShowRegenModal(false);
       setRegenReason('');

@@ -32,7 +32,34 @@ const Phase1Candidates = () => {
     const [activeMenu, setActiveMenu] = useState(null);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
-    const canBulkTransfer = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.bulk_transfer') || user?.permissions?.includes('ta.edit');
+    const isAdmin = user?.roles?.includes('Admin');
+    const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
+        || user?.permissions?.includes('ta.analytics.global');
+    const canCreateCandidates = isAdmin
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('ta.create')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || hasAnalyticsCandidateAccess;
+    const canDeleteCandidates = isAdmin
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('ta.delete')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.candidate.edit');
+    const canBulkTransfer = isAdmin
+        || user?.permissions?.includes('ta.bulk_transfer')
+        || user?.permissions?.includes('ta.candidate.transfer')
+        || user?.permissions?.includes('ta.candidate.manage.assigned')
+        || user?.permissions?.includes('ta.candidate.manage.all')
+        || user?.permissions?.includes('ta.edit');
+    const hasMovedToPhase2 = useCallback((candidate) => (
+        candidate?.profileShared === true
+        || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
+        || Boolean(String(candidate?.phase2Decision || '').trim() && candidate?.phase2Decision !== 'None')
+        || Boolean(String(candidate?.phase2InterviewStatus || '').trim() && candidate?.phase2InterviewStatus !== 'None')
+        || Boolean(String(candidate?.phase2InterviewerFeedback || '').trim())
+    ), []);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -207,7 +234,7 @@ const Phase1Candidates = () => {
             fetchCandidates();
         } catch (error) {
             console.error('Error updating decision:', error);
-            toast.error('Failed to update decision');
+            toast.error(error.response?.data?.message || 'Failed to update decision');
         }
     };
 
@@ -310,7 +337,7 @@ const Phase1Candidates = () => {
                                 Phase 2
                             </button>
                         </div>
-                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        {canCreateCandidates && (
                             <button
                                 onClick={handleAddNew}
                                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
@@ -435,7 +462,7 @@ const Phase1Candidates = () => {
                         <Upload className="mx-auto text-slate-300 mb-4" size={48} />
                         <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
                         <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
-                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        {canCreateCandidates && (
                             <button
                                 onClick={handleAddNew}
                                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
@@ -552,7 +579,8 @@ const Phase1Candidates = () => {
                                                                 onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
                                                                 className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision || 'None')}`}
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit'))}
+                                                                disabled={!(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) || hasMovedToPhase2(candidate)}
+                                                                title={hasMovedToPhase2(candidate) ? 'Phase 1 decision is locked after moving to Phase 2' : undefined}
                                                             >
                                                                 <option value="None" className="text-slate-600">None</option>
                                                                 <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
@@ -646,7 +674,7 @@ const Phase1Candidates = () => {
 
                                                                 <div className="border-t border-slate-100 my-1"></div>
 
-                                                                {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.delete')) && (
+                                                                {canDeleteCandidates && (
                                                                     <button
                                                                         onClick={() => {
                                                                             handleDelete(candidate._id);

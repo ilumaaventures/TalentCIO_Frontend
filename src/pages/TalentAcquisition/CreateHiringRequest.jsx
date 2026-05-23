@@ -463,6 +463,16 @@ const CreateHiringRequest = () => {
     const selectedPhaseTemplate = phaseTemplates.find((template) => template._id === selectedPhaseTemplateId);
     const workflowSelectionLocked = Boolean(id);
     const isEditMode = Boolean(id);
+    const canCreateRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.requisition.create')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all')
+        || user?.permissions?.includes('ta.create');
+    const canEditRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.requisition.update')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all')
+        || user?.permissions?.includes('ta.edit');
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -481,7 +491,7 @@ const CreateHiringRequest = () => {
                     {/* Permission Check for Actions */}
                     {id ? (
                         // Edit Mode
-                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.edit')) && (
+                        canEditRequisition && (
                             <>
                                 <button
                                     onClick={() => handleSubmit(true)}
@@ -501,7 +511,7 @@ const CreateHiringRequest = () => {
                         )
                     ) : (
                         // Create Mode
-                        (user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        canCreateRequisition && (
                             <>
                                 <button
                                     onClick={() => handleSubmit(true)}
@@ -604,44 +614,6 @@ const CreateHiringRequest = () => {
                     <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                         Access assignment and analytics visibility can be configured after creation from requisition edit mode or TA Access Settings.
                     </div>
-                )}
-
-                {isEditMode && (
-                    <>
-                        <Section title="Access Assignment" icon={Users} fullWidth>
-                            <div className="col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                                    Assigned Users
-                                </label>
-                                <UserMultiSelect
-                                    users={availableUsers}
-                                    selectedUserIds={formData.assignedUsers}
-                                    onChange={(selectedUserIds) => setFormData((prev) => ({ ...prev, assignedUsers: selectedUserIds }))}
-                                    placeholder="Select users who can access this requisition"
-                                />
-                                <p className="mt-2 text-xs text-slate-500">
-                                    Assigned users receive working access to this requisition and its candidates. Recruiters, hiring managers, and admins can also retain access based on their role.
-                                </p>
-                            </div>
-                        </Section>
-
-                        <Section title="Performance Visibility" icon={Users} fullWidth>
-                            <div className="col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                                    Requisition Performance Viewers
-                                </label>
-                                <UserMultiSelect
-                                    users={availableUsers}
-                                    selectedUserIds={formData.analyticsViewers}
-                                    onChange={(selectedUserIds) => setFormData((prev) => ({ ...prev, analyticsViewers: selectedUserIds }))}
-                                    placeholder="Select users who can view this requisition's analytics"
-                                />
-                                <p className="mt-2 text-xs text-slate-500">
-                                    These users can open performance analytics for this requisition. This does not grant candidate access unless they are also assigned through a working access role.
-                                </p>
-                            </div>
-                        </Section>
-                    </>
                 )}
 
                 <Section title="Recruitment Workflow" icon={Users} fullWidth>

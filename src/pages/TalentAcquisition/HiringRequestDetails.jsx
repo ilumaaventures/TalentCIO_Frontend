@@ -19,6 +19,10 @@ const DetailRow = ({ label, value }) => (
 );
 
 const formatBudgetLabel = (budgetRange = {}) => {
+    if (budgetRange?.isHidden) {
+        return 'Restricted';
+    }
+
     if (budgetRange?.isOpen) {
         return 'Open';
     }
@@ -109,8 +113,14 @@ const HiringRequestDetails = () => {
         : null;
 
     const hasSuperApprove = user?.permissions?.includes('ta.super_approve') || user?.permissions?.includes('*');
-    const canManageVisibility = user?.roles?.includes('Admin')
-        || user?.permissions?.includes('ta.config.manage')
+    const hasApprovalOverride = hasSuperApprove
+        || user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.manage')
+        || user?.permissions?.includes('ta.hiring_request.manage');
+    const canUpdateRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.requisition.update')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all')
         || user?.permissions?.includes('ta.edit');
     const resourceGatewayEnabledForCompany = Boolean(user?.company?.settings?.careers?.enableResourceGatewayPublishing);
     const positionSummary = getHiringPositionSummary(request);
@@ -122,7 +132,7 @@ const HiringRequestDetails = () => {
             currentStep &&
             currentStep.status === 'Pending' &&
             (
-                hasSuperApprove ||
+                hasApprovalOverride ||
                 (currentStep.approvers && currentStep.approvers.some(a => a._id === user?._id || a === user?._id))
             )
         )
@@ -706,7 +716,7 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
-                            {canManageVisibility && request.status === 'Approved' && (
+                            {canUpdateRequisition && request.status === 'Approved' && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                     <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">
                                         <div className={`p-1.5 rounded-md ${request.isPublic ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>

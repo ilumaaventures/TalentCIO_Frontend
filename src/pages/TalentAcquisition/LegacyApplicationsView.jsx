@@ -458,18 +458,23 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
                 const roleNames = u.roles?.map(r => r.name) || [];
                 if (roleNames.includes('Admin')) return true;
 
-                let hasTaCreate = false;
+                let hasCandidateCreateAccess = false;
                 if (u.roles && Array.isArray(u.roles)) {
                     u.roles.forEach(role => {
                         if (role.permissions && Array.isArray(role.permissions)) {
                             const keys = role.permissions.map(p => typeof p === 'string' ? p : p.key);
-                            if (keys.includes('ta.create') || keys.includes('*')) {
-                                hasTaCreate = true;
+                            if (
+                                keys.includes('*')
+                                || keys.includes('ta.create')
+                                || keys.includes('ta.candidate.manage.assigned')
+                                || keys.includes('ta.candidate.manage.all')
+                            ) {
+                                hasCandidateCreateAccess = true;
                             }
                         }
                     });
                 }
-                return hasTaCreate;
+                return hasCandidateCreateAccess;
             });
 
             setUsers(filteredUsers);

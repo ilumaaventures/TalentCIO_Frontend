@@ -17,6 +17,13 @@ const HiringRequestList = () => {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const navigate = useNavigate();
+    const canCreateRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('ta.manage')
+        || user?.permissions?.includes('ta.requisition.create')
+        || user?.permissions?.includes('ta.requisition.manage.assigned')
+        || user?.permissions?.includes('ta.requisition.manage.all')
+        || user?.permissions?.includes('ta.create');
 
     const fetchRequests = useCallback(async () => {
         try {
@@ -87,7 +94,7 @@ const HiringRequestList = () => {
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex items-center gap-4">
                         <button 
-                            onClick={() => navigate('/ta')}
+                            onClick={() => navigate(clientName ? '/ta?tab=clients' : '/ta')}
                             className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
                             title="Go back"
                         >
@@ -95,7 +102,7 @@ const HiringRequestList = () => {
                         </button>
                         <div className="flex flex-col">
                             <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-                                <Link to="/ta" className="hover:text-blue-600 transition-colors">Talent Acquisition</Link>
+                                <Link to={clientName ? "/ta?tab=clients" : "/ta"} className="hover:text-blue-600 transition-colors">Talent Acquisition</Link>
                                 <ChevronRight size={14} />
                                 <span className="font-medium text-slate-800">{clientName ? decodeURIComponent(clientName) : 'All Positions'}</span>
                             </div>
@@ -117,7 +124,7 @@ const HiringRequestList = () => {
                         >
                             <TrendingUp size={18} /> Global Analysis
                         </Link>
-                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.create')) && (
+                        {canCreateRequisition && (
                             <Link
                                 to="/ta/create-request"
                                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium text-sm shadow-sm"

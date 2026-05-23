@@ -21,7 +21,11 @@ const ClientView = () => {
     const { id } = useParams();
     const { user } = useAuth();
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.update');
-    const canViewTAAnalytics = user?.roles?.includes('Admin') || user?.permissions?.includes('ta.analytics.global') || user?.isTAAnalyticsViewer;
+    const canViewTAAnalytics = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.analytics.global')
+        || user?.permissions?.includes('ta.analytics.assigned')
+        || user?.permissions?.includes('*')
+        || user?.isTAAnalyticsViewer;
 
     const [client, setClient] = useState(null);
     const [projects, setProjects] = useState([]);

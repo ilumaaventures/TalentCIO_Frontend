@@ -3,8 +3,14 @@ import api from '../../api/axios';
 import { Plus, Trash2, Save, X, Check, ArrowRight, Loader } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Skeleton from '../../components/Skeleton';
+import { useAuth } from '../../context/AuthContext';
 
 const WorkflowSettings = () => {
+    const { user } = useAuth();
+    const canConfigEdit = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('ta.manage')
+        || user?.permissions?.includes('ta.config.edit')
+        || user?.permissions?.includes('*');
     // Tabs Support
     const [activeTab, setActiveTab] = useState('APPROVAL');
 
@@ -44,9 +50,11 @@ const WorkflowSettings = () => {
     useEffect(() => {
         fetchWorkflows();
         fetchInterviewWorkflows();
-        fetchUsers();
-        fetchRoles();
-    }, []);
+        if (canConfigEdit) {
+            fetchUsers();
+            fetchRoles();
+        }
+    }, [canConfigEdit]);
 
     const fetchUsers = async () => {
         try {
@@ -236,18 +244,24 @@ const WorkflowSettings = () => {
                     <h1 className="text-2xl font-bold text-slate-800">TA Workflows</h1>
                     <p className="text-slate-500">Configure hiring rules and candidate interview templates</p>
                 </div>
-                {activeTab === 'APPROVAL' ? (
+                {canConfigEdit && activeTab === 'APPROVAL' ? (
                     <button onClick={() => setShowCreate(!showCreate)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
                         {showCreate ? <X size={18} /> : <Plus size={18} />}
                         {showCreate ? 'Cancel' : 'Create Approval Workflow'}
                     </button>
-                ) : (
+                ) : canConfigEdit ? (
                     <button onClick={() => setShowCreateInterview(!showCreateInterview)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
                         {showCreateInterview ? <X size={18} /> : <Plus size={18} />}
                         {showCreateInterview ? 'Cancel' : 'Create Interview Workflow'}
                     </button>
-                )}
+                ) : null}
             </div>
+
+            {!canConfigEdit && (
+                <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Workflows are available in read-only mode. You can review existing approval and interview workflows, but you cannot create, edit, or delete them.
+                </div>
+            )}
 
             {/* Tabs Navigation */}
             <div className="flex gap-4 border-b border-slate-200 mb-6 font-medium">
@@ -392,14 +406,18 @@ const WorkflowSettings = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right align-middle">
-                                                    <div className="flex justify-end gap-2">
-                                                        <button onClick={() => handleEdit(wf)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Workflow">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                                        </button>
-                                                        <button onClick={() => handleDelete(wf._id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete Workflow">
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                    </div>
+                                                    {canConfigEdit ? (
+                                                        <div className="flex justify-end gap-2">
+                                                            <button onClick={() => handleEdit(wf)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Workflow">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                                            </button>
+                                                            <button onClick={() => handleDelete(wf._id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete Workflow">
+                                                                <Trash2 size={18} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs font-semibold text-slate-400">Read only</span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -532,14 +550,18 @@ const WorkflowSettings = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right align-middle">
-                                                    <div className="flex justify-end gap-2">
-                                                        <button onClick={() => handleEditInterview(wf)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Template">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                                        </button>
-                                                        <button onClick={() => handleDeleteInterview(wf._id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete Template">
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                    </div>
+                                                    {canConfigEdit ? (
+                                                        <div className="flex justify-end gap-2">
+                                                            <button onClick={() => handleEditInterview(wf)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Template">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                                            </button>
+                                                            <button onClick={() => handleDeleteInterview(wf._id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete Template">
+                                                                <Trash2 size={18} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs font-semibold text-slate-400">Read only</span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
