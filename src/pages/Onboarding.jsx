@@ -29,8 +29,29 @@ const CUSTOM_FILE_ALLOWED_MIME_TYPES = new Set([
 
 const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Action Required: Complete Your Pre-Onboarding';
 const DEFAULT_ONBOARDING_EMAIL_BODY = `
-<p>Hello <strong>{{firstName}}</strong>,</p>
-<p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+  <div style="background: linear-gradient(135deg, #2563eb, #7c3aed); padding: 32px; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 22px;">Pre-Onboarding Action Required</h1>
+    <p style="color: #e0e7ff; margin-top: 8px; font-size: 14px;">Please complete the following items on your portal</p>
+  </div>
+  <div style="padding: 32px;">
+    <div style="font-size: 14px; line-height: 1.6;">
+      <p>Hello <strong>{{firstName}}</strong>,</p>
+      <p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+    </div>
+    {{credentialsSection}}
+    {{requestedSectionsBlock}}
+    {{requestedDocumentsBlock}}
+    {{sharedFilesBlock}}
+    {{deadlineBlock}}
+    <div style="text-align: center; margin: 28px 0;">
+      {{portalButton}}
+    </div>
+  </div>
+  <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #94a3b8; font-size: 12px;">
+    &copy; {{currentYear}} TalentCio. All rights reserved.
+  </div>
+</div>
 `;
 const DEFAULT_ONBOARDING_TEMPLATE_OPTION = {
   _id: '',
@@ -255,6 +276,51 @@ const Onboarding = () => {
   const selectedItemCount = checkedSections.size + checkedDocuments.size;
   const allItemsSelected = totalSelectableItems > 0 && selectedItemCount === totalSelectableItems;
   const templatePlaceholderHelp = getSupportedPlaceholderTokens(ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS).join(', ');
+  const previewSectionItems = Array.from(checkedSections);
+  const previewDocumentItems = Array.from(checkedDocuments);
+  const previewSharedFiles = detailDocuments
+    .filter((item) => item.isCustomSentFile && checkedDocuments.has(item.label))
+    .map((item) => item.label);
+  const previewCredentialsSection = `
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+      <h3 style="color: #1e293b; font-size: 15px; margin: 0 0 12px; font-weight: 700;">Your Login Credentials</h3>
+      <p style="margin: 4px 0; font-size: 14px;"><strong>Employee ID:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">${selectedEmployee?.tempEmployeeId || 'EMP-2026-0001'}</code></p>
+      <p style="margin: 4px 0; font-size: 14px;"><strong>Temporary Password:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">TempPass01</code></p>
+      <p style="margin: 12px 0 0; font-size: 13px; color: #dc2626;"><strong>Credentials Expire On:</strong> ${emailDeadline || '10 Jun 2026'}</p>
+      <p style="color: #64748b; font-size: 12px; margin-top: 8px;">You will be asked to change your password on first login. Please keep these credentials secure.</p>
+    </div>
+  `;
+  const previewSectionsBlock = previewSectionItems.length > 0 ? `
+    <div style="margin-bottom: 24px;">
+      <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">Forms to Complete</h3>
+      <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        ${previewSectionItems.map((item) => `<li style="padding: 6px 0; font-size: 14px;">${item}</li>`).join('')}
+      </ul>
+    </div>
+  ` : '';
+  const previewDocumentsBlock = previewDocumentItems.length > 0 ? `
+    <div style="margin-bottom: 24px;">
+      <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #8b5cf6; padding-bottom: 8px;">Items to Complete</h3>
+      <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        ${previewDocumentItems.map((item) => `<li style="padding: 6px 0; font-size: 14px;">${item}</li>`).join('')}
+      </ul>
+    </div>
+  ` : '';
+  const previewSharedFilesBlock = previewSharedFiles.length > 0 ? `
+    <div style="margin-bottom: 24px;">
+      <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #0ea5e9; padding-bottom: 8px;">Files Shared by HR</h3>
+      <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        ${previewSharedFiles.map((item) => `<li style="padding: 6px 0; font-size: 14px;">${item}</li>`).join('')}
+      </ul>
+      <p style="margin: 10px 0 0; font-size: 12px; color: #0369a1;">These files are attached with this email for your reference.</p>
+    </div>
+  ` : '';
+  const previewDeadlineBlock = `
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 13px; color: #92400e;">
+      <strong>Submission Deadline:</strong> ${emailDeadline || '10 Jun 2026'}
+    </div>
+  `;
+  const previewPortalButton = `<a href="${window.location.origin}/pre-onboarding/login" style="background: linear-gradient(135deg, #2563eb, #7c3aed); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 15px;">Open Pre-Onboarding Portal</a>`;
   const onboardingPreviewData = {
     candidateName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak',
     firstName: selectedEmployee?.firstName || 'Sarthak',
@@ -287,7 +353,14 @@ const Onboarding = () => {
     employeeId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
     joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '15 Jun 2026',
     submissionDeadline: emailDeadline || '2026-06-10',
-    portalLink: `${window.location.origin}/pre-onboarding/login`
+    portalLink: `${window.location.origin}/pre-onboarding/login`,
+    credentialsSection: previewCredentialsSection,
+    requestedSectionsBlock: previewSectionsBlock,
+    requestedDocumentsBlock: previewDocumentsBlock,
+    sharedFilesBlock: previewSharedFilesBlock,
+    deadlineBlock: previewDeadlineBlock,
+    portalButton: previewPortalButton,
+    currentYear: String(new Date().getFullYear())
   };
   const onboardingPreviewSubject = resolveTemplate(customEmailSubject, onboardingPreviewData);
   const onboardingPreviewHtml = renderTemplateBody(customEmailBody, onboardingPreviewData);
@@ -2017,7 +2090,7 @@ const Onboarding = () => {
                   />
 
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
-                    Intro / Message
+                    Email HTML / Template
                   </label>
                   <textarea
                     value={customEmailBody}
@@ -2026,7 +2099,7 @@ const Onboarding = () => {
                     style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
                   />
                   <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
-                    You can personalize the onboarding message here. The selected logo comes from Email Settings → Email Branding. Supported placeholders: {templatePlaceholderHelp}
+                    You can fully customize the onboarding email here. The selected logo comes from Email Settings Email Branding. Supported placeholders: {templatePlaceholderHelp}
                   </p>
 
                   <div style={{ marginTop: '14px', padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>

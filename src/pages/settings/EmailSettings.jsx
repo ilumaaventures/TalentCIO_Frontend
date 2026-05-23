@@ -75,7 +75,47 @@ const SAMPLE_DATA = {
     currentStatus: 'Interested',
     interviewDate: '10 May 2026, 04:00 PM',
     interviewLink: 'https://meet.example.com/interview',
-    customNote: 'Please join 10 minutes early.'
+    customNote: 'Please join 10 minutes early.',
+    submissionDeadline: '30 May 2026',
+    portalLink: 'https://workspace.example.com/pre-onboarding/login',
+    credentialsSection: `
+<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+    <h3 style="color: #1e293b; font-size: 15px; margin: 0 0 12px; font-weight: 700;">Your Login Credentials</h3>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Employee ID:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">EMP-2026-0052</code></p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Temporary Password:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">DemoPass52</code></p>
+    <p style="margin: 12px 0 0; font-size: 13px; color: #dc2626;"><strong>Credentials Expire On:</strong> 30 May 2026, 05:30 AM</p>
+    <p style="color: #64748b; font-size: 12px; margin-top: 8px;">You will be asked to change your password on first login. Please keep these credentials secure.</p>
+</div>`,
+    requestedSectionsBlock: `
+<div style="margin-bottom: 24px;">
+    <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">Forms to Complete</h3>
+    <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        <li style="padding: 6px 0; font-size: 14px;">Personal Details</li>
+        <li style="padding: 6px 0; font-size: 14px;">Emergency Contact</li>
+    </ul>
+</div>`,
+    requestedDocumentsBlock: `
+<div style="margin-bottom: 24px;">
+    <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #8b5cf6; padding-bottom: 8px;">Items to Complete</h3>
+    <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        <li style="padding: 6px 0; font-size: 14px;">PAN Card</li>
+        <li style="padding: 6px 0; font-size: 14px;">Aadhaar Card (Front)</li>
+    </ul>
+</div>`,
+    sharedFilesBlock: `
+<div style="margin-bottom: 24px;">
+    <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 12px; border-bottom: 2px solid #0ea5e9; padding-bottom: 8px;">Files Shared by HR</h3>
+    <ul style="margin: 0; padding: 0 0 0 20px; color: #334155;">
+        <li style="padding: 6px 0; font-size: 14px;">Welcome Kit.pdf</li>
+    </ul>
+    <p style="margin: 10px 0 0; font-size: 12px; color: #0369a1;">These files are attached with this email for your reference.</p>
+</div>`,
+    deadlineBlock: `
+<div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 13px; color: #92400e;">
+    <strong>Submission Deadline:</strong> 30 May 2026
+</div>`,
+    portalButton: '<a href="https://workspace.example.com/pre-onboarding/login" style="background: linear-gradient(135deg, #2563eb, #7c3aed); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 15px;">Open Pre-Onboarding Portal</a>',
+    currentYear: '2026'
 };
 
 const DEFAULT_EMAIL_LOGO_WIDTH = 200;
@@ -1273,8 +1313,29 @@ const DEFAULT_TEMPLATE_FORM = {
 };
 const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Action Required: Complete Your Pre-Onboarding';
 const DEFAULT_ONBOARDING_EMAIL_BODY = `
-<p>Hello <strong>{{firstName}}</strong>,</p>
-<p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+    <div style="background: linear-gradient(135deg, #2563eb, #7c3aed); padding: 32px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 22px;">Pre-Onboarding Action Required</h1>
+        <p style="color: #e0e7ff; margin-top: 8px; font-size: 14px;">Please complete the following items on your portal</p>
+    </div>
+    <div style="padding: 32px;">
+        <div style="font-size: 14px; line-height: 1.6;">
+            <p>Hello <strong>{{firstName}}</strong>,</p>
+            <p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
+        </div>
+        {{credentialsSection}}
+        {{requestedSectionsBlock}}
+        {{requestedDocumentsBlock}}
+        {{sharedFilesBlock}}
+        {{deadlineBlock}}
+        <div style="text-align: center; margin: 28px 0;">
+            {{portalButton}}
+        </div>
+    </div>
+    <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #94a3b8; font-size: 12px;">
+        &copy; {{currentYear}} TalentCio. All rights reserved.
+    </div>
+</div>
 `;
 const BUILT_IN_ONBOARDING_TEMPLATE_ID = '__built_in_onboarding_template__';
 const BUILT_IN_ONBOARDING_TEMPLATE = {
@@ -1311,6 +1372,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
     const [activeTab, setActiveTab] = useState('edit');
     const subjectRef = useRef(null);
     const bodyRef = useRef(null);
+    const isExistingTemplate = Boolean(template?._id);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -1325,7 +1387,9 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
             isActive: template.isActive !== false
         } : {
             ...DEFAULT_TEMPLATE_FORM,
-            templateType: defaultTemplateType === 'onboarding' ? 'onboarding' : 'general'
+            templateType: defaultTemplateType === 'onboarding' ? 'onboarding' : 'general',
+            subject: defaultTemplateType === 'onboarding' ? DEFAULT_ONBOARDING_EMAIL_SUBJECT : '',
+            htmlBody: defaultTemplateType === 'onboarding' ? DEFAULT_ONBOARDING_EMAIL_BODY : ''
         });
     }, [defaultTemplateType, isOpen, template]);
 
@@ -1413,7 +1477,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-                    <h2 className="font-bold text-slate-800">{template ? 'Edit Template' : 'New Email Template'}</h2>
+                    <h2 className="font-bold text-slate-800">{isExistingTemplate ? 'Edit Template' : 'New Email Template'}</h2>
                     <button
                         type="button"
                         onClick={onClose}
@@ -1464,7 +1528,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                             ))}
                         </div>
                         <p className="mt-2 text-xs text-blue-600">
-                            Click &quot;S&quot; for subject or a token for body. Supported: {placeholderTokens.join(', ')}
+                            Click &quot;S&quot; for subject or a token for the HTML editor. Supported: {placeholderTokens.join(', ')}
                         </p>
                     </div>
 
@@ -1516,14 +1580,14 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                                     value={form.htmlBody}
                                     onChange={(event) => setForm((current) => ({ ...current, htmlBody: event.target.value }))}
                                     placeholder={activeTemplateType === 'onboarding'
-                                        ? '<p>Hello <strong>{{firstName}}</strong>,</p>\n<p>Please complete your pending onboarding items before {{submissionDeadline}}.</p>'
+                                        ? '<div>...full onboarding email HTML with {{credentialsSection}}, {{requestedDocumentsBlock}}, {{deadlineBlock}}, and {{portalButton}}...</div>'
                                         : '<p>Dear {{firstName}},</p>\n<p>Welcome to {{companyName}}. Please review the update shared below.</p>'}
                                     disabled={!canManage}
                                     rows={12}
                                     className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                                 />
                                 <p className="mt-1 text-xs text-slate-400">
-                                    Supports plain text and HTML. Use {'{{placeholder}}'} tokens for dynamic content.
+                                    Supports plain text and HTML. For onboarding templates, you can edit the complete email layout here and use {'{{placeholder}}'} tokens for dynamic sections.
                                 </p>
                             </div>
                         ) : (
@@ -1568,7 +1632,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                                 disabled={saving}
                                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                             >
-                                {saving ? 'Saving...' : (template ? 'Update Template' : 'Create Template')}
+                                {saving ? 'Saving...' : (isExistingTemplate ? 'Update Template' : 'Create Template')}
                             </button>
                         )}
                     </div>
@@ -1719,7 +1783,23 @@ const TemplatesTab = ({ canManage }) => {
                                     {canManage && (
                                         <td className="px-4 py-3">
                                             {isBuiltInEmailTemplate(template) ? (
-                                                <div className="text-right text-xs font-semibold text-slate-400">System default</div>
+                                                <div className="flex justify-end">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditing({
+                                                                ...template,
+                                                                _id: '',
+                                                                isBuiltIn: false,
+                                                                name: `${template.name} Copy`
+                                                            });
+                                                            setEditorOpen(true);
+                                                        }}
+                                                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                                    >
+                                                        Customize
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <div className="flex justify-end gap-2">
                                                     <button
