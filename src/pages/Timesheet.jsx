@@ -95,6 +95,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [, setProjects] = useState([]);
     const [viewUser, setViewUser] = useState(user);
     const [holidays, setHolidays] = useState([]);
+    const [approvedLeaves, setApprovedLeaves] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
 
@@ -204,6 +205,168 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         return formatTime(record[field], record[`${field}IST`]);
     };
 
+    const getRejectableItems = (ts) => {
+        const workLogItems = (ts?.entries || []).map((entry) => ({
+            id: `worklog:${entry._id}`,
+            type: 'worklog',
+            date: entry.date,
+            title: entry.project?.name || 'Unknown Project',
+            subtitle: entry.description || entry.taskName || 'Work log entry',
+            meta: `${entry.hours}h`
+        }));
+
+        const attendanceItems = (ts?.attendanceLog || []).map((log) => ({
+            id: `attendance:${log._id}`,
+            type: 'attendance',
+            date: log.date,
+            title: 'Attendance',
+            subtitle: isPresentOnlyAttendance(log)
+                ? 'Marked present'
+                : `${getAttendanceTimeDisplay(log, 'clockIn')} - ${getAttendanceTimeDisplay(log, 'clockOut')}`,
+            meta: isPresentOnlyAttendance(log) ? 'Present Only' : getAttendanceStatusMeta(log).label
+        }));
+
+        return [...workLogItems, ...attendanceItems]
+            .sort((left, right) => new Date(left.date) - new Date(right.date));
+    };
+
+    const getRejectedCorrectionItems = () => {
+        const rejectedWorkLogs = (timesheet?.entries || [])
+            .filter((entry) => entry.status === 'REJECTED')
+            .map((entry) => ({
+                id: `worklog:${entry._id}`,
+                type: 'worklog',
+                date: entry.date,
+                title: `${entry.project?.name || 'Unknown Project'} (${entry.hours}h)`,
+                subtitle: entry.description || entry.taskName || 'Rejected work log',
+                source: entry
+            }));
+
+        const rejectedAttendance = (attendanceLogs || [])
+            .filter((log) => log.approvalStatus === 'REJECTED')
+            .map((log) => ({
+                id: `attendance:${log._id}`,
+                type: 'attendance',
+                date: log.date,
+                title: isPresentOnlyAttendance(log)
+                    ? 'Attendance - Marked Present'
+                    : `Attendance - ${getAttendanceTimeDisplay(log, 'clockIn')} / ${getAttendanceTimeDisplay(log, 'clockOut')}`,
+                subtitle: log.rejectionReason || 'Rejected attendance',
+                source: log
+            }));
+
+        return [...rejectedWorkLogs, ...rejectedAttendance]
+            .sort((left, right) => new Date(left.date) - new Date(right.date));
+    };
+
+    const handleRejectedCorrectionClick = (item) => {
+        if (!item) return;
+
+        if (item.type === 'attendance') {
+            const log = item.source;
+            const correctionDate = new Date(log.date);
+            const dayLogs = (timesheet?.entries || []).filter((entry) => (
+                format(new Date(entry.date), 'yyyy-MM-dd') === format(correctionDate, 'yyyy-MM-dd')
+            ));
+
+            setSelectedCell({
+                project: { name: 'Attendance Log' },
+                date: correctionDate,
+                logs: dayLogs
+            });
+
+            setEntryToEdit({ _id: log._id, type: 'ATTENDANCE', ...log });
+            const fmtTime = (value) => value ? new Date(value).toTimeString().substring(0, 5) : '';
+            setEditStartTime(fmtTime(log.clockIn));
+            setEditEndTime(fmtTime(log.clockOut));
+            return;
+        }
+
+        handleEditClick(item.source);
+    };
+
+    const getLeaveForDate = (day) => {
+        const targetTime = startOfDay(new Date(day)).getTime();
+        return approvedLeaves.find((leave) => {
+            const leaveStart = startOfDay(new Date(leave.startDate)).getTime();
+            const leaveEnd = startOfDay(new Date(leave.endDate)).getTime();
+            return targetTime >= leaveStart && targetTime <= leaveEnd;
+        }) || null;
+    };
+
+    const getLeaveLabel = (leave) => {
+        if (!leave) return '';
+        if (leave.isHalfDay) {
+            return `${leave.leaveType} Half Day`;
+        }
+        return leave.leaveType;
+    };
+
+    const getDayContext = (day) => {
+        const dateKey = format(new Date(day), 'yyyy-MM-dd');
+        const holiday = holidays.find((item) => format(new Date(item.date), 'yyyy-MM-dd') === dateKey) || null;
+        const leave = getLeaveForDate(day);
+        const isWeeklyOff = weeklyOffs.includes(format(new Date(day), 'EEEE'));
+        return { holiday, leave, isWeeklyOff };
+    };
+
+    const getDayStatusDetails = (day, record = null) => {
+        const { holiday, leave, isWeeklyOff } = getDayContext(day);
+
+        if (day > new Date()) {
+            return {
+                label: '-',
+                chipClass: 'bg-slate-100 text-slate-500',
+                rowColor: 'FFFFFFFF',
+                shortLabel: '-'
+            };
+        }
+
+        if (holiday) {
+            return {
+                label: holiday.name,
+                chipClass: holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700',
+                rowColor: 'FFD1F2EB',
+                shortLabel: 'HOL'
+            };
+        }
+
+        if (leave) {
+            return {
+                label: getLeaveLabel(leave),
+                chipClass: 'bg-purple-100 text-purple-700',
+                rowColor: 'FFF1E8FF',
+                shortLabel: leave.isHalfDay ? 'HDL' : 'LEV'
+            };
+        }
+
+        if (record) {
+            const attendanceMeta = getAttendanceStatusMeta(record);
+            return {
+                label: attendanceMeta.label,
+                chipClass: attendanceMeta.chipClass,
+                rowColor: 'FFEBF1DE',
+                shortLabel: 'PRS'
+            };
+        }
+
+        if (isWeeklyOff) {
+            return {
+                label: 'Weekoff',
+                chipClass: 'bg-slate-100 text-slate-500',
+                rowColor: 'FFF2F2F2',
+                shortLabel: 'WO'
+            };
+        }
+
+        return {
+            label: 'Absent',
+            chipClass: 'bg-red-100 text-red-700',
+            rowColor: 'FFF2DCDB',
+            shortLabel: 'ABS'
+        };
+    };
+
     const handleExportAttendance = async () => {
         try {
             const workbook = new ExcelJS.Workbook();
@@ -235,28 +398,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 const dateStr = format(day, 'yyyy-MM-dd');
                 const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateStr);
                 const dayName = format(day, 'EEEE');
-                const isWeeklyOff = weeklyOffs.includes(dayName);
-
-                let status = 'Absent';
-                let rowColor = 'FFF2DCDB'; // Red
-
-                if (day > new Date()) {
-                    status = '-';
-                    rowColor = 'FFFFFFFF';
-                } else if (log) {
-                    status = 'Present';
-                    rowColor = 'FFEBF1DE'; // Green
-                } else if (isWeeklyOff) {
-                    status = 'Weekoff';
-                    rowColor = 'FFF2F2F2'; // Gray
-                }
-
-                // Simplified holiday/leave check for Timesheet view
-                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                if (holiday) {
-                    status = holiday.name;
-                    rowColor = 'FFD1F2EB';
-                }
+                const dayStatus = getDayStatusDetails(day, log);
+                const status = dayStatus.label;
+                const rowColor = dayStatus.rowColor;
 
                 const row = sheet.addRow([
                     format(day, 'dd-MMM-yyyy'),
@@ -755,6 +899,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     attendanceLogs: minimalTimesheet?.attendanceLog || [],
                     projects: data.projects || [],
                     holidays: data.holidays || [],
+                    approvedLeaves: data.approvedLeaves || [],
                     weeklyOff: data.weeklyOff || ['Sunday'],
                     usersList: data.usersList || []
                 }, fingerprint);
@@ -772,7 +917,14 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             const logPart = (payload.attendanceLogs || payload.timesheet?.attendanceLog)?.map(
                 l => `${l._id}:${l.clockIn}:${l.clockOut}:${l.duration}:${l.attendanceMode || ''}:${l.maxWorkingHours || ''}:${l.approvalStatus || ''}`
             ).join('|') || '';
-            return `${tsPart}#${logPart}`;
+            const holidayPart = (payload.holidays || []).map(
+                h => `${h.date}:${h.name}:${h.isOptional ? '1' : '0'}`
+            ).join('|');
+            const leavePart = (payload.approvedLeaves || []).map(
+                leave => `${leave._id || `${leave.startDate}-${leave.endDate}`}:${leave.leaveType}:${leave.startDate}:${leave.endDate}:${leave.isHalfDay ? '1' : '0'}`
+            ).join('|');
+            const weeklyOffPart = (payload.weeklyOff || []).join('|');
+            return `${tsPart}#${logPart}#${holidayPart}#${leavePart}#${weeklyOffPart}`;
         };
 
         const applyData = (data) => {
@@ -787,6 +939,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 setAvailableProjects(payload.projects);
             }
             if (payload.holidays) setHolidays(payload.holidays);
+            if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
             if (payload.weeklyOff) setWeeklyOffs(payload.weeklyOff);
             if (payload.usersList) setUsersList(payload.usersList);
         };
@@ -1576,15 +1729,20 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             </div>
 
                                             {/* Rejected Entries List */}
-                                            {timesheet.entries.filter(e => e.status === 'REJECTED').length > 0 && (
+                                            {getRejectedCorrectionItems().length > 0 && (
                                                 <div className="mt-2 bg-white rounded border border-red-100 p-2">
                                                     <div className="text-xs font-bold text-red-600 mb-1">Items requiring correction:</div>
                                                     <div className="space-y-1">
-                                                        {timesheet.entries.filter(e => e.status === 'REJECTED').map(entry => (
-                                                            <div key={entry._id} className="flex justify-between items-center text-xs p-1 hover:bg-red-50 rounded">
-                                                                <span>{format(new Date(entry.date), 'MMM d')} - {entry.project?.name} ({entry.hours}h)</span>
+                                                        {getRejectedCorrectionItems().map((item) => (
+                                                            <div key={item.id} className="flex justify-between items-center text-xs p-1 hover:bg-red-50 rounded gap-3">
+                                                                <div className="min-w-0">
+                                                                    <span>{format(new Date(item.date), 'MMM d')} - {item.title}</span>
+                                                                    {item.subtitle && (
+                                                                        <div className="text-[11px] text-red-500 truncate">{item.subtitle}</div>
+                                                                    )}
+                                                                </div>
                                                                 <Button
-                                                                    onClick={() => handleEditClick(entry)}
+                                                                    onClick={() => handleRejectedCorrectionClick(item)}
                                                                     variant="ghost"
                                                                     className="px-2 py-0.5 bg-red-100 text-red-700 hover:bg-red-200 rounded font-bold border border-red-200 h-auto text-xs"
                                                                 >
@@ -1713,16 +1871,24 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 Project / Task
                                             </th>
                                             {visibleDays.map(day => {
-                                                const dateKey = format(day, 'yyyy-MM-dd');
-                                                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
-                                                const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
+                                                const { holiday, leave, isWeeklyOff } = getDayContext(day);
                                                 return (
-                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : isOffDay ? 'bg-slate-100/50' : ''}`}>
+                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : leave ? 'bg-purple-50' : isWeeklyOff ? 'bg-slate-100/50' : ''}`}>
                                                         <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
                                                         <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
                                                         {holiday && (
                                                             <div className="text-[8px] text-green-600 font-bold truncate max-w-12.5 mt-1" title={holiday.name}>
                                                                 {holiday.name}
+                                                            </div>
+                                                        )}
+                                                        {!holiday && leave && (
+                                                            <div className="text-[8px] text-purple-600 font-bold truncate max-w-12.5 mt-1" title={getLeaveLabel(leave)}>
+                                                                {getLeaveLabel(leave)}
+                                                            </div>
+                                                        )}
+                                                        {!holiday && !leave && isWeeklyOff && (
+                                                            <div className="text-[8px] text-slate-500 font-bold truncate max-w-12.5 mt-1" title="Weekoff">
+                                                                WO
                                                             </div>
                                                         )}
                                                     </th>
@@ -1747,7 +1913,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             {visibleDays.map(day => {
                                                 const dateKey = format(day, 'yyyy-MM-dd');
                                                 const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
-                                                const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
+                                                const { holiday, leave, isWeeklyOff } = getDayContext(day);
 
                                                 // Joining Date Check
                                                 const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
@@ -1768,7 +1934,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         }}
                                                         className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isLockedFutureDate
                                                             ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                            : `cursor-pointer hover:bg-blue-50 ${isOffDay ? 'bg-slate-100/50' : ''}`
+                                                            : `cursor-pointer hover:bg-blue-50 ${holiday ? 'bg-green-50/30' : leave ? 'bg-purple-50/40' : isWeeklyOff ? 'bg-slate-100/50' : ''}`
                                                             }`}
                                                         title={isBeforeJoining ? 'Before Joining Date' : isLockedFutureDate ? 'Future Date' : ''}
                                                     >
@@ -1788,6 +1954,18 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     </span>
                                                                 )}
                                                             </div>
+                                                        ) : holiday ? (
+                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-teal-100 text-teal-700" title={holiday.name}>
+                                                                HOL
+                                                            </span>
+                                                        ) : leave ? (
+                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-purple-100 text-purple-700" title={getLeaveLabel(leave)}>
+                                                                {leave.isHalfDay ? 'HDL' : 'LEV'}
+                                                            </span>
+                                                        ) : isWeeklyOff ? (
+                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-slate-100 text-slate-500">
+                                                                WO
+                                                            </span>
                                                         ) : (
                                                             <span className="text-slate-300">-</span>
                                                         )}
@@ -1817,9 +1995,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             const dateKey = format(day, 'yyyy-MM-dd');
                                                             const hours = group.hours[dateKey];
                                                             const logs = group.logs[dateKey] || [];
-                                                            const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
+                                                            const { holiday, leave, isWeeklyOff } = getDayContext(day);
                                                             const dayStatusMeta = getDayStatusMeta(logs);
-                                                            const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
 
                                                             // Joining Date Check
                                                             const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
@@ -1843,14 +2020,21 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                         handleCellClick(group.project, day, logs);
                                                                     }}
                                                                     className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
+                                                                        : leave ? 'bg-purple-50/40 cursor-default'
                                                                         : isBeforeJoining || isLockedFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                                            : `cursor-pointer hover:bg-blue-100 ${isOffDay ? 'bg-slate-50/30' : ''}`
+                                                                            : `cursor-pointer hover:bg-blue-100 ${isWeeklyOff ? 'bg-slate-50/30' : ''}`
                                                                         }`}
                                                                     title={isBeforeJoining ? 'Before Joining Date' : isLockedFutureDate ? 'Future Date' : ''}
                                                                 >
                                                                     {holiday ? (
                                                                         <div className="flex justify-center items-center h-full">
                                                                             <span className="text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
+                                                                        </div>
+                                                                    ) : leave ? (
+                                                                        <div className="flex justify-center items-center h-full">
+                                                                            <span className="text-[10px] font-bold text-purple-500 select-none" title={getLeaveLabel(leave)}>
+                                                                                {leave.isHalfDay ? 'HDL' : 'LEV'}
+                                                                            </span>
                                                                         </div>
                                                                     ) : isBeforeJoining || isLockedFutureDate ? (
                                                                         <span className="text-slate-200 text-[10px] select-none">{isLockedFutureDate ? '-' : 'N/A'}</span>
@@ -2445,9 +2629,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                     {eachDayOfInterval({ start: startOfMonth(viewDate), end: endOfMonth(viewDate) }).map(day => {
                                         const dateStr = format(day, 'yyyy-MM-dd');
                                         const record = attendanceLogs.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                                        const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                                        const isWeeklyOff = weeklyOff.includes(format(day, 'EEEE'));
                                         const isFuture = day > new Date();
+                                        const { holiday, leave, isWeeklyOff } = getDayContext(day);
 
                                         // Status Logic
                                         let status = 'Absent';
@@ -2462,6 +2645,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         } else if (holiday) {
                                             status = holiday.name;
                                             statusColor = holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700';
+                                        } else if (leave) {
+                                            status = getLeaveLabel(leave);
+                                            statusColor = 'bg-purple-100 text-purple-700';
                                         } else if (record) {
                                             const attendanceMeta = getAttendanceStatusMeta(record);
                                             status = attendanceMeta.label;
@@ -2534,6 +2720,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 user={viewUser}
                                 weeklyOffs={weeklyOffs}
                                 holidays={holidays}
+                                approvedLeaves={approvedLeaves}
                                 date={viewDate}
                                 isPrivileged={canUpdateAttendance}
                             />
@@ -2603,31 +2790,36 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
                                     {rejectionType === 'PARTIAL' && (
                                         <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
-                                            <div className="text-xs text-slate-500 font-bold uppercase mb-2">Select entries to reject:</div>
+                                            <div className="text-xs text-slate-500 font-bold uppercase mb-2">Select items to reject:</div>
                                             <div className="space-y-2">
-                                                {selectedTimesheet?.entries?.map((entry, idx) => (
-                                                    <label key={entry._id || idx} className="flex items-start space-x-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
+                                                {getRejectableItems(selectedTimesheet).map((item, idx) => (
+                                                    <label key={item.id || idx} className="flex items-start space-x-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
                                                         <input
                                                             type="checkbox"
-                                                            checked={rejectedEntryIds.includes(entry._id)}
-                                                            onChange={() => toggleEntryRejection(entry._id)}
+                                                            checked={rejectedEntryIds.includes(item.id)}
+                                                            onChange={() => toggleEntryRejection(item.id)}
                                                             className="mt-1 text-red-600 rounded focus:ring-red-500"
                                                         />
                                                         <div className="text-sm">
                                                             <div className="font-mono text-xs text-slate-500">
-                                                                {format(new Date(entry.date), 'MMM d, yyyy')} - {entry.hours}h
+                                                                {format(new Date(item.date), 'MMM d, yyyy')} - {item.meta}
                                                             </div>
-                                                            <div className="text-slate-700 font-medium">
-                                                                {entry.project?.name || 'Unknown Project'}
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="text-slate-700 font-medium">
+                                                                    {item.title}
+                                                                </div>
+                                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${item.type === 'attendance' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                    {item.type}
+                                                                </span>
                                                             </div>
-                                                            {entry.description && (
-                                                                <div className="text-slate-500 text-xs truncate max-w-[250px]">{entry.description}</div>
+                                                            {item.subtitle && (
+                                                                <div className="text-slate-500 text-xs truncate max-w-[250px]">{item.subtitle}</div>
                                                             )}
                                                         </div>
                                                     </label>
                                                 ))}
-                                                {(!selectedTimesheet?.entries || selectedTimesheet.entries.length === 0) && (
-                                                    <div className="text-xs text-slate-400 italic">No entries found.</div>
+                                                {getRejectableItems(selectedTimesheet).length === 0 && (
+                                                    <div className="text-xs text-slate-400 italic">No timesheet items found.</div>
                                                 )}
                                             </div>
                                         </div>
