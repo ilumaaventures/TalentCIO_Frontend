@@ -273,7 +273,7 @@ const Attendance = () => {
 
         setRegDate(day);
         setRegForm({
-            type: 'BOTH',
+            type: isPresentOnlyMode ? 'PRESENT' : 'BOTH',
             checkIn: record?.clockIn ? new Date(record.clockIn).toISOString().slice(11, 16) : '09:00',
             checkOut: record?.clockOut ? new Date(record.clockOut).toISOString().slice(11, 16) : '18:00',
             reason: ''
@@ -284,15 +284,20 @@ const Attendance = () => {
     const submitRegularization = async (e) => {
         e.preventDefault();
         try {
-            const reqDate = new Date(regDate);
-            const [inH, inM] = regForm.checkIn.split(':');
-            const [outH, outM] = regForm.checkOut.split(':');
+            let requestedClockIn = null;
+            let requestedClockOut = null;
 
-            const requestedClockIn = new Date(reqDate);
-            requestedClockIn.setHours(parseInt(inH), parseInt(inM), 0);
+            if (!isPresentOnlyMode) {
+                const reqDate = new Date(regDate);
+                const [inH, inM] = regForm.checkIn.split(':');
+                const [outH, outM] = regForm.checkOut.split(':');
 
-            const requestedClockOut = new Date(reqDate);
-            requestedClockOut.setHours(parseInt(outH), parseInt(outM), 0);
+                requestedClockIn = new Date(reqDate);
+                requestedClockIn.setHours(parseInt(inH), parseInt(inM), 0);
+
+                requestedClockOut = new Date(reqDate);
+                requestedClockOut.setHours(parseInt(outH), parseInt(outM), 0);
+            }
 
             await api.post('/attendance/regularize', {
                 date: regDate,
@@ -1986,48 +1991,60 @@ const Attendance = () => {
                         </div>
 
                         <form onSubmit={submitRegularization} className="p-6 space-y-5">
-                            <div>
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Regularize For</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {['IN', 'OUT', 'BOTH'].map(type => (
-                                        <button
-                                            key={type}
-                                            type="button"
-                                            onClick={() => setRegForm({ ...regForm, type })}
-                                            className={`py-2 text-xs font-semibold rounded-lg border transition-all ${regForm.type === type ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}
-                                        >
-                                            {type}
-                                        </button>
-                                    ))}
+                            {isPresentOnlyMode ? (
+                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                                    <label className="block text-[11px] font-bold text-emerald-700 uppercase tracking-wider mb-1">Regularize For</label>
+                                    <div className="text-sm font-semibold text-emerald-800">Mark as Present</div>
+                                    <p className="mt-1 text-xs text-emerald-700">
+                                        This user uses present-only attendance, so this request will only mark the selected day as present.
+                                    </p>
                                 </div>
-                            </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Regularize For</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {['IN', 'OUT', 'BOTH'].map(type => (
+                                                <button
+                                                    key={type}
+                                                    type="button"
+                                                    onClick={() => setRegForm({ ...regForm, type })}
+                                                    className={`py-2 text-xs font-semibold rounded-lg border transition-all ${regForm.type === type ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}
+                                                >
+                                                    {type}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                {(regForm.type === 'IN' || regForm.type === 'BOTH') && (
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check In Time</label>
-                                        <input
-                                            type="time"
-                                            required
-                                            className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                                            value={regForm.checkIn}
-                                            onChange={(e) => setRegForm({ ...regForm, checkIn: e.target.value })}
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {(regForm.type === 'IN' || regForm.type === 'BOTH') && (
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check In Time</label>
+                                                <input
+                                                    type="time"
+                                                    required
+                                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                                                    value={regForm.checkIn}
+                                                    onChange={(e) => setRegForm({ ...regForm, checkIn: e.target.value })}
+                                                />
+                                            </div>
+                                        )}
+                                        {(regForm.type === 'OUT' || regForm.type === 'BOTH') && (
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check Out Time</label>
+                                                <input
+                                                    type="time"
+                                                    required
+                                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                                                    value={regForm.checkOut}
+                                                    onChange={(e) => setRegForm({ ...regForm, checkOut: e.target.value })}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                                {(regForm.type === 'OUT' || regForm.type === 'BOTH') && (
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check Out Time</label>
-                                        <input
-                                            type="time"
-                                            required
-                                            className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                                            value={regForm.checkOut}
-                                            onChange={(e) => setRegForm({ ...regForm, checkOut: e.target.value })}
-                                        />
-                                    </div>
-                                )}
-                            </div>
+                                </>
+                            )}
 
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Reason for Regularization</label>
@@ -2046,7 +2063,7 @@ const Attendance = () => {
                                     type="submit"
                                     className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-[0.98] transition-all"
                                 >
-                                    Submit Request
+                                    {isPresentOnlyMode ? 'Submit Presence Request' : 'Submit Request'}
                                 </button>
                             </div>
                         </form>
@@ -2367,25 +2384,33 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
                                         <div className="text-xs text-slate-500 font-medium flex items-center gap-2 mt-0.5">
                                             <span>{format(new Date(req.date), 'EEE, MMM dd')}</span>
                                             <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
-                                            <span className="text-blue-600 font-bold uppercase tracking-tighter">{req.type}</span>
+                                            <span className="text-blue-600 font-bold uppercase tracking-tighter">
+                                                {req.type === 'PRESENT' ? 'MARK PRESENT' : req.type}
+                                            </span>
                                         </div>
                                         <div className="text-[11px] text-slate-400 mt-1">
                                             Sent: {format(new Date(req.createdAt), 'EEE, MMM dd yyyy')} at {format(new Date(req.createdAt), 'hh:mm a')}
                                         </div>
-                                        <div className="mt-3 bg-white/50 border border-slate-100 rounded-lg p-2 flex gap-4 text-[10px] font-mono">
-                                            {(req.type === 'IN' || req.type === 'BOTH') && (
-                                                <div>
-                                                    <span className="text-slate-400 block mb-0.5">REQ IN</span>
-                                                    <span className="text-slate-700 font-bold">{new Date(req.requestedClockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                </div>
-                                            )}
-                                            {(req.type === 'OUT' || req.type === 'BOTH') && (
-                                                <div>
-                                                    <span className="text-slate-400 block mb-0.5">REQ OUT</span>
-                                                    <span className="text-slate-700 font-bold">{new Date(req.requestedClockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                </div>
-                                            )}
-                                        </div>
+                                        {req.type === 'PRESENT' ? (
+                                            <div className="mt-3 bg-emerald-50 border border-emerald-100 rounded-lg p-2 text-[11px] font-medium text-emerald-700">
+                                                Requested action: Mark this day as present
+                                            </div>
+                                        ) : (
+                                            <div className="mt-3 bg-white/50 border border-slate-100 rounded-lg p-2 flex gap-4 text-[10px] font-mono">
+                                                {(req.type === 'IN' || req.type === 'BOTH') && req.requestedClockIn && (
+                                                    <div>
+                                                        <span className="text-slate-400 block mb-0.5">REQ IN</span>
+                                                        <span className="text-slate-700 font-bold">{new Date(req.requestedClockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                )}
+                                                {(req.type === 'OUT' || req.type === 'BOTH') && req.requestedClockOut && (
+                                                    <div>
+                                                        <span className="text-slate-400 block mb-0.5">REQ OUT</span>
+                                                        <span className="text-slate-700 font-bold">{new Date(req.requestedClockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

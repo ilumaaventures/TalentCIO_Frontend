@@ -38,8 +38,9 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
 
     const getApprovalMeta = (record) => {
         const finalStatus = record?.status || (record?.clockIn ? 'PRESENT' : 'ABSENT');
+        const isPresentOnlyRecord = record?.attendanceMode === 'present_only';
 
-        if (record?.clockIn && !record?.clockOut) {
+        if (!isPresentOnlyRecord && record?.clockIn && !record?.clockOut) {
             return {
                 primaryLabel: 'Incomplete',
                 secondaryLabel: '',
@@ -55,7 +56,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                 secondaryLabel: '',
                 textClass: 'text-slate-800',
                 dotClass: 'bg-red-500',
-                showTimes: true
+                showTimes: !isPresentOnlyRecord
             };
         }
 
@@ -65,7 +66,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                 secondaryLabel: '',
                 textClass: 'text-slate-800',
                 dotClass: 'bg-emerald-500',
-                showTimes: true
+                showTimes: !isPresentOnlyRecord
             };
         }
 
@@ -74,7 +75,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
             secondaryLabel: '',
             textClass: 'text-slate-800',
             dotClass: finalStatus === 'PRESENT' ? 'bg-emerald-500' : 'bg-slate-400',
-            showTimes: true
+            showTimes: !isPresentOnlyRecord
         };
     };
 
