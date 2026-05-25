@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X } from 'lucide-react';
+import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -14,6 +14,8 @@ const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
     { code: 'any', name: 'Any Time' }
 ];
+
+const PAGE_SIZE_OPTIONS = [10, 15, 20, 50];
 
 const Users = () => {
     const navigate = useNavigate();
@@ -43,6 +45,8 @@ const Users = () => {
     const [filterEmploymentType, setFilterEmploymentType] = useState('all');
     const [filterJoiningDate, setFilterJoiningDate] = useState('');
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(15);
 
     // Helpers for Export
     const formatTime = (dateString, istString) => {
@@ -651,6 +655,25 @@ const Users = () => {
         sortOption
     ]);
 
+    const totalPages = Math.max(Math.ceil(filteredUsers.length / rowsPerPage), 1);
+
+    const paginatedUsers = useMemo(() => {
+        const startIndex = (currentPage - 1) * rowsPerPage;
+        return filteredUsers.slice(startIndex, startIndex + rowsPerPage);
+    }, [filteredUsers, currentPage, rowsPerPage]);
+
+    const paginationNumbers = useMemo(() => {
+        const maxVisibleButtons = 5;
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages, startPage + maxVisibleButtons - 1);
+        startPage = Math.max(1, endPage - maxVisibleButtons + 1);
+
+        return Array.from(
+            { length: endPage - startPage + 1 },
+            (_, index) => startPage + index
+        );
+    }, [currentPage, totalPages]);
+
     const hasActiveFilters = filterStatus !== 'all'
         || filterDepartment !== 'all'
         || filterEmploymentType !== 'all'
@@ -668,12 +691,20 @@ const Users = () => {
     }, [fetchData]);
 
     useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, filterDate, filterJoiningDate, filterStatus, filterDepartment, filterEmploymentType, sortOption]);
+
+    useEffect(() => {
+        setCurrentPage((page) => Math.min(page, totalPages));
+    }, [totalPages]);
+
+    useEffect(() => {
         setSelectedEmployeeIds((current) => current.filter((id) => users.some((listedUser) => listedUser._id === id)));
     }, [users]);
 
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
     const attendanceShiftOptions = user?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
-    const visibleEmployeeIds = filteredUsers.map((employee) => employee._id);
+    const visibleEmployeeIds = paginatedUsers.map((employee) => employee._id);
     const allVisibleSelected = visibleEmployeeIds.length > 0 && visibleEmployeeIds.every((id) => selectedEmployeeIds.includes(id));
     const hasSelection = selectedEmployeeIds.length > 0;
 
@@ -1052,16 +1083,6 @@ const Users = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="text-sm text-slate-500 text-right">
-                            <div>
-                                Showing <strong>{filteredUsers.length}</strong> of <strong>{users.length}</strong>
-                            </div>
-                            {hasSelection && (
-                                <div className="mt-1 text-xs font-medium text-blue-600">
-                                    Selected: {selectedEmployeeIds.length}
-                                </div>
-                            )}
-                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -1094,7 +1115,7 @@ const Users = () => {
                                             No employees match the current search or filters.
                                         </td>
                                     </tr>
-                                ) : filteredUsers.map((employee) => (
+                                ) : paginatedUsers.map((employee) => (
                                     <tr key={employee._id} className="hover:bg-slate-50/50 text-[13px] border-b border-slate-50 last:border-0 transition-colors">
                                         <td className="px-3 py-2">
                                             <input
@@ -1133,7 +1154,7 @@ const Users = () => {
                                                 {employee.employmentType || 'Full Time'}
                                             </span>
                                         </td>
-                                        <tsd className="px-3 py-2 text-slate-600">
+                                        <td className="px-3 py-2 text-slate-600">
                                             {employee.reportingManagers && employee.reportingManagers.length > 0 ? (
                                                 <div className="flex flex-col">
                                                     {employee.reportingManagers.map(mgr => (
@@ -1143,7 +1164,7 @@ const Users = () => {
                                             ) : (
                                                 <span className="text-[11px] text-slate-400 italic">None</span>
                                             )}
-                                        </tsd>
+                                        </td>
                                         <td className="px-3 py-2">
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
                                                 {employee.isActive ? 'Active' : (employee.isDeleted ? 'In Bin' : 'Inactive')}
@@ -1162,6 +1183,73 @@ const Users = () => {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                            <span>
+                                Showing <strong>{paginatedUsers.length}</strong> of <strong>{filteredUsers.length}</strong>
+                            </span>
+                            <label className="flex items-center gap-2">
+                                <span>Show</span>
+                                <select
+                                    value={rowsPerPage}
+                                    onChange={(e) => {
+                                        setRowsPerPage(Number(e.target.value));
+                                        setCurrentPage(1);
+                                    }}
+                                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-indigo-500"
+                                >
+                                    {PAGE_SIZE_OPTIONS.map((size) => (
+                                        <option key={size} value={size}>
+                                            {size} entries
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            {hasSelection && (
+                                <span className="text-xs font-medium text-blue-600">
+                                    Selected: {selectedEmployeeIds.length}
+                                </span>
+                            )}
+                        </div>
+                        {filteredUsers.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
+                                    disabled={currentPage === 1}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <ChevronLeft size={16} />
+                                    Previous
+                                </button>
+                                <div className="flex items-center gap-1">
+                                    {paginationNumbers.map((pageNumber) => (
+                                        <button
+                                            key={pageNumber}
+                                            type="button"
+                                            onClick={() => setCurrentPage(pageNumber)}
+                                            className={`h-9 min-w-9 rounded-lg px-3 text-sm font-medium transition ${
+                                                currentPage === pageNumber
+                                                    ? 'bg-slate-900 text-white'
+                                                    : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            {pageNumber}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentPage((page) => Math.min(page + 1, totalPages))}
+                                    disabled={currentPage === totalPages}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    Next
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
