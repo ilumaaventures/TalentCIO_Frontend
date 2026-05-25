@@ -83,7 +83,7 @@ const isFullyRejectedTimesheet = (timesheet) =>
     timesheet.entries.every(entry => entry.status === 'REJECTED');
 
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
-    const { user } = useAuth();
+    const { user, hasModule } = useAuth();
     const [viewDate, setViewDate] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         const m = params.get('month');
@@ -95,6 +95,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [, setProjects] = useState([]);
     const [viewUser, setViewUser] = useState(user);
     const [holidays, setHolidays] = useState([]);
+    const [approvedLeaves, setApprovedLeaves] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
 
@@ -129,6 +130,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const canUpdateAttendance = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('attendance.update_others');
+    const canUpdateFutureDays = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('attendance.update_future');
 
     const canUpdateTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
         user?.permissions?.includes('*') ||
@@ -143,6 +147,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('timesheet.view') ||
         user?.permissions?.includes('timesheet.update_others');
+    const canUseProjectWorkLogs = hasModule('projects');
 
     const isEditableTimesheetStatus = !timesheet || timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED';
 
@@ -152,12 +157,215 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         return format(new Date(isoString), 'hh:mm a');
     };
 
-    const calculateDuration = (inTime, outTime) => {
-        if (!inTime || !outTime) return '-';
-        const start = new Date(inTime);
+    const isPresentOnlyAttendance = (record) => record?.attendanceMode === 'present_only';
+
+    const getAttendanceHoursValue = (record) => {
+        if (!record) return 0;
+
+        const durationMinutes = Number(record.duration);
+        if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+            return durationMinutes / 60;
+        }
+
+        if (record.clockIn && record.clockOut) {
+            const diff = (new Date(record.clockOut) - new Date(record.clockIn)) / 3600000;
+            return diff > 0 ? diff : 0;
+        }
+
+        return 0;
+    };
+
+    const formatHoursLabel = (hours, { decimals = 2 } = {}) => {
+        return hours > 0 ? `${hours.toFixed(decimals)}h` : '-';
+    };
+
+    const formatHoursDuration = (hours) => {
+        if (!(hours > 0)) return '-';
+
+        const totalMinutes = Math.round(hours * 60);
+        const wholeHours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return `${wholeHours}h ${minutes}m`;
+    };
+
+    const calculateDuration = (recordOrInTime, outTime) => {
+        if (recordOrInTime && typeof recordOrInTime === 'object' && !Array.isArray(recordOrInTime)) {
+            return formatHoursLabel(getAttendanceHoursValue(recordOrInTime));
+        }
+
+        if (!recordOrInTime || !outTime) return '-';
+        const start = new Date(recordOrInTime);
         const end = new Date(outTime);
         const diff = (end - start) / 3600000;
         return diff > 0 ? `${diff.toFixed(2)}h` : '-';
+    };
+
+    const getAttendanceTimeDisplay = (record, field) => {
+        if (!record) return '-';
+        if (isPresentOnlyAttendance(record)) return 'Present';
+        return formatTime(record[field], record[`${field}IST`]);
+    };
+
+    const getRejectableItems = (ts) => {
+        const workLogItems = (ts?.entries || []).map((entry) => ({
+            id: `worklog:${entry._id}`,
+            type: 'worklog',
+            date: entry.date,
+            title: entry.project?.name || 'Unknown Project',
+            subtitle: entry.description || entry.taskName || 'Work log entry',
+            meta: `${entry.hours}h`
+        }));
+
+        const attendanceItems = (ts?.attendanceLog || []).map((log) => ({
+            id: `attendance:${log._id}`,
+            type: 'attendance',
+            date: log.date,
+            title: 'Attendance',
+            subtitle: isPresentOnlyAttendance(log)
+                ? 'Marked present'
+                : `${getAttendanceTimeDisplay(log, 'clockIn')} - ${getAttendanceTimeDisplay(log, 'clockOut')}`,
+            meta: isPresentOnlyAttendance(log) ? 'Present Only' : getAttendanceStatusMeta(log).label
+        }));
+
+        return [...workLogItems, ...attendanceItems]
+            .sort((left, right) => new Date(left.date) - new Date(right.date));
+    };
+
+    const getRejectedCorrectionItems = () => {
+        const rejectedWorkLogs = (timesheet?.entries || [])
+            .filter((entry) => entry.status === 'REJECTED')
+            .map((entry) => ({
+                id: `worklog:${entry._id}`,
+                type: 'worklog',
+                date: entry.date,
+                title: `${entry.project?.name || 'Unknown Project'} (${entry.hours}h)`,
+                subtitle: entry.description || entry.taskName || 'Rejected work log',
+                source: entry
+            }));
+
+        const rejectedAttendance = (attendanceLogs || [])
+            .filter((log) => log.approvalStatus === 'REJECTED')
+            .map((log) => ({
+                id: `attendance:${log._id}`,
+                type: 'attendance',
+                date: log.date,
+                title: isPresentOnlyAttendance(log)
+                    ? 'Attendance - Marked Present'
+                    : `Attendance - ${getAttendanceTimeDisplay(log, 'clockIn')} / ${getAttendanceTimeDisplay(log, 'clockOut')}`,
+                subtitle: log.rejectionReason || 'Rejected attendance',
+                source: log
+            }));
+
+        return [...rejectedWorkLogs, ...rejectedAttendance]
+            .sort((left, right) => new Date(left.date) - new Date(right.date));
+    };
+
+    const handleRejectedCorrectionClick = (item) => {
+        if (!item) return;
+
+        if (item.type === 'attendance') {
+            const log = item.source;
+            const correctionDate = new Date(log.date);
+            const dayLogs = (timesheet?.entries || []).filter((entry) => (
+                format(new Date(entry.date), 'yyyy-MM-dd') === format(correctionDate, 'yyyy-MM-dd')
+            ));
+
+            setSelectedCell({
+                project: { name: 'Attendance Log' },
+                date: correctionDate,
+                logs: dayLogs
+            });
+
+            setEntryToEdit({ _id: log._id, type: 'ATTENDANCE', ...log });
+            const fmtTime = (value) => value ? new Date(value).toTimeString().substring(0, 5) : '';
+            setEditStartTime(fmtTime(log.clockIn));
+            setEditEndTime(fmtTime(log.clockOut));
+            return;
+        }
+
+        handleEditClick(item.source);
+    };
+
+    const getLeaveForDate = (day) => {
+        const targetTime = startOfDay(new Date(day)).getTime();
+        return approvedLeaves.find((leave) => {
+            const leaveStart = startOfDay(new Date(leave.startDate)).getTime();
+            const leaveEnd = startOfDay(new Date(leave.endDate)).getTime();
+            return targetTime >= leaveStart && targetTime <= leaveEnd;
+        }) || null;
+    };
+
+    const getLeaveLabel = (leave) => {
+        if (!leave) return '';
+        if (leave.isHalfDay) {
+            return `${leave.leaveType} Half Day`;
+        }
+        return leave.leaveType;
+    };
+
+    const getDayContext = (day) => {
+        const dateKey = format(new Date(day), 'yyyy-MM-dd');
+        const holiday = holidays.find((item) => format(new Date(item.date), 'yyyy-MM-dd') === dateKey) || null;
+        const leave = getLeaveForDate(day);
+        const isWeeklyOff = weeklyOffs.includes(format(new Date(day), 'EEEE'));
+        return { holiday, leave, isWeeklyOff };
+    };
+
+    const getDayStatusDetails = (day, record = null) => {
+        const { holiday, leave, isWeeklyOff } = getDayContext(day);
+
+        if (day > new Date()) {
+            return {
+                label: '-',
+                chipClass: 'bg-slate-100 text-slate-500',
+                rowColor: 'FFFFFFFF',
+                shortLabel: '-'
+            };
+        }
+
+        if (holiday) {
+            return {
+                label: holiday.name,
+                chipClass: holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700',
+                rowColor: 'FFD1F2EB',
+                shortLabel: 'HOL'
+            };
+        }
+
+        if (leave) {
+            return {
+                label: getLeaveLabel(leave),
+                chipClass: 'bg-purple-100 text-purple-700',
+                rowColor: 'FFF1E8FF',
+                shortLabel: leave.isHalfDay ? 'HDL' : 'LEV'
+            };
+        }
+
+        if (record) {
+            const attendanceMeta = getAttendanceStatusMeta(record);
+            return {
+                label: attendanceMeta.label,
+                chipClass: attendanceMeta.chipClass,
+                rowColor: 'FFEBF1DE',
+                shortLabel: 'PRS'
+            };
+        }
+
+        if (isWeeklyOff) {
+            return {
+                label: 'Weekoff',
+                chipClass: 'bg-slate-100 text-slate-500',
+                rowColor: 'FFF2F2F2',
+                shortLabel: 'WO'
+            };
+        }
+
+        return {
+            label: 'Absent',
+            chipClass: 'bg-red-100 text-red-700',
+            rowColor: 'FFF2DCDB',
+            shortLabel: 'ABS'
+        };
     };
 
     const handleExportAttendance = async () => {
@@ -191,36 +399,17 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 const dateStr = format(day, 'yyyy-MM-dd');
                 const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateStr);
                 const dayName = format(day, 'EEEE');
-                const isWeeklyOff = weeklyOffs.includes(dayName);
-
-                let status = 'Absent';
-                let rowColor = 'FFF2DCDB'; // Red
-
-                if (day > new Date()) {
-                    status = '-';
-                    rowColor = 'FFFFFFFF';
-                } else if (log) {
-                    status = 'Present';
-                    rowColor = 'FFEBF1DE'; // Green
-                } else if (isWeeklyOff) {
-                    status = 'Weekoff';
-                    rowColor = 'FFF2F2F2'; // Gray
-                }
-
-                // Simplified holiday/leave check for Timesheet view
-                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                if (holiday) {
-                    status = holiday.name;
-                    rowColor = 'FFD1F2EB';
-                }
+                const dayStatus = getDayStatusDetails(day, log);
+                const status = dayStatus.label;
+                const rowColor = dayStatus.rowColor;
 
                 const row = sheet.addRow([
                     format(day, 'dd-MMM-yyyy'),
                     dayName,
                     status,
-                    log ? formatTime(log.clockIn, log.clockInIST) : '-',
-                    log ? formatTime(log.clockOut, log.clockOutIST) : '-',
-                    log ? calculateDuration(log.clockIn, log.clockOut) : '-'
+                    log ? getAttendanceTimeDisplay(log, 'clockIn') : '-',
+                    log ? getAttendanceTimeDisplay(log, 'clockOut') : '-',
+                    log ? (isPresentOnlyAttendance(log) ? 'Present' : calculateDuration(log)) : '-'
                 ]);
 
                 row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
@@ -303,6 +492,23 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [editTaskId, setEditTaskId] = useState('');
     const [editFilteredModules, setEditFilteredModules] = useState([]);
     const [editFilteredTasks, setEditFilteredTasks] = useState([]);
+
+    const resolvedSelectedUserAttendanceMode = (
+        viewUser?.attendanceMode === 'present_only'
+        || user?.attendanceMode === 'present_only'
+        || user?.company?.settings?.attendance?.defaultAttendanceMode === 'present_only'
+    )
+        ? 'present_only'
+        : (
+            viewUser?.attendanceMode
+            || user?.attendanceMode
+            || user?.company?.settings?.attendance?.defaultAttendanceMode
+            || 'clock_in_out'
+        );
+
+    const isPresentOnlyUser = resolvedSelectedUserAttendanceMode === 'present_only';
+    const isPresentOnlyAttendanceEditor = entryToEdit?.type === 'ATTENDANCE_CREATE_PRESENT_ONLY'
+        || (entryToEdit?.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit));
 
     // New Entry State
     const [isAddingEntry, setIsAddingEntry] = useState(false);
@@ -434,7 +640,14 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 return;
             }
 
-            if (entryToEdit.type === 'ATTENDANCE_CREATE') {
+            if (entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY') {
+                await api.post('/attendance', {
+                    date: entryToEdit.date,
+                    userId: targetUserId || undefined
+                });
+                toast.success('Attendance marked as present');
+
+            } else if (entryToEdit.type === 'ATTENDANCE_CREATE') {
                 if (!editStartTime || !editEndTime) {
                     toast.error('Both Check-In and Check-Out times are required');
                     return;
@@ -459,6 +672,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 });
                 toast.success('Attendance created');
 
+            } else if (entryToEdit.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit)) {
+                await api.put(`/attendance/${entryToEdit._id}`, {});
+                toast.success('Attendance marked as present');
             } else if (entryToEdit.type === 'ATTENDANCE') {
                 // Update Existing
                 // Formatting dates back to ISO with correct date
@@ -497,12 +713,31 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             setEntryToEdit(null);
 
             // Local Sync for immediate UI feedback
-            if (entryToEdit.type === 'ATTENDANCE' || entryToEdit.type === 'ATTENDANCE_CREATE') {
+            if (
+                entryToEdit.type === 'ATTENDANCE'
+                || entryToEdit.type === 'ATTENDANCE_CREATE'
+                || entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY'
+            ) {
                 const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
                 const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}:00`) : null;
                 const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}:00`) : null;
 
-                if (entryToEdit.type === 'ATTENDANCE') {
+                if (entryToEdit.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit)) {
+                    setAttendanceLogs(prev => prev.map(l =>
+                        l._id === entryToEdit._id
+                            ? {
+                                ...l,
+                                attendanceMode: 'present_only',
+                                status: 'PRESENT',
+                                clockIn: null,
+                                clockOut: null,
+                                clockInIST: null,
+                                clockOutIST: null,
+                                maxWorkingHours: null
+                            }
+                            : l
+                    ));
+                } else if (entryToEdit.type === 'ATTENDANCE') {
                     setAttendanceLogs(prev => prev.map(l =>
                         l._id === entryToEdit._id ? { ...l, clockIn: inTime?.toISOString(), clockOut: outTime?.toISOString() } : l
                     ));
@@ -511,9 +746,13 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     const newLog = {
                         _id: Date.now().toString(), // temporary id
                         date: entryToEdit.date,
-                        clockIn: inTime?.toISOString(),
-                        clockOut: outTime?.toISOString(),
-                        status: 'Present'
+                        clockIn: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : inTime?.toISOString(),
+                        clockOut: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : outTime?.toISOString(),
+                        clockInIST: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : undefined,
+                        clockOutIST: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : undefined,
+                        attendanceMode: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? 'present_only' : 'clock_in_out',
+                        maxWorkingHours: null,
+                        status: 'PRESENT'
                     };
                     setAttendanceLogs(prev => [...prev, newLog]);
                 }
@@ -528,6 +767,22 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Failed to update entry');
+        }
+    };
+
+    const deleteAttendanceEntry = async () => {
+        if (!entryToEdit?._id) return;
+        if (!window.confirm('Remove this attendance mark for the selected day?')) return;
+
+        try {
+            await api.delete(`/attendance/${entryToEdit._id}`);
+            setAttendanceLogs(prev => prev.filter(log => log._id !== entryToEdit._id));
+            setEntryToEdit(null);
+            toast.success('Attendance deleted');
+            await refreshTimesheetData(true);
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to delete attendance');
         }
     };
 
@@ -633,6 +888,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                         clockInIST: l.clockInIST,
                         clockOutIST: l.clockOutIST,
                         duration: l.duration,
+                        attendanceMode: l.attendanceMode,
+                        maxWorkingHours: l.maxWorkingHours,
                         status: l.status,
                         approvalStatus: l.approvalStatus
                     }))
@@ -643,6 +900,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     attendanceLogs: minimalTimesheet?.attendanceLog || [],
                     projects: data.projects || [],
                     holidays: data.holidays || [],
+                    approvedLeaves: data.approvedLeaves || [],
                     weeklyOff: data.weeklyOff || ['Sunday'],
                     usersList: data.usersList || []
                 }, fingerprint);
@@ -658,9 +916,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             if (!payload) return '';
             const tsPart = `${payload.timesheet?._id}:${payload.timesheet?.status}:${payload.timesheet?.entries?.length || 0}`;
             const logPart = (payload.attendanceLogs || payload.timesheet?.attendanceLog)?.map(
-                l => `${l._id}:${l.clockIn}:${l.clockOut}:${l.duration}:${l.approvalStatus || ''}`
+                l => `${l._id}:${l.clockIn}:${l.clockOut}:${l.duration}:${l.attendanceMode || ''}:${l.maxWorkingHours || ''}:${l.approvalStatus || ''}`
             ).join('|') || '';
-            return `${tsPart}#${logPart}`;
+            const holidayPart = (payload.holidays || []).map(
+                h => `${h.date}:${h.name}:${h.isOptional ? '1' : '0'}`
+            ).join('|');
+            const leavePart = (payload.approvedLeaves || []).map(
+                leave => `${leave._id || `${leave.startDate}-${leave.endDate}`}:${leave.leaveType}:${leave.startDate}:${leave.endDate}:${leave.isHalfDay ? '1' : '0'}`
+            ).join('|');
+            const weeklyOffPart = (payload.weeklyOff || []).join('|');
+            return `${tsPart}#${logPart}#${holidayPart}#${leavePart}#${weeklyOffPart}`;
         };
 
         const applyData = (data) => {
@@ -675,6 +940,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 setAvailableProjects(payload.projects);
             }
             if (payload.holidays) setHolidays(payload.holidays);
+            if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
             if (payload.weeklyOff) setWeeklyOffs(payload.weeklyOff);
             if (payload.usersList) setUsersList(payload.usersList);
         };
@@ -1205,16 +1471,14 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         attendanceLogs.forEach(log => {
             const inTime = log.clockIn ? new Date(log.clockIn) : null;
             const outTime = log.clockOut ? new Date(log.clockOut) : null;
-            let duration = 0;
-            if (log.duration) duration = (log.duration / 60).toFixed(2);
-            else if (inTime && outTime) duration = ((outTime - inTime) / 3600000).toFixed(2);
+            const durationHours = getAttendanceHoursValue(log);
 
             wsAtt.addRow({
                 date: format(new Date(log.date), 'yyyy-MM-dd'),
-                in: inTime ? format(inTime, 'HH:mm:ss') : '-',
-                out: outTime ? format(outTime, 'HH:mm:ss') : '-',
-                duration: duration,
-                status: (inTime && outTime) ? 'Present' : 'Incomplete'
+                in: isPresentOnlyAttendance(log) ? 'Present' : (inTime ? format(inTime, 'HH:mm:ss') : '-'),
+                out: isPresentOnlyAttendance(log) ? 'Present' : (outTime ? format(outTime, 'HH:mm:ss') : '-'),
+                duration: isPresentOnlyAttendance(log) ? 'Present' : (durationHours > 0 ? durationHours.toFixed(2) : '-'),
+                status: isPresentOnlyAttendance(log) ? 'Present Only' : ((inTime && outTime) ? 'Present' : 'Incomplete')
             });
         });
 
@@ -1466,15 +1730,20 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             </div>
 
                                             {/* Rejected Entries List */}
-                                            {timesheet.entries.filter(e => e.status === 'REJECTED').length > 0 && (
+                                            {getRejectedCorrectionItems().length > 0 && (
                                                 <div className="mt-2 bg-white rounded border border-red-100 p-2">
                                                     <div className="text-xs font-bold text-red-600 mb-1">Items requiring correction:</div>
                                                     <div className="space-y-1">
-                                                        {timesheet.entries.filter(e => e.status === 'REJECTED').map(entry => (
-                                                            <div key={entry._id} className="flex justify-between items-center text-xs p-1 hover:bg-red-50 rounded">
-                                                                <span>{format(new Date(entry.date), 'MMM d')} - {entry.project?.name} ({entry.hours}h)</span>
+                                                        {getRejectedCorrectionItems().map((item) => (
+                                                            <div key={item.id} className="flex justify-between items-center text-xs p-1 hover:bg-red-50 rounded gap-3">
+                                                                <div className="min-w-0">
+                                                                    <span>{format(new Date(item.date), 'MMM d')} - {item.title}</span>
+                                                                    {item.subtitle && (
+                                                                        <div className="text-[11px] text-red-500 truncate">{item.subtitle}</div>
+                                                                    )}
+                                                                </div>
                                                                 <Button
-                                                                    onClick={() => handleEditClick(entry)}
+                                                                    onClick={() => handleRejectedCorrectionClick(item)}
                                                                     variant="ghost"
                                                                     className="px-2 py-0.5 bg-red-100 text-red-700 hover:bg-red-200 rounded font-bold border border-red-200 h-auto text-xs"
                                                                 >
@@ -1603,16 +1872,24 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 Project / Task
                                             </th>
                                             {visibleDays.map(day => {
-                                                const dateKey = format(day, 'yyyy-MM-dd');
-                                                const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
-                                                const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
+                                                const { holiday, leave, isWeeklyOff } = getDayContext(day);
                                                 return (
-                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : isOffDay ? 'bg-slate-100/50' : ''}`}>
+                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : leave ? 'bg-purple-50' : isWeeklyOff ? 'bg-slate-100/50' : ''}`}>
                                                         <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
                                                         <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
                                                         {holiday && (
                                                             <div className="text-[8px] text-green-600 font-bold truncate max-w-12.5 mt-1" title={holiday.name}>
                                                                 {holiday.name}
+                                                            </div>
+                                                        )}
+                                                        {!holiday && leave && (
+                                                            <div className="text-[8px] text-purple-600 font-bold truncate max-w-12.5 mt-1" title={getLeaveLabel(leave)}>
+                                                                {getLeaveLabel(leave)}
+                                                            </div>
+                                                        )}
+                                                        {!holiday && !leave && isWeeklyOff && (
+                                                            <div className="text-[8px] text-slate-500 font-bold truncate max-w-12.5 mt-1" title="Weekoff">
+                                                                WO
                                                             </div>
                                                         )}
                                                     </th>
@@ -1629,48 +1906,67 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 <div className="flex flex-col">
                                                     <span>Attendance</span>
-                                                    <span className="text-[10px] text-slate-400 font-normal uppercase">Check-in / Out</span>
+                                                    <span className="text-[10px] text-slate-400 font-normal uppercase">
+                                                        {isPresentOnlyUser ? 'Present Only' : 'Check-in / Out'}
+                                                    </span>
                                                 </div>
                                             </td>
                                             {visibleDays.map(day => {
                                                 const dateKey = format(day, 'yyyy-MM-dd');
                                                 const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
-                                                const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
+                                                const { holiday, leave, isWeeklyOff } = getDayContext(day);
 
                                                 // Joining Date Check
                                                 const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
                                                 const isBeforeJoining = joiningDate && day < joiningDate;
                                                 const isFutureDate = day > new Date();
+                                                const isLockedFutureDate = isFutureDate && !canUpdateFutureDays;
 
                                                 return (
                                                     <td
                                                         key={'att-' + day}
                                                         onClick={() => {
-                                                            if (isFutureDate) return;
+                                                            if (isLockedFutureDate) return;
                                                             if (isBeforeJoining) {
                                                                 toast.error('Cannot edit attendance before joining date');
                                                                 return;
                                                             }
                                                             handleCellClick({ name: 'Attendance Log' }, day, [], true);
                                                         }}
-                                                        className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isFutureDate
+                                                        className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isLockedFutureDate
                                                             ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                            : `cursor-pointer hover:bg-blue-50 ${isOffDay ? 'bg-slate-100/50' : ''}`
+                                                            : `cursor-pointer hover:bg-blue-50 ${holiday ? 'bg-green-50/30' : leave ? 'bg-purple-50/40' : isWeeklyOff ? 'bg-slate-100/50' : ''}`
                                                             }`}
-                                                        title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
+                                                        title={isBeforeJoining ? 'Before Joining Date' : isLockedFutureDate ? 'Future Date' : ''}
                                                     >
-                                                        {isBeforeJoining || isFutureDate ? (
-                                                            <span className="text-slate-200 select-none text-[10px]">{isFutureDate ? '-' : 'N/A'}</span>
+                                                        {isBeforeJoining || isLockedFutureDate ? (
+                                                            <span className="text-slate-200 select-none text-[10px]">{isLockedFutureDate ? '-' : 'N/A'}</span>
                                                         ) : log ? (
                                                             <div className="flex flex-col items-center justify-center">
-                                                                <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${getAttendanceStatusMeta(log).chipClass}`}>
-                                                                    {log.duration
-                                                                        ? (log.duration / 60).toFixed(1)
-                                                                        : (log.clockOut && log.clockIn
-                                                                            ? ((new Date(log.clockOut) - new Date(log.clockIn)) / 3600000).toFixed(1)
-                                                                            : '-')}
-                                                                </span>
+                                                                {isPresentOnlyAttendance(log) ? (
+                                                                    <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-emerald-100 text-emerald-700">
+                                                                        Present
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${getAttendanceStatusMeta(log).chipClass}`}>
+                                                                        {getAttendanceHoursValue(log) > 0
+                                                                            ? getAttendanceHoursValue(log).toFixed(1)
+                                                                            : '-'}
+                                                                    </span>
+                                                                )}
                                                             </div>
+                                                        ) : holiday ? (
+                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-teal-100 text-teal-700" title={holiday.name}>
+                                                                HOL
+                                                            </span>
+                                                        ) : leave ? (
+                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-purple-100 text-purple-700" title={getLeaveLabel(leave)}>
+                                                                {leave.isHalfDay ? 'HDL' : 'LEV'}
+                                                            </span>
+                                                        ) : isWeeklyOff ? (
+                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-slate-100 text-slate-500">
+                                                                WO
+                                                            </span>
                                                         ) : (
                                                             <span className="text-slate-300">-</span>
                                                         )}
@@ -1678,15 +1974,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 );
                                             })}
                                             <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                {/* Total Attendance Hours */}
-                                                {(attendanceLogs.reduce((acc, log) => {
-                                                    if (log.duration) return acc + (log.duration / 60);
-                                                    if (log.clockIn && log.clockOut) {
-                                                        const dur = (new Date(log.clockOut) - new Date(log.clockIn)) / 3600000;
-                                                        return acc + dur;
-                                                    }
-                                                    return acc;
-                                                }, 0)).toFixed(1)}
+                                                {isPresentOnlyUser
+                                                    ? attendanceLogs.filter((log) => isPresentOnlyAttendance(log)).length
+                                                    : (attendanceLogs.reduce((acc, log) => {
+                                                        return acc + getAttendanceHoursValue(log);
+                                                    }, 0)).toFixed(1)}
                                             </td>
                                         </tr>
                                         {Object.values(projectGroups).length > 0 ? (
@@ -1704,20 +1996,20 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             const dateKey = format(day, 'yyyy-MM-dd');
                                                             const hours = group.hours[dateKey];
                                                             const logs = group.logs[dateKey] || [];
-                                                            const isOffDay = weeklyOff.includes(format(day, 'EEEE'));
+                                                            const { holiday, leave, isWeeklyOff } = getDayContext(day);
                                                             const dayStatusMeta = getDayStatusMeta(logs);
-                                                            const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateKey);
 
                                                             // Joining Date Check
                                                             const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
                                                             const isBeforeJoining = joiningDate && day < joiningDate;
                                                             const isFutureDate = day > new Date();
+                                                            const isLockedFutureDate = isFutureDate && !canUpdateFutureDays;
 
                                                             return (
                                                                 <td
                                                                     key={day.toString()}
                                                                     onClick={() => {
-                                                                        if (isFutureDate) return;
+                                                                        if (isLockedFutureDate) return;
                                                                         if (holiday) {
                                                                             toast.error(`Cannot edit on holiday: ${holiday.name}`);
                                                                             return;
@@ -1729,17 +2021,24 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                         handleCellClick(group.project, day, logs);
                                                                     }}
                                                                     className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
-                                                                        : isBeforeJoining || isFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                                            : `cursor-pointer hover:bg-blue-100 ${isOffDay ? 'bg-slate-50/30' : ''}`
+                                                                        : leave ? 'bg-purple-50/40 cursor-default'
+                                                                        : isBeforeJoining || isLockedFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
+                                                                            : `cursor-pointer hover:bg-blue-100 ${isWeeklyOff ? 'bg-slate-50/30' : ''}`
                                                                         }`}
-                                                                    title={isBeforeJoining ? 'Before Joining Date' : isFutureDate ? 'Future Date' : ''}
+                                                                    title={isBeforeJoining ? 'Before Joining Date' : isLockedFutureDate ? 'Future Date' : ''}
                                                                 >
                                                                     {holiday ? (
                                                                         <div className="flex justify-center items-center h-full">
                                                                             <span className="text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
                                                                         </div>
-                                                                    ) : isBeforeJoining || isFutureDate ? (
-                                                                        <span className="text-slate-200 text-[10px] select-none">{isFutureDate ? '-' : 'N/A'}</span>
+                                                                    ) : leave ? (
+                                                                        <div className="flex justify-center items-center h-full">
+                                                                            <span className="text-[10px] font-bold text-purple-500 select-none" title={getLeaveLabel(leave)}>
+                                                                                {leave.isHalfDay ? 'HDL' : 'LEV'}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : isBeforeJoining || isLockedFutureDate ? (
+                                                                        <span className="text-slate-200 text-[10px] select-none">{isLockedFutureDate ? '-' : 'N/A'}</span>
                                                                     ) : hours ? (
                                                                         <div className="flex flex-col items-center justify-center group/cell relative">
                                                                             <span
@@ -1826,53 +2125,81 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         }}
                                                         className="text-[10px] text-blue-600 hover:underline cursor-pointer"
                                                     >
-                                                        Edit Time
+                                                        {isPresentOnlyAttendance(
+                                                            attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)))
+                                                        ) ? 'Update Presence' : 'Edit Time'}
                                                     </button>
                                                 )
                                             ) : (
-                                                isEditableTimesheetStatus && (!targetUserId || canUpdateAttendance) && canEditAttendance && selectedCell.date <= new Date() && (
+                                                isEditableTimesheetStatus && (!targetUserId || canUpdateAttendance) && canEditAttendance && (selectedCell.date <= new Date() || canUpdateFutureDays) && (
                                                     <button
                                                         onClick={() => {
-                                                            setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
-                                                            setEditStartTime('09:00');
-                                                            setEditEndTime('18:00');
+                                                            setEntryToEdit({
+                                                                type: isPresentOnlyUser ? 'ATTENDANCE_CREATE_PRESENT_ONLY' : 'ATTENDANCE_CREATE',
+                                                                date: selectedCell.date
+                                                            });
+                                                            setEditStartTime(isPresentOnlyUser ? '' : '09:00');
+                                                            setEditEndTime(isPresentOnlyUser ? '' : '18:00');
                                                         }}
                                                         className="text-[10px] text-blue-600 hover:underline cursor-pointer"
                                                     >
-                                                        Add Attendance
+                                                        {isPresentOnlyUser ? 'Mark as Present' : 'Add Attendance'}
                                                     </button>
                                                 )
                                             )}
                                         </h4>
 
                                         {/* Inline Attendance Edit Logic */
-                                            (entryToEdit && (entryToEdit.type === 'ATTENDANCE' || entryToEdit.type === 'ATTENDANCE_CREATE')) ? (
+                                            (entryToEdit && (
+                                                entryToEdit.type === 'ATTENDANCE'
+                                                || entryToEdit.type === 'ATTENDANCE_CREATE'
+                                                || entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY'
+                                            )) ? (
                                                 <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 animate-in fade-in zoom-in-95 duration-200">
-                                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check In</label>
-                                                            <input
-                                                                type="time"
-                                                                value={editStartTime}
-                                                                onChange={e => setEditStartTime(e.target.value)}
-                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                                                            />
+                                                    {isPresentOnlyAttendanceEditor ? (
+                                                        <div className="mb-4 rounded-lg border border-blue-200 bg-white p-4">
+                                                            <div className="text-sm font-semibold text-slate-700">Mark this day as present</div>
+                                                            <div className="mt-1 text-xs text-slate-500">
+                                                                This user uses present-only attendance. Saving will create or update the attendance record without check-in or check-out times.
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check Out</label>
-                                                            <input
-                                                                type="time"
-                                                                value={editEndTime}
-                                                                onChange={e => setEditEndTime(e.target.value)}
-                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                                                            />
+                                                    ) : (
+                                                        <div className="grid grid-cols-2 gap-4 mb-4">
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check In</label>
+                                                                <input
+                                                                    type="time"
+                                                                    value={editStartTime}
+                                                                    onChange={e => setEditStartTime(e.target.value)}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Check Out</label>
+                                                                <input
+                                                                    type="time"
+                                                                    value={editEndTime}
+                                                                    onChange={e => setEditEndTime(e.target.value)}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                                                                />
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                     <div className="flex justify-between items-center">
                                                         <div className="text-xs text-slate-400 italic">
-                                                            Modifying attendance will auto-update calculated hours.
+                                                            {isPresentOnlyAttendanceEditor
+                                                                ? 'Present-only attendance will use the configured working-hours fallback in the timesheet view.'
+                                                                : 'Modifying attendance will auto-update calculated hours.'}
                                                         </div>
                                                         <div className="flex space-x-2">
+                                                            {entryToEdit.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit) && (
+                                                                <button
+                                                                    onClick={deleteAttendanceEntry}
+                                                                    className="px-3 py-1.5 text-red-600 hover:text-red-700 font-medium text-xs bg-white border border-red-200 rounded"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 onClick={() => setEntryToEdit(null)}
                                                                 className="px-3 py-1.5 text-slate-600 hover:text-slate-800 font-medium text-xs bg-white border border-slate-200 rounded"
@@ -1883,7 +2210,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 onClick={submitEdit}
                                                                 className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold text-xs shadow-sm"
                                                             >
-                                                                Save Attendance
+                                                                {isPresentOnlyAttendanceEditor ? 'Mark as Present' : 'Save Attendance'}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -1907,14 +2234,14 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     <div className="flex flex-col">
                                                                         <span className="text-slate-400 text-[10px] font-bold uppercase">Check In</span>
                                                                         <span className="font-mono font-medium text-emerald-600">
-                                                                            {start ? format(start, 'h:mm:ss a') : '--:--'}
+                                                                            {isPresentOnlyAttendance(log) ? 'Present Only' : (start ? format(start, 'h:mm:ss a') : '--:--')}
                                                                         </span>
                                                                     </div>
                                                                     <div className="h-8 w-px bg-slate-100"></div>
                                                                     <div className="flex flex-col text-right">
                                                                         <span className="text-slate-400 text-[10px] font-bold uppercase">Check Out</span>
                                                                         <span className="font-mono font-medium text-red-600">
-                                                                            {end ? format(end, 'h:mm:ss a') : 'Active'}
+                                                                            {isPresentOnlyAttendance(log) ? 'Present Only' : (end ? format(end, 'h:mm:ss a') : 'Active')}
                                                                         </span>
                                                                     </div>
                                                                 </div>
@@ -1924,17 +2251,20 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 ) : (
                                                     <div className="text-center py-4 space-y-3">
                                                         <div className="text-xs text-slate-400 italic">No attendance record found for this date.</div>
-                                                        {isEditableTimesheetStatus && !targetUserId && canEditAttendance && (
+                                                        {isEditableTimesheetStatus && !targetUserId && canEditAttendance && (selectedCell.date <= new Date() || canUpdateFutureDays) && (
                                                             <Button
                                                                 onClick={() => {
-                                                                    setEntryToEdit({ type: 'ATTENDANCE_CREATE', date: selectedCell.date });
-                                                                    setEditStartTime('');
-                                                                    setEditEndTime('');
+                                                                    setEntryToEdit({
+                                                                        type: isPresentOnlyUser ? 'ATTENDANCE_CREATE_PRESENT_ONLY' : 'ATTENDANCE_CREATE',
+                                                                        date: selectedCell.date
+                                                                    });
+                                                                    setEditStartTime(isPresentOnlyUser ? '' : '09:00');
+                                                                    setEditEndTime(isPresentOnlyUser ? '' : '18:00');
                                                                 }}
                                                                 variant="secondary"
                                                                 className="text-xs w-full justify-center"
                                                             >
-                                                                <Clock size={14} className="mr-1" /> Add Attendance Manually
+                                                                <Clock size={14} className="mr-1" /> {isPresentOnlyUser ? 'Mark as Present' : 'Add Attendance Manually'}
                                                             </Button>
                                                         )}
                                                     </div>
@@ -1942,128 +2272,129 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             )}
                                     </div>
 
-                                    {/* Add Work Log Section */}
-                                    <div className="p-4 bg-white border-t border-slate-100">
-                                        {!isAddingEntry ? (
-                                            (isEditableTimesheetStatus && (!targetUserId || canUpdateTimesheet)) && (
-                                                <Button
-                                                    onClick={() => {
-                                                        setIsAddingEntry(true);
-                                                        setNewEntry(prev => ({ ...prev, date: getLocalDateInputValue(selectedCell.date) }));
-                                                    }}
-                                                    variant="ghost"
-                                                    className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm h-auto"
-                                                >
-                                                    <div className="bg-slate-200 rounded-full p-0.5">
-                                                        <span className="block h-4 w-4 leading-3 text-center">+</span>
-                                                    </div>
-                                                    <span>Add Work Log</span>
-                                                </Button>
-                                            )
-                                        ) : (
-                                            <div className="bg-slate-50 border border-blue-100 rounded-lg p-4 animate-in fade-in zoom-in-95 duration-200 relative">
-                                                <button
-                                                    onClick={() => setIsAddingEntry(false)}
-                                                    className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
-                                                >
-                                                    &times;
-                                                </button>
-                                                <h4 className="text-xs font-bold text-blue-600 uppercase mb-3">New Work Log</h4>
+                                    {canUseProjectWorkLogs && (
+                                        <div className="p-4 bg-white border-t border-slate-100">
+                                            {!isAddingEntry ? (
+                                                (isEditableTimesheetStatus && (!targetUserId || canUpdateTimesheet)) && (
+                                                    <Button
+                                                        onClick={() => {
+                                                            setIsAddingEntry(true);
+                                                            setNewEntry(prev => ({ ...prev, date: getLocalDateInputValue(selectedCell.date) }));
+                                                        }}
+                                                        variant="ghost"
+                                                        className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm h-auto"
+                                                    >
+                                                        <div className="bg-slate-200 rounded-full p-0.5">
+                                                            <span className="block h-4 w-4 leading-3 text-center">+</span>
+                                                        </div>
+                                                        <span>Add Work Log</span>
+                                                    </Button>
+                                                )
+                                            ) : (
+                                                <div className="bg-slate-50 border border-blue-100 rounded-lg p-4 animate-in fade-in zoom-in-95 duration-200 relative">
+                                                    <button
+                                                        onClick={() => setIsAddingEntry(false)}
+                                                        className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                    <h4 className="text-xs font-bold text-blue-600 uppercase mb-3">New Work Log</h4>
 
-                                                <div className="space-y-3">
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Project <span className="text-red-500">*</span></label>
-                                                            <select
-                                                                value={newEntry.projectId}
-                                                                onChange={(e) => handleProjectChange(e.target.value)}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
-                                                            >
-                                                                <option value="">Select Project</option>
-                                                                {availableProjects.map(p => (
-                                                                    <option key={p._id} value={p._id}>{p.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Module</label>
-                                                            <select
-                                                                value={newEntry.moduleId}
-                                                                onChange={(e) => handleModuleChange(e.target.value)}
-                                                                disabled={!newEntry.projectId}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
-                                                            >
-                                                                <option value="">Select Module</option>
-                                                                {filteredModules.map(m => (
-                                                                    <option key={m._id} value={m._id}>{m.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Task</label>
-                                                            <select
-                                                                value={newEntry.taskId}
-                                                                onChange={(e) => setNewEntry(prev => ({ ...prev, taskId: e.target.value }))}
-                                                                disabled={!newEntry.moduleId}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
-                                                            >
-                                                                <option value="">Select Task</option>
-                                                                {filteredTasks.map(t => (
-                                                                    <option key={t._id} value={t._id}>{t.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                        <div className="flex space-x-2">
-                                                            <div className="flex-1">
-                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
-                                                                <input
-                                                                    type="number"
-                                                                    placeholder="0"
-                                                                    value={newEntry.hours}
-                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
+                                                    <div className="space-y-3">
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Project <span className="text-red-500">*</span></label>
+                                                                <select
+                                                                    value={newEntry.projectId}
+                                                                    onChange={(e) => handleProjectChange(e.target.value)}
                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
-                                                                    min="0"
-                                                                />
+                                                                >
+                                                                    <option value="">Select Project</option>
+                                                                    {availableProjects.map(p => (
+                                                                        <option key={p._id} value={p._id}>{p.name}</option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
-                                                            <div className="flex-1">
-                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Minutes</label>
-                                                                <input
-                                                                    type="number"
-                                                                    placeholder="0"
-                                                                    value={newEntry.minutes}
-                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, minutes: e.target.value }))}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
-                                                                    min="0" max="59"
-                                                                />
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Module</label>
+                                                                <select
+                                                                    value={newEntry.moduleId}
+                                                                    onChange={(e) => handleModuleChange(e.target.value)}
+                                                                    disabled={!newEntry.projectId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                >
+                                                                    <option value="">Select Module</option>
+                                                                    {filteredModules.map(m => (
+                                                                        <option key={m._id} value={m._id}>{m.name}</option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
                                                         </div>
-                                                    </div>
 
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 mb-1">Description</label>
-                                                        <textarea
-                                                            value={newEntry.description}
-                                                            onChange={(e) => setNewEntry(prev => ({ ...prev, description: e.target.value }))}
-                                                            className="w-full p-2 border border-slate-300 rounded text-sm bg-white h-16 resize-none"
-                                                            placeholder="What did you work on?"
-                                                        />
-                                                    </div>
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Task</label>
+                                                                <select
+                                                                    value={newEntry.taskId}
+                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, taskId: e.target.value }))}
+                                                                    disabled={!newEntry.moduleId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                >
+                                                                    <option value="">Select Task</option>
+                                                                    {filteredTasks.map(t => (
+                                                                        <option key={t._id} value={t._id}>{t.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            <div className="flex space-x-2">
+                                                                <div className="flex-1">
+                                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
+                                                                    <input
+                                                                        type="number"
+                                                                        placeholder="0"
+                                                                        value={newEntry.hours}
+                                                                        onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
+                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                        min="0"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Minutes</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        placeholder="0"
+                                                                        value={newEntry.minutes}
+                                                                        onChange={(e) => setNewEntry(prev => ({ ...prev, minutes: e.target.value }))}
+                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                        min="0" max="59"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
 
-                                                    <div className="flex justify-end pt-2">
-                                                        <Button
-                                                            onClick={submitNewEntry}
-                                                            className="px-4 py-2 font-bold text-sm shadow-sm"
-                                                        >
-                                                            Add Log
-                                                        </Button>
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Description</label>
+                                                            <textarea
+                                                                value={newEntry.description}
+                                                                onChange={(e) => setNewEntry(prev => ({ ...prev, description: e.target.value }))}
+                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white h-16 resize-none"
+                                                                placeholder="What did you work on?"
+                                                            />
+                                                        </div>
+
+                                                        <div className="flex justify-end pt-2">
+                                                            <Button
+                                                                onClick={submitNewEntry}
+                                                                className="px-4 py-2 font-bold text-sm shadow-sm"
+                                                            >
+                                                                Add Log
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {selectedCell.logs.map((log, i) => (
                                         <div key={i} className="p-4 hover:bg-slate-50 transition-colors">
@@ -2215,16 +2546,19 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 </div>
                                 <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center text-sm">
                                     <span className="text-slate-500">Total for Day</span>
-                                    <span className="font-bold text-slate-800 text-lg">
-                                        {(selectedCell.logs.length > 0
+                                    {(() => {
+                                        const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
+                                        const isPresentOnlyDay = !selectedCell.logs.length && isPresentOnlyAttendance(log);
+                                        const dayTotal = selectedCell.logs.length > 0
                                             ? selectedCell.logs.reduce((acc, l) => acc + l.hours, 0)
-                                            : (() => {
-                                                const log = attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)));
-                                                if (!log) return 0;
-                                                return log.duration ? (log.duration / 60) : (log.clockOut && log.clockIn ? (new Date(log.clockOut) - new Date(log.clockIn)) / 3600000 : 0);
-                                            })()
-                                        ).toFixed(1)} Hours
-                                    </span>
+                                            : (log ? getAttendanceHoursValue(log) : 0);
+
+                                        return (
+                                            <span className="font-bold text-slate-800 text-lg">
+                                                {isPresentOnlyDay ? 'Present' : `${dayTotal.toFixed(1)} Hours`}
+                                            </span>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         )}
@@ -2238,8 +2572,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                             <div>
                                 <h4 className="font-bold text-blue-800">Automated Sync Active</h4>
                                 <p className="text-sm text-blue-600 mt-1">
-                                    Your "Attendance" hours are automatically populated from your Attendance (Clock In/Out) duration.
-                                    You can manually add other project entries if enabled.
+                                    {isPresentOnlyUser
+                                        ? 'Your attendance row is automatically populated from daily presence marks. You can manually add other project entries if enabled.'
+                                        : 'Your "Attendance" hours are automatically populated from your Attendance (Clock In/Out) duration. You can manually add other project entries if enabled.'}
                                 </p>
                             </div>
                         </div>
@@ -2296,9 +2631,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                     {eachDayOfInterval({ start: startOfMonth(viewDate), end: endOfMonth(viewDate) }).map(day => {
                                         const dateStr = format(day, 'yyyy-MM-dd');
                                         const record = attendanceLogs.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                                        const holiday = holidays.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
-                                        const isWeeklyOff = weeklyOff.includes(format(day, 'EEEE'));
                                         const isFuture = day > new Date();
+                                        const { holiday, leave, isWeeklyOff } = getDayContext(day);
 
                                         // Status Logic
                                         let status = 'Absent';
@@ -2313,6 +2647,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         } else if (holiday) {
                                             status = holiday.name;
                                             statusColor = holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700';
+                                        } else if (leave) {
+                                            status = getLeaveLabel(leave);
+                                            statusColor = 'bg-purple-100 text-purple-700';
                                         } else if (record) {
                                             const attendanceMeta = getAttendanceStatusMeta(record);
                                             status = attendanceMeta.label;
@@ -2334,23 +2671,13 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 font-mono text-slate-600">
-                                                    {record ? (record.clockInIST?.split(',')[1]?.trim() || new Date(record.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '-'}
+                                                    {record ? getAttendanceTimeDisplay(record, 'clockIn') : '-'}
                                                 </td>
                                                 <td className="px-4 py-3 font-mono text-slate-600">
-                                                    {record && record.clockOut ? (record.clockOutIST?.split(',')[1]?.trim() || new Date(record.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '-'}
+                                                    {record ? getAttendanceTimeDisplay(record, 'clockOut') : '-'}
                                                 </td>
                                                 <td className="px-4 py-3 font-mono font-bold text-slate-700">
-                                                    {record ? (
-                                                        (() => {
-                                                            const start = new Date(record.clockIn);
-                                                            const end = record.clockOut ? new Date(record.clockOut) : new Date();
-                                                            if (end < start) return '-';
-                                                            const diff = Math.abs(end - start);
-                                                            const h = Math.floor(diff / (1000 * 60 * 60));
-                                                            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                                                            return `${h}h ${m}m`;
-                                                        })()
-                                                    ) : '-'}
+                                                    {record ? (isPresentOnlyAttendance(record) ? 'Present' : formatHoursDuration(getAttendanceHoursValue(record))) : '-'}
                                                 </td>
                                             </tr>
                                         );
@@ -2395,6 +2722,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 user={viewUser}
                                 weeklyOffs={weeklyOffs}
                                 holidays={holidays}
+                                approvedLeaves={approvedLeaves}
                                 date={viewDate}
                                 isPrivileged={canUpdateAttendance}
                             />
@@ -2464,31 +2792,36 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
                                     {rejectionType === 'PARTIAL' && (
                                         <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
-                                            <div className="text-xs text-slate-500 font-bold uppercase mb-2">Select entries to reject:</div>
+                                            <div className="text-xs text-slate-500 font-bold uppercase mb-2">Select items to reject:</div>
                                             <div className="space-y-2">
-                                                {selectedTimesheet?.entries?.map((entry, idx) => (
-                                                    <label key={entry._id || idx} className="flex items-start space-x-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
+                                                {getRejectableItems(selectedTimesheet).map((item, idx) => (
+                                                    <label key={item.id || idx} className="flex items-start space-x-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
                                                         <input
                                                             type="checkbox"
-                                                            checked={rejectedEntryIds.includes(entry._id)}
-                                                            onChange={() => toggleEntryRejection(entry._id)}
+                                                            checked={rejectedEntryIds.includes(item.id)}
+                                                            onChange={() => toggleEntryRejection(item.id)}
                                                             className="mt-1 text-red-600 rounded focus:ring-red-500"
                                                         />
                                                         <div className="text-sm">
                                                             <div className="font-mono text-xs text-slate-500">
-                                                                {format(new Date(entry.date), 'MMM d, yyyy')} - {entry.hours}h
+                                                                {format(new Date(item.date), 'MMM d, yyyy')} - {item.meta}
                                                             </div>
-                                                            <div className="text-slate-700 font-medium">
-                                                                {entry.project?.name || 'Unknown Project'}
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="text-slate-700 font-medium">
+                                                                    {item.title}
+                                                                </div>
+                                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${item.type === 'attendance' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                    {item.type}
+                                                                </span>
                                                             </div>
-                                                            {entry.description && (
-                                                                <div className="text-slate-500 text-xs truncate max-w-[250px]">{entry.description}</div>
+                                                            {item.subtitle && (
+                                                                <div className="text-slate-500 text-xs truncate max-w-[250px]">{item.subtitle}</div>
                                                             )}
                                                         </div>
                                                     </label>
                                                 ))}
-                                                {(!selectedTimesheet?.entries || selectedTimesheet.entries.length === 0) && (
-                                                    <div className="text-xs text-slate-400 italic">No entries found.</div>
+                                                {getRejectableItems(selectedTimesheet).length === 0 && (
+                                                    <div className="text-xs text-slate-400 italic">No timesheet items found.</div>
                                                 )}
                                             </div>
                                         </div>

@@ -20,7 +20,8 @@ const ENTITY_OPTIONS = [
     { key: 'approvalworkflow', label: 'Approval Workflows' },
     { key: 'interviewworkflow', label: 'Interview Workflows' },
     { key: 'leaveconfig', label: 'Leave Policies' },
-    { key: 'querytype', label: 'Helpdesk Types' }
+    { key: 'querytype', label: 'Helpdesk Types' },
+    { key: 'emailtemplate', label: 'Email Templates' }
 ];
 
 const formatPerson = (person) => {
@@ -50,6 +51,7 @@ const getItemTitle = (entity, item) => {
         case 'approvalworkflow':
         case 'interviewworkflow':
         case 'querytype':
+        case 'emailtemplate':
             return item.name || item.title || 'Untitled';
         case 'candidate':
             return item.candidateName || item.email || 'Candidate';
@@ -85,6 +87,8 @@ const getItemSubtitle = (entity, item) => {
             return item.leaveType || '-';
         case 'querytype':
             return item.assignedPerson?.email || '-';
+        case 'emailtemplate':
+            return item.subject || '-';
         case 'worklog':
             return item.hours ? `${item.hours} hour(s)` : '-';
         default:

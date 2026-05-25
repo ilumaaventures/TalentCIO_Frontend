@@ -39,6 +39,7 @@ const Attendance = () => {
     const { user, hasModule } = useAuth();
     const location = useLocation();
     const [status, setStatus] = useState(null);
+    const [timesheetSummary, setTimesheetSummary] = useState(null);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -273,7 +274,7 @@ const Attendance = () => {
 
         setRegDate(day);
         setRegForm({
-            type: 'BOTH',
+            type: isPresentOnlyMode ? 'PRESENT' : 'BOTH',
             checkIn: record?.clockIn ? new Date(record.clockIn).toISOString().slice(11, 16) : '09:00',
             checkOut: record?.clockOut ? new Date(record.clockOut).toISOString().slice(11, 16) : '18:00',
             reason: ''
@@ -284,15 +285,20 @@ const Attendance = () => {
     const submitRegularization = async (e) => {
         e.preventDefault();
         try {
-            const reqDate = new Date(regDate);
-            const [inH, inM] = regForm.checkIn.split(':');
-            const [outH, outM] = regForm.checkOut.split(':');
+            let requestedClockIn = null;
+            let requestedClockOut = null;
 
-            const requestedClockIn = new Date(reqDate);
-            requestedClockIn.setHours(parseInt(inH), parseInt(inM), 0);
+            if (!isPresentOnlyMode) {
+                const reqDate = new Date(regDate);
+                const [inH, inM] = regForm.checkIn.split(':');
+                const [outH, outM] = regForm.checkOut.split(':');
 
-            const requestedClockOut = new Date(reqDate);
-            requestedClockOut.setHours(parseInt(outH), parseInt(outM), 0);
+                requestedClockIn = new Date(reqDate);
+                requestedClockIn.setHours(parseInt(inH), parseInt(inM), 0);
+
+                requestedClockOut = new Date(reqDate);
+                requestedClockOut.setHours(parseInt(outH), parseInt(outM), 0);
+            }
 
             await api.post('/attendance/regularize', {
                 date: regDate,
@@ -459,6 +465,7 @@ const Attendance = () => {
             setWeeklyOffs(res.data.weeklyOff || ['Saturday', 'Sunday']);
             setHolidays(res.data.holidays || []);
             setApprovedLeaves(res.data.approvedLeaves || []);
+            setTimesheetSummary(res.data.timesheetSummary || null);
         } catch (error) {
             console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
@@ -509,9 +516,10 @@ const Attendance = () => {
             status: nextStatus,
             history: nextHistory,
             recentLogs: cachedData.recentLogs || [],
-            approvedLeaves: cachedData.approvedLeaves || []
+            approvedLeaves: cachedData.approvedLeaves || [],
+            timesheetSummary: cachedData.timesheetSummary || null
         };
-        const nextFingerprint = `${nextStatus.status || 'none'}|${nextStatus.clockInIST || nextStatus.clockIn || ''}|${nextStatus.clockOutIST || nextStatus.clockOut || ''}::${(nextData.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',')}::H${nextHistory.length}::L${(nextData.approvedLeaves || []).length}`;
+        const nextFingerprint = `${nextStatus.status || 'none'}|${nextStatus.clockInIST || nextStatus.clockIn || ''}|${nextStatus.clockOutIST || nextStatus.clockOut || ''}::${(nextData.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',')}::H${nextHistory.length}::L${(nextData.approvedLeaves || []).length}::TS${nextData.timesheetSummary?.status || 'none'}`;
 
         sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(nextData, nextFingerprint)));
     };
@@ -644,7 +652,8 @@ const Attendance = () => {
                     status: minimalStatus,
                     recentLogs: minimalLogs,
                     history: minimalHistory,
-                    approvedLeaves: (data.approvedLeaves || []).map(l => ({ _id: l._id, leaveType: l.leaveType, startDate: l.startDate, endDate: l.endDate, status: l.status }))
+                    approvedLeaves: (data.approvedLeaves || []).map(l => ({ _id: l._id, leaveType: l.leaveType, startDate: l.startDate, endDate: l.endDate, status: l.status })),
+                    timesheetSummary: data.timesheetSummary || null
                 }, fingerprint);
 
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
@@ -663,7 +672,8 @@ const Attendance = () => {
             const logsStr = (payload.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',');
             const historyStr = (payload.history || []).length;
             const leavesStr = (payload.approvedLeaves || []).length;
-            return `${statusStr}::${logsStr}::H${historyStr}::L${leavesStr}`;
+            const timesheetStr = payload.timesheetSummary?.status || 'none';
+            return `${statusStr}::${logsStr}::H${historyStr}::L${leavesStr}::TS${timesheetStr}`;
         };
 
         const applyData = (payload) => {
@@ -671,6 +681,7 @@ const Attendance = () => {
             if (payload.recentLogs) setRecentLogs(payload.recentLogs);
             if (payload.history) setHistory(payload.history);
             if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
+            if (payload.timesheetSummary !== undefined) setTimesheetSummary(payload.timesheetSummary);
         };
 
         // 1. Try Cache First (Instant UI)
@@ -703,7 +714,8 @@ const Attendance = () => {
                 recentLogs: bootstrapData?.recentLogs || [],
                 history: bootstrapData?.history || [],
                 holidays: bootstrapData?.holidays || [],
-                approvedLeaves: bootstrapData?.approvedLeaves || []
+                approvedLeaves: bootstrapData?.approvedLeaves || [],
+                timesheetSummary: bootstrapData?.timesheetSummary || null
             };
 
             const freshFingerprint = buildFingerprint(freshData);
@@ -750,6 +762,7 @@ const Attendance = () => {
                 setHistory(res.data.history || []);
                 setHolidays(res.data.holidays || []);
                 setApprovedLeaves(res.data.approvedLeaves || []);
+                setTimesheetSummary(res.data.timesheetSummary || null);
                 if (res.data.weeklyOff) setWeeklyOffs(res.data.weeklyOff);
             })
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
@@ -760,7 +773,7 @@ const Attendance = () => {
     // Fetch Tasks only when the 'tasks' tab is clicked
     const tasksFetchedRef = useRef(false);
     useEffect(() => {
-        if (activeTab === 'tasks' && user?._id && hasModule('projectManagement') && !tasksFetchedRef.current) {
+        if (activeTab === 'tasks' && user?._id && hasModule('projects') && !tasksFetchedRef.current) {
             tasksFetchedRef.current = true;
             api.get(`/projects/tasks?assignees=${user._id}`)
                 .then(r => {
@@ -1084,11 +1097,12 @@ const Attendance = () => {
         // Determine user to export
         const exportUser = viewUser || user;
 
-        const referenceDate = history.length > 0 ? new Date(history[0].date) : new Date();
+        const referenceDate = calendarDate || (history.length > 0 ? new Date(history[0].date) : new Date());
         const start = startOfMonth(referenceDate);
         const end = endOfMonth(referenceDate);
         const days = eachDayOfInterval({ start, end });
         const standardHours = user?.company?.settings?.attendance?.workingHours || 8;
+        const timesheetStatus = String(timesheetSummary?.status || 'DRAFT').toUpperCase();
 
         // --- STYLING ---
         const blueHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
@@ -1220,6 +1234,30 @@ const Attendance = () => {
         footerValue.font = { bold: true };
         footerValue.alignment = { horizontal: 'right', vertical: 'middle' };
         footerValue.border = { bottom: { style: 'double', color: { argb: 'FF4F81BD' } } };
+
+        currentRow += 1;
+        sheet.getRow(currentRow).height = 22;
+        const statusLabel = sheet.getCell(`D${currentRow}`);
+        statusLabel.value = 'Timesheet Status';
+        statusLabel.font = { bold: true };
+        statusLabel.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        const statusValue = sheet.getCell(`E${currentRow}`);
+        statusValue.value = timesheetStatus.charAt(0) + timesheetStatus.slice(1).toLowerCase();
+        statusValue.font = {
+            bold: true,
+            color: {
+                argb: timesheetStatus === 'APPROVED'
+                    ? 'FF15803D'
+                    : timesheetStatus === 'REJECTED'
+                        ? 'FFB91C1C'
+                        : timesheetStatus === 'SUBMITTED'
+                            ? 'FFB45309'
+                            : 'FF475569'
+            }
+        };
+        statusValue.alignment = { horizontal: 'right', vertical: 'middle' };
+        statusValue.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
 
         // Column Widths
         sheet.getColumn(1).width = 25; // A
@@ -1751,7 +1789,7 @@ const Attendance = () => {
                             </div>
                         </div>
 
-                        {hasModule('projectManagement') && (
+                        {hasModule('projects') && (
                             <div className="zoho-card p-5 mt-6">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Recent Activity</h4>
                                 {recentLogs.length > 0 ? (
@@ -1788,7 +1826,7 @@ const Attendance = () => {
                             </div>
                         )}
 
-                        {!isAttendanceActive && hasModule('projectManagement') && (
+                        {!isAttendanceActive && hasModule('projects') && (
                             <div className="zoho-card p-5 opacity-75 mt-6">
                                 <div className="text-center space-y-2">
                                     <Briefcase size={32} className="mx-auto text-slate-300" />
@@ -1895,7 +1933,7 @@ const Attendance = () => {
                             >
                                 <Clock size={16} /> Regularization Requests
                             </button>
-                            {hasModule('projectManagement') && (
+                            {hasModule('projects') && (
                                 <button
                                     onClick={() => setActiveTab('tasks')}
                                     className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'tasks' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
@@ -1986,48 +2024,60 @@ const Attendance = () => {
                         </div>
 
                         <form onSubmit={submitRegularization} className="p-6 space-y-5">
-                            <div>
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Regularize For</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {['IN', 'OUT', 'BOTH'].map(type => (
-                                        <button
-                                            key={type}
-                                            type="button"
-                                            onClick={() => setRegForm({ ...regForm, type })}
-                                            className={`py-2 text-xs font-semibold rounded-lg border transition-all ${regForm.type === type ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}
-                                        >
-                                            {type}
-                                        </button>
-                                    ))}
+                            {isPresentOnlyMode ? (
+                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                                    <label className="block text-[11px] font-bold text-emerald-700 uppercase tracking-wider mb-1">Regularize For</label>
+                                    <div className="text-sm font-semibold text-emerald-800">Mark as Present</div>
+                                    <p className="mt-1 text-xs text-emerald-700">
+                                        This user uses present-only attendance, so this request will only mark the selected day as present.
+                                    </p>
                                 </div>
-                            </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Regularize For</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {['IN', 'OUT', 'BOTH'].map(type => (
+                                                <button
+                                                    key={type}
+                                                    type="button"
+                                                    onClick={() => setRegForm({ ...regForm, type })}
+                                                    className={`py-2 text-xs font-semibold rounded-lg border transition-all ${regForm.type === type ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}
+                                                >
+                                                    {type}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                {(regForm.type === 'IN' || regForm.type === 'BOTH') && (
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check In Time</label>
-                                        <input
-                                            type="time"
-                                            required
-                                            className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                                            value={regForm.checkIn}
-                                            onChange={(e) => setRegForm({ ...regForm, checkIn: e.target.value })}
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {(regForm.type === 'IN' || regForm.type === 'BOTH') && (
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check In Time</label>
+                                                <input
+                                                    type="time"
+                                                    required
+                                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                                                    value={regForm.checkIn}
+                                                    onChange={(e) => setRegForm({ ...regForm, checkIn: e.target.value })}
+                                                />
+                                            </div>
+                                        )}
+                                        {(regForm.type === 'OUT' || regForm.type === 'BOTH') && (
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check Out Time</label>
+                                                <input
+                                                    type="time"
+                                                    required
+                                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                                                    value={regForm.checkOut}
+                                                    onChange={(e) => setRegForm({ ...regForm, checkOut: e.target.value })}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                                {(regForm.type === 'OUT' || regForm.type === 'BOTH') && (
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check Out Time</label>
-                                        <input
-                                            type="time"
-                                            required
-                                            className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
-                                            value={regForm.checkOut}
-                                            onChange={(e) => setRegForm({ ...regForm, checkOut: e.target.value })}
-                                        />
-                                    </div>
-                                )}
-                            </div>
+                                </>
+                            )}
 
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Reason for Regularization</label>
@@ -2046,7 +2096,7 @@ const Attendance = () => {
                                     type="submit"
                                     className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-[0.98] transition-all"
                                 >
-                                    Submit Request
+                                    {isPresentOnlyMode ? 'Submit Presence Request' : 'Submit Request'}
                                 </button>
                             </div>
                         </form>
@@ -2367,25 +2417,33 @@ const RegularizationRequestsView = ({ requests, onProcess, processingId, current
                                         <div className="text-xs text-slate-500 font-medium flex items-center gap-2 mt-0.5">
                                             <span>{format(new Date(req.date), 'EEE, MMM dd')}</span>
                                             <span className="h-1 w-1 bg-slate-300 rounded-full"></span>
-                                            <span className="text-blue-600 font-bold uppercase tracking-tighter">{req.type}</span>
+                                            <span className="text-blue-600 font-bold uppercase tracking-tighter">
+                                                {req.type === 'PRESENT' ? 'MARK PRESENT' : req.type}
+                                            </span>
                                         </div>
                                         <div className="text-[11px] text-slate-400 mt-1">
                                             Sent: {format(new Date(req.createdAt), 'EEE, MMM dd yyyy')} at {format(new Date(req.createdAt), 'hh:mm a')}
                                         </div>
-                                        <div className="mt-3 bg-white/50 border border-slate-100 rounded-lg p-2 flex gap-4 text-[10px] font-mono">
-                                            {(req.type === 'IN' || req.type === 'BOTH') && (
-                                                <div>
-                                                    <span className="text-slate-400 block mb-0.5">REQ IN</span>
-                                                    <span className="text-slate-700 font-bold">{new Date(req.requestedClockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                </div>
-                                            )}
-                                            {(req.type === 'OUT' || req.type === 'BOTH') && (
-                                                <div>
-                                                    <span className="text-slate-400 block mb-0.5">REQ OUT</span>
-                                                    <span className="text-slate-700 font-bold">{new Date(req.requestedClockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                </div>
-                                            )}
-                                        </div>
+                                        {req.type === 'PRESENT' ? (
+                                            <div className="mt-3 bg-emerald-50 border border-emerald-100 rounded-lg p-2 text-[11px] font-medium text-emerald-700">
+                                                Requested action: Mark this day as present
+                                            </div>
+                                        ) : (
+                                            <div className="mt-3 bg-white/50 border border-slate-100 rounded-lg p-2 flex gap-4 text-[10px] font-mono">
+                                                {(req.type === 'IN' || req.type === 'BOTH') && req.requestedClockIn && (
+                                                    <div>
+                                                        <span className="text-slate-400 block mb-0.5">REQ IN</span>
+                                                        <span className="text-slate-700 font-bold">{new Date(req.requestedClockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                )}
+                                                {(req.type === 'OUT' || req.type === 'BOTH') && req.requestedClockOut && (
+                                                    <div>
+                                                        <span className="text-slate-400 block mb-0.5">REQ OUT</span>
+                                                        <span className="text-slate-700 font-bold">{new Date(req.requestedClockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

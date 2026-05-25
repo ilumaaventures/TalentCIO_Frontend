@@ -36,7 +36,7 @@ const TA_DASHBOARD_VIEWS = [
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, hasModule } = useAuth();
   const location = useLocation();
   const [recycleBinCount, setRecycleBinCount] = useState(0);
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
@@ -90,21 +90,21 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('onboarding.manage')
     || user?.permissions?.includes('*');
   const showRecycleBin = user?.roles?.includes('Admin') || user?.permissions?.includes('bin.view');
-  const showBusinessUnits = user?.company?.enabledModules?.includes('projectManagement') && (
+  const showBusinessUnits = hasModule('businessUnits') && (
     user?.roles?.includes('Admin')
     || user?.permissions?.includes('business_unit.read')
     || user?.permissions?.includes('business_unit.create')
     || user?.permissions?.includes('business_unit.update')
     || user?.permissions?.includes('*')
   );
-  const showClients = user?.company?.enabledModules?.includes('projectManagement') && (
+  const showClients = hasModule('clients') && (
     user?.roles?.includes('Admin')
     || user?.permissions?.includes('client.read')
     || user?.permissions?.includes('client.create')
     || user?.permissions?.includes('client.update')
     || user?.permissions?.includes('*')
   );
-  const showProjects = user?.company?.enabledModules?.includes('projectManagement');
+  const showProjects = hasModule('projects');
   const showMainSection = showDashboard || showAttendance || showLeaves || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;

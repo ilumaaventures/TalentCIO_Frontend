@@ -77,7 +77,7 @@ const sanitizeRoles = (roles = []) =>
     }));
 
 const Roles = () => {
-    const { user, refreshProfile } = useAuth();
+    const { user, refreshProfile, hasModule } = useAuth();
     const [roles, setRoles] = useState([]);
     const [permissions, setPermissions] = useState({}); // Grouped permissions
     const [showModal, setShowModal] = useState(false);
@@ -185,10 +185,10 @@ const Roles = () => {
         const moduleMapping = {
             'ATTENDANCE': 'attendance',
             'TIMESHEETS': 'timesheet',
-            'PROJECTS': 'projectManagement',
-            'BUSINESS UNITS': 'projectManagement',
-            'CLIENTS': 'projectManagement',
-            'TASKS': 'projectManagement',
+            'PROJECTS': 'projects',
+            'BUSINESS UNITS': 'businessUnits',
+            'CLIENTS': 'clients',
+            'TASKS': 'projects',
             'USER MANAGEMENT': 'userManagement',
             'ROLE MANAGEMENT': 'userManagement',
             'TALENT ACQUISITION': 'talentAcquisition',
@@ -200,7 +200,7 @@ const Roles = () => {
 
         const moduleKey = moduleMapping[groupName];
         if (!moduleKey) return true;
-        return user?.company?.enabledModules?.includes(moduleKey);
+        return hasModule(moduleKey);
     };
 
     useEffect(() => {
@@ -418,10 +418,10 @@ const Roles = () => {
                                         const moduleMapping = {
                                             'ATTENDANCE': 'attendance',
                                             'TIMESHEETS': 'timesheet',
-                                            'PROJECTS': 'projectManagement',
-                                            'BUSINESS UNITS': 'projectManagement',
-                                            'CLIENTS': 'projectManagement',
-                                            'TASKS': 'projectManagement',
+                                            'PROJECTS': 'projects',
+                                            'BUSINESS UNITS': 'businessUnits',
+                                            'CLIENTS': 'clients',
+                                            'TASKS': 'projects',
                                             'USER MANAGEMENT': 'userManagement',
                                             'ROLE MANAGEMENT': 'userManagement',
                                             'TALENT ACQUISITION': 'talentAcquisition',
@@ -436,7 +436,7 @@ const Roles = () => {
                                         if (!moduleKey) return true;
 
                                         // Check if module is enabled
-                                        return user?.company?.enabledModules?.includes(moduleKey);
+                                        return hasModule(moduleKey);
                                     })
                                     .map(([module, perms]) => {
                                         const isTAModule = module === TA_PERMISSION_MODULE;
