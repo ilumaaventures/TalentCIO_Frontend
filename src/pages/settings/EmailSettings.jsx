@@ -114,13 +114,21 @@ const SAMPLE_DATA = {
 <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 13px; color: #92400e;">
     <strong>Submission Deadline:</strong> 30 May 2026
 </div>`,
-    portalButton: '<a href="https://workspace.example.com/pre-onboarding/login" style="background: linear-gradient(135deg, #2563eb, #7c3aed); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 15px;">Open Pre-Onboarding Portal</a>',
+    portalButton: `
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+    <tr>
+        <td bgcolor="#2563eb" style="border-radius:8px; text-align:center;">
+            <a href="https://workspace.example.com/pre-onboarding/login" style="display:inline-block; padding:14px 32px; color:#ffffff; text-decoration:none; font-size:15px; font-weight:700;">Open Pre-Onboarding Portal</a>
+        </td>
+    </tr>
+</table>`,
     currentYear: '2026'
 };
 
 const DEFAULT_EMAIL_LOGO_WIDTH = 200;
 const DEFAULT_EMAIL_LOGO_HEIGHT = 44;
 const DEFAULT_EMAIL_LOGO_ALIGNMENT = 'center';
+const EMAIL_PREVIEW_CANVAS_MAX_WIDTH = 640;
 
 const LOGO_ALIGNMENT_OPTIONS = [
     { value: 'left', label: 'Left', icon: AlignLeft },
@@ -132,6 +140,43 @@ const getPreviewJustifyContent = (alignment = DEFAULT_EMAIL_LOGO_ALIGNMENT) => {
     if (alignment === 'left') return 'flex-start';
     if (alignment === 'right') return 'flex-end';
     return 'center';
+};
+
+const buildBrandedEmailPreviewHtml = ({
+    content = '',
+    branding = {}
+}) => {
+    const bodyContent = String(content || '').trim();
+    if (!bodyContent) {
+        return '<p style="margin:0;color:#94a3b8;font-size:14px;">Select a template to preview</p>';
+    }
+
+    const brandColor = branding?.brandColor || '#6366f1';
+    const logoUrl = String(branding?.logoUrl || '').trim();
+    const logoLink = 'https://talentcio.in';
+    const logoAlt = branding?.displayName || 'Your Company';
+    const logoWidth = Number(branding?.logoWidth) || DEFAULT_EMAIL_LOGO_WIDTH;
+    const logoHeight = Number(branding?.logoHeight) || DEFAULT_EMAIL_LOGO_HEIGHT;
+    const logoAlignment = branding?.logoAlignment || DEFAULT_EMAIL_LOGO_ALIGNMENT;
+    const footerText = String(branding?.footerText || '').trim();
+
+    return `
+        <div style="background:#f8fafc;padding:24px 12px;font-family:Arial,sans-serif;">
+            <div style="max-width:${EMAIL_PREVIEW_CANVAS_MAX_WIDTH}px;margin:0 auto;">
+                <div style="background:${brandColor};padding:16px 24px;border-radius:8px 8px 0 0;text-align:${logoAlignment};">
+                    ${logoUrl
+            ? `<a href="${logoLink}" style="display:inline-block;"><img src="${logoUrl}" alt="${logoAlt}" style="width:${logoWidth}px;height:${logoHeight}px;max-width:100%;object-fit:contain;display:block;margin:0 auto;" /></a>`
+            : ''}
+                </div>
+                <div style="background:#ffffff;padding:32px 24px;border:1px solid #e2e8f0;border-top:none;">
+                    ${bodyContent}
+                </div>
+                ${footerText
+            ? `<div style="padding:16px 24px;text-align:center;font-size:12px;color:#94a3b8;">${footerText}</div>`
+            : ''}
+            </div>
+        </div>
+    `;
 };
 
 const SliderField = ({
@@ -1271,9 +1316,7 @@ const BrandingTab = ({ canManage }) => {
                                     display: 'inline-block'
                                 }}
                             />
-                        ) : (
-                            <span className="text-lg font-bold text-white">{branding.displayName || 'Your Company'}</span>
-                        )}
+                        ) : null}
                     </div>
 
                     <div className="border-x border-slate-200 bg-white px-6 py-5 text-sm text-slate-700">
@@ -1313,29 +1356,51 @@ const DEFAULT_TEMPLATE_FORM = {
 };
 const DEFAULT_ONBOARDING_EMAIL_SUBJECT = 'Action Required: Complete Your Pre-Onboarding';
 const DEFAULT_ONBOARDING_EMAIL_BODY = `
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
-    <div style="background: linear-gradient(135deg, #2563eb, #7c3aed); padding: 32px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 22px;">Pre-Onboarding Action Required</h1>
-        <p style="color: #e0e7ff; margin-top: 8px; font-size: 14px;">Please complete the following items on your portal</p>
-    </div>
-    <div style="padding: 32px;">
-        <div style="font-size: 14px; line-height: 1.6;">
-            <p>Hello <strong>{{firstName}}</strong>,</p>
-            <p>Your HR team has requested that you complete the following items on the pre-onboarding portal before your joining date.</p>
-        </div>
-        {{credentialsSection}}
-        {{requestedSectionsBlock}}
-        {{requestedDocumentsBlock}}
-        {{sharedFilesBlock}}
-        {{deadlineBlock}}
-        <div style="text-align: center; margin: 28px 0;">
-            {{portalButton}}
-        </div>
-    </div>
-    <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #94a3b8; font-size: 12px;">
-        &copy; {{currentYear}} TalentCio. All rights reserved.
-    </div>
-</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin:0 auto; border:1px solid #e2e8f0; border-radius:12px; background:#ffffff;">
+    <tr>
+        <td style="padding:0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;">
+                <tr>
+                    <td align="center" style="padding:32px 24px 28px;">
+                        <div style="display:inline-block; background:#334155; color:#dbeafe; padding:8px 16px; border-radius:999px; font-size:12px; letter-spacing:1px; text-transform:uppercase; font-weight:600;">
+                            Pre-Onboarding Portal
+                        </div>
+                        <div style="height:20px; line-height:20px; font-size:20px;">&nbsp;</div>
+                        <div style="color:#ffffff; font-size:22px; line-height:28px; font-weight:700;">
+                            Action Required
+                        </div>
+                        <div style="height:12px; line-height:12px; font-size:12px;">&nbsp;</div>
+                        <div style="max-width:460px; margin:0 auto; color:#cbd5e1; font-size:14px; line-height:24px;">
+                            Complete your pending onboarding tasks and upload the requested information before your joining date.
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding:32px;">
+            <div style="color:#0f172a; font-size:18px; line-height:28px; font-weight:600; margin:0 0 12px;">
+                Hello {{firstName}},
+            </div>
+            <div style="color:#475569; font-size:14px; line-height:26px; margin:0 0 28px;">
+                Your HR team has shared a few onboarding requirements that need your attention. Please review the items below and complete them through your employee portal.
+            </div>
+            <div style="margin-bottom:22px;">{{credentialsSection}}</div>
+            <div style="margin-bottom:22px;">{{requestedSectionsBlock}}</div>
+            <div style="margin-bottom:22px;">{{requestedDocumentsBlock}}</div>
+            <div style="margin-bottom:22px;">{{sharedFilesBlock}}</div>
+            <div style="margin-bottom:30px;">{{deadlineBlock}}</div>
+            <div style="text-align:center; margin-top:28px;">{{portalButton}}</div>
+        </td>
+    </tr>
+    <tr>
+        <td style="background:#f1f5f9; padding:16px; text-align:center; border-top:1px solid #e2e8f0;">
+            <div style="margin:0 0 8px; color:#0f172a; font-size:14px; font-weight:600;">TalentCio</div>
+            <div style="margin:0; color:#94a3b8; font-size:12px;">&copy; {{currentYear}} TalentCio. All rights reserved.</div>
+        </td>
+    </tr>
+</table>
 `;
 const BUILT_IN_ONBOARDING_TEMPLATE_ID = '__built_in_onboarding_template__';
 const BUILT_IN_ONBOARDING_TEMPLATE = {
@@ -1667,11 +1732,11 @@ const TemplatesTab = ({ canManage }) => {
     }, []);
 
     const handleArchive = async (templateId) => {
-        if (!canManage || !window.confirm('Archive this template?')) return;
+        if (!canManage || !window.confirm('Move this template to recycle bin?')) return;
 
         try {
             await api.delete(`/email-templates/${templateId}`);
-            toast.success('Template archived');
+            toast.success('Template moved to recycle bin');
             fetchTemplates();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed');
@@ -1879,10 +1944,13 @@ const PreviewTab = () => {
         () => (selectedTemplate ? resolveTemplate(selectedTemplate.subject, SAMPLE_DATA) : ''),
         [selectedTemplate]
     );
-    const brandColor = branding?.brandColor || '#6366f1';
-    const logoWidth = branding?.logoWidth || DEFAULT_EMAIL_LOGO_WIDTH;
-    const logoHeight = branding?.logoHeight || DEFAULT_EMAIL_LOGO_HEIGHT;
-    const logoAlignment = branding?.logoAlignment || DEFAULT_EMAIL_LOGO_ALIGNMENT;
+    const fullPreviewHtml = useMemo(
+        () => buildBrandedEmailPreviewHtml({
+            content: previewBody,
+            branding
+        }),
+        [branding, previewBody]
+    );
 
     useEffect(() => {
         if (filteredTemplates.some((template) => template._id === selectedTemplateId)) {
@@ -1948,43 +2016,20 @@ const PreviewTab = () => {
             </div>
 
             <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-700">Full Email Preview</h3>
-                <div className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-                    <div style={{ backgroundColor: brandColor, textAlign: logoAlignment }} className="px-8 py-5">
-                        {branding?.logoUrl ? (
-                            <img
-                                src={branding.logoUrl}
-                                alt="logo"
-                                style={{
-                                    width: `${logoWidth}px`,
-                                    height: `${logoHeight}px`,
-                                    maxWidth: '100%',
-                                    objectFit: 'contain',
-                                    display: 'inline-block'
-                                }}
-                            />
-                        ) : (
-                            <span className="text-xl font-bold text-white">{branding?.displayName || 'Your Company'}</span>
-                        )}
-                    </div>
-
-                    <div className="min-h-[200px] border-x border-slate-200 bg-white px-8 py-6">
-                        {selectedTemplate ? (
-                            <div
-                                className="prose prose-sm max-w-none text-slate-700"
-                                dangerouslySetInnerHTML={{ __html: previewBody }}
-                            />
-                        ) : (
-                            <p className="text-sm text-slate-400">Select a template to preview</p>
-                        )}
-                    </div>
-
-                    {branding?.footerText && (
+                <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-slate-700">Full Email Preview</h3>
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+                        Actual email canvas: 640px max width
+                    </span>
+                </div>
+                <div className="overflow-auto rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
+                    <div className="mx-auto min-w-[320px]" style={{ maxWidth: `${EMAIL_PREVIEW_CANVAS_MAX_WIDTH + 24}px` }}>
                         <div
-                            className="border border-slate-200 border-t-0 bg-slate-50 px-8 py-4 text-center text-xs text-slate-400"
-                            dangerouslySetInnerHTML={{ __html: branding.footerText }}
+                            className="min-h-[240px]"
+                            style={{ pointerEvents: 'none' }}
+                            dangerouslySetInnerHTML={{ __html: fullPreviewHtml }}
                         />
-                    )}
+                    </div>
                 </div>
             </div>
         </div>
