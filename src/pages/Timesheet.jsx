@@ -83,7 +83,7 @@ const isFullyRejectedTimesheet = (timesheet) =>
     timesheet.entries.every(entry => entry.status === 'REJECTED');
 
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
-    const { user } = useAuth();
+    const { user, hasModule } = useAuth();
     const [viewDate, setViewDate] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         const m = params.get('month');
@@ -147,6 +147,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('timesheet.view') ||
         user?.permissions?.includes('timesheet.update_others');
+    const canUseProjectWorkLogs = hasModule('projects');
 
     const isEditableTimesheetStatus = !timesheet || timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED';
 
@@ -2271,128 +2272,129 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             )}
                                     </div>
 
-                                    {/* Add Work Log Section */}
-                                    <div className="p-4 bg-white border-t border-slate-100">
-                                        {!isAddingEntry ? (
-                                            (isEditableTimesheetStatus && (!targetUserId || canUpdateTimesheet)) && (
-                                                <Button
-                                                    onClick={() => {
-                                                        setIsAddingEntry(true);
-                                                        setNewEntry(prev => ({ ...prev, date: getLocalDateInputValue(selectedCell.date) }));
-                                                    }}
-                                                    variant="ghost"
-                                                    className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm h-auto"
-                                                >
-                                                    <div className="bg-slate-200 rounded-full p-0.5">
-                                                        <span className="block h-4 w-4 leading-3 text-center">+</span>
-                                                    </div>
-                                                    <span>Add Work Log</span>
-                                                </Button>
-                                            )
-                                        ) : (
-                                            <div className="bg-slate-50 border border-blue-100 rounded-lg p-4 animate-in fade-in zoom-in-95 duration-200 relative">
-                                                <button
-                                                    onClick={() => setIsAddingEntry(false)}
-                                                    className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
-                                                >
-                                                    &times;
-                                                </button>
-                                                <h4 className="text-xs font-bold text-blue-600 uppercase mb-3">New Work Log</h4>
+                                    {canUseProjectWorkLogs && (
+                                        <div className="p-4 bg-white border-t border-slate-100">
+                                            {!isAddingEntry ? (
+                                                (isEditableTimesheetStatus && (!targetUserId || canUpdateTimesheet)) && (
+                                                    <Button
+                                                        onClick={() => {
+                                                            setIsAddingEntry(true);
+                                                            setNewEntry(prev => ({ ...prev, date: getLocalDateInputValue(selectedCell.date) }));
+                                                        }}
+                                                        variant="ghost"
+                                                        className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm h-auto"
+                                                    >
+                                                        <div className="bg-slate-200 rounded-full p-0.5">
+                                                            <span className="block h-4 w-4 leading-3 text-center">+</span>
+                                                        </div>
+                                                        <span>Add Work Log</span>
+                                                    </Button>
+                                                )
+                                            ) : (
+                                                <div className="bg-slate-50 border border-blue-100 rounded-lg p-4 animate-in fade-in zoom-in-95 duration-200 relative">
+                                                    <button
+                                                        onClick={() => setIsAddingEntry(false)}
+                                                        className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                    <h4 className="text-xs font-bold text-blue-600 uppercase mb-3">New Work Log</h4>
 
-                                                <div className="space-y-3">
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Project <span className="text-red-500">*</span></label>
-                                                            <select
-                                                                value={newEntry.projectId}
-                                                                onChange={(e) => handleProjectChange(e.target.value)}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
-                                                            >
-                                                                <option value="">Select Project</option>
-                                                                {availableProjects.map(p => (
-                                                                    <option key={p._id} value={p._id}>{p.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Module</label>
-                                                            <select
-                                                                value={newEntry.moduleId}
-                                                                onChange={(e) => handleModuleChange(e.target.value)}
-                                                                disabled={!newEntry.projectId}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
-                                                            >
-                                                                <option value="">Select Module</option>
-                                                                {filteredModules.map(m => (
-                                                                    <option key={m._id} value={m._id}>{m.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Task</label>
-                                                            <select
-                                                                value={newEntry.taskId}
-                                                                onChange={(e) => setNewEntry(prev => ({ ...prev, taskId: e.target.value }))}
-                                                                disabled={!newEntry.moduleId}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
-                                                            >
-                                                                <option value="">Select Task</option>
-                                                                {filteredTasks.map(t => (
-                                                                    <option key={t._id} value={t._id}>{t.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                        <div className="flex space-x-2">
-                                                            <div className="flex-1">
-                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
-                                                                <input
-                                                                    type="number"
-                                                                    placeholder="0"
-                                                                    value={newEntry.hours}
-                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
+                                                    <div className="space-y-3">
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Project <span className="text-red-500">*</span></label>
+                                                                <select
+                                                                    value={newEntry.projectId}
+                                                                    onChange={(e) => handleProjectChange(e.target.value)}
                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
-                                                                    min="0"
-                                                                />
+                                                                >
+                                                                    <option value="">Select Project</option>
+                                                                    {availableProjects.map(p => (
+                                                                        <option key={p._id} value={p._id}>{p.name}</option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
-                                                            <div className="flex-1">
-                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Minutes</label>
-                                                                <input
-                                                                    type="number"
-                                                                    placeholder="0"
-                                                                    value={newEntry.minutes}
-                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, minutes: e.target.value }))}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
-                                                                    min="0" max="59"
-                                                                />
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Module</label>
+                                                                <select
+                                                                    value={newEntry.moduleId}
+                                                                    onChange={(e) => handleModuleChange(e.target.value)}
+                                                                    disabled={!newEntry.projectId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                >
+                                                                    <option value="">Select Module</option>
+                                                                    {filteredModules.map(m => (
+                                                                        <option key={m._id} value={m._id}>{m.name}</option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
                                                         </div>
-                                                    </div>
 
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 mb-1">Description</label>
-                                                        <textarea
-                                                            value={newEntry.description}
-                                                            onChange={(e) => setNewEntry(prev => ({ ...prev, description: e.target.value }))}
-                                                            className="w-full p-2 border border-slate-300 rounded text-sm bg-white h-16 resize-none"
-                                                            placeholder="What did you work on?"
-                                                        />
-                                                    </div>
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Task</label>
+                                                                <select
+                                                                    value={newEntry.taskId}
+                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, taskId: e.target.value }))}
+                                                                    disabled={!newEntry.moduleId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                >
+                                                                    <option value="">Select Task</option>
+                                                                    {filteredTasks.map(t => (
+                                                                        <option key={t._id} value={t._id}>{t.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            <div className="flex space-x-2">
+                                                                <div className="flex-1">
+                                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
+                                                                    <input
+                                                                        type="number"
+                                                                        placeholder="0"
+                                                                        value={newEntry.hours}
+                                                                        onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
+                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                        min="0"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Minutes</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        placeholder="0"
+                                                                        value={newEntry.minutes}
+                                                                        onChange={(e) => setNewEntry(prev => ({ ...prev, minutes: e.target.value }))}
+                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                        min="0" max="59"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
 
-                                                    <div className="flex justify-end pt-2">
-                                                        <Button
-                                                            onClick={submitNewEntry}
-                                                            className="px-4 py-2 font-bold text-sm shadow-sm"
-                                                        >
-                                                            Add Log
-                                                        </Button>
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-500 mb-1">Description</label>
+                                                            <textarea
+                                                                value={newEntry.description}
+                                                                onChange={(e) => setNewEntry(prev => ({ ...prev, description: e.target.value }))}
+                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white h-16 resize-none"
+                                                                placeholder="What did you work on?"
+                                                            />
+                                                        </div>
+
+                                                        <div className="flex justify-end pt-2">
+                                                            <Button
+                                                                onClick={submitNewEntry}
+                                                                className="px-4 py-2 font-bold text-sm shadow-sm"
+                                                            >
+                                                                Add Log
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {selectedCell.logs.map((log, i) => (
                                         <div key={i} className="p-4 hover:bg-slate-50 transition-colors">

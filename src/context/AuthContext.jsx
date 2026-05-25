@@ -2,9 +2,30 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import api from '../api/axios';
 import { connectSocket, disconnectSocket } from '../api/socket';
 import InvalidWorkspace from '../pages/InvalidWorkspace';
+import { hasModuleEnabled, normalizeEnabledModules } from '../utils/enabledModules';
 
 const AuthContext = createContext(null);
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const normalizeUserPayload = (rawUser = null) => {
+  if (!rawUser) return rawUser;
+
+  const normalizedRoles = rawUser.roleNames || (Array.isArray(rawUser.roles)
+    ? rawUser.roles.map((role) => role.name || role)
+    : []);
+
+  const normalizedCompany = rawUser.company
+    ? {
+        ...rawUser.company,
+        enabledModules: normalizeEnabledModules(rawUser.company.enabledModules || [])
+      }
+    : rawUser.company;
+
+  return {
+    ...rawUser,
+    roles: normalizedRoles,
+    company: normalizedCompany
+  };
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -44,12 +65,7 @@ export const AuthProvider = ({ children }) => {
       if (storedUser) {
         try {
           const parsed = JSON.parse(storedUser);
-          const normalisedUser = {
-            ...parsed,
-            roles: parsed.roleNames || (Array.isArray(parsed.roles)
-              ? parsed.roles.map(r => r.name || r)
-              : [])
-          };
+          const normalisedUser = normalizeUserPayload(parsed);
           setUser(normalisedUser);
         } catch {
           localStorage.removeItem('user');
@@ -59,13 +75,7 @@ export const AuthProvider = ({ children }) => {
       // 3. ALWAYS fetch fresh profile from server to get latest company configuration (modules, styles, etc.)
       try {
         const response = await api.get('/auth/profile');
-        const freshUser = response.data;
-        const normalisedUser = {
-          ...freshUser,
-          roles: freshUser.roleNames || (Array.isArray(freshUser.roles)
-            ? freshUser.roles.map(r => r.name || r)
-            : [])
-        };
+        const normalisedUser = normalizeUserPayload(response.data);
         setUser(normalisedUser);
         localStorage.setItem('user', JSON.stringify(normalisedUser));
 
@@ -105,12 +115,7 @@ export const AuthProvider = ({ children }) => {
     const { token: newToken, ...userData } = response.data;
 
     // Normalise roles before storing
-    const normalisedUser = {
-      ...userData,
-      roles: userData.roleNames || (Array.isArray(userData.roles)
-        ? userData.roles.map(r => r.name || r)
-        : [])
-    };
+    const normalisedUser = normalizeUserPayload(userData);
 
     setToken(newToken);
     setUser(normalisedUser);
@@ -126,12 +131,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const loginWithToken = useCallback((newToken, userData) => {
-    const normalisedUser = {
-      ...userData,
-      roles: userData?.roleNames || (Array.isArray(userData?.roles)
-        ? userData.roles.map((role) => role.name || role)
-        : [])
-    };
+    const normalisedUser = normalizeUserPayload(userData);
 
     setToken(newToken);
     setUser(normalisedUser);
@@ -148,9 +148,10 @@ export const AuthProvider = ({ children }) => {
     const { token: newToken, ...userData } = response.data;
 
     setToken(newToken);
-    setUser(userData);
+    const normalisedUser = normalizeUserPayload(userData);
+    setUser(normalisedUser);
     localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('user', JSON.stringify(normalisedUser));
   };
 
   const logout = () => {
@@ -166,13 +167,7 @@ export const AuthProvider = ({ children }) => {
   const refreshProfile = async () => {
     try {
       const response = await api.get('/auth/profile');
-      const freshUser = response.data;
-      const normalisedUser = {
-        ...freshUser,
-        roles: freshUser.roleNames || (Array.isArray(freshUser.roles)
-          ? freshUser.roles.map(r => r.name || r)
-          : [])
-      };
+      const normalisedUser = normalizeUserPayload(response.data);
       setUser(normalisedUser);
       localStorage.setItem('user', JSON.stringify(normalisedUser));
       return normalisedUser;
@@ -208,7 +203,7 @@ export const AuthProvider = ({ children }) => {
   }
 
   const hasModule = (moduleName) => {
-    return user?.company?.enabledModules?.includes(moduleName) || false;
+    return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
   };
 
   return (

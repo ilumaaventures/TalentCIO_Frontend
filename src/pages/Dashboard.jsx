@@ -61,7 +61,7 @@ const LocationLink = ({ location }) => {
 };
 
 const Dashboard = () => {
-    const { user } = useAuth();
+    const { user, hasModule } = useAuth();
     const navigate = useNavigate();
     const [stats, setStats] = useState(null);
     const [projects, setProjects] = useState([]);
@@ -77,7 +77,7 @@ const Dashboard = () => {
 
     const attendanceSettings = user?.company?.settings?.attendance || {};
     const showLeavesModule = user?.company?.enabledModules?.includes('leaves');
-    const showProjectModule = user?.company?.enabledModules?.includes('projectManagement');
+    const showProjectModule = hasModule('projects');
     const showLocation = attendanceSettings.requireLocationCheckIn || 
                        attendanceSettings.requireLocationCheckOut || 
                        attendanceSettings.locationCheck;

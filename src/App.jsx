@@ -135,14 +135,16 @@ function App() {
                 <Route path="/onboarding" element={<OnboardingAccessWrapper />} />
 
                 {/* Project Management Routes */}
-                <Route element={<ModuleRoute moduleName="projectManagement" />}>
+                <Route element={<ModuleRoute moduleName="businessUnits" />}>
                   <Route path="/business-units" element={<BusinessUnitsAccessWrapper />} />
+                </Route>
+                <Route element={<ModuleRoute moduleName="clients" />}>
                   <Route path="/clients" element={<ClientsAccessWrapper />} />
                   <Route path="/clients/new" element={<ClientCreateAccessWrapper />} />
                   <Route path="/clients/:id/edit" element={<ClientEditAccessWrapper />} />
                   <Route path="/clients/:id/view" element={<ClientViewAccessWrapper />} />
-
-                  {/* Accessible to all (backend filtered) */}
+                </Route>
+                <Route element={<ModuleRoute moduleName="projects" />}>
                   <Route path="/projects" element={<Projects />} />
                   <Route path="/projects/:id" element={<ProjectDetails />} />
                 </Route>

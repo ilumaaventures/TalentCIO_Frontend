@@ -39,6 +39,7 @@ const Attendance = () => {
     const { user, hasModule } = useAuth();
     const location = useLocation();
     const [status, setStatus] = useState(null);
+    const [timesheetSummary, setTimesheetSummary] = useState(null);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -464,6 +465,7 @@ const Attendance = () => {
             setWeeklyOffs(res.data.weeklyOff || ['Saturday', 'Sunday']);
             setHolidays(res.data.holidays || []);
             setApprovedLeaves(res.data.approvedLeaves || []);
+            setTimesheetSummary(res.data.timesheetSummary || null);
         } catch (error) {
             console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
@@ -514,9 +516,10 @@ const Attendance = () => {
             status: nextStatus,
             history: nextHistory,
             recentLogs: cachedData.recentLogs || [],
-            approvedLeaves: cachedData.approvedLeaves || []
+            approvedLeaves: cachedData.approvedLeaves || [],
+            timesheetSummary: cachedData.timesheetSummary || null
         };
-        const nextFingerprint = `${nextStatus.status || 'none'}|${nextStatus.clockInIST || nextStatus.clockIn || ''}|${nextStatus.clockOutIST || nextStatus.clockOut || ''}::${(nextData.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',')}::H${nextHistory.length}::L${(nextData.approvedLeaves || []).length}`;
+        const nextFingerprint = `${nextStatus.status || 'none'}|${nextStatus.clockInIST || nextStatus.clockIn || ''}|${nextStatus.clockOutIST || nextStatus.clockOut || ''}::${(nextData.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',')}::H${nextHistory.length}::L${(nextData.approvedLeaves || []).length}::TS${nextData.timesheetSummary?.status || 'none'}`;
 
         sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(nextData, nextFingerprint)));
     };
@@ -649,7 +652,8 @@ const Attendance = () => {
                     status: minimalStatus,
                     recentLogs: minimalLogs,
                     history: minimalHistory,
-                    approvedLeaves: (data.approvedLeaves || []).map(l => ({ _id: l._id, leaveType: l.leaveType, startDate: l.startDate, endDate: l.endDate, status: l.status }))
+                    approvedLeaves: (data.approvedLeaves || []).map(l => ({ _id: l._id, leaveType: l.leaveType, startDate: l.startDate, endDate: l.endDate, status: l.status })),
+                    timesheetSummary: data.timesheetSummary || null
                 }, fingerprint);
 
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
@@ -668,7 +672,8 @@ const Attendance = () => {
             const logsStr = (payload.recentLogs || []).map(l => `${l._id}|${l.hours}`).join(',');
             const historyStr = (payload.history || []).length;
             const leavesStr = (payload.approvedLeaves || []).length;
-            return `${statusStr}::${logsStr}::H${historyStr}::L${leavesStr}`;
+            const timesheetStr = payload.timesheetSummary?.status || 'none';
+            return `${statusStr}::${logsStr}::H${historyStr}::L${leavesStr}::TS${timesheetStr}`;
         };
 
         const applyData = (payload) => {
@@ -676,6 +681,7 @@ const Attendance = () => {
             if (payload.recentLogs) setRecentLogs(payload.recentLogs);
             if (payload.history) setHistory(payload.history);
             if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
+            if (payload.timesheetSummary !== undefined) setTimesheetSummary(payload.timesheetSummary);
         };
 
         // 1. Try Cache First (Instant UI)
@@ -708,7 +714,8 @@ const Attendance = () => {
                 recentLogs: bootstrapData?.recentLogs || [],
                 history: bootstrapData?.history || [],
                 holidays: bootstrapData?.holidays || [],
-                approvedLeaves: bootstrapData?.approvedLeaves || []
+                approvedLeaves: bootstrapData?.approvedLeaves || [],
+                timesheetSummary: bootstrapData?.timesheetSummary || null
             };
 
             const freshFingerprint = buildFingerprint(freshData);
@@ -755,6 +762,7 @@ const Attendance = () => {
                 setHistory(res.data.history || []);
                 setHolidays(res.data.holidays || []);
                 setApprovedLeaves(res.data.approvedLeaves || []);
+                setTimesheetSummary(res.data.timesheetSummary || null);
                 if (res.data.weeklyOff) setWeeklyOffs(res.data.weeklyOff);
             })
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
@@ -765,7 +773,7 @@ const Attendance = () => {
     // Fetch Tasks only when the 'tasks' tab is clicked
     const tasksFetchedRef = useRef(false);
     useEffect(() => {
-        if (activeTab === 'tasks' && user?._id && hasModule('projectManagement') && !tasksFetchedRef.current) {
+        if (activeTab === 'tasks' && user?._id && hasModule('projects') && !tasksFetchedRef.current) {
             tasksFetchedRef.current = true;
             api.get(`/projects/tasks?assignees=${user._id}`)
                 .then(r => {
@@ -1089,11 +1097,12 @@ const Attendance = () => {
         // Determine user to export
         const exportUser = viewUser || user;
 
-        const referenceDate = history.length > 0 ? new Date(history[0].date) : new Date();
+        const referenceDate = calendarDate || (history.length > 0 ? new Date(history[0].date) : new Date());
         const start = startOfMonth(referenceDate);
         const end = endOfMonth(referenceDate);
         const days = eachDayOfInterval({ start, end });
         const standardHours = user?.company?.settings?.attendance?.workingHours || 8;
+        const timesheetStatus = String(timesheetSummary?.status || 'DRAFT').toUpperCase();
 
         // --- STYLING ---
         const blueHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
@@ -1225,6 +1234,30 @@ const Attendance = () => {
         footerValue.font = { bold: true };
         footerValue.alignment = { horizontal: 'right', vertical: 'middle' };
         footerValue.border = { bottom: { style: 'double', color: { argb: 'FF4F81BD' } } };
+
+        currentRow += 1;
+        sheet.getRow(currentRow).height = 22;
+        const statusLabel = sheet.getCell(`D${currentRow}`);
+        statusLabel.value = 'Timesheet Status';
+        statusLabel.font = { bold: true };
+        statusLabel.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        const statusValue = sheet.getCell(`E${currentRow}`);
+        statusValue.value = timesheetStatus.charAt(0) + timesheetStatus.slice(1).toLowerCase();
+        statusValue.font = {
+            bold: true,
+            color: {
+                argb: timesheetStatus === 'APPROVED'
+                    ? 'FF15803D'
+                    : timesheetStatus === 'REJECTED'
+                        ? 'FFB91C1C'
+                        : timesheetStatus === 'SUBMITTED'
+                            ? 'FFB45309'
+                            : 'FF475569'
+            }
+        };
+        statusValue.alignment = { horizontal: 'right', vertical: 'middle' };
+        statusValue.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
 
         // Column Widths
         sheet.getColumn(1).width = 25; // A
@@ -1756,7 +1789,7 @@ const Attendance = () => {
                             </div>
                         </div>
 
-                        {hasModule('projectManagement') && (
+                        {hasModule('projects') && (
                             <div className="zoho-card p-5 mt-6">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Recent Activity</h4>
                                 {recentLogs.length > 0 ? (
@@ -1793,7 +1826,7 @@ const Attendance = () => {
                             </div>
                         )}
 
-                        {!isAttendanceActive && hasModule('projectManagement') && (
+                        {!isAttendanceActive && hasModule('projects') && (
                             <div className="zoho-card p-5 opacity-75 mt-6">
                                 <div className="text-center space-y-2">
                                     <Briefcase size={32} className="mx-auto text-slate-300" />
@@ -1900,7 +1933,7 @@ const Attendance = () => {
                             >
                                 <Clock size={16} /> Regularization Requests
                             </button>
-                            {hasModule('projectManagement') && (
+                            {hasModule('projects') && (
                                 <button
                                     onClick={() => setActiveTab('tasks')}
                                     className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'tasks' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
