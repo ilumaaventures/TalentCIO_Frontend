@@ -5,6 +5,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { CheckCircle, Clock, Upload, ChevronRight, ChevronLeft, LogOut, FileText, AlertTriangle, User, Phone, Building, CreditCard, FileSignature, Loader, Eye, Plus, X } from 'lucide-react';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/api/onboarding`;
+const FOLLOW_UP_DOCUMENT_REDIRECT_GRACE_MS = 1000;
 
 const ALL_STEPS = [
   { id: 'personalDetails', label: 'Personal & Contact', icon: <User size={18} />, hrLabel: 'Personal Details' },
@@ -14,6 +15,13 @@ const ALL_STEPS = [
   { id: 'policies', label: 'Company Policies', icon: <FileText size={18} />, hrLabel: 'Policies' },
   { id: 'offerDeclaration', label: 'Offer Declaration', icon: <FileSignature size={18} />, hrLabel: 'Offer Declaration' }
 ];
+
+const getLatestEmailSentTimestamp = (items = []) => (
+  items.reduce((latest, item) => {
+    const sentAt = item?.emailSentAt ? new Date(item.emailSentAt).getTime() : 0;
+    return Number.isFinite(sentAt) ? Math.max(latest, sentAt) : latest;
+  }, 0)
+);
 
 const PreOnboardingPortal = () => {
   const navigate = useNavigate();
@@ -79,27 +87,28 @@ const PreOnboardingPortal = () => {
   const hasNavigatedInitial = useRef(false);
   useEffect(() => {
     if (profile && visibleSteps.length > 0 && !hasNavigatedInitial.current) {
-      const flaggedDocs = profile.documents?.filter(d => d.status === 'Re-upload Required');
+      const flaggedDocs = profile.documents?.filter(d => d.status === 'Re-upload Required') || [];
+      const docStepIndex = visibleSteps.findIndex(s => s.id === 'documents');
+      const latestSectionRequestAt = getLatestEmailSentTimestamp(profile.requestedSections || []);
+      const latestDocumentRequestAt = getLatestEmailSentTimestamp(profile.requestedDocuments || []);
+      const hasFollowUpDocumentRequest = reqDocsLabels.length > 0 && (
+        latestSectionRequestAt === 0 ||
+        (latestDocumentRequestAt - latestSectionRequestAt) > FOLLOW_UP_DOCUMENT_REDIRECT_GRACE_MS
+      );
 
-      // If there are flagged docs OR if documents were specifically requested (and not yet complete)
       if (flaggedDocs && flaggedDocs.length > 0) {
-        const docStepIndex = visibleSteps.findIndex(s => s.id === 'documents');
         if (docStepIndex !== -1) setCurrentStep(docStepIndex);
-      } else if (reqDocsLabels.length > 0) {
-        // If documents were requested, check if the document section is actually complete
-        const docStepIndex = visibleSteps.findIndex(s => s.id === 'documents');
-        if (docStepIndex !== -1) {
-          const isComplete = (() => {
-            const targetDocs = profile?.documents?.filter(d => reqDocsLabels.includes(d.label)) || [];
-            if (targetDocs.length === 0) return false;
-            return targetDocs.every(d => (d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'));
-          })();
-          if (!isComplete) setCurrentStep(docStepIndex);
-        }
+      } else if (hasFollowUpDocumentRequest && docStepIndex !== -1) {
+        const targetDocs = profile?.documents?.filter(d => reqDocsLabels.includes(d.label)) || [];
+        const isComplete = targetDocs.length > 0 && targetDocs.every(d =>
+          d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'
+        );
+
+        if (!isComplete) setCurrentStep(docStepIndex);
       }
       hasNavigatedInitial.current = true;
     }
-  }, [profile, reqDocsLabels, reqSectionsLabels, visibleSteps]);
+  }, [profile, reqDocsLabels, visibleSteps]);
 
   // Form states
   const [personalDetails, setPersonalDetails] = useState({});

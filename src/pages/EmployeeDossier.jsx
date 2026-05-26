@@ -184,13 +184,13 @@ const documentCategories = [
         name: 'Identity Documents',
         category: 'ID Proof',
         allowMultiple: false,
-        fixedDocs: ['Aadhaar Card (Front)', 'Aadhaar Card (Back)', 'Pan Card', 'Passport', 'Photo (Passport Size)']
+        fixedDocs: ['Aadhaar Card (Front)', 'Aadhaar Card (Back)', 'Pan Card', 'Passport', 'Recent Passport-Size Photograph']
     },
     {
         name: 'Qualification Certificates',
         category: 'Education',
         allowMultiple: true,
-        fixedDocs: ['10th Marksheet', '12th Marksheet', 'Bachelor Degree'],
+        fixedDocs: ['10th Marksheet / Certificate', '12th Marksheet / Certificate', 'Graduation Marksheet / Certificate'],
         icon: '🎓'
     },
     {
@@ -215,14 +215,14 @@ const documentCategories = [
         name: 'Bank Information',
         category: 'Bank',
         allowMultiple: false,
-        fixedDocs: ['Cancelled Cheque'],
+        fixedDocs: ['Cancelled Cheque / Passbook Front Page'],
         icon: '🏦'
     },
     {
         name: 'Resume',
         category: 'Resume',
         allowMultiple: false,
-        fixedDocs: ['Resume'],
+        fixedDocs: ['Updated Resume'],
         icon: '📄'
     }
 ];
@@ -242,7 +242,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     // State
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('personal');
+    const [activeTab, setActiveTab] = useState(initialTab || 'personal');
     const [editMode, setEditMode] = useState(false);
     const [formData, setFormData] = useState({});
     const [historyLogs, setHistoryLogs] = useState([]);
@@ -582,13 +582,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     }, [hasDossierModule, activeTab]);
 
     useEffect(() => {
-        if (!initialTab || initialTab === activeTab) return;
+        if (!initialTab) return;
 
         const tabExists = tabs.some((tab) => tab.id === initialTab);
         if (tabExists) {
             setActiveTab(initialTab);
         }
-    }, [activeTab, initialTab, tabs]);
+    }, [initialTab, tabs]);
 
     const handleTabSelect = useCallback((tabId) => {
         setActiveTab(tabId);
@@ -1216,8 +1216,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     {(isEditing) => (
                         <div className="space-y-6">
                             <p className="text-xs text-red-500 italic">* fields are mandatory</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                                 <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                                <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
                                 <Field
                                     section="contact" isEditing={isEditing} label="Mobile Number" field="mobileNumber"
                                     value={profile.contact?.mobileNumber} formData={formData}
@@ -2127,9 +2128,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <User size={18} className="text-blue-500" />
                             <h3 className="font-bold text-slate-700">1. Basic Employee Details</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
                             <Field section="user" isEditing={false} label="Employee Code" field="employeeCode" value={profile.user?.employeeCode} />
                             <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                            <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
                             <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
                             <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
                         </div>
@@ -2779,6 +2781,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
+                                type="button"
                                 onClick={() => handleTabSelect(tab.id)}
                                 className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
                                     ? 'border-blue-600 text-blue-600 bg-blue-50/50'
