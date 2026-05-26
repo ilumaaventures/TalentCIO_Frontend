@@ -40,6 +40,31 @@ const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const [recycleBinCount, setRecycleBinCount] = useState(0);
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
+  const workspaceBranding = user?.company?.settings?.workspaceBranding || {};
+  const workspaceLogoMode = ['talentcio', 'company', 'none'].includes(String(workspaceBranding.displayMode || '').toLowerCase())
+    ? String(workspaceBranding.displayMode || '').toLowerCase()
+    : 'talentcio';
+  const workspaceLogoAlignment = ['left', 'center', 'right'].includes(String(workspaceBranding.logoAlignment || '').toLowerCase())
+    ? String(workspaceBranding.logoAlignment || '').toLowerCase()
+    : 'left';
+  const workspaceLogoSize = Math.min(
+    Math.max(Number(workspaceBranding.logoSize) || 140, 80),
+    170
+  );
+  const companyLogoUrl = user?.company?.settings?.logo || user?.company?.logo || '';
+  const sidebarLogoSrc = workspaceLogoMode === 'talentcio'
+    ? '/dark-logo-compact.png'
+    : workspaceLogoMode === 'company'
+      ? companyLogoUrl
+      : '';
+  const sidebarLogoAlignmentClass = workspaceLogoAlignment === 'center'
+    ? 'justify-center'
+    : workspaceLogoAlignment === 'right'
+      ? 'justify-end'
+      : 'justify-start';
+  const sidebarLogoAlt = workspaceLogoMode === 'company'
+    ? `${user?.company?.name || 'Company'} logo`
+    : 'TalentCIO';
   const canViewTAAnalytics = user?.roles?.includes('Admin')
     || user?.permissions?.includes('ta.manage')
     || user?.permissions?.includes('ta.analytics.global')
@@ -130,9 +155,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     : 'zoho-sidebar-link-active';
   const sidebarSubtleTextClass = isTalentAcquisitionRoute ? 'text-blue-100/55' : 'text-[#6d6258]';
   const sidebarDividerClass = isTalentAcquisitionRoute ? 'border-white/10' : 'border-white/6';
-  const sidebarIconBadgeClass = isTalentAcquisitionRoute
-    ? 'flex h-8 w-8 items-center justify-center rounded-lg bg-white/12 text-white'
-    : 'flex h-8 w-8 items-center justify-center rounded-lg bg-white/6 text-slate-200';
   const sidebarLogoutClass = isTalentAcquisitionRoute
     ? 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/75 transition-colors hover:bg-white/10 hover:text-white'
     : 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition-colors hover:bg-white/5 hover:text-white';
@@ -141,22 +163,19 @@ const Sidebar = ({ isOpen, onClose }) => {
   useEffect(() => {
     let isActive = true;
 
-    if (!showRecycleBin) {
-      setRecycleBinCount(0);
-      return undefined;
+    if (showRecycleBin) {
+      getBinItems()
+        .then((response) => {
+          if (isActive) {
+            setRecycleBinCount(response.data?.total || 0);
+          }
+        })
+        .catch(() => {
+          if (isActive) {
+            setRecycleBinCount(0);
+          }
+        });
     }
-
-    getBinItems()
-      .then((response) => {
-        if (isActive) {
-          setRecycleBinCount(response.data?.total || 0);
-        }
-      })
-      .catch(() => {
-        if (isActive) {
-          setRecycleBinCount(0);
-        }
-      });
 
     return () => {
       isActive = false;
@@ -221,11 +240,19 @@ const Sidebar = ({ isOpen, onClose }) => {
       >
         <div className={`flex items-start justify-between px-5 py-5 ${sidebarDividerClass ? `border-b ${sidebarDividerClass}` : ''}`}>
           <Link to={homeRoute} onClick={onClose} className="min-w-0">
-            <img
-              src="/dark-logo-compact.png"
-              alt="TalentCIO"
-              className="h-12 w-auto max-w-[170px] object-contain"
-            />
+            <div className={`flex h-12 w-[200px] items-center ${sidebarLogoAlignmentClass}`}>
+              {sidebarLogoSrc ? (
+                <div style={{ width: `${workspaceLogoSize}px` }}>
+                  <img
+                    src={sidebarLogoSrc}
+                    alt={sidebarLogoAlt}
+                    className="block max-h-12 w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="h-12 w-[200px]" aria-hidden="true" />
+              )}
+            </div>
           </Link>
           {/* Mobile Close Button */}
           <button onClick={onClose} className="md:hidden text-slate-500 hover:text-white">
