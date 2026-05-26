@@ -118,7 +118,7 @@ const SAMPLE_DATA = {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
     <tr>
         <td bgcolor="#2563eb" style="border-radius:8px; text-align:center;">
-            <a href="https://workspace.example.com/pre-onboarding/login" style="display:inline-block; padding:14px 32px; color:#ffffff; text-decoration:none; font-size:15px; font-weight:700;">Open Pre-Onboarding Portal</a>
+            <a href="https://workspace.example.com/pre-onboarding/login" style="display:inline-block; padding:14px 32px; color:#ffffff; text-decoration:none; font-size:15px; font-weight:700;">Open Portal</a>
         </td>
     </tr>
 </table>`,
