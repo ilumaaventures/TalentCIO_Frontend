@@ -11,6 +11,35 @@ import Skeleton from '../components/Skeleton';
 import { format } from 'date-fns';
 import Button from '../components/Button';
 
+const COMPANY_LOGO_DISPLAY_OPTIONS = [
+    {
+        value: 'talentcio',
+        label: 'Talentcio Logo',
+        description: 'Show the default Talentcio logo in the workspace sidebar.'
+    },
+    {
+        value: 'company',
+        label: 'Company Logo',
+        description: 'Use your uploaded company logo in place of the default logo.'
+    },
+    {
+        value: 'none',
+        label: 'No Logo',
+        description: 'Keep the logo area empty.'
+    }
+];
+
+const COMPANY_LOGO_ALIGNMENT_OPTIONS = [
+    { value: 'left', label: 'Left' },
+    { value: 'center', label: 'Center' },
+    { value: 'right', label: 'Right' }
+];
+
+const DEFAULT_COMPANY_LOGO_ALIGNMENT = 'left';
+const DEFAULT_COMPANY_LOGO_SIZE = 140;
+const MIN_COMPANY_LOGO_SIZE = 80;
+const MAX_COMPANY_LOGO_SIZE = 170;
+
 // Helper Components defined outside to prevent re-renders
 const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required }) => {
     if (!isEditing && !value && hideIfEmpty) return null;
@@ -155,13 +184,13 @@ const documentCategories = [
         name: 'Identity Documents',
         category: 'ID Proof',
         allowMultiple: false,
-        fixedDocs: ['Aadhaar Card (Front)', 'Aadhaar Card (Back)', 'Pan Card', 'Passport', 'Photo (Passport Size)']
+        fixedDocs: ['Aadhaar Card (Front)', 'Aadhaar Card (Back)', 'Pan Card', 'Passport', 'Recent Passport-Size Photograph']
     },
     {
         name: 'Qualification Certificates',
         category: 'Education',
         allowMultiple: true,
-        fixedDocs: ['10th Marksheet', '12th Marksheet', 'Bachelor Degree'],
+        fixedDocs: ['10th Marksheet / Certificate', '12th Marksheet / Certificate', 'Graduation Marksheet / Certificate'],
         icon: '🎓'
     },
     {
@@ -186,14 +215,14 @@ const documentCategories = [
         name: 'Bank Information',
         category: 'Bank',
         allowMultiple: false,
-        fixedDocs: ['Cancelled Cheque'],
+        fixedDocs: ['Cancelled Cheque / Passbook Front Page'],
         icon: '🏦'
     },
     {
         name: 'Resume',
         category: 'Resume',
         allowMultiple: false,
-        fixedDocs: ['Resume'],
+        fixedDocs: ['Updated Resume'],
         icon: '📄'
     }
 ];
@@ -202,16 +231,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const { userId: paramUserId } = useParams();
     const userId = propUserId || paramUserId;
     const navigate = useNavigate();
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, refreshProfile } = useAuth();
+    const isCurrentUserAdmin = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
 
     // Permissions
-    const canEdit = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.permissions?.includes('dossier.edit');
-    const canApprove = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.permissions?.includes('dossier.approve');
+    const canEdit = isCurrentUserAdmin || currentUser?.permissions?.includes('dossier.edit');
+    const canApprove = isCurrentUserAdmin || currentUser?.permissions?.includes('dossier.approve');
+    const canManageCompanyBranding = isCurrentUserAdmin || currentUser?.hasAllPermissions || currentUser?.permissions?.includes('*') || currentUser?.permissions?.includes('admin');
 
     // State
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('personal');
+    const [activeTab, setActiveTab] = useState(initialTab || 'personal');
     const [editMode, setEditMode] = useState(false);
     const [formData, setFormData] = useState({});
     const [historyLogs, setHistoryLogs] = useState([]);
@@ -236,6 +267,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const [hrisRequests, setHrisRequests] = useState([]);
     const [loadingRequests, setLoadingRequests] = useState(false);
     const [hrisSearchTerm, setHrisSearchTerm] = useState('');
+    const [companyBranding, setCompanyBranding] = useState({
+        displayMode: 'talentcio',
+        companyLogoUrl: '',
+        logoAlignment: DEFAULT_COMPANY_LOGO_ALIGNMENT,
+        logoSize: DEFAULT_COMPANY_LOGO_SIZE
+    });
+    const [loadingCompanyBranding, setLoadingCompanyBranding] = useState(false);
+    const [savingCompanyBranding, setSavingCompanyBranding] = useState(false);
+    const [uploadingCompanyLogo, setUploadingCompanyLogo] = useState(false);
 
     // Cleanup preview URL on unmount
     useEffect(() => {
@@ -251,6 +291,42 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             setFormData(JSON.parse(JSON.stringify(profile)));
         }
     }, [editMode, profile]);
+
+    const syncCurrentUserProfile = useCallback(async () => {
+        if (!refreshProfile) return;
+
+        try {
+            await refreshProfile();
+        } catch (error) {
+            console.error('Failed to refresh current user profile after company branding update:', error);
+        }
+    }, [refreshProfile]);
+
+    const fetchCompanyBrandingSettings = useCallback(async () => {
+        if (!canManageCompanyBranding) return;
+
+        try {
+            setLoadingCompanyBranding(true);
+            const { data } = await api.get('/admin/company-settings/branding');
+            setCompanyBranding({
+                displayMode: data?.displayMode || 'talentcio',
+                companyLogoUrl: data?.companyLogoUrl || '',
+                logoAlignment: data?.logoAlignment || DEFAULT_COMPANY_LOGO_ALIGNMENT,
+                logoSize: Number(data?.logoSize) || DEFAULT_COMPANY_LOGO_SIZE
+            });
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to load company settings');
+        } finally {
+            setLoadingCompanyBranding(false);
+        }
+    }, [canManageCompanyBranding]);
+
+    useEffect(() => {
+        if (activeTab === 'settings' && canManageCompanyBranding) {
+            fetchCompanyBrandingSettings();
+        }
+    }, [activeTab, canManageCompanyBranding, fetchCompanyBrandingSettings]);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -466,7 +542,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     }, [activeTab, canApprove, currentUser]);
 
     const hasDossierModule = currentUser?.company?.enabledModules?.includes('employeeDossier');
-    const hasAdminRole = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
+    const hasAdminRole = isCurrentUserAdmin;
     const canViewRolesSettings = hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions;
     const canViewAttendanceSettings = currentUser?.company?.enabledModules?.includes('attendance') && (hasAdminRole || currentUser?.permissions?.includes('user.update') || currentUser?.hasAllPermissions);
     const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions);
@@ -506,7 +582,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     }, [hasDossierModule, activeTab]);
 
     useEffect(() => {
-        if (!initialTab || initialTab === activeTab) return;
+        if (!initialTab) return;
 
         const tabExists = tabs.some((tab) => tab.id === initialTab);
         if (tabExists) {
@@ -699,6 +775,77 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
     };
 
+    const handleCompanyBrandingSave = async () => {
+        try {
+            setSavingCompanyBranding(true);
+            const { data } = await api.put('/admin/company-settings/branding', {
+                displayMode: companyBranding.displayMode,
+                logoAlignment: companyBranding.logoAlignment,
+                logoSize: companyBranding.logoSize
+            });
+
+            setCompanyBranding((current) => ({
+                ...current,
+                displayMode: data?.displayMode || current.displayMode,
+                logoAlignment: data?.logoAlignment || current.logoAlignment,
+                logoSize: Number(data?.logoSize) || current.logoSize
+            }));
+            await syncCurrentUserProfile();
+            toast.success('Company settings saved');
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to save company settings');
+        } finally {
+            setSavingCompanyBranding(false);
+        }
+    };
+
+    const handleCompanyLogoUpload = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+
+        if (!file) return;
+
+        try {
+            setUploadingCompanyLogo(true);
+            const formData = new FormData();
+            formData.append('logo', file);
+
+            const { data } = await api.post('/admin/company-settings/branding/logo', formData);
+            setCompanyBranding((current) => ({
+                ...current,
+                displayMode: data?.displayMode || 'company',
+                companyLogoUrl: data?.companyLogoUrl || ''
+            }));
+            await syncCurrentUserProfile();
+            toast.success('Company logo uploaded');
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to upload company logo');
+        } finally {
+            setUploadingCompanyLogo(false);
+        }
+    };
+
+    const handleCompanyLogoRemove = async () => {
+        try {
+            setUploadingCompanyLogo(true);
+            const { data } = await api.delete('/admin/company-settings/branding/logo');
+            setCompanyBranding((current) => ({
+                ...current,
+                displayMode: data?.displayMode || current.displayMode,
+                companyLogoUrl: ''
+            }));
+            await syncCurrentUserProfile();
+            toast.success('Company logo removed');
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to remove company logo');
+        } finally {
+            setUploadingCompanyLogo(false);
+        }
+    };
+
     const renderSettings = () => {
         const settingCards = [
             {
@@ -723,6 +870,20 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 route: '/leave-config'
             }
         ].filter((card) => card.visible);
+        const previewLogoSrc = companyBranding.displayMode === 'talentcio'
+            ? '/dark-logo-compact.png'
+            : companyBranding.displayMode === 'company'
+                ? companyBranding.companyLogoUrl
+                : '';
+        const previewLogoAlignmentClass = companyBranding.logoAlignment === 'center'
+            ? 'justify-center'
+            : companyBranding.logoAlignment === 'right'
+                ? 'justify-end'
+                : 'justify-start';
+        const previewLogoSize = Math.min(
+            Math.max(Number(companyBranding.logoSize) || DEFAULT_COMPANY_LOGO_SIZE, MIN_COMPANY_LOGO_SIZE),
+            MAX_COMPANY_LOGO_SIZE
+        );
 
         return (
             <div className="space-y-6">
@@ -768,6 +929,226 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         </div>
                     )}
                 </div>
+
+                {canManageCompanyBranding && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800">Company Setting</h3>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    Choose which logo should appear in the workspace sidebar.
+                                </p>
+                            </div>
+                            <Button
+                                onClick={handleCompanyBrandingSave}
+                                isLoading={savingCompanyBranding}
+                                disabled={loadingCompanyBranding || uploadingCompanyLogo}
+                                className="px-4 py-2"
+                            >
+                                Save Settings
+                            </Button>
+                        </div>
+
+                        {loadingCompanyBranding ? (
+                            <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+                                Loading company branding settings...
+                            </div>
+                        ) : (
+                            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
+                                <div className="space-y-4">
+                                    {COMPANY_LOGO_DISPLAY_OPTIONS.map((option) => {
+                                        const isSelected = companyBranding.displayMode === option.value;
+
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => setCompanyBranding((current) => ({ ...current, displayMode: option.value }))}
+                                                className={`w-full rounded-2xl border px-4 py-4 text-left transition ${isSelected
+                                                    ? 'border-blue-300 bg-blue-50 shadow-sm'
+                                                    : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
+                                                    }`}
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-slate-800">{option.label}</div>
+                                                        <p className="mt-1 text-sm leading-6 text-slate-500">{option.description}</p>
+                                                    </div>
+                                                    {isSelected && <CheckCircle size={18} className="mt-0.5 shrink-0 text-blue-600" />}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                            <div>
+                                                <p className="text-sm font-semibold text-slate-800">Uploaded company logo</p>
+                                                <p className="mt-1 text-sm text-slate-500">
+                                                    Upload JPG, PNG, SVG, or WEBP up to 3MB.
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-3">
+                                                <label
+                                                    htmlFor="company-logo-upload"
+                                                    className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700 ${uploadingCompanyLogo ? 'pointer-events-none opacity-60' : ''}`}
+                                                >
+                                                    <Upload size={16} />
+                                                    {companyBranding.companyLogoUrl ? 'Change Logo' : 'Upload Logo'}
+                                                </label>
+                                                <input
+                                                    id="company-logo-upload"
+                                                    type="file"
+                                                    accept=".jpg,.jpeg,.png,.svg,.webp,image/jpeg,image/png,image/svg+xml,image/webp"
+                                                    className="hidden"
+                                                    onChange={handleCompanyLogoUpload}
+                                                    disabled={uploadingCompanyLogo}
+                                                />
+                                                {companyBranding.companyLogoUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleCompanyLogoRemove}
+                                                        disabled={uploadingCompanyLogo}
+                                                        className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                        Remove Logo
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {companyBranding.displayMode === 'company' && !companyBranding.companyLogoUrl && (
+                                            <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                                                No company logo is uploaded yet, so the sidebar logo area will stay empty until you add one.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-semibold text-slate-800">Logo size</p>
+                                                <p className="mt-1 text-sm text-slate-500">
+                                                    Use one slider. Width changes and height adjusts automatically to keep the logo proportional.
+                                                </p>
+                                            </div>
+                                            <div className="rounded-xl bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200">
+                                                {previewLogoSize}px
+                                            </div>
+                                        </div>
+                                        <div className="mt-4">
+                                            <input
+                                                type="range"
+                                                min={MIN_COMPANY_LOGO_SIZE}
+                                                max={MAX_COMPANY_LOGO_SIZE}
+                                                step="1"
+                                                value={previewLogoSize}
+                                                onChange={(event) => setCompanyBranding((current) => ({
+                                                    ...current,
+                                                    logoSize: Number(event.target.value)
+                                                }))}
+                                                className="w-full accent-blue-600"
+                                            />
+                                            <div className="mt-2 flex justify-between text-xs font-medium text-slate-400">
+                                                <span>Compact</span>
+                                                <span>Balanced</span>
+                                                <span>Large</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-sm font-semibold text-slate-800">Logo alignment</p>
+                                        <p className="mt-1 text-sm text-slate-500">
+                                            Choose where the logo should stay in the sidebar header.
+                                        </p>
+                                        <div className="mt-4 flex flex-wrap gap-3">
+                                            {COMPANY_LOGO_ALIGNMENT_OPTIONS.map((option) => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => setCompanyBranding((current) => ({
+                                                        ...current,
+                                                        logoAlignment: option.value
+                                                    }))}
+                                                    className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition ${companyBranding.logoAlignment === option.value
+                                                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                                                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                                        }`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Sidebar Preview</p>
+                                    <div className="mt-4 flex justify-center">
+                                        <div className="w-64 overflow-hidden rounded-[28px] bg-[#111315] shadow-[0_18px_40px_rgba(15,23,42,0.22)] ring-1 ring-black/5">
+                                            <div className="flex items-start justify-between border-b border-white/10 px-5 py-5">
+                                                <div className={`flex h-12 w-[200px] items-center ${previewLogoAlignmentClass}`}>
+                                                    {previewLogoSrc ? (
+                                                        <div style={{ width: `${previewLogoSize}px` }}>
+                                                            <img
+                                                                src={previewLogoSrc}
+                                                                alt="Workspace logo preview"
+                                                                className="block max-h-12 w-full object-contain"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="h-12 w-[200px]" />
+                                                    )}
+                                                </div>
+                                                <div className="mt-1 h-5 w-5 rounded-full border border-white/10" />
+                                            </div>
+
+                                            <div className="px-4 py-6">
+                                                <div className="px-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]">
+                                                    Main
+                                                </div>
+                                                <div className="mt-3 space-y-1">
+                                                    <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] px-3.5 py-2.5 text-[13px] font-semibold text-white">
+                                                        <div className="h-[18px] w-[18px] rounded-full bg-white/20" />
+                                                        <div className="h-3 w-20 rounded bg-white/20" />
+                                                    </div>
+                                                    <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] text-slate-400">
+                                                        <div className="h-[18px] w-[18px] rounded-full bg-white/10" />
+                                                        <div className="h-3 w-24 rounded bg-white/10" />
+                                                    </div>
+                                                    <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] text-slate-400">
+                                                        <div className="h-[18px] w-[18px] rounded-full bg-white/10" />
+                                                        <div className="h-3 w-16 rounded bg-white/10" />
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]">
+                                                    Manage
+                                                </div>
+                                                <div className="mt-3 space-y-1">
+                                                    <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] text-slate-400">
+                                                        <div className="h-[18px] w-[18px] rounded-full bg-white/10" />
+                                                        <div className="h-3 w-24 rounded bg-white/10" />
+                                                    </div>
+                                                    <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] text-slate-400">
+                                                        <div className="h-[18px] w-[18px] rounded-full bg-white/10" />
+                                                        <div className="h-3 w-20 rounded bg-white/10" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="mt-4 text-sm leading-6 text-slate-500">
+                                        {previewLogoSrc
+                                            ? 'This is how the selected logo will appear in the sidebar.'
+                                            : 'No logo will be shown in the sidebar when this option is active.'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         );
     };
@@ -835,8 +1216,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     {(isEditing) => (
                         <div className="space-y-6">
                             <p className="text-xs text-red-500 italic">* fields are mandatory</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                                 <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                                <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
                                 <Field
                                     section="contact" isEditing={isEditing} label="Mobile Number" field="mobileNumber"
                                     value={profile.contact?.mobileNumber} formData={formData}
@@ -1746,9 +2128,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <User size={18} className="text-blue-500" />
                             <h3 className="font-bold text-slate-700">1. Basic Employee Details</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
                             <Field section="user" isEditing={false} label="Employee Code" field="employeeCode" value={profile.user?.employeeCode} />
                             <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                            <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
                             <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
                             <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
                         </div>
@@ -2398,6 +2781,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
+                                type="button"
                                 onClick={() => handleTabSelect(tab.id)}
                                 className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
                                     ? 'border-blue-600 text-blue-600 bg-blue-50/50'
