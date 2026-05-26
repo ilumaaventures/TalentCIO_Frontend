@@ -5,6 +5,7 @@ import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, Chevron
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
@@ -33,7 +34,8 @@ const Users = () => {
         status: true,
         checkInOut: true,
         duration: true,
-        leaves: true
+        leaves: true,
+        documents: false
     });
     const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
     const [searchTerm, setSearchTerm] = useState('');
@@ -86,108 +88,225 @@ const Users = () => {
     };
 
     const toDateKey = (value) => format(new Date(value), 'yyyy-MM-dd');
+    const sanitizeFileNamePart = (value) => {
+        const normalized = String(value || 'user')
+            .replace(/[<>:"/\\|?*]/g, '')
+            .trim()
+            .replace(/\s+/g, '_');
+
+        return normalized || 'user';
+    };
+
+    const sanitizeZipFileName = (value, fallback = 'document') => {
+        const original = String(value || fallback).trim();
+        const extensionIndex = original.lastIndexOf('.');
+        const hasExtension = extensionIndex > 0 && extensionIndex < original.length - 1;
+        const baseName = hasExtension ? original.slice(0, extensionIndex) : original;
+        const extension = hasExtension ? original.slice(extensionIndex) : '';
+        const safeBaseName = sanitizeFileNamePart(baseName || fallback);
+
+        return `${safeBaseName}${extension}`;
+    };
 
     const isAttendanceApproved = (record) =>
         record?.approvalStatus === 'APPROVED' || Boolean(record?.approvedBy);
 
+    const buildAttendanceWorkbook = async (targetUser, year, month, holidaysDataOverride = null) => {
+        const [historyRes, holidaysRes] = await Promise.all([
+            api.get(`/attendance/history?year=${year}&month=${month}&userId=${targetUser._id}`),
+            holidaysDataOverride ? Promise.resolve({ data: holidaysDataOverride }) : api.get('/holidays')
+        ]);
+
+        const history = historyRes.data?.history || historyRes.data || [];
+        const holidaysData = holidaysRes.data || [];
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Attendance Report');
+        const reportDate = new Date(year, month - 1, 1);
+
+        sheet.mergeCells('A1:C1');
+        sheet.getCell('A1').value = `User Name: ${targetUser.firstName} ${targetUser.lastName || ''}`;
+        sheet.getCell('A1').font = { bold: true, size: 14 };
+
+        sheet.mergeCells('A2:C2');
+        sheet.getCell('A2').value = `Joining Date: ${targetUser.joiningDate ? new Date(targetUser.joiningDate).toLocaleDateString() : 'N/A'}`;
+
+        sheet.mergeCells('A3:C3');
+        const managers = targetUser.reportingManagers || [];
+        const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
+        sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
+
+        sheet.addRow([]);
+
+        const headerRow = sheet.addRow(['Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration']);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+        headerRow.alignment = { horizontal: 'center' };
+
+        const start = startOfMonth(reportDate);
+        const end = endOfMonth(reportDate);
+        const days = eachDayOfInterval({ start, end });
+
+        days.forEach(day => {
+            const dateStr = format(day, 'yyyy-MM-dd');
+            const record = history.find(h => toDateKey(h.date) === dateStr);
+            const weeklyOffDays = historyRes.data?.weeklyOff || user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
+            const isWeeklyOff = weeklyOffDays.includes(format(day, 'EEEE'));
+            let status = 'Absent';
+            let rowColor = 'FFF2DCDB';
+
+            const joiningDate = targetUser.joiningDate ? new Date(targetUser.joiningDate) : null;
+            if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+
+            const holiday = holidaysData.find(h => toDateKey(h.date) === dateStr);
+
+            if (joiningDate && day < joiningDate) {
+                status = 'Not Applicable';
+                rowColor = 'FFFFFFFF';
+            } else if (isAttendanceApproved(record)) {
+                status = 'Present';
+                rowColor = 'FFEBF1DE';
+            } else if (holiday) {
+                status = holiday.name;
+                rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
+            } else if (isWeeklyOff) {
+                status = 'Weekoff';
+                rowColor = 'FFF2F2F2';
+            }
+
+            const row = sheet.addRow([
+                format(day, 'dd-MMM-yyyy'),
+                format(day, 'EEEE'),
+                status,
+                record ? formatTime(record.clockIn, record.clockInIST) : '-',
+                record ? formatTime(record.clockOut, record.clockOutIST) : '-',
+                record ? calculateDuration(record.clockIn, record.clockOut, day) : '-'
+            ]);
+
+            row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+            row.alignment = { horizontal: 'center' };
+        });
+
+        sheet.columns = [
+            { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }
+        ];
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const userLabel = sanitizeFileNamePart(`${targetUser.firstName || ''}_${targetUser.lastName || ''}_${targetUser.employeeCode || ''}`);
+
+        return {
+            buffer,
+            fileName: `Attendance_${format(start, 'MMMM_yyyy')}_${userLabel}.xlsx`
+        };
+    };
+
     const _handleExportAttendance = async (targetUser) => {
         const toastId = toast.loading('Generating Report...');
         try {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth() + 1;
-
-            // Fetch History and Holidays on demand if not present (Holidays could be fetched once, but safe here)
-            const [historyRes, holidaysRes] = await Promise.all([
-                api.get(`/attendance/history?year=${year}&month=${month}&userId=${targetUser._id}`),
-                api.get('/holidays')
-            ]);
-
-            const history = historyRes.data?.history || historyRes.data || [];
-            const holidaysData = holidaysRes.data;
-
-            const workbook = new ExcelJS.Workbook();
-            const sheet = workbook.addWorksheet('Attendance Report');
-
-            // 1. Header Info (Rows 1-4)
-            sheet.mergeCells('A1:C1');
-            sheet.getCell('A1').value = `User Name: ${targetUser.firstName} ${targetUser.lastName || ''}`;
-            sheet.getCell('A1').font = { bold: true, size: 14 };
-
-            sheet.mergeCells('A2:C2');
-            sheet.getCell('A2').value = `Joining Date: ${targetUser.joiningDate ? new Date(targetUser.joiningDate).toLocaleDateString() : 'N/A'}`;
-
-            sheet.mergeCells('A3:C3');
-            const managers = targetUser.reportingManagers || [];
-            const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
-            sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
-
-            sheet.addRow([]); // Row 4 Empty Buffer
-
-            // 2. Table Header (Row 5)
-            const headerRow = sheet.addRow(['Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration']);
-            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } }; // Blue
-            headerRow.alignment = { horizontal: 'center' };
-
-            // 3. Data Generation
-            const start = startOfMonth(now);
-            const end = endOfMonth(now);
-            const days = eachDayOfInterval({ start, end });
-
-            days.forEach(day => {
-                const dateStr = format(day, 'yyyy-MM-dd');
-                const record = history.find(h => toDateKey(h.date) === dateStr);
-                const weeklyOffDays = historyRes.data?.weeklyOff || user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
-                const isWeeklyOff = weeklyOffDays.includes(format(day, 'EEEE'));
-                let status = 'Absent';
-                let rowColor = 'FFF2DCDB'; // Red by default
-
-                const joiningDate = targetUser.joiningDate ? new Date(targetUser.joiningDate) : null;
-                if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
-
-                const holiday = holidaysData.find(h => toDateKey(h.date) === dateStr);
-
-                if (joiningDate && day < joiningDate) {
-                    status = 'Not Applicable';
-                    rowColor = 'FFFFFFFF';
-                } else if (isAttendanceApproved(record)) {
-                    status = 'Present';
-                    rowColor = 'FFEBF1DE';
-                } else if (holiday) {
-                    status = holiday.name;
-                    rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
-                } else if (isWeeklyOff) {
-                    status = 'Weekoff';
-                    rowColor = 'FFF2F2F2';
-                }
-
-                const row = sheet.addRow([
-                    format(day, 'dd-MMM-yyyy'),
-                    format(day, 'EEEE'),
-                    status,
-                    record ? formatTime(record.clockIn, record.clockInIST) : '-',
-                    record ? formatTime(record.clockOut, record.clockOutIST) : '-',
-                    record ? calculateDuration(record.clockIn, record.clockOut, day) : '-'
-                ]);
-
-                row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
-                row.alignment = { horizontal: 'center' };
-            });
-
-            // 4. Columns Width
-            sheet.columns = [
-                { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }
-            ];
-
-            const buffer = await workbook.xlsx.writeBuffer();
-            const fileName = `Attendance_${format(start, 'MMMM_yyyy')}_${targetUser.firstName}.xlsx`;
+            const [year, month] = exportMonth.split('-').map(Number);
+            const { buffer, fileName } = await buildAttendanceWorkbook(targetUser, year, month);
             saveAs(new Blob([buffer]), fileName);
             toast.success('Report Downloaded', { id: toastId });
-
         } catch (error) {
             console.error(error);
             toast.error('Failed to generate report', { id: toastId });
+        }
+    };
+
+    const handleDownloadAttendanceZip = async () => {
+        const toastId = toast.loading('Preparing support documents ZIP...');
+        try {
+            if (selectedEmployeeIds.length === 0) {
+                toast.error('Select at least one employee to download support documents.', { id: toastId });
+                return;
+            }
+
+            const monthKey = exportMonth;
+            const selectedUsers = users.filter((listedUser) => selectedEmployeeIds.includes(listedUser._id));
+
+            if (selectedUsers.length === 0) {
+                toast.error('Selected users are not available for document download.', { id: toastId });
+                return;
+            }
+
+            const zip = new JSZip();
+            const failedUsers = [];
+            let addedFilesCount = 0;
+
+            for (const targetUser of selectedUsers) {
+                try {
+                    const attachmentRes = await api.get(`/attendance/attachments/${targetUser._id}/${monthKey}`);
+                    const files = Array.isArray(attachmentRes.data?.files) ? attachmentRes.data.files : [];
+
+                    if (files.length === 0) {
+                        continue;
+                    }
+
+                    const userFolder = sanitizeFileNamePart(
+                        `${targetUser.firstName || ''}_${targetUser.lastName || ''}_${targetUser.employeeCode || targetUser.email || targetUser._id}`
+                    );
+
+                    for (let index = 0; index < files.length; index += 1) {
+                        const file = files[index];
+                        if (!file?.url) {
+                            continue;
+                        }
+
+                        const response = await fetch(file.url);
+                        if (!response.ok) {
+                            throw new Error(`Unable to download ${file.name || 'document'}`);
+                        }
+
+                        const blob = await response.blob();
+                        const fileName = sanitizeZipFileName(file.name, `document_${index + 1}`);
+                        zip.file(`${userFolder}/${String(index + 1).padStart(2, '0')}_${fileName}`, blob);
+                        addedFilesCount += 1;
+                    }
+                } catch (error) {
+                    console.error(`Failed to prepare support documents for ${targetUser.email}`, error);
+                    failedUsers.push(`${targetUser.firstName} ${targetUser.lastName || ''}`.trim() || targetUser.email);
+                }
+            }
+
+            if (addedFilesCount === 0) {
+                toast.error('No uploaded support documents were found for the selected users in that month.', { id: toastId });
+                return;
+            }
+
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const [year, month] = monthKey.split('-').map(Number);
+            const zipFileName = `Support_Documents_${format(new Date(year, month - 1, 1), 'MMMM_yyyy')}.zip`;
+            saveAs(zipBlob, zipFileName);
+
+            if (failedUsers.length > 0) {
+                toast.success(`ZIP downloaded. ${failedUsers.length} user(s) could not be included.`, { id: toastId });
+                return;
+            }
+
+            toast.success('Support documents ZIP downloaded successfully.', { id: toastId });
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to download support documents ZIP.', { id: toastId });
+        }
+    };
+
+    const handleExportDownload = async () => {
+        const hasAttendanceSelection = exportOptions.status
+            || exportOptions.checkInOut
+            || exportOptions.duration
+            || exportOptions.leaves;
+        const shouldDownloadDocuments = hasAttendanceDocumentFeature && exportOptions.documents;
+
+        if (!hasAttendanceSelection && !shouldDownloadDocuments) {
+            toast.error('Select at least one export option before downloading.');
+            return;
+        }
+
+        if (hasAttendanceSelection) {
+            await handleExportTeamAttendance();
+        }
+
+        if (shouldDownloadDocuments) {
+            await handleDownloadAttendanceZip();
         }
     };
 
@@ -704,6 +823,8 @@ const Users = () => {
 
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
     const attendanceShiftOptions = user?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
+    const hasAttendanceDocumentFeature = user?.company?.enabledModules?.includes('attendance')
+        && Boolean(user?.company?.settings?.timesheet?.requireAttachment);
     const visibleEmployeeIds = paginatedUsers.map((employee) => employee._id);
     const allVisibleSelected = visibleEmployeeIds.length > 0 && visibleEmployeeIds.every((id) => selectedEmployeeIds.includes(id));
     const hasSelection = selectedEmployeeIds.length > 0;
@@ -915,10 +1036,32 @@ const Users = () => {
                                         />
                                         <span className="text-sm font-medium text-slate-700">Leaves (SL, CL)</span>
                                     </label>
+
+                                    {hasAttendanceDocumentFeature && (
+                                        <>
+                                            <div className="h-px bg-slate-100 my-2"></div>
+                                            <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Include Documents:</p>
+                                            <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={exportOptions.documents}
+                                                    onChange={e => setExportOptions({ ...exportOptions, documents: e.target.checked })}
+                                                    className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                                />
+                                                <span className="text-sm font-medium text-slate-700">Uploaded Support Documents</span>
+                                            </label>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end space-x-2 rounded-b-lg">
                                     <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800">Close</button>
-                                    <button onClick={handleExportTeamAttendance} className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-sm flex items-center gap-1.5">
+                                    <button
+                                        onClick={handleExportDownload}
+                                        className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-sm flex items-center gap-1.5"
+                                        title={hasSelection
+                                            ? `Download exports for ${selectedEmployeeIds.length} selected user(s)`
+                                            : 'Select one or more users before downloading'}
+                                    >
                                         <Download size={14} /> Download
                                     </button>
                                 </div>
@@ -1081,6 +1224,7 @@ const Users = () => {
                                         </div>
                                     )}
                                 </div>
+
                             </div>
                         </div>
                     </div>
