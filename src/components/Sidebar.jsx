@@ -102,6 +102,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showDashboard = user?.roles?.includes('Admin') || user?.hasAllPermissions;
   const showAttendance = user?.company?.enabledModules?.includes('attendance');
   const showLeaves = user?.company?.enabledModules?.includes('leaves');
+  const showHolidays = hasModule('holidays');
   const showTimesheet = user?.company?.enabledModules?.includes('timesheet');
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
@@ -130,7 +131,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*')
   );
   const showProjects = hasModule('projects');
-  const showMainSection = showDashboard || showAttendance || showLeaves || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
+  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = user?.roles?.includes('Admin')
@@ -347,10 +348,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Timesheet</span>
                 </Link>
               )}
-              <Link to="/holidays" className={getSidebarLinkClass(location.pathname === '/holidays')} onClick={onClose}>
-                <CalendarDays size={18} />
-                <span>Holidays</span>
-              </Link>
+              {showHolidays && (
+                <Link to="/holidays" className={getSidebarLinkClass(location.pathname === '/holidays')} onClick={onClose}>
+                  <CalendarDays size={18} />
+                  <span>Holidays</span>
+                </Link>
+              )}
               {showMeetings && (
                 <Link
                   to={(user?.roles?.includes('Admin') || user?.permissions?.includes('discussion.read')) ? "/discussions" : "/meetings"}

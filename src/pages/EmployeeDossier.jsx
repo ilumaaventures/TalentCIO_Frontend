@@ -194,13 +194,13 @@ const documentCategories = [
         icon: '🎓'
     },
     {
-        name: 'Experience Letters',
+        name: 'Previous Experience Letters',
         category: 'Employment',
         allowMultiple: true,
         icon: '💼'
     },
     {
-        name: 'Offer Letters',
+        name: 'Previous Offer Letters',
         category: 'Offer Letter',
         allowMultiple: true,
         icon: '📄'
@@ -226,6 +226,20 @@ const documentCategories = [
         icon: '📄'
     }
 ];
+
+documentCategories.splice(documentCategories.length - 1, 0, {
+    name: 'Salary Slips',
+    category: 'Payslips',
+    allowMultiple: true,
+    fixedDocs: []
+});
+
+documentCategories.splice(documentCategories.length - 1, 0, {
+    name: 'Custom Files',
+    category: 'Other',
+    allowMultiple: true,
+    fixedDocs: []
+});
 
 const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'personal', onTabChange }) => {
     const { userId: paramUserId } = useParams();
@@ -1563,6 +1577,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             || currentUser?.permissions?.includes('dossier.verify_documents')
             || currentUser?.permissions?.includes('dossier.approve');
         const hasPendingDocs = profile.documents?.some(d => d.verificationStatus === 'Pending');
+        const onboardingCustomFiles = Array.isArray(profile.onboardingCustomFiles) ? profile.onboardingCustomFiles : [];
         // Robust ID comparison
         const isSelf = currentUser?._id && userId && (currentUser._id.toString() === userId.toString());
 
@@ -1674,30 +1689,31 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
 
         // Render a single document card
-        const DocumentCard = ({ doc }) => (
+        const DocumentCard = ({ doc, isSharedOnboardingFile = false }) => (
             <div className="group relative bg-white border border-slate-200 rounded-xl p-4 hover:shadow-lg hover:border-blue-200 transition-all duration-300 flex flex-col justify-between min-w-[280px] max-w-[280px]">
                 <div className="flex justify-between items-start mb-3">
                     <div className="p-2.5 bg-blue-50 rounded-lg text-blue-600 group-hover:bg-blue-100 transition-colors">
                         <FileText size={20} />
                     </div>
-                    <div className={`px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${doc.verificationStatus === 'Verified' ? 'bg-emerald-100 text-emerald-700' :
-                        doc.verificationStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
-                            'bg-amber-100 text-amber-700'
+                    <div className={`px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${isSharedOnboardingFile
+                        ? 'bg-blue-100 text-blue-700'
+                        : doc.verificationStatus === 'Verified' ? 'bg-emerald-100 text-emerald-700' :
+                            doc.verificationStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                'bg-amber-100 text-amber-700'
                         }`}>
-                        {doc.verificationStatus || 'Pending'}
+                        {isSharedOnboardingFile ? 'Shared' : (doc.verificationStatus || 'Pending')}
                     </div>
                 </div>
 
                 <div className="mb-3">
                     <h4 className="font-semibold text-slate-800 text-sm mb-1 line-clamp-2" title={doc.title}>{doc.title}</h4>
                     <p className="text-xs text-slate-500 flex items-center gap-2">
-                        <span>{doc.category || 'Document'}</span>
+                        <span>{isSharedOnboardingFile ? (doc.sourceLabel || 'Shared during onboarding') : (doc.category || 'Document')}</span>
                         <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                         <span>{format(new Date(doc.uploadDate), 'MMM dd, yyyy')}</span>
                     </p>
                 </div>
 
-                {/* Action Footer */}
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
                     <div className="flex gap-1">
                         <button
@@ -1716,39 +1732,41 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         </button>
                     </div>
 
-                    <div className="flex gap-1 pl-2 border-l border-slate-100">
-                        {canVerify && (
-                            <>
-                                <button
-                                    onClick={() => handleVerifyDocument(doc._id, 'Verified')}
-                                    className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                    title="Approve"
-                                >
-                                    <CheckCircle size={16} />
-                                </button>
-                                <button
-                                    onClick={() => handleVerifyDocument(doc._id, 'Rejected')}
-                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Reject"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </>
-                        )}
-
-                        <button
-                            onClick={() => handleDeleteDocument(doc._id)}
-                            disabled={deletingDocId === doc._id}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Delete"
-                        >
-                            {deletingDocId === doc._id ? (
-                                <span className="block h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></span>
-                            ) : (
-                                <Trash2 size={16} />
+                    {!isSharedOnboardingFile && (
+                        <div className="flex gap-1 pl-2 border-l border-slate-100">
+                            {canVerify && (
+                                <>
+                                    <button
+                                        onClick={() => handleVerifyDocument(doc._id, 'Verified')}
+                                        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                        title="Approve"
+                                    >
+                                        <CheckCircle size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleVerifyDocument(doc._id, 'Rejected')}
+                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Reject"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </>
                             )}
-                        </button>
-                    </div>
+
+                            <button
+                                onClick={() => handleDeleteDocument(doc._id)}
+                                disabled={deletingDocId === doc._id}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete"
+                            >
+                                {deletingDocId === doc._id ? (
+                                    <span className="block h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                    <Trash2 size={16} />
+                                )}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -1817,6 +1835,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 <div className="space-y-8">
                     {documentCategories.map((catConfig) => {
                         const categoryDocs = profile.documents?.filter(d => d.category === catConfig.category) || [];
+                        const mergedCategoryDocs = catConfig.category === 'Other'
+                            ? [...categoryDocs, ...onboardingCustomFiles]
+                            : categoryDocs;
 
                         return (
                             <div key={catConfig.name} className="border border-slate-200 rounded-xl p-5 bg-slate-50/50">
@@ -1824,7 +1845,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     <h4 className="font-bold text-slate-700 flex items-center gap-2">
                                         {catConfig.icon && <span className="text-xl">{catConfig.icon}</span>}
                                         {catConfig.name}
-                                        <span className="text-xs font-normal text-slate-500">({categoryDocs.length})</span>
+                                        <span className="text-xs font-normal text-slate-500">({mergedCategoryDocs.length})</span>
                                     </h4>
                                     {catConfig.allowMultiple && (
                                         <button
@@ -1868,14 +1889,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     })}
 
                                     {/* Dynamic documents (exclude those that match fixedDocs titles) */}
-                                    {catConfig.allowMultiple && categoryDocs
+                                    {catConfig.allowMultiple && mergedCategoryDocs
                                         .filter(doc => !catConfig.fixedDocs?.some(fixedTitle => fixedTitle.toLowerCase() === doc.title.toLowerCase()))
                                         .map(doc => (
-                                            <DocumentCard key={doc._id} doc={doc} />
+                                            <DocumentCard
+                                                key={doc._id || doc.url || doc.title}
+                                                doc={doc}
+                                                isSharedOnboardingFile={Boolean(doc.isOnboardingShared)}
+                                            />
                                         ))}
 
                                     {/* Show empty state if no documents in dynamic category AND no fixed docs */}
-                                    {catConfig.allowMultiple && categoryDocs.length === 0 && (!catConfig.fixedDocs || catConfig.fixedDocs.length === 0) && (
+                                    {catConfig.allowMultiple && mergedCategoryDocs.length === 0 && (!catConfig.fixedDocs || catConfig.fixedDocs.length === 0) && (
                                         <div className="flex items-center justify-center min-w-[280px] h-[180px] border-2 border-dashed border-slate-200 rounded-xl bg-white text-slate-400 text-sm">
                                             No documents uploaded yet
                                         </div>

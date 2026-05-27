@@ -112,7 +112,7 @@ function App() {
                 </Route>
                 
                 <Route path="/profile" element={<Profile />} />
-                <Route path="/holidays" element={<Holidays />} />
+                <Route element={<ModuleRoute moduleName="holidays" />}><Route path="/holidays" element={<Holidays />} /></Route>
 
                 {/* MoM Routes */}
                 <Route element={<ModuleRoute moduleName="meetingsOfMinutes" />}>

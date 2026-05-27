@@ -346,7 +346,7 @@ const Onboarding = () => {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
   <tr>
     <td bgcolor="#2563eb" style="border-radius:8px; text-align:center;">
-      <a href="${window.location.origin}/pre-onboarding/login" style="display:inline-block; padding:14px 32px; color:#ffffff; text-decoration:none; font-size:15px; font-weight:700;">Open Pre-Onboarding Portal</a>
+      <a href="${window.location.origin}/pre-onboarding/login" style="display:inline-block; padding:14px 32px; color:#ffffff; text-decoration:none; font-size:15px; font-weight:700;">Open Portal</a>
     </td>
   </tr>
 </table>`;
@@ -556,7 +556,7 @@ const Onboarding = () => {
   const INITIAL_FORM_DATA = {
     firstName: '', lastName: '', email: '', phone: '',
     designation: '', department: '', joiningDate: '', offerDate: '', documentDeadline: '',
-    workLocation: '', address: '', probationPeriod: '6 months',
+    workLocation: '', address: '', probationPeriod: '',
     salary: { annualCTC: '', basic: '', hra: '', specialAllowance: '', monthlyGross: '', monthlyCTC: '' }
   };
 
@@ -1023,7 +1023,7 @@ const Onboarding = () => {
       documentDeadline: emp.documentDeadline ? emp.documentDeadline.split('T')[0] : '',
       workLocation: emp.workLocation || '',
       address: emp.address || emp.personalDetails?.currentAddress?.line1 || '',
-      probationPeriod: emp.probationPeriod || '6 months',
+      probationPeriod: emp.probationPeriod || '',
       salary: {
         annualCTC: emp.salary?.annualCTC || '',
         basic: emp.salary?.basic || '',
@@ -1123,6 +1123,7 @@ const Onboarding = () => {
         ),
         { duration: 15000 }
       );
+      sessionStorage.removeItem(`user_data_${user?._id}`);
       setShowDetailModal(false);
       setSelectedEmployee(null);
       syncEmployeeState({ _id: empId }, 'delete');
