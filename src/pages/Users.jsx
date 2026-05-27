@@ -9,7 +9,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
-import { createCachePayload } from '../utils/cache';
+import { createCachePayload, readSessionCache } from '../utils/cache';
 
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
@@ -17,6 +17,22 @@ const DEFAULT_ATTENDANCE_SHIFTS = [
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 50];
+
+const buildUserListFingerprint = (users = []) => users
+    .map((listedUser) => ([
+        listedUser._id,
+        listedUser.updatedAt || '',
+        listedUser.createdAt || '',
+        listedUser.isActive ? '1' : '0',
+        listedUser.isDeleted ? '1' : '0',
+        (listedUser.roles || []).map((role) => role?._id || role?.name || '').join(','),
+        (listedUser.reportingManagers || []).map((manager) => manager?._id || manager || '').join(',')
+    ].join(':')))
+    .join('|');
+
+const buildRoleListFingerprint = (roles = []) => roles
+    .map((role) => `${role._id}:${role.name || ''}`)
+    .join('|');
 
 const Users = () => {
     const navigate = useNavigate();
@@ -604,12 +620,11 @@ const Users = () => {
 
             // Session Caching Logic
             const cacheKey = `user_data_${user?._id}`;
-            const cachedData = sessionStorage.getItem(cacheKey);
+            const cachedPayload = readSessionCache(cacheKey);
 
-            if (cachedData) {
-                const parsed = JSON.parse(cachedData);
+            if (cachedPayload) {
                 // Use .data if it exists (new format), else fallback to top-level (old format)
-                const data = parsed.data || parsed;
+                const data = cachedPayload.data || cachedPayload;
                 setUsers((data.users || []).filter((listedUser) => listedUser.isDeleted !== true));
                 setRoles(data.roles || []);
                 setLoading(false); // Immediate UI update
@@ -646,43 +661,45 @@ const Users = () => {
                 }
             }
 
-            // Fingerprint check
-            const newFingerprint = JSON.stringify({ u: usersData.length, r: rolesData.length, lu: usersData[0]?._id });
-            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+            const visibleUsers = usersData.filter((listedUser) => listedUser.isDeleted !== true);
+            setUsers(visibleUsers);
+            setRoles(rolesData);
 
-            if (newFingerprint !== oldFingerprint) {
-                setUsers(usersData.filter((listedUser) => listedUser.isDeleted !== true));
-                setRoles(rolesData);
+            // Always refresh the cache with the latest server ids so profile links cannot
+            // keep pointing at stale records after onboarding transfers.
+            const newFingerprint = JSON.stringify({
+                users: buildUserListFingerprint(usersData),
+                roles: buildRoleListFingerprint(rolesData)
+            });
 
-                // Minimal data for caching
-                const minimalUsers = usersData.map(u => ({
-                    _id: u._id,
-                    firstName: u.firstName,
-                    lastName: u.lastName,
-                    email: u.email,
-                    employeeCode: u.employeeCode,
-                    joiningDate: u.joiningDate,
-                    createdAt: u.createdAt,
-                    department: u.department,
-                    employmentType: u.employmentType,
-                    workLocation: u.workLocation,
-                    attendanceMode: u.attendanceMode,
-                    attendanceShiftCode: u.attendanceShiftCode,
-                    isActive: u.isActive,
-                    isDeleted: u.isDeleted,
-                    roles: u.roles?.map(r => ({ _id: r._id, name: r.name })),
-                    reportingManagers: u.reportingManagers?.map(m => ({ _id: m._id, firstName: m.firstName, lastName: m.lastName, email: m.email }))
-                }));
+            const minimalUsers = usersData.map(u => ({
+                _id: u._id,
+                firstName: u.firstName,
+                lastName: u.lastName,
+                email: u.email,
+                employeeCode: u.employeeCode,
+                joiningDate: u.joiningDate,
+                createdAt: u.createdAt,
+                updatedAt: u.updatedAt,
+                department: u.department,
+                employmentType: u.employmentType,
+                workLocation: u.workLocation,
+                attendanceMode: u.attendanceMode,
+                attendanceShiftCode: u.attendanceShiftCode,
+                isActive: u.isActive,
+                isDeleted: u.isDeleted,
+                roles: u.roles?.map(r => ({ _id: r._id, name: r.name })),
+                reportingManagers: u.reportingManagers?.map(m => ({ _id: m._id, firstName: m.firstName, lastName: m.lastName, email: m.email }))
+            }));
 
-                const minimalRoles = rolesData.map(r => ({ _id: r._id, name: r.name }));
+            const minimalRoles = rolesData.map(r => ({ _id: r._id, name: r.name }));
 
-                const payload = createCachePayload({
-                    users: minimalUsers,
-                    roles: minimalRoles
-                }, newFingerprint);
+            const payload = createCachePayload({
+                users: minimalUsers,
+                roles: minimalRoles
+            }, newFingerprint);
 
-                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
-            }
+            sessionStorage.setItem(cacheKey, JSON.stringify(payload));
         } catch (error) {
             toast.error('Failed to load data');
             console.error(error);

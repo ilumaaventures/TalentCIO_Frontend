@@ -1123,6 +1123,7 @@ const Onboarding = () => {
         ),
         { duration: 15000 }
       );
+      sessionStorage.removeItem(`user_data_${user?._id}`);
       setShowDetailModal(false);
       setSelectedEmployee(null);
       syncEmployeeState({ _id: empId }, 'delete');
