@@ -13,6 +13,7 @@ import Attendance from './pages/Attendance';
 import AttendanceSettings from './pages/AttendanceSettings';
 import Timesheet from './pages/Timesheet';
 import EmailSettings from './pages/settings/EmailSettings';
+import NotificationSettings from './pages/settings/NotificationSettings';
 import Users from './pages/Users';
 import Roles from './pages/Roles';
 import BusinessUnits from './pages/BusinessUnits';
@@ -87,6 +88,7 @@ function App() {
                   </Route>
                 </Route>
                 <Route path="/settings/email" element={<EmailSettingsAccessWrapper />} />
+                <Route path="/settings/notifications" element={<NotificationSettingsAccessWrapper />} />
                 <Route element={<ModuleRoute moduleName="timesheet" />}><Route path="/timesheet" element={<Timesheet />} /></Route>
                 <Route element={<ModuleRoute moduleName="leaves" />}><Route path="/leaves" element={<Leaves />} /></Route>
                 <Route element={<ModuleRoute moduleName="employeeDossier" />}><Route path="/dossier/:userId" element={<EmployeeDossier />} /></Route>
@@ -298,6 +300,20 @@ const EmailSettingsAccessWrapper = ({ Component: ComponentProp }) => {
   const canAccess = user.roles?.includes('Admin') ||
     user.permissions?.includes('settings.email.view') ||
     user.permissions?.includes('settings.email.manage') ||
+    user.permissions?.includes('*');
+
+  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
+};
+
+const NotificationSettingsAccessWrapper = ({ Component: ComponentProp }) => {
+  const { user } = useAuth();
+  const Component = ComponentProp || NotificationSettings;
+
+  if (!user) return null;
+
+  const canAccess = user.roles?.includes('Admin') ||
+    user.permissions?.includes('settings.notification.view') ||
+    user.permissions?.includes('settings.notification.manage') ||
     user.permissions?.includes('*');
 
   return canAccess ? <Component /> : <Navigate to="/unauthorized" />;

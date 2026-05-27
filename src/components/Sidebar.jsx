@@ -5,6 +5,7 @@ import { getBinItems } from '../api/bin';
 import {
   ArrowLeft,
   BarChart3,
+  Bell,
   Briefcase,
   Building,
   Building2,
@@ -137,6 +138,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showEmailSettings = user?.roles?.includes('Admin')
     || user?.permissions?.includes('settings.email.view')
     || user?.permissions?.includes('settings.email.manage')
+    || user?.permissions?.includes('*');
+  const showNotificationSettings = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('settings.notification.view')
+    || user?.permissions?.includes('settings.notification.manage')
     || user?.permissions?.includes('*');
   const homeRoute = showDashboard ? '/' : (showAttendance ? '/attendance' : '/');
   const sectionLabelClass = isTalentAcquisitionRoute
@@ -430,9 +435,15 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </>
               )}
 
-              {showEmailSettings && (
+              {(showEmailSettings || showNotificationSettings) && (
                 <>
                   <div className="mt-8"><div className={sectionLabelClass}>Settings</div></div>
+                  {showNotificationSettings && (
+                    <Link to="/settings/notifications" className={getSidebarLinkClass(location.pathname === '/settings/notifications')} onClick={onClose}>
+                      <Bell size={18} />
+                      <span>Notification Settings</span>
+                    </Link>
+                  )}
                   <Link to="/settings/email" className={getSidebarLinkClass(location.pathname === '/settings/email')} onClick={onClose}>
                     <Mail size={18} />
                     <span>Email Settings</span>
