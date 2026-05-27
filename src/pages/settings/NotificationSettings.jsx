@@ -16,6 +16,14 @@ const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS).map(([value, label]) => (
     label
 }));
 
+const getDefinitionChannelOptions = (definition = {}) => {
+    const supportedChannels = Array.isArray(definition?.supportedChannels) && definition.supportedChannels.length > 0
+        ? definition.supportedChannels
+        : CHANNEL_OPTIONS.map((option) => option.value);
+
+    return CHANNEL_OPTIONS.filter((option) => supportedChannels.includes(option.value));
+};
+
 const NotificationSettings = () => {
     const { user } = useAuth();
     const canManage = user?.roles?.includes('Admin')
@@ -255,16 +263,23 @@ const NotificationSettings = () => {
                                             {definition.description}
                                         </td>
                                         <td className="border-b border-slate-200 px-4 py-3">
+                                            {(() => {
+                                                const channelOptions = getDefinitionChannelOptions(definition);
+                                                const isSingleChoice = channelOptions.length <= 1;
+
+                                                return (
                                             <select
                                                 value={settings.events?.[definition.key] || definition.defaultChannel || 'system'}
                                                 onChange={(event) => updateEventChannel(definition.key, event.target.value)}
-                                                disabled={!canManage}
+                                                disabled={!canManage || isSingleChoice}
                                                 className="w-full min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
                                             >
-                                                {CHANNEL_OPTIONS.map((option) => (
+                                                {channelOptions.map((option) => (
                                                     <option key={option.value} value={option.value}>{option.label}</option>
                                                 ))}
                                             </select>
+                                                );
+                                            })()}
                                         </td>
                                     </tr>
                                 ))}
