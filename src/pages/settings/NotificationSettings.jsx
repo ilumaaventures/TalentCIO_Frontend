@@ -63,16 +63,16 @@ const NotificationSettings = () => {
         loadSettings();
     }, []);
 
-    const groupedDefinitions = useMemo(() => {
-        return definitions.reduce((accumulator, definition) => {
-            const moduleName = definition.module || 'General';
-            if (!accumulator[moduleName]) {
-                accumulator[moduleName] = [];
+    const orderedDefinitions = useMemo(() => (
+        [...definitions].sort((left, right) => {
+            const moduleCompare = String(left.module || '').localeCompare(String(right.module || ''));
+            if (moduleCompare !== 0) {
+                return moduleCompare;
             }
-            accumulator[moduleName].push(definition);
-            return accumulator;
-        }, {});
-    }, [definitions]);
+
+            return String(left.label || '').localeCompare(String(right.label || ''));
+        })
+    ), [definitions]);
 
     const senderOptions = useMemo(() => {
         const options = [{
@@ -154,107 +154,138 @@ const NotificationSettings = () => {
                 </p>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-[340px,1fr]">
-                <div className="space-y-4">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div className="mb-4 flex items-center gap-3">
-                            <div className="rounded-xl bg-blue-50 p-2 text-blue-600">
-                                <Mail size={18} />
-                            </div>
-                            <div>
-                                <h2 className="text-sm font-semibold text-slate-800">Email Sender</h2>
-                                <p className="text-xs text-slate-500">Select which sender will be used for email notifications.</p>
-                            </div>
-                        </div>
-
-                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Sender account</label>
-                        <select
-                            value={settings.emailSenderAccountId || ''}
-                            onChange={(event) => setSettings((current) => ({
-                                ...current,
-                                emailSenderAccountId: event.target.value
-                            }))}
-                            disabled={!canManage}
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-                        >
-                            {senderOptions.map((option) => (
-                                <option key={option.value || 'default'} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
-
-                        <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                            Current default sender: <span className="font-semibold text-slate-700">{defaultSenderLabel}</span>
-                        </div>
-
-                        <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">
-                            {emailEnabledEvents} event{emailEnabledEvents !== 1 ? 's are' : ' is'} currently configured to send email notifications.
-                        </div>
-                    </div>
-
-                    {!canManage && (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-                            You have read-only access to notification settings.
-                        </div>
-                    )}
-                </div>
-
-                <div className="space-y-5">
-                    {Object.entries(groupedDefinitions).map(([moduleName, items]) => (
-                        <div key={moduleName} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="rounded-xl bg-slate-900/5 p-2 text-slate-700">
-                                        <Bell size={17} />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-sm font-semibold text-slate-800">{moduleName}</h2>
-                                        <p className="text-xs text-slate-500">{items.length} configurable notification event{items.length !== 1 ? 's' : ''}</p>
-                                    </div>
+            <div className="space-y-5">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 bg-slate-100 px-5 py-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="rounded-xl bg-white p-2 text-blue-600 shadow-sm ring-1 ring-slate-200">
+                                    <Mail size={18} />
+                                </div>
+                                <div>
+                                    <h2 className="text-sm font-semibold text-slate-800">Sender Configuration</h2>
+                                    <p className="text-xs text-slate-500">Used for all notification rows that are set to email or both.</p>
                                 </div>
                             </div>
 
-                            <div className="divide-y divide-slate-100">
-                                {items.map((definition) => (
-                                    <div key={definition.key} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr,220px] md:items-center">
-                                        <div>
-                                            <h3 className="text-sm font-semibold text-slate-800">{definition.label}</h3>
-                                            <p className="mt-1 text-sm text-slate-500">{definition.description}</p>
-                                        </div>
-                                        <div>
-                                            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                Delivery
-                                            </label>
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+                                {emailEnabledEvents} event{emailEnabledEvents !== 1 ? 's' : ''} currently send email notifications
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full border-collapse">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Setting</th>
+                                    <th className="border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Value</th>
+                                    <th className="border-b border-slate-200 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr className="align-top">
+                                    <td className="border-b border-r border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800">Notification sender</td>
+                                    <td className="border-b border-r border-slate-200 bg-white px-4 py-3">
+                                        <select
+                                            value={settings.emailSenderAccountId || ''}
+                                            onChange={(event) => setSettings((current) => ({
+                                                ...current,
+                                                emailSenderAccountId: event.target.value
+                                            }))}
+                                            disabled={!canManage}
+                                            className="w-full min-w-[260px] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                        >
+                                            {senderOptions.map((option) => (
+                                                <option key={option.value || 'default'} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </select>
+                                    </td>
+                                    <td className="border-b border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                                        Default sender right now: <span className="font-semibold text-slate-800">{defaultSenderLabel}</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {!canManage && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+                        You have read-only access to notification settings.
+                    </div>
+                )}
+
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 bg-slate-100 px-5 py-4">
+                        <div className="flex items-center gap-3">
+                            <div className="rounded-xl bg-white p-2 text-slate-700 shadow-sm ring-1 ring-slate-200">
+                                <Bell size={17} />
+                            </div>
+                            <div>
+                                <h2 className="text-sm font-semibold text-slate-800">Notification Matrix</h2>
+                                <p className="text-xs text-slate-500">Excel-style table view of all notification events in the system.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full border-collapse">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Module</th>
+                                    <th className="border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Notification Event</th>
+                                    <th className="border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Description</th>
+                                    <th className="border-b border-slate-200 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Delivery Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {orderedDefinitions.map((definition, index) => (
+                                    <tr
+                                        key={definition.key}
+                                        className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}
+                                    >
+                                        <td className="border-b border-r border-slate-200 px-4 py-3 text-sm font-medium text-slate-700">
+                                            {definition.module || 'General'}
+                                        </td>
+                                        <td className="border-b border-r border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
+                                            {definition.label}
+                                        </td>
+                                        <td className="border-b border-r border-slate-200 px-4 py-3 text-sm text-slate-600">
+                                            {definition.description}
+                                        </td>
+                                        <td className="border-b border-slate-200 px-4 py-3">
                                             <select
                                                 value={settings.events?.[definition.key] || definition.defaultChannel || 'system'}
                                                 onChange={(event) => updateEventChannel(definition.key, event.target.value)}
                                                 disabled={!canManage}
-                                                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                                className="w-full min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
                                             >
                                                 {CHANNEL_OPTIONS.map((option) => (
                                                     <option key={option.value} value={option.value}>{option.label}</option>
                                                 ))}
                                             </select>
-                                        </div>
-                                    </div>
+                                        </td>
+                                    </tr>
                                 ))}
-                            </div>
-                        </div>
-                    ))}
-
-                    {canManage && (
-                        <div className="flex justify-end">
-                            <button
-                                type="button"
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
-                            >
-                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
-                                {saving ? 'Saving...' : 'Save Settings'}
-                            </button>
-                        </div>
-                    )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+
+                {canManage && (
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                        >
+                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                            {saving ? 'Saving...' : 'Save Settings'}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );
