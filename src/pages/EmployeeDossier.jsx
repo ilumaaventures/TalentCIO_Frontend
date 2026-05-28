@@ -290,6 +290,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const [loadingCompanyBranding, setLoadingCompanyBranding] = useState(false);
     const [savingCompanyBranding, setSavingCompanyBranding] = useState(false);
     const [uploadingCompanyLogo, setUploadingCompanyLogo] = useState(false);
+    const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
+    const companySettingsSectionRef = useRef(null);
 
     // Cleanup preview URL on unmount
     useEffect(() => {
@@ -341,6 +343,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             fetchCompanyBrandingSettings();
         }
     }, [activeTab, canManageCompanyBranding, fetchCompanyBrandingSettings]);
+
+    useEffect(() => {
+        if (activeTab === 'settings' && isCompanySettingsOpen && companySettingsSectionRef.current) {
+            companySettingsSectionRef.current.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    }, [activeTab, isCompanySettingsOpen]);
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -560,7 +571,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const canViewRolesSettings = hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions;
     const canViewAttendanceSettings = currentUser?.company?.enabledModules?.includes('attendance') && (hasAdminRole || currentUser?.permissions?.includes('user.update') || currentUser?.hasAllPermissions);
     const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions);
-    const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
+    const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies || canManageCompanyBranding;
 
     const isManager = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
     const tabs = useMemo(() => {
@@ -882,6 +893,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 label: 'Leave Policies',
                 description: 'Review and update leave types, accrual rules, and leave balances policy setup.',
                 route: '/leave-config'
+            },
+            {
+                key: 'company',
+                visible: canManageCompanyBranding,
+                label: 'Company Setting',
+                description: 'Choose the workspace sidebar logo, upload branding, and preview the company look.',
+                action: () => setIsCompanySettingsOpen(true)
             }
         ].filter((card) => card.visible);
         const previewLogoSrc = companyBranding.displayMode === 'talentcio'
@@ -920,7 +938,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 <button
                                     key={card.key}
                                     type="button"
-                                    onClick={() => navigate(card.route)}
+                                    onClick={() => {
+                                        if (card.action) {
+                                            card.action();
+                                            return;
+                                        }
+
+                                        navigate(card.route);
+                                    }}
                                     className="group rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5 text-left transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-md"
                                 >
                                     <div className="flex items-center justify-between gap-3">
@@ -944,8 +969,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     )}
                 </div>
 
-                {canManageCompanyBranding && (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                {canManageCompanyBranding && isCompanySettingsOpen && (
+                    <div
+                        ref={companySettingsSectionRef}
+                        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                    >
                         <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 lg:flex-row lg:items-start lg:justify-between">
                             <div>
                                 <h3 className="text-lg font-bold text-slate-800">Company Setting</h3>
@@ -953,14 +981,23 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     Choose which logo should appear in the workspace sidebar.
                                 </p>
                             </div>
-                            <Button
-                                onClick={handleCompanyBrandingSave}
-                                isLoading={savingCompanyBranding}
-                                disabled={loadingCompanyBranding || uploadingCompanyLogo}
-                                className="px-4 py-2"
-                            >
-                                Save Settings
-                            </Button>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCompanySettingsOpen(false)}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                                >
+                                    Hide
+                                </button>
+                                <Button
+                                    onClick={handleCompanyBrandingSave}
+                                    isLoading={savingCompanyBranding}
+                                    disabled={loadingCompanyBranding || uploadingCompanyLogo}
+                                    className="px-4 py-2"
+                                >
+                                    Save Settings
+                                </Button>
+                            </div>
                         </div>
 
                         {loadingCompanyBranding ? (
