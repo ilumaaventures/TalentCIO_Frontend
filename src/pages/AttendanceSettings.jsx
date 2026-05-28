@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Clock, Loader2, Plus, Save, ShieldCheck, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Clock, Loader2, Plus, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +30,7 @@ const DEFAULT_ATTENDANCE_SETTINGS = {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const AttendanceSettings = () => {
+    const navigate = useNavigate();
     const { user, refreshProfile } = useAuth();
     const [attendance, setAttendance] = useState(DEFAULT_ATTENDANCE_SETTINGS);
     const [loading, setLoading] = useState(true);
@@ -161,7 +163,15 @@ const AttendanceSettings = () => {
     }
 
     return (
-        <div className="mx-auto max-w-5xl space-y-6 pb-10">
+        <div className="mx-auto max-w-5xl space-y-6 px-6 pb-10 pt-10 md:px-0 md:pt-14">
+            <button
+                type="button"
+                onClick={() => navigate('/profile?tab=settings')}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+            >
+                <ArrowLeft size={16} />
+                Back to Settings
+            </button>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Attendance Settings</h1>

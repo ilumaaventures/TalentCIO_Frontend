@@ -1,12 +1,14 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { Settings, Edit2, Shield, Plus, Check, X, AlertCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Settings, Edit2, Shield, Plus, Check, X, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
 import { useAuth } from '../context/AuthContext';
 
 const LeaveConfig = () => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const [policies, setPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -198,8 +200,16 @@ const LeaveConfig = () => {
     if (loading) return <div className="p-10 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
+        <div className="min-h-screen bg-slate-100 font-sans px-6 pb-10 pt-10 md:px-10 md:pb-10 md:pt-14">
             <div className="max-w-7xl mx-auto space-y-6">
+                <button
+                    type="button"
+                    onClick={() => navigate('/profile?tab=settings')}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                >
+                    <ArrowLeft size={16} />
+                    Back to Settings
+                </button>
 
                 <div className="flex justify-between items-center">
                     <div>

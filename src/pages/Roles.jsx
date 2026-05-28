@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { Plus, Check, Shield } from 'lucide-react';
+import { ArrowLeft, Plus, Check, Shield } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -77,6 +78,7 @@ const sanitizeRoles = (roles = []) =>
     }));
 
 const Roles = () => {
+    const navigate = useNavigate();
     const { user, refreshProfile, hasModule } = useAuth();
     const [roles, setRoles] = useState([]);
     const [permissions, setPermissions] = useState({}); // Grouped permissions
@@ -330,8 +332,16 @@ const Roles = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
+        <div className="min-h-screen bg-slate-100 font-sans px-6 pb-10 pt-10 md:px-10 md:pb-10 md:pt-14">
             <div className="max-w-6xl mx-auto space-y-6">
+                <button
+                    type="button"
+                    onClick={() => navigate('/profile?tab=settings')}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                >
+                    <ArrowLeft size={16} />
+                    Back to Settings
+                </button>
 
                 {/* Header */}
                 <div className="flex justify-between items-center">
