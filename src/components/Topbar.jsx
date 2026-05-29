@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Settings, Shield, User } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Settings, Shield, User } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import api from '../api/axios';
 import socket from '../api/socket';
@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 const Topbar = ({ toggleSidebar }) => {
     const { user, hasModule } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
     const hasTalentAcquisition = hasModule('talentAcquisition');
     const hasDashboardAccess = user?.roles?.some((role) => role === 'Admin' || role?.name === 'Admin') || user?.hasAllPermissions;
@@ -27,6 +28,7 @@ const Topbar = ({ toggleSidebar }) => {
     const canViewAttendanceSettings = user?.company?.enabledModules?.includes('attendance') && (hasAdminRole || user?.permissions?.includes('user.update') || user?.hasAllPermissions);
     const canViewLeavePolicies = user?.company?.enabledModules?.includes('leaves') && (hasAdminRole || user?.permissions?.includes('role.read') || user?.hasAllPermissions);
     const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
+    const isRolesPage = location.pathname === '/roles';
     const profileTabs = [
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
@@ -183,6 +185,10 @@ const Topbar = ({ toggleSidebar }) => {
         navigate(`/profile?tab=${tabId}`);
     };
 
+    const handleOpenCreateRole = () => {
+        window.dispatchEvent(new CustomEvent('roles:open-create-modal'));
+    };
+
     return (
         <>
             <style>{`
@@ -226,9 +232,34 @@ const Topbar = ({ toggleSidebar }) => {
                         </div>
                         TalentCio
                     </button>
+                    {isRolesPage && (
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/profile?tab=settings')}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
+                                aria-label="Back to settings"
+                            >
+                                <ArrowLeft size={18} />
+                            </button>
+                            <div>
+                                <h1 className="text-lg font-bold text-slate-800">Role Management</h1>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-4 ml-auto">
+                    {isRolesPage && (
+                        <button
+                            type="button"
+                            onClick={handleOpenCreateRole}
+                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                        >
+                            <Shield size={16} />
+                            <span className="hidden sm:inline">Create Role</span>
+                        </button>
+                    )}
                     <div className="relative" ref={dropdownRef}>
                         <button
                             onClick={() => setShowDropdown(!showDropdown)}

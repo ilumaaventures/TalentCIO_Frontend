@@ -7,6 +7,7 @@ import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import useDebouncedValue from '../hooks/useDebouncedValue';
 import {
   ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
   getSupportedPlaceholderTokens,
@@ -99,6 +100,10 @@ const STATUS_ICONS = {
   Reviewed: <CheckCircle size={16} />
 };
 
+const STATUS_LABELS = {
+  Reviewed: 'Transfer to Active User'
+};
+
 const isAllowedCustomFile = (file) => file?.type?.startsWith('image/') || CUSTOM_FILE_ALLOWED_MIME_TYPES.has(file?.type);
 
 const Onboarding = () => {
@@ -131,6 +136,7 @@ const Onboarding = () => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 1500);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -397,6 +403,10 @@ const Onboarding = () => {
     () => [DEFAULT_ONBOARDING_TEMPLATE_OPTION, ...emailTemplates],
     [emailTemplates]
   );
+  const totalOnboardingCount = useMemo(
+    () => Object.values(stats || {}).reduce((sum, value) => sum + Number(value || 0), 0),
+    [stats]
+  );
 
   const applyEmailTemplateDraft = useCallback((templateId, templates, draftSubject = '', draftBody = '') => {
     const selectedTemplate = (templates || []).find((template) => template._id === templateId);
@@ -573,7 +583,7 @@ const Onboarding = () => {
         nextEmployees = prev.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
       }
 
-      const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${searchTerm || 'all'}`;
+      const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${debouncedSearchTerm || 'all'}`;
       try {
         const cached = readSessionCache(cacheKey);
         if (cached) {
@@ -595,10 +605,10 @@ const Onboarding = () => {
 
       return nextEmployees;
     });
-  }, [page, statusFilter, searchTerm, user?._id]);
+  }, [debouncedSearchTerm, page, statusFilter, user?._id]);
 
   const fetchEmployees = useCallback(async ({ force = false } = {}) => {
-    const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${searchTerm || 'all'}`;
+    const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${debouncedSearchTerm || 'all'}`;
     try {
       const cached = readSessionCache(cacheKey);
       if (cached) {
@@ -617,7 +627,7 @@ const Onboarding = () => {
 
       const params = { tab: 'employees', page, limit: 15 };
       if (statusFilter !== 'All') params.status = statusFilter;
-      if (searchTerm) params.search = searchTerm;
+      if (debouncedSearchTerm) params.search = debouncedSearchTerm;
       const res = await api.get('/onboarding/bootstrap', { params });
       const employeesData = res.data.employees || [];
       const statsData = res.data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 };
@@ -629,7 +639,7 @@ const Onboarding = () => {
       const fingerprint = JSON.stringify({
         page,
         statusFilter,
-        searchTerm,
+        searchTerm: debouncedSearchTerm,
         total: res.data.total || employeesData.length,
         first: employeesData[0]?._id
       });
@@ -659,7 +669,7 @@ const Onboarding = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, searchTerm, statusFilter, user?._id]);
+  }, [debouncedSearchTerm, page, statusFilter, user?._id]);
 
   const fetchSettings = useCallback(async ({ force = false } = {}) => {
     const cacheKey = `onboarding_settings_${user?._id}`;
@@ -745,7 +755,7 @@ const Onboarding = () => {
       initialSettingsFetchDoneRef.current = true;
       fetchSettings();
     }
-  }, [activeTab, fetchEmployees, fetchSettings, page, searchTerm, statusFilter]);
+  }, [activeTab, fetchEmployees, fetchSettings, page, debouncedSearchTerm, statusFilter]);
 
   const handlePolicyUpload = async (e) => {
     const file = e.target.files[0];
@@ -1142,6 +1152,29 @@ const Onboarding = () => {
     if (customFileInputRef.current) customFileInputRef.current.value = '';
   }, []);
 
+  const summaryCards = [
+    {
+      key: 'all',
+      label: 'Total Onboarding',
+      value: totalOnboardingCount,
+      filterValue: 'All',
+      icon: <Users size={18} />,
+      accent: '#0284c7',
+      iconBackground: 'linear-gradient(135deg, #e0f2fe, #dbeafe)',
+      surface: '#f0f9ff'
+    },
+    ...Object.entries(stats).map(([key, value]) => ({
+      key,
+      label: STATUS_LABELS[key] || key,
+      value,
+      filterValue: key,
+      icon: STATUS_ICONS[key],
+      accent: STATUS_COLORS[key]?.dot || '#64748b',
+      iconBackground: `linear-gradient(135deg, ${STATUS_COLORS[key]?.bg || '#f8fafc'}, #ffffff)`,
+      surface: STATUS_COLORS[key]?.bg || '#f8fafc'
+    }))
+  ];
+
   if (!canViewOnboarding) {
     return null;
   }
@@ -1178,16 +1211,69 @@ const Onboarding = () => {
       {activeTab === 'employees' ? (
         <>
           {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-            {Object.entries(stats).map(([key, val]) => (
-              <div key={key} onClick={() => { setStatusFilter(key === statusFilter ? 'All' : key); setPage(1); }} style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', cursor: 'pointer', border: statusFilter === key ? `2px solid ${STATUS_COLORS[key].dot}` : '2px solid transparent', transition: 'all 0.2s' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: STATUS_COLORS[key].bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: STATUS_COLORS[key].dot }}>{STATUS_ICONS[key]}</div>
-                  <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>{key}</span>
+          <div
+            className="onboarding-stats-strip"
+            style={{ display: 'flex', gap: '16px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '6px', flexWrap: 'nowrap', scrollbarWidth: 'thin' }}
+          >
+            {summaryCards.map((card) => {
+              const isActive = statusFilter === card.filterValue;
+              return (
+                <div
+                  key={card.key}
+                  className="onboarding-stat-card"
+                  onClick={() => { setStatusFilter(isActive ? 'All' : card.filterValue); setPage(1); }}
+                  style={{
+                    minWidth: '180px',
+                    flex: '1 0 0',
+                    background: '#fff',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    cursor: 'pointer',
+                    border: isActive ? `1.5px solid ${card.accent}` : '1px solid #e2e8f0',
+                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.06)',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '14px',
+                        background: card.filterValue === 'All' ? '#e0f2fe' : card.surface,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: card.accent
+                      }}
+                    >
+                      {card.icon}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '13px', color: '#334155', fontWeight: '600', lineHeight: 1.3 }}>{card.label}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px' }}>
+                    <div style={{ fontSize: '34px', fontWeight: '700', color: '#0f172a', lineHeight: 1 }}>{card.value}</div>
+                    {isActive && (
+                      <div
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '999px',
+                          background: card.accent,
+                          color: '#fff',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        Active
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ fontSize: '28px', fontWeight: '700', color: '#0f172a' }}>{val}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Search & Filter */}
@@ -1200,6 +1286,11 @@ const Onboarding = () => {
                 onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                 style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
               />
+              {searchTerm !== debouncedSearchTerm && (
+                <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8' }}>
+                  Searching...
+                </span>
+              )}
             </div>
             {statusFilter !== 'All' && (
               <button onClick={() => { setStatusFilter('All'); setPage(1); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', cursor: 'pointer', fontSize: '13px', color: '#64748b' }}>
@@ -1268,7 +1359,7 @@ const Onboarding = () => {
                         <td style={{ padding: '14px 16px' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: sc.bg, color: sc.text }}>
                             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: sc.dot }} />
-                            {emp.status}
+                            {STATUS_LABELS[emp.status] || emp.status}
                           </span>
                         </td>
                         <td style={{ padding: '14px 16px', textAlign: 'center' }}>
@@ -1708,7 +1799,7 @@ const Onboarding = () => {
                       <code style={{ display: 'inline-block', background: '#eff6ff', color: '#1d4ed8', padding: '6px 10px', borderRadius: '10px', fontWeight: '700', fontSize: '12px', border: '1px solid #bfdbfe' }}>{selectedEmployee.tempEmployeeId}</code>
                     </div>
                     <span style={{ padding: '6px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).bg, color: (STATUS_COLORS[selectedEmployee.status] || STATUS_COLORS.Pending).text }}>
-                      {selectedEmployee.status}
+                      {STATUS_LABELS[selectedEmployee.status] || selectedEmployee.status}
                     </span>
                   </div>
                 </div>
@@ -2342,6 +2433,12 @@ const Onboarding = () => {
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         .animate-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .onboarding-stats-strip::-webkit-scrollbar { height: 8px; }
+        .onboarding-stats-strip::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+        .onboarding-stats-strip::-webkit-scrollbar-track { background: transparent; }
+        @media (max-width: 768px) {
+          .onboarding-stat-card { min-width: 180px !important; }
+        }
         .template-preview-content p { margin-bottom: 1em; }
         .template-preview-content h1, .template-preview-content h2 { margin-top: 1.5em; margin-bottom: 0.5em; }
         .template-preview-content table { width: 100%; border-collapse: collapse; margin: 1em 0; }

@@ -1,7 +1,6 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Plus, Check, Shield } from 'lucide-react';
+import { Check } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -78,7 +77,6 @@ const sanitizeRoles = (roles = []) =>
     }));
 
 const Roles = () => {
-    const navigate = useNavigate();
     const { user, refreshProfile, hasModule } = useAuth();
     const [roles, setRoles] = useState([]);
     const [permissions, setPermissions] = useState({}); // Grouped permissions
@@ -211,6 +209,10 @@ const Roles = () => {
         fetchData();
     }, [fetchData]);
 
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+    }, []);
+
     const togglePermission = (id) => {
         if (viewOnly) return;
         if (selectedPerms.includes(id)) {
@@ -294,6 +296,15 @@ const Roles = () => {
         setShowModal(true);
     };
 
+    useEffect(() => {
+        const handleOpenCreateRole = () => {
+            openCreateModal();
+        };
+
+        window.addEventListener('roles:open-create-modal', handleOpenCreateRole);
+        return () => window.removeEventListener('roles:open-create-modal', handleOpenCreateRole);
+    }, []);
+
     if (loading) return (
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-6xl mx-auto space-y-6">
@@ -332,32 +343,8 @@ const Roles = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans px-6 pb-10 pt-10 md:px-10 md:pb-10 md:pt-14">
-            <div className="max-w-6xl mx-auto space-y-6">
-                <button
-                    type="button"
-                    onClick={() => navigate('/profile?tab=settings')}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
-                >
-                    <ArrowLeft size={16} />
-                    Back to Settings
-                </button>
-
-                {/* Header */}
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">Role Management</h1>
-                        <p className="text-sm text-slate-500">Define roles and permission levels</p>
-                    </div>
-                    <button
-                        onClick={openCreateModal}
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all"
-                    >
-                        <Shield size={18} />
-                        <span>Create Role</span>
-                    </button>
-                </div>
-
+        <div className="min-h-screen bg-slate-100 font-sans px-6 pb-10 pt-6 md:px-10 md:pb-10 md:pt-8">
+            <div className="max-w-6xl mx-auto">
                 {/* Roles Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {roles.map(role => (
