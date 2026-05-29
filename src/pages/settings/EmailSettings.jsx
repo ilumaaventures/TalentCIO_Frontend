@@ -30,6 +30,7 @@ import {
     ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
     getSupportedPlaceholderTokens,
     renderTemplateBody,
+    sanitizeTemplateHtml,
     resolveTemplate,
     validateTemplateSyntax
 } from '../../utils/templatePlaceholders';
@@ -1336,7 +1337,7 @@ const BrandingTab = ({ canManage }) => {
                     {branding.footerText && (
                         <div
                             className="border border-slate-200 border-t-0 bg-slate-50 px-6 py-3 text-center text-xs text-slate-400"
-                            dangerouslySetInnerHTML={{ __html: branding.footerText }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(branding.footerText) }}
                         />
                     )}
                 </div>
