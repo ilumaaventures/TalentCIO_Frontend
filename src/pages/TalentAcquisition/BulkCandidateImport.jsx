@@ -72,6 +72,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
     const [existingCandidates, setExistingCandidates] = useState([]);
     const [request, setRequest] = useState(null);
     const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+    const canOverrideExistingDuplicateImport = user?.permissions?.includes('ta.requisition.manage.assigned');
 
     const fileInputRef = useRef(null);
     const normalizeStatusKey = (value) => String(value || '')
@@ -743,6 +744,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 const ownedByCurrentUser = matchedCandidate
                     ? normalizeEntityId(matchedCandidate.uploadedBy) === normalizeEntityId(user?._id)
                     : false;
+                const canAutoUpdateExisting = isExisting && (ownedByCurrentUser || canOverrideExistingDuplicateImport);
                 const uploaderName = getUploaderName(matchedCandidate);
                 const errors = [];
                 if (!mappedRow.candidateName) errors.push('Name missing');
@@ -766,7 +768,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     }
                 });
                 // Removed Experience check - defaults to 0 if missing
-                if (isExisting && !ownedByCurrentUser) {
+                if (isExisting && !canAutoUpdateExisting) {
                     errors.push(
                         uploaderName
                             ? `Candidate already exists and was uploaded by ${uploaderName}`
@@ -779,6 +781,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     isValid: errors.length === 0,
                     isExisting,
                     ownedByCurrentUser,
+                    canAutoUpdateExisting,
                     matchedCandidate,
                     errors: errors,
                     rowNumber: rowNumber
@@ -1204,7 +1207,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                                 <tr key={idx} className={row.isValid ? 'hover:bg-slate-50' : 'bg-red-50/50'}>
                                                     <td className="px-4 py-3 text-sm text-slate-600">{row.rowNumber}</td>
                                                     <td className="px-4 py-3">
-                                                        {row.isExisting && row.ownedByCurrentUser ? (
+                                                        {row.isExisting && row.canAutoUpdateExisting ? (
                                                             <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded text-[10px]">UPDATE</span>
                                                         ) : row.isExisting ? (
                                                             <span className="text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded text-[10px]">EXISTS</span>

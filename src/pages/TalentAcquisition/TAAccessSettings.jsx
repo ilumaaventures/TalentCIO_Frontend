@@ -131,12 +131,10 @@ const AccessRequestList = ({ title, requests = [], emptyLabel }) => (
 
 const TAAccessSettings = () => {
     const { user } = useAuth();
-    const canConfigEdit = user?.roles?.includes('Admin')
-        || user?.permissions?.includes('ta.manage')
+    const canConfigEdit = user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.config.edit')
         || user?.permissions?.includes('*');
-    const canManageRolePermissions = user?.roles?.includes('Admin')
-        || user?.permissions?.includes('ta.manage')
+    const canManageRolePermissions = user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('*');
     const [loading, setLoading] = useState(true);
     const [savingRoleId, setSavingRoleId] = useState('');

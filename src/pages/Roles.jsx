@@ -177,6 +177,7 @@ const Roles = () => {
         else if (key.startsWith('timesheet.')) groupName = 'TIMESHEETS';
         else if (key.startsWith('attendance.')) groupName = 'ATTENDANCE';
         else if (key.startsWith('ta.')) groupName = 'TALENT ACQUISITION';
+        else if (key.startsWith('announcement.')) groupName = 'ANNOUNCEMENTS';
         else if (key.startsWith('helpdesk.')) groupName = 'HELP DESK';
         else if (key.startsWith('discussion.')) groupName = 'DISCUSSIONS';
         else if (key.startsWith('dossier.')) groupName = 'EMPLOYEE DOSSIER';
