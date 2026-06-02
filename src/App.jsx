@@ -47,6 +47,7 @@ import MeetingDetails from './pages/MeetingDetails';
 import HelpDesk from './pages/HelpDesk';
 import QueryDetails from './pages/QueryDetails';
 import Discussions from './pages/Discussions';
+import Announcements from './pages/Announcements';
 import GlobalTADashboard from './pages/TalentAcquisition/GlobalTADashboard';
 import Onboarding from './pages/Onboarding';
 import RecycleBin from './pages/RecycleBin';
@@ -179,6 +180,7 @@ function App() {
                 </Route>
                 
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/announcements" element={<Announcements />} />
                 <Route path="/holidays" element={(
                   <ProtectedRoute moduleName="holidays" redirectTo="/">
                     <Holidays />

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Settings, Shield, User } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import api from '../api/axios';
@@ -29,6 +29,7 @@ const Topbar = ({ toggleSidebar }) => {
     const canViewLeavePolicies = user?.company?.enabledModules?.includes('leaves') && (hasAdminRole || user?.permissions?.includes('role.read') || user?.hasAllPermissions);
     const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
     const isRolesPage = location.pathname === '/roles';
+    const isAnnouncementsPage = location.pathname === '/announcements';
     const profileTabs = [
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
@@ -250,6 +251,20 @@ const Topbar = ({ toggleSidebar }) => {
                 </div>
 
                 <div className="flex items-center gap-4 ml-auto">
+                    <div className="hidden lg:flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-2 py-1.5">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/announcements')}
+                            className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
+                                isAnnouncementsPage
+                                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
+                                    : 'text-slate-600 hover:bg-white hover:text-slate-800'
+                            }`}
+                        >
+                            <Megaphone size={16} />
+                            <span>Announcements</span>
+                        </button>
+                    </div>
                     {isRolesPage && (
                         <button
                             type="button"

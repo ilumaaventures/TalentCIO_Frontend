@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Skeleton from '../components/Skeleton';
 import { Link, useNavigate } from 'react-router-dom';
-import { Users, Clock, Calendar, UserCheck, UserX, AlertCircle, ArrowUpRight, MapPin, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Users, Clock, Calendar, UserCheck, UserX, AlertCircle, ArrowUpRight, MapPin, ChevronLeft, ChevronRight, X, Megaphone, Pin } from 'lucide-react';
 import { addDays, format } from 'date-fns';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import { motion } from 'framer-motion';
@@ -74,6 +74,8 @@ const Dashboard = () => {
     const [attendanceModalRecords, setAttendanceModalRecords] = useState([]);
     const [attendanceModalMeta, setAttendanceModalMeta] = useState({ total: 0, date: TODAY_DATE_STRING });
     const [attendanceModalLoading, setAttendanceModalLoading] = useState(false);
+    const [featuredAnnouncements, setFeaturedAnnouncements] = useState([]);
+    const [announcementsLoading, setAnnouncementsLoading] = useState(true);
 
     const attendanceSettings = user?.company?.settings?.attendance || {};
     const showLeavesModule = user?.company?.enabledModules?.includes('leaves');
@@ -245,6 +247,34 @@ const Dashboard = () => {
         fetchAttendanceForDate();
     }, [attendanceModalDate, attendanceModalOpen]);
 
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchFeaturedAnnouncements = async () => {
+            try {
+                setAnnouncementsLoading(true);
+                const response = await api.get('/announcements?featured=true&limit=3');
+                if (!isMounted) return;
+                setFeaturedAnnouncements(Array.isArray(response.data?.announcements) ? response.data.announcements : []);
+            } catch (error) {
+                console.error('Failed to fetch announcements', error);
+                if (isMounted) {
+                    setFeaturedAnnouncements([]);
+                }
+            } finally {
+                if (isMounted) {
+                    setAnnouncementsLoading(false);
+                }
+            }
+        };
+
+        fetchFeaturedAnnouncements();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
     const openAttendanceModal = () => {
         setAttendanceModalDate(TODAY_DATE_STRING);
         setAttendanceModalOpen(true);
@@ -325,6 +355,60 @@ const Dashboard = () => {
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200/60 rounded-lg shadow-sm text-[11px] font-bold text-slate-600">
                                 <Calendar size={14} className="text-blue-600" />
                                 {format(new Date(), 'MMM d, yyyy')}
+                            </div>
+                        </div>
+
+                        <div className="premium-card overflow-hidden bg-white">
+                            <div className="px-5 py-3.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-1 h-5 bg-amber-500 rounded-full"></div>
+                                    <h2 className="text-base font-bold text-slate-900 tracking-tight">Announcements</h2>
+                                </div>
+                                <Link to="/announcements" className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest">
+                                    Open Feed
+                                </Link>
+                            </div>
+                            <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
+                                {announcementsLoading ? (
+                                    [1, 2, 3].map((item) => (
+                                        <div key={item} className="rounded-2xl border border-slate-200 p-4">
+                                            <Skeleton className="h-4 w-24" />
+                                            <Skeleton className="mt-3 h-5 w-3/4" />
+                                            <Skeleton className="mt-2 h-12 w-full" />
+                                        </div>
+                                    ))
+                                ) : featuredAnnouncements.length > 0 ? (
+                                    featuredAnnouncements.map((announcement) => (
+                                        <div key={announcement._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {announcement.pinned ? (
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-amber-700">
+                                                        <Pin size={10} />
+                                                        Pinned
+                                                    </span>
+                                                ) : null}
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-blue-700">
+                                                    <Megaphone size={10} />
+                                                    {announcement.category}
+                                                </span>
+                                            </div>
+                                            <h3 className="mt-3 text-[15px] font-bold leading-5 text-slate-900">{announcement.title}</h3>
+                                            <p className="mt-2 line-clamp-3 text-[12px] leading-5 text-slate-600">
+                                                {announcement.summary || announcement.content}
+                                            </p>
+                                            <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                                {announcement.createdBy?.name ? `By ${announcement.createdBy.name}` : 'Internal update'}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="md:col-span-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+                                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                                            <Megaphone size={22} strokeWidth={1.7} />
+                                            <p className="text-xs font-medium italic">No announcements are live right now.</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

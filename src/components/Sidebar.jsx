@@ -20,6 +20,7 @@ import {
   LifeBuoy,
   LogOut,
   Mail,
+  Megaphone,
   ShieldCheck,
   Settings,
   Trash2,
@@ -341,6 +342,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Attendance</span>
                 </Link>
               )}
+              <Link to="/announcements" className={getSidebarLinkClass(location.pathname === '/announcements')} onClick={onClose}>
+                <Megaphone size={18} />
+                <span>Announcements</span>
+              </Link>
               {showLeaves && (
                 <Link to="/leaves" className={getSidebarLinkClass(location.pathname === '/leaves')} onClick={onClose}>
                   <FileText size={18} />
