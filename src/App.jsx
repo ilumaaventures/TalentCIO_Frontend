@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
@@ -54,10 +54,25 @@ import PreOnboardingLogin from './pages/PreOnboardingLogin';
 import PreOnboardingPortal from './pages/PreOnboardingPortal';
 
 import ProtectedRoute from './components/ProtectedRoute';
-import RoleRoute from './components/RoleRoute';
 import SystemRoute from './components/SystemRoute';
-import ModuleRoute from './components/ModuleRoute';
 import Layout from './components/Layout';
+import {
+  ADMIN_ROLES,
+  ATTENDANCE_SETTINGS_PERMISSIONS,
+  BIN_VIEW_PERMISSIONS,
+  BUSINESS_UNIT_ACCESS_PERMISSIONS,
+  CLIENT_ACCESS_PERMISSIONS,
+  CLIENT_CREATE_PERMISSIONS,
+  CLIENT_UPDATE_PERMISSIONS,
+  EMAIL_SETTINGS_PERMISSIONS,
+  NOTIFICATION_SETTINGS_PERMISSIONS,
+  ONBOARDING_VIEW_PERMISSIONS,
+  ROLE_ACCESS_PERMISSIONS,
+  TA_CONFIG_PERMISSIONS,
+  TA_EMAIL_TEMPLATE_PERMISSIONS,
+  canAccessTAAnalytics,
+  canAccessUsers
+} from './constants/accessPolicies';
 
 function App() {
   return (
@@ -81,27 +96,73 @@ function App() {
                     <Dashboard />
                   </SystemRoute>
                 } />
-                <Route element={<ModuleRoute moduleName="attendance" />}><Route path="/attendance" element={<Attendance />} /></Route>
-                <Route element={<RoleRoute requiredPermissions={['user.update']} requiredRoles={['Admin']} allowAllPermissions={true} />}>
-                  <Route element={<ModuleRoute moduleName="attendance" />}>
-                    <Route path="/attendance-settings" element={<AttendanceSettings />} />
-                  </Route>
-                </Route>
-                <Route path="/settings/email" element={<EmailSettingsAccessWrapper />} />
-                <Route path="/settings/notifications" element={<NotificationSettingsAccessWrapper />} />
-                <Route element={<ModuleRoute moduleName="timesheet" />}><Route path="/timesheet" element={<Timesheet />} /></Route>
-                <Route element={<ModuleRoute moduleName="leaves" />}><Route path="/leaves" element={<Leaves />} /></Route>
-                <Route element={<ModuleRoute moduleName="employeeDossier" />}><Route path="/dossier/:userId" element={<EmployeeDossier />} /></Route>
+                <Route path="/attendance" element={(
+                  <ProtectedRoute moduleName="attendance" redirectTo="/">
+                    <Attendance />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/attendance-settings" element={(
+                  <ProtectedRoute
+                    moduleName="attendance"
+                    requiredPermissions={ATTENDANCE_SETTINGS_PERMISSIONS}
+                    requiredRoles={ADMIN_ROLES}
+                    allowAllPermissions
+                    redirectTo="/"
+                  >
+                    <AttendanceSettings />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/settings/email" element={(
+                  <ProtectedRoute requiredPermissions={EMAIL_SETTINGS_PERMISSIONS}>
+                    <EmailSettings />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/settings/notifications" element={(
+                  <ProtectedRoute requiredPermissions={NOTIFICATION_SETTINGS_PERMISSIONS}>
+                    <NotificationSettings />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/timesheet" element={(
+                  <ProtectedRoute moduleName="timesheet" redirectTo="/">
+                    <Timesheet />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/leaves" element={(
+                  <ProtectedRoute moduleName="leaves" redirectTo="/">
+                    <Leaves />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/dossier/:userId" element={(
+                  <ProtectedRoute moduleName="employeeDossier" redirectTo="/">
+                    <EmployeeDossier />
+                  </ProtectedRoute>
+                )} />
 
                 {/* Talent Acquisition */}
-                <Route element={<ModuleRoute moduleName="talentAcquisition" />}>
+                <Route element={<ProtectedRoute moduleName="talentAcquisition" redirectTo="/" />}>
                   <Route path="/ta" element={<TalentAcquisitionDashboard />} />
                   <Route path="/ta/clients" element={<ClientSelection />} />
                   <Route path="/ta/hiring-requests/:clientName" element={<HiringRequestList />} />
-                  <Route path="/ta/workflows" element={<WorkflowSettingsAccessWrapper />} />
-                  <Route path="/ta/settings/phase-templates" element={<PhaseTemplatesAccessWrapper />} />
-                  <Route path="/ta/settings/access" element={<TAAccessSettingsAccessWrapper />} />
-                  <Route path="/ta/email-templates" element={<TAEmailTemplatesAccessWrapper />} />
+                  <Route path="/ta/workflows" element={(
+                    <ProtectedRoute requiredPermissions={TA_CONFIG_PERMISSIONS}>
+                      <WorkflowSettings />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/ta/settings/phase-templates" element={(
+                    <ProtectedRoute requiredPermissions={TA_CONFIG_PERMISSIONS}>
+                      <PhaseTemplates />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/ta/settings/access" element={(
+                    <ProtectedRoute requiredPermissions={TA_CONFIG_PERMISSIONS}>
+                      <TAAccessSettings />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/ta/email-templates" element={(
+                    <ProtectedRoute requiredPermissions={TA_EMAIL_TEMPLATE_PERMISSIONS}>
+                      <EmailTemplates />
+                    </ProtectedRoute>
+                  )} />
                   <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                   <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
                   <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
@@ -110,14 +171,22 @@ function App() {
                   <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateDetails />} />
                   <Route path="/ta/hiring-request/:hiringRequestId/phase1" element={<Phase1Candidates />} />
                   <Route path="/ta/user-dashboard/:userName" element={<UserTADashboard />} />
-                  <Route path="/ta/analysis" element={<TAAnalyticsAccessWrapper />} />
+                  <Route path="/ta/analysis" element={(
+                    <ProtectedRoute check={canAccessTAAnalytics}>
+                      <GlobalTADashboard />
+                    </ProtectedRoute>
+                  )} />
                 </Route>
                 
                 <Route path="/profile" element={<Profile />} />
-                <Route element={<ModuleRoute moduleName="holidays" />}><Route path="/holidays" element={<Holidays />} /></Route>
+                <Route path="/holidays" element={(
+                  <ProtectedRoute moduleName="holidays" redirectTo="/">
+                    <Holidays />
+                  </ProtectedRoute>
+                )} />
 
                 {/* MoM Routes */}
-                <Route element={<ModuleRoute moduleName="meetingsOfMinutes" />}>
+                <Route element={<ProtectedRoute moduleName="meetingsOfMinutes" redirectTo="/" />}>
                   <Route path="/meetings" element={<Meetings />} />
                   <Route path="/meetings/new" element={<MeetingForm />} />
                   <Route path="/meetings/:id/edit" element={<MeetingForm />} />
@@ -125,7 +194,7 @@ function App() {
                 </Route>
 
                 {/* Help Desk Routes */}
-                <Route element={<ModuleRoute moduleName="helpdesk" />}>
+                <Route element={<ProtectedRoute moduleName="helpdesk" redirectTo="/" />}>
                   <Route path="/helpdesk" element={<HelpDesk />} />
                   <Route path="/helpdesk/:id" element={<QueryDetails />} />
                 </Route>
@@ -134,38 +203,74 @@ function App() {
                 <Route path="/discussions" element={<Discussions />} />
 
                 {/* Onboarding */}
-                <Route path="/onboarding" element={<OnboardingAccessWrapper />} />
+                <Route path="/onboarding" element={(
+                  <ProtectedRoute requiredPermissions={ONBOARDING_VIEW_PERMISSIONS}>
+                    <Onboarding />
+                  </ProtectedRoute>
+                )} />
 
                 {/* Project Management Routes */}
-                <Route element={<ModuleRoute moduleName="businessUnits" />}>
-                  <Route path="/business-units" element={<BusinessUnitsAccessWrapper />} />
+                <Route element={<ProtectedRoute moduleName="businessUnits" redirectTo="/" />}>
+                  <Route path="/business-units" element={(
+                    <ProtectedRoute requiredPermissions={BUSINESS_UNIT_ACCESS_PERMISSIONS}>
+                      <BusinessUnits />
+                    </ProtectedRoute>
+                  )} />
                 </Route>
-                <Route element={<ModuleRoute moduleName="clients" />}>
-                  <Route path="/clients" element={<ClientsAccessWrapper />} />
-                  <Route path="/clients/new" element={<ClientCreateAccessWrapper />} />
-                  <Route path="/clients/:id/edit" element={<ClientEditAccessWrapper />} />
-                  <Route path="/clients/:id/view" element={<ClientViewAccessWrapper />} />
+                <Route element={<ProtectedRoute moduleName="clients" redirectTo="/" />}>
+                  <Route path="/clients" element={(
+                    <ProtectedRoute requiredPermissions={CLIENT_ACCESS_PERMISSIONS}>
+                      <Clients />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/clients/new" element={(
+                    <ProtectedRoute requiredPermissions={CLIENT_CREATE_PERMISSIONS}>
+                      <ClientForm />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/clients/:id/edit" element={(
+                    <ProtectedRoute requiredPermissions={CLIENT_UPDATE_PERMISSIONS}>
+                      <ClientForm />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/clients/:id/view" element={(
+                    <ProtectedRoute requiredPermissions={CLIENT_ACCESS_PERMISSIONS}>
+                      <ClientView />
+                    </ProtectedRoute>
+                  )} />
                 </Route>
-                <Route element={<ModuleRoute moduleName="projects" />}>
+                <Route element={<ProtectedRoute moduleName="projects" redirectTo="/" />}>
                   <Route path="/projects" element={<Projects />} />
                   <Route path="/projects/:id" element={<ProjectDetails />} />
                 </Route>
 
                 {/* Admin & Configuration Routes */}
-                <Route element={<RoleRoute requiredPermissions={['role.read']} requiredRoles={['Admin']} allowAllPermissions={true} />}>
+                <Route element={<ProtectedRoute requiredPermissions={ROLE_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions redirectTo="/" />}>
                   <Route path="/roles" element={<Roles />} />
-                  <Route element={<ModuleRoute moduleName="leaves" />}>
+                  <Route element={<ProtectedRoute moduleName="leaves" redirectTo="/" />}>
                     <Route path="/leave-config" element={<LeaveConfig />} />
                   </Route>
                 </Route>
 
-                <Route path="/bin" element={<BinAccessWrapper />} />
+                <Route path="/bin" element={(
+                  <ProtectedRoute requiredPermissions={BIN_VIEW_PERMISSIONS} requiredRoles={ADMIN_ROLES}>
+                    <RecycleBin />
+                  </ProtectedRoute>
+                )} />
 
                 {/* Users Management (Internal access control) */}
                 {/* Users Management */}
-                <Route element={<ModuleRoute moduleName="userManagement" />}>
-                  <Route path="/users" element={<UsersAccessWrapper />} />
-                  <Route path="/users/:id" element={<UsersAccessWrapper Component={EmployeeProfile} />} />
+                <Route element={<ProtectedRoute moduleName="userManagement" redirectTo="/" />}>
+                  <Route path="/users" element={(
+                    <ProtectedRoute check={canAccessUsers}>
+                      <Users />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/users/:id" element={(
+                    <ProtectedRoute check={canAccessUsers}>
+                      <EmployeeProfile />
+                    </ProtectedRoute>
+                  )} />
                 </Route>
 
                 <Route path="/unauthorized" element={<Unauthorized />} />
@@ -187,217 +292,3 @@ function App() {
 
 
 export default App;
-
-const UsersAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || Users;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('user.read') ||
-    user.directReportsCount > 0;
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const OnboardingAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || Onboarding;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('onboarding.view') ||
-    user.permissions?.includes('onboarding.document.review') ||
-    user.permissions?.includes('onboarding.document.request') ||
-    user.permissions?.includes('onboarding.credential.manage') ||
-    user.permissions?.includes('onboarding.complete') ||
-    user.permissions?.includes('onboarding.manage') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const PhaseTemplatesAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || PhaseTemplates;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('ta.manage') ||
-    user.permissions?.includes('ta.config.view') ||
-    user.permissions?.includes('ta.config.edit') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const WorkflowSettingsAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || WorkflowSettings;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('ta.manage') ||
-    user.permissions?.includes('ta.config.view') ||
-    user.permissions?.includes('ta.config.edit') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const TAAnalyticsAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || GlobalTADashboard;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('ta.manage') ||
-    user.permissions?.includes('ta.analytics.global') ||
-    user.permissions?.includes('ta.analytics.assigned') ||
-    user.permissions?.includes('*') ||
-    user.isTAAnalyticsViewer;
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const TAAccessSettingsAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || TAAccessSettings;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('ta.manage') ||
-    user.permissions?.includes('ta.config.view') ||
-    user.permissions?.includes('ta.config.edit') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const BinAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || RecycleBin;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') || user.permissions?.includes('bin.view');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const EmailSettingsAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || EmailSettings;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('settings.email.view') ||
-    user.permissions?.includes('settings.email.manage') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const NotificationSettingsAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || NotificationSettings;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('settings.notification.view') ||
-    user.permissions?.includes('settings.notification.manage') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const TAEmailTemplatesAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || EmailTemplates;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('ta.email_template.manage') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const BusinessUnitsAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || BusinessUnits;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('business_unit.read') ||
-    user.permissions?.includes('business_unit.create') ||
-    user.permissions?.includes('business_unit.update') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const ClientsAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || Clients;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('client.read') ||
-    user.permissions?.includes('client.create') ||
-    user.permissions?.includes('client.update') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const ClientCreateAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || ClientForm;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('client.create') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const ClientEditAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || ClientForm;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('client.update') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};
-
-const ClientViewAccessWrapper = ({ Component: ComponentProp }) => {
-  const { user } = useAuth();
-  const Component = ComponentProp || ClientView;
-
-  if (!user) return null;
-
-  const canAccess = user.roles?.includes('Admin') ||
-    user.permissions?.includes('client.read') ||
-    user.permissions?.includes('client.update') ||
-    user.permissions?.includes('*');
-
-  return canAccess ? <Component /> : <Navigate to="/unauthorized" />;
-};

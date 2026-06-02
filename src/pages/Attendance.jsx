@@ -12,6 +12,7 @@ import AttendanceAttachmentsView from '../components/AttendanceAttachmentsView';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { RGDocumentTracker, canViewRGDocumentTracker, isRGWorkspace } from '../features/rg-attendance';
 
 const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
 const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
@@ -60,24 +61,6 @@ const Attendance = () => {
     const [activeTab, setActiveTab] = useState('history'); // 'history', 'tasks', 'regularize', 'documents'
     const [attendanceAttachments, setAttendanceAttachments] = useState({ files: [] });
     const [loadingAttachments, setLoadingAttachments] = useState(false);
-
-
-    useEffect(() => {
-        const params = new URLSearchParams(location.search);
-        const tab = params.get('tab');
-        if
-
-            (tab && ['history', 'tasks', 'regularize', 'documents'].includes(tab)) {
-            setActiveTab(tab);
-        }
-
-        const qUserId = params.get('userId');
-        if (qUserId) {
-            setSelectedUserId(qUserId);
-        } else {
-            setSelectedUserId(user?._id);
-        }
-    }, [location, user]);
     const [expandedLogTaskId, setExpandedLogTaskId] = useState(null);
     const [editingLogId, setEditingLogId] = useState(null);
 
@@ -108,6 +91,8 @@ const Attendance = () => {
     const isManager = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Manager')
         || (user?.directReports && user.directReports.length > 0)
         || user?.role === 'Manager';
+    const showDocumentsTab = Boolean(user?.company?.settings?.timesheet?.requireAttachment);
+    const showRGDocumentTrackerTab = showDocumentsTab && isRGWorkspace(user) && canViewRGDocumentTracker(user);
     const attendanceSettings = user?.company?.settings?.attendance || {};
     const companyShiftOptions = Array.isArray(attendanceSettings.attendanceShifts) && attendanceSettings.attendanceShifts.length > 0
         ? attendanceSettings.attendanceShifts
@@ -145,6 +130,39 @@ const Attendance = () => {
     const activeShiftWindow = (status?.shiftType || activeShift?.shiftType) === 'any'
         ? `Flexible up to ${status?.maxWorkingHours || activeShift?.maxWorkingHours || attendanceSettings.workingHours || 8} hrs`
         : `${status?.shiftStartTime || activeShift?.startTime || '--'} - ${status?.shiftEndTime || activeShift?.endTime || '--'}`;
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
+        const allowedTabs = ['history', 'tasks', 'regularize'];
+
+        if (showDocumentsTab) {
+            allowedTabs.push('documents');
+        }
+
+        if (showRGDocumentTrackerTab) {
+            allowedTabs.push('rg-documents-summary');
+        }
+
+        if (tab && allowedTabs.includes(tab)) {
+            setActiveTab(tab);
+        } else if (tab === 'rg-documents-summary' && !showRGDocumentTrackerTab) {
+            setActiveTab(showDocumentsTab ? 'documents' : 'history');
+        }
+
+        const qUserId = params.get('userId');
+        if (qUserId) {
+            setSelectedUserId(qUserId);
+        } else {
+            setSelectedUserId(user?._id);
+        }
+    }, [location, showDocumentsTab, showRGDocumentTrackerTab, user]);
+
+    useEffect(() => {
+        if (!showRGDocumentTrackerTab && activeTab === 'rg-documents-summary') {
+            setActiveTab(showDocumentsTab ? 'documents' : 'history');
+        }
+    }, [activeTab, showDocumentsTab, showRGDocumentTrackerTab]);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -430,6 +448,16 @@ const Attendance = () => {
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to replace document', { id: loadingToast });
         }
+    };
+
+    const handleTrackerMonthChange = (monthKey) => {
+        const normalizedValue = String(monthKey || '').trim();
+        if (!normalizedValue) return;
+
+        const [year, month] = normalizedValue.split('-').map(Number);
+        if (!Number.isFinite(year) || !Number.isFinite(month)) return;
+
+        setCalendarDate(new Date(year, month - 1, 1));
     };
 
     const fetchTodayStatus = useCallback(async () => {
@@ -1941,12 +1969,20 @@ const Attendance = () => {
                                     <Briefcase size={16} /> Assigned to Me {assignedTasks.length > 0 && <span className="bg-slate-100 text-slate-600 text-xs py-0.5 px-2 rounded-full ml-1">{assignedTasks.length}</span>}
                                 </button>
                             )}
-                            {user?.company?.settings?.timesheet?.requireAttachment && (
+                            {showDocumentsTab && (
                                 <button
                                     onClick={() => setActiveTab('documents')}
                                     className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'documents' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                                 >
                                     <Download size={16} /> Documents
+                                </button>
+                            )}
+                            {showRGDocumentTrackerTab && (
+                                <button
+                                    onClick={() => setActiveTab('rg-documents-summary')}
+                                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'rg-documents-summary' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    <Layers size={16} /> Submitted Docs
                                 </button>
                             )}
                         </div>
@@ -1987,6 +2023,11 @@ const Attendance = () => {
                                     onReject={(id, reason) => handleReviewAttachment(id, 'Rejected', reason)}
                                     onReplace={handleReplaceAttachment}
                                     canApprove={isAdmin}
+                                />
+                            ) : activeTab === 'rg-documents-summary' && showRGDocumentTrackerTab ? (
+                                <RGDocumentTracker
+                                    monthValue={format(calendarDate, 'yyyy-MM')}
+                                    onMonthChange={handleTrackerMonthChange}
                                 />
                             ) : (
                                 <AssignedTasksView

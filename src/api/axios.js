@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const API_TIMEOUT_MS = 40000;
+const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
 const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/api`,
@@ -13,20 +14,87 @@ const api = axios.create({
 // Limitation: Prevent redundant parallel requests to the same sensitive endpoint
 const pendingRequests = new Map();
 
-const getRequestKey = (config) => `${config.method}:${config.url}`;
+const normalizeSerializableValue = (value) => {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeSerializableValue);
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof File !== 'undefined' && value instanceof File) {
+    return {
+      __type: 'file',
+      name: value.name,
+      size: value.size,
+      type: value.type,
+      lastModified: value.lastModified,
+    };
+  }
+
+  if (typeof Blob !== 'undefined' && value instanceof Blob) {
+    return {
+      __type: 'blob',
+      size: value.size,
+      type: value.type,
+    };
+  }
+
+  if (typeof value === 'object') {
+    return Object.keys(value)
+      .sort()
+      .reduce((accumulator, key) => {
+        accumulator[key] = normalizeSerializableValue(value[key]);
+        return accumulator;
+      }, {});
+  }
+
+  return value;
+};
+
+const serializeRequestPart = (value) => {
+  if (value instanceof FormData) {
+    return JSON.stringify(
+      Array.from(value.entries()).map(([key, entryValue]) => ([
+        key,
+        normalizeSerializableValue(entryValue),
+      ]))
+    );
+  }
+
+  return JSON.stringify(normalizeSerializableValue(value));
+};
+
+const getRequestKey = (config) => [
+  String(config.method || 'get').toLowerCase(),
+  config.baseURL || '',
+  config.url || '',
+  serializeRequestPart(config.params || null),
+  serializeRequestPart(config.data || null),
+].join(':');
+
+const isAuthFailure = (error) => {
+  const status = error.response?.status;
+  const errorCode = error.response?.data?.code;
+
+  return status === 401 || (status === 403 && errorCode === 'TENANT_MISMATCH');
+};
+
+const isLoginRequest = (url = '') => String(url).includes('/auth/login');
 
 // Add a request interceptor to attach the token
 api.interceptors.request.use(
   (config) => {
-    // Client-side rate limiting: Block identical pending POST/PUT/DELETE requests
+    // Block only identical in-flight mutations, including params and payload.
     const requestKey = getRequestKey(config);
-    if (['post', 'put', 'delete'].includes(config.method.toLowerCase())) {
+    if (MUTATION_METHODS.has(String(config.method || '').toLowerCase())) {
       if (pendingRequests.has(requestKey)) {
-        // Cancel the request if it's already in flight
-        const controller = new AbortController();
-        config.signal = controller.signal;
-        controller.abort('Duplicate request throttled');
-        return config;
+        return Promise.reject(new axios.CanceledError('Duplicate request throttled'));
       }
       pendingRequests.set(requestKey, true);
     }
@@ -133,18 +201,16 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 429) {
       // You could import toast here, but since this is a utility, 
       // we mainly want to ensure the error is passed through with a clear message.
-      console.warn('API Rate Limit Hit:', error.response.data.message);
+      console.warn('API Rate Limit Hit:', error.response.data?.message);
     }
 
-    // If we receive a 401, clear local storage.
-    // However, if the request was to the login endpoint, DO NOT hard refresh.
-    // Let the component catch the error and show the toast.
-    if (error.response && (error.response.status === 401 || (error.response.status === 403 && error.response.data.code === 'TENANT_MISMATCH'))) {
-      if (!error.config.url.includes('/auth/login')) {
+    // Redirect only for true auth/session failures, and keep login errors in-place for the screen to handle.
+    if (isAuthFailure(error) && !isLoginRequest(error.config?.url)) {
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('tenant');
-        window.location.href = '/login';
+        window.location.assign('/login');
       }
     }
     return Promise.reject(error);

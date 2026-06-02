@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar,
-    ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck
+    ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck, Eye, EyeOff
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -29,6 +29,7 @@ const EmployeeProfile = () => {
     const [activeTab, setActiveTab] = useState('overview'); // overview, edit, timesheet, dossier, ta-analytics
     const [roles, setRoles] = useState([]);
     const [allUsers, setAllUsers] = useState([]); // for reporting managers/direct reports
+    const [showPassword, setShowPassword] = useState(false);
 
     // Form State for Editing
     const [formData, setFormData] = useState({
@@ -207,6 +208,7 @@ const EmployeeProfile = () => {
             toast.success('User updated successfully', { id: loadingToast });
             // Refresh data and switch back to overview
             await fetchData();
+            setShowPassword(false);
             setActiveTab('overview');
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to update user');
@@ -511,7 +513,23 @@ const EmployeeProfile = () => {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password (Leave blank to keep current)</label>
-                                        <input name="password" type="password" onChange={handleFormChange} className="zoho-input" placeholder="••••••••" />
+                                        <div className="relative">
+                                            <input
+                                                name="password"
+                                                type={showPassword ? 'text' : 'password'}
+                                                onChange={handleFormChange}
+                                                className="zoho-input pr-11"
+                                                placeholder="********"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword((current) => !current)}
+                                                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-slate-600"
+                                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                            >
+                                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -611,7 +629,16 @@ const EmployeeProfile = () => {
                                 </div>
 
                                 <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
-                                    <button type="button" onClick={() => setActiveTab('overview')} className="zoho-btn-secondary px-6">Cancel</button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowPassword(false);
+                                            setActiveTab('overview');
+                                        }}
+                                        className="zoho-btn-secondary px-6"
+                                    >
+                                        Cancel
+                                    </button>
                                     <button type="submit" className="zoho-btn-primary px-6">Save Changes</button>
                                 </div>
                             </form>
@@ -663,3 +690,4 @@ const EmployeeProfile = () => {
 };
 
 export default EmployeeProfile;
+

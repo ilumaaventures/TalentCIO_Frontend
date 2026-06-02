@@ -1,15 +1,8 @@
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import ProtectedRoute from './ProtectedRoute';
 
 const ModuleRoute = ({ moduleName }) => {
-  const { user, hasModule } = useAuth();
-  
-  if (!user) return null;
-
-  const isEnabled = hasModule(moduleName);
-
-  return isEnabled ? <Outlet /> : <Navigate to="/" />;
+  return <ProtectedRoute moduleName={moduleName} redirectTo="/" />;
 };
 
 export default ModuleRoute;

@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -65,6 +65,7 @@ const Users = () => {
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(15);
+    const [showPassword, setShowPassword] = useState(false);
 
     // Helpers for Export
     const formatTime = (dateString, istString) => {
@@ -870,6 +871,7 @@ const Users = () => {
 
     const _handleEdit = (user) => {
         setEditingUser(user);
+        setShowPassword(false);
         // Find users who currently report to this user
         const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);
 
@@ -895,6 +897,7 @@ const Users = () => {
 
     const handleAdd = () => {
         setEditingUser(null);
+        setShowPassword(false);
         setFormData({
             firstName: '',
             lastName: '',
@@ -927,6 +930,7 @@ const Users = () => {
             // Clear all related caches for instant reflection
             sessionStorage.removeItem(`user_data_${user?._id}`);
             sessionStorage.removeItem(`role_data_${user?._id}`);
+            setShowPassword(false);
             setShowModal(false);
             fetchData();
         } catch (error) {
@@ -1422,7 +1426,15 @@ const Users = () => {
                     <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-blob max-h-[90vh] overflow-y-auto">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                             <h3 className="font-bold text-slate-800">{editingUser ? 'Edit Employee' : 'Add New Employee'}</h3>
-                            <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+                            <button
+                                onClick={() => {
+                                    setShowModal(false);
+                                    setShowPassword(false);
+                                }}
+                                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+                            >
+                                &times;
+                            </button>
                         </div>
                         <form onSubmit={handleSubmit} className="p-6 space-y-4">
                             <div className="grid grid-cols-2 gap-4">
@@ -1442,7 +1454,23 @@ const Users = () => {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password {editingUser && '(Leave blank to keep)'}</label>
-                                    <input name="password" type="password" required={!editingUser} onChange={handleChange} className="zoho-input" />
+                                    <div className="relative">
+                                        <input
+                                            name="password"
+                                            type={showPassword ? 'text' : 'password'}
+                                            required={!editingUser}
+                                            onChange={handleChange}
+                                            className="zoho-input pr-11"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword((current) => !current)}
+                                            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-slate-600"
+                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                        >
+                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -1541,7 +1569,16 @@ const Users = () => {
                                 <p className="text-[10px] text-slate-400 mt-1">Selected users will have this person set as their Reporting Manager.</p>
                             </div>
                             <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100 mt-2">
-                                <button type="button" onClick={() => setShowModal(false)} className="zoho-btn-secondary">Cancel</button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowModal(false);
+                                        setShowPassword(false);
+                                    }}
+                                    className="zoho-btn-secondary"
+                                >
+                                    Cancel
+                                </button>
                                 <button type="submit" className="zoho-btn-primary">{editingUser ? 'Update User' : 'Create User'}</button>
                             </div>
                         </form>
