@@ -4,11 +4,25 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axios';
+import AnnouncementUnreadModal from './announcements/AnnouncementUnreadModal';
+import {
+    getAcknowledgedAnnouncementIds,
+    getAnnouncementSessionGateKey,
+    sortAnnouncementsByPublishedAt,
+    storeAcknowledgedAnnouncementIds,
+    storeSkippedAnnouncementIds,
+} from './announcements/announcementUtils';
 
 const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [progress, setProgress] = useState(0);
     const [isNavigating, setIsNavigating] = useState(false);
+    const [announcementGateLoading, setAnnouncementGateLoading] = useState(true);
+    const [unreadAnnouncements, setUnreadAnnouncements] = useState([]);
+    const [announcementIndex, setAnnouncementIndex] = useState(0);
+    const [announcementConfirmed, setAnnouncementConfirmed] = useState(false);
+    const [announcementAckBuffer, setAnnouncementAckBuffer] = useState([]);
     const location = useLocation();
     const timerRef = useRef(null);
     const { user } = useAuth();
@@ -53,6 +67,96 @@ const Layout = () => {
         };
     }, [location.pathname]);
 
+    useEffect(() => {
+        if (!user?._id) {
+            setAnnouncementGateLoading(false);
+            return;
+        }
+
+        const sessionGateKey = getAnnouncementSessionGateKey(user._id);
+        if (sessionStorage.getItem(sessionGateKey) === '1') {
+            setAnnouncementGateLoading(false);
+            return;
+        }
+
+        let isActive = true;
+
+        const loadUnreadAnnouncements = async () => {
+            try {
+                setAnnouncementGateLoading(true);
+                const response = await api.get('/announcements?limit=5');
+                const announcements = sortAnnouncementsByPublishedAt(
+                    Array.isArray(response.data?.announcements) ? response.data.announcements : []
+                );
+                const acknowledgedIds = new Set(getAcknowledgedAnnouncementIds(user._id));
+                const unread = announcements.filter((announcement) => !acknowledgedIds.has(String(announcement._id)));
+
+                if (!isActive) return;
+
+                setUnreadAnnouncements(unread);
+                setAnnouncementIndex(0);
+                setAnnouncementConfirmed(false);
+                setAnnouncementAckBuffer([]);
+
+                if (unread.length === 0) {
+                    sessionStorage.setItem(sessionGateKey, '1');
+                }
+            } catch (error) {
+                console.error('Failed to load unread announcements:', error);
+                if (isActive) {
+                    sessionStorage.setItem(sessionGateKey, '1');
+                    setUnreadAnnouncements([]);
+                }
+            } finally {
+                if (isActive) {
+                    setAnnouncementGateLoading(false);
+                }
+            }
+        };
+
+        loadUnreadAnnouncements();
+
+        return () => {
+            isActive = false;
+        };
+    }, [user?._id]);
+
+    const dismissAnnouncementGateForSession = () => {
+        if (!user?._id) return;
+        sessionStorage.setItem(getAnnouncementSessionGateKey(user._id), '1');
+        setUnreadAnnouncements([]);
+        setAnnouncementIndex(0);
+        setAnnouncementConfirmed(false);
+        setAnnouncementAckBuffer([]);
+    };
+
+    const handleAnnouncementContinue = () => {
+        const currentAnnouncement = unreadAnnouncements[announcementIndex];
+        if (!currentAnnouncement || !user?._id) return;
+
+        const nextAckBuffer = [...announcementAckBuffer, String(currentAnnouncement._id)];
+
+        if (announcementIndex === unreadAnnouncements.length - 1) {
+            storeAcknowledgedAnnouncementIds(user._id, nextAckBuffer);
+            dismissAnnouncementGateForSession();
+            return;
+        }
+
+        setAnnouncementAckBuffer(nextAckBuffer);
+        setAnnouncementIndex((current) => current + 1);
+        setAnnouncementConfirmed(false);
+    };
+
+    const handleAnnouncementSkip = () => {
+        if (user?._id) {
+            storeSkippedAnnouncementIds(
+                user._id,
+                unreadAnnouncements.map((announcement) => String(announcement._id))
+            );
+        }
+        dismissAnnouncementGateForSession();
+    };
+
     return (
         <div className="min-h-screen bg-slate-100 flex font-sans overflow-x-hidden w-screen">
             {/* Top navigation progress bar */}
@@ -87,6 +191,23 @@ const Layout = () => {
                     </Suspense>
                 </div>
             </main>
+
+            {announcementGateLoading ? (
+                <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-100/90 backdrop-blur-sm">
+                    <Loader className="animate-spin text-blue-600" size={30} />
+                </div>
+            ) : null}
+
+            {!announcementGateLoading && unreadAnnouncements.length > 0 ? (
+                <AnnouncementUnreadModal
+                    announcements={unreadAnnouncements}
+                    activeIndex={announcementIndex}
+                    acknowledged={announcementConfirmed}
+                    onAcknowledgedChange={setAnnouncementConfirmed}
+                    onContinue={handleAnnouncementContinue}
+                    onSkip={handleAnnouncementSkip}
+                />
+            ) : null}
         </div>
     );
 };
