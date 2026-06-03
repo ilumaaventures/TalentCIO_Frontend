@@ -2018,6 +2018,8 @@ const Attendance = () => {
                                     onDelete={handleDeleteAttachment}
                                     isReadOnly={selectedUserId !== user?._id && !isAdmin}
                                     monthName={format(calendarDate, 'MMMM yyyy')}
+                                    monthValue={format(calendarDate, 'yyyy-MM')}
+                                    onMonthChange={handleTrackerMonthChange}
                                     onSubmit={handleSubmitAttachment}
                                     onApprove={(id) => handleReviewAttachment(id, 'Approved')}
                                     onReject={(id, reason) => handleReviewAttachment(id, 'Rejected', reason)}
