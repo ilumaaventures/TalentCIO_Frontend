@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut, CheckCircle, XCircle, Info, X } from 'lucide-react';
+import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut, CheckCircle, XCircle, Info, Search, X } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -11,6 +11,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, subDays, startOfDa
 import AttendanceAttachmentsView from '../components/AttendanceAttachmentsView';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
+import useDebouncedValue from '../hooks/useDebouncedValue';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import { RGDocumentTracker, canViewRGDocumentTracker, isRGWorkspace } from '../features/rg-attendance';
 
@@ -51,6 +52,7 @@ const Attendance = () => {
     const [selectedUserId, setSelectedUserId] = useState(user?._id);
     const [viewUser, setViewUser] = useState(user); // Hold complete profile of user being viewed
     const [calendarDate, setCalendarDate] = useState(new Date());
+    const [teamMemberSearch, setTeamMemberSearch] = useState('');
 
     // Task Integration
     const [assignedTasks, setAssignedTasks] = useState([]);
@@ -118,6 +120,7 @@ const Attendance = () => {
     const isClockedOut = !isPresentOnlyMode && Boolean(status?.clockIn && status?.clockOut);
     const isAttendanceActive = isPresentOnlyMode ? isMarkedPresent : isClockedIn;
     const isViewingOwnAttendance = !selectedUserId || String(selectedUserId) === String(user?._id);
+    const debouncedTeamMemberSearch = useDebouncedValue(teamMemberSearch.trim(), 900);
     const attendanceStartLabel = isPresentOnlyMode ? 'Mark Present' : 'Check In';
     const attendanceStartActionText = isPresentOnlyMode ? 'mark attendance' : 'clock in';
     const attendanceStatusLabel = isPresentOnlyMode
@@ -174,7 +177,7 @@ const Attendance = () => {
     const [usersLoaded, setUsersLoaded] = useState(false);
 
     // Manual Fetch for Users (Lazy Load)
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         if (usersLoaded || loadingUsers) return;
         setLoadingUsers(true);
         try {
@@ -197,7 +200,7 @@ const Attendance = () => {
         } finally {
             setLoadingUsers(false);
         }
-    };
+    }, [isAdmin, isManager, loadingUsers, user?.directReports, usersLoaded]);
 
     // ONLY fetch if some condition is met (e.g. from a click)
     // We removed the automatic useEffect for fetchUsers
@@ -449,6 +452,34 @@ const Attendance = () => {
             toast.error(error.response?.data?.message || 'Failed to replace document', { id: loadingToast });
         }
     };
+
+    useEffect(() => {
+        if (!debouncedTeamMemberSearch || usersLoaded || loadingUsers || (!isAdmin && !isManager)) {
+            return;
+        }
+
+        fetchUsers();
+    }, [debouncedTeamMemberSearch, fetchUsers, isAdmin, isManager, loadingUsers, usersLoaded]);
+
+    const filteredTeamMembers = useMemo(() => {
+        const searchableUsers = usersList.filter((u) => u?._id !== user?._id);
+
+        if (!debouncedTeamMemberSearch) {
+            return searchableUsers;
+        }
+
+        const normalizedQuery = debouncedTeamMemberSearch.toLowerCase();
+
+        return searchableUsers.filter((member) => {
+            const fullName = `${member?.firstName || ''} ${member?.lastName || ''}`.trim().toLowerCase();
+            const email = String(member?.email || '').toLowerCase();
+            const employeeCode = String(member?.employeeCode || '').toLowerCase();
+
+            return fullName.includes(normalizedQuery)
+                || email.includes(normalizedQuery)
+                || employeeCode.includes(normalizedQuery);
+        });
+    }, [debouncedTeamMemberSearch, user?._id, usersList]);
 
     const handleTrackerMonthChange = (monthKey) => {
         const normalizedValue = String(monthKey || '').trim();
@@ -1880,6 +1911,32 @@ const Attendance = () => {
                                         </button>
                                     )}
                                 </div>
+                                <div className="relative mb-3">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    <input
+                                        type="text"
+                                        value={teamMemberSearch}
+                                        onChange={(e) => setTeamMemberSearch(e.target.value)}
+                                        onFocus={() => {
+                                            if (!usersLoaded && !loadingUsers) {
+                                                fetchUsers();
+                                            }
+                                        }}
+                                        placeholder="Search by name, email, or code"
+                                        aria-label="Search team members"
+                                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                    />
+                                    {teamMemberSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setTeamMemberSearch('')}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                                            aria-label="Clear team member search"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
                                     {/* Self */}
                                     <button
@@ -1902,7 +1959,7 @@ const Attendance = () => {
                                     {usersLoaded && usersList.length > 0 && <div className="h-px bg-slate-100 my-2"></div>}
 
                                     {/* List */}
-                                    {usersList.filter(u => u._id !== user._id).map((u) => (
+                                    {filteredTeamMembers.map((u) => (
                                         <button
                                             key={u._id}
                                             onClick={() => setSelectedUserId(u._id)}
@@ -1917,6 +1974,19 @@ const Attendance = () => {
                                             </div>
                                         </button>
                                     ))}
+
+                                    {!loadingUsers && (usersLoaded || debouncedTeamMemberSearch) && filteredTeamMembers.length === 0 && (
+                                        <div className="rounded-lg border border-dashed border-slate-200 px-3 py-5 text-center">
+                                            <p className="text-xs font-semibold text-slate-500">
+                                                {debouncedTeamMemberSearch ? 'No team members match your search.' : 'No team members available.'}
+                                            </p>
+                                            {debouncedTeamMemberSearch && (
+                                                <p className="mt-1 text-[11px] text-slate-400">
+                                                    Try a different name, email, or employee code.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
