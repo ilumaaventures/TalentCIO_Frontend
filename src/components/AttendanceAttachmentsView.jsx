@@ -1,7 +1,21 @@
 import React, { useRef } from 'react';
 import { Download, Trash2, Info, Loader2, Calendar, Send, CheckCircle, XCircle, Edit2 } from 'lucide-react';
 
-const AttendanceAttachmentsView = ({ attachments, loading, onUpload, onDelete, isReadOnly, monthName, onSubmit, onApprove, onReject, canApprove, onReplace }) => {
+const AttendanceAttachmentsView = ({
+    attachments,
+    loading,
+    onUpload,
+    onDelete,
+    isReadOnly,
+    monthName,
+    monthValue,
+    onMonthChange,
+    onSubmit,
+    onApprove,
+    onReject,
+    canApprove,
+    onReplace
+}) => {
     const fileInputRef = useRef(null);
 
     const handleFileChange = (e) => {
@@ -22,28 +36,41 @@ const AttendanceAttachmentsView = ({ attachments, loading, onUpload, onDelete, i
 
     return (
         <div className="space-y-6 animate-fadeIn">
-            <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <div className="flex flex-col gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h3 className="text-lg font-bold text-slate-800">Support Documents</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Documents for {monthName}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Documents for <span className="font-bold text-red-500">{monthName}</span>
+                    </p>
                 </div>
-                {!isReadOnly && (
-                    <>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <label className="flex flex-col gap-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Month</span>
                         <input
-                            type="file"
-                            className="hidden"
-                            ref={fileInputRef}
-                            onChange={handleFileChange}
+                            type="month"
+                            value={monthValue}
+                            onChange={(event) => onMonthChange && onMonthChange(event.target.value)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-500 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100"
                         />
-                        <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
-                        >
-                            <Download size={16} /> Upload New
-                        </button>
-                    </>
-                )}
+                    </label>
+                    {!isReadOnly && (
+                        <>
+                            <input
+                                type="file"
+                                className="hidden"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
+                            >
+                                <Download size={16} /> Upload New
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
