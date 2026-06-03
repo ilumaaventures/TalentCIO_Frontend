@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
+import toast from 'react-hot-toast';
 import api from '../api/axios';
 import socket from '../api/socket';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +21,7 @@ const Topbar = ({ toggleSidebar }) => {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const dropdownRef = useRef(null);
     const profileMenuRef = useRef(null);
+    const navigateRef = useRef(navigate);
     const hasAdminRole = user?.roles?.some((role) => role === 'Admin' || role?.name === 'Admin');
     const hasDossierModule = user?.company?.enabledModules?.includes('employeeDossier');
     const canApproveDossier = hasAdminRole || user?.permissions?.includes('dossier.approve');
@@ -59,6 +61,10 @@ const Topbar = ({ toggleSidebar }) => {
     }, [hasTalentAcquisition]);
 
     useEffect(() => {
+        navigateRef.current = navigate;
+    }, [navigate]);
+
+    useEffect(() => {
         if (!user?._id) return;
         const timerId = window.setTimeout(() => {
             fetchNotificationBootstrap();
@@ -72,6 +78,50 @@ const Topbar = ({ toggleSidebar }) => {
 
         const handleSocketNotification = (newNotif) => {
             setNotifications(prev => [newNotif, ...prev]);
+
+            if (newNotif?.preferenceKey === 'announcement_published') {
+                const toastId = toast.custom((toastInstance) => (
+                    <div
+                        className={`pointer-events-auto flex w-[360px] items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition ${
+                            toastInstance.visible ? 'animate-enter' : 'animate-leave'
+                        }`}
+                    >
+                        <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                            <Megaphone size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-900">New announcement: {newNotif?.title || 'Company update'}</div>
+                            <div className="mt-1 text-sm text-slate-500">{newNotif?.message || 'A new announcement is available for you.'}</div>
+                            <div className="mt-3 flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        toast.dismiss(toastId);
+                                        navigateRef.current('/announcements', {
+                                            state: {
+                                                highlightAnnouncementId: newNotif?.metadata?.announcementId || '',
+                                                refreshAnnouncements: true,
+                                            },
+                                        });
+                                    }}
+                                    className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+                                >
+                                    View
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => toast.dismiss(toastId)}
+                                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ), {
+                    duration: 6000,
+                });
+            }
         };
 
         const handleInterviewUpdate = () => {
