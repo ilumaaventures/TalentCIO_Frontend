@@ -12,6 +12,7 @@ import {
   createOptimisticComment,
   DEFAULT_COMPOSER_SETUP,
   EMPTY_ANNOUNCEMENT_FORM,
+  formatAnnouncementDate,
   formatDateInputValue,
   getAnnouncementValidationErrors,
   isAnnouncementManager,
@@ -412,6 +413,83 @@ const Announcements = () => {
           <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_360px]">
             <div className="space-y-6">
               {userCanManage && managerDrafts.length > 0 ? (
+                <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                      <PencilLine size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900">Drafts & Expiring Items</h2>
+                      <p className="text-sm text-slate-500">Quick access to announcements that still need manager attention.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200">
+                      <thead>
+                        <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                          <th className="px-3 py-3">Announcement</th>
+                          <th className="px-3 py-3">Category</th>
+                          <th className="px-3 py-3">Status</th>
+                          <th className="px-3 py-3">Expires</th>
+                          <th className="px-3 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {managerDrafts.slice(0, 6).map((announcement) => (
+                          <tr key={announcement._id} className="bg-white text-sm text-slate-700">
+                            <td className="px-3 py-4">
+                              <div className="flex items-start gap-2">
+                                <div className="min-w-0">
+                                  <div className="truncate font-semibold text-slate-900">{announcement.title}</div>
+                                  <div className="mt-1 text-xs text-slate-500">
+                                    {announcement.summary || 'No summary added yet.'}
+                                  </div>
+                                </div>
+                                {announcement.pinned ? <Pin size={14} className="mt-0.5 shrink-0 text-amber-500" /> : null}
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 text-slate-600">{announcement.category}</td>
+                            <td className="px-3 py-4">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                  announcement.status === 'draft'
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : 'bg-amber-100 text-amber-700'
+                                }`}
+                              >
+                                {announcement.status === 'draft' ? 'Draft' : 'Needs review'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-4 text-slate-600">
+                              {announcement.expiresAt ? formatAnnouncementDate(announcement.expiresAt) : 'No expiry'}
+                            </td>
+                            <td className="px-3 py-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void openComposerForEdit(announcement)}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteAnnouncement(announcement._id)}
+                                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
+
+              {false && userCanManage && managerDrafts.length > 0 ? (
                 <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
