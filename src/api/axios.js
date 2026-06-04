@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearAuthSession, getStoredAccessToken } from '../utils/authStorage';
 
 const API_TIMEOUT_MS = 40000;
 const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
@@ -6,6 +7,7 @@ const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/api`,
   timeout: API_TIMEOUT_MS,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -86,8 +88,13 @@ const isAuthFailure = (error) => {
 };
 
 const isLoginRequest = (url = '') => String(url).includes('/auth/login');
+const isPublicAuthFlowPath = (pathname = '') => (
+  String(pathname || '').startsWith('/pre-onboarding')
+  || pathname === '/reset-password'
+  || pathname === '/auth/handoff'
+);
 
-// Add a request interceptor to attach the token
+// Add a request interceptor to attach workspace context and dedupe sensitive mutations.
 api.interceptors.request.use(
   (config) => {
     // Block only identical in-flight mutations, including params and payload.
@@ -99,14 +106,14 @@ api.interceptors.request.use(
       pendingRequests.set(requestKey, true);
     }
 
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
     // Automatically remove Content-Type for FormData so Axios can infer the correct boundary
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
 
     // ── Tenant Detection ──────────────────────────────────────────────────────
@@ -206,10 +213,12 @@ api.interceptors.response.use(
 
     // Redirect only for true auth/session failures, and keep login errors in-place for the screen to handle.
     if (isAuthFailure(error) && !isLoginRequest(error.config?.url)) {
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('tenant');
+      if (
+        typeof window !== 'undefined'
+        && window.location.pathname !== '/login'
+        && !isPublicAuthFlowPath(window.location.pathname)
+      ) {
+        clearAuthSession();
         window.location.assign('/login');
       }
     }

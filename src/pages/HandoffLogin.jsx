@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { hasAuthSessionHint } from '../utils/authStorage';
 
 const getHandoffSessionKey = (token) => `handoff-exchange:${token}`;
 const inflightExchangeRequests = new Map();
@@ -28,7 +29,10 @@ const getExchangeRequest = (apiBaseUrl, token, subdomain) => {
         const request = axios.post(
             `${apiBaseUrl}/api/public/company-login/exchange`,
             { token, subdomain },
-            { headers: { 'Content-Type': 'application/json' } }
+            {
+                headers: { 'Content-Type': 'application/json' },
+                withCredentials: true
+            }
         ).finally(() => {
             inflightExchangeRequests.delete(requestKey);
         });
@@ -99,7 +103,7 @@ export default function HandoffLogin() {
         }
 
         const sessionKey = getHandoffSessionKey(handoffToken);
-        if (sessionStorage.getItem(sessionKey) === 'done' && localStorage.getItem('token')) {
+        if (sessionStorage.getItem(sessionKey) === 'done' && hasAuthSessionHint()) {
             window.location.replace(buildPostLoginUrl(resolvedSubdomain));
             return;
         }
