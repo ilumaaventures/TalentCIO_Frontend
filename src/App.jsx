@@ -50,6 +50,7 @@ import Discussions from './pages/Discussions';
 import Announcements from './pages/Announcements';
 import GlobalTADashboard from './pages/TalentAcquisition/GlobalTADashboard';
 import Onboarding from './pages/Onboarding';
+import Offboarding from './pages/Offboarding';
 import RecycleBin from './pages/RecycleBin';
 import PreOnboardingLogin from './pages/PreOnboardingLogin';
 import PreOnboardingPortal from './pages/PreOnboardingPortal';
@@ -68,6 +69,7 @@ import {
   EMAIL_SETTINGS_PERMISSIONS,
   NOTIFICATION_SETTINGS_PERMISSIONS,
   ONBOARDING_VIEW_PERMISSIONS,
+  OFFBOARDING_PERMISSIONS,
   ROLE_ACCESS_PERMISSIONS,
   TA_CONFIG_PERMISSIONS,
   TA_EMAIL_TEMPLATE_PERMISSIONS,
@@ -208,6 +210,11 @@ function App() {
                 <Route path="/onboarding" element={(
                   <ProtectedRoute requiredPermissions={ONBOARDING_VIEW_PERMISSIONS}>
                     <Onboarding />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/offboarding" element={(
+                  <ProtectedRoute requiredPermissions={OFFBOARDING_PERMISSIONS} redirectTo="/">
+                    <Offboarding />
                   </ProtectedRoute>
                 )} />
 
