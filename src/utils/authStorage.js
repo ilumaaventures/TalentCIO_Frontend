@@ -67,7 +67,10 @@ export const getStoredAccessToken = () => (
 export const persistAccessToken = (token) => {
   if (token) {
     sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    return;
   }
+
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
 };
 
 export const markAuthSessionActive = () => {

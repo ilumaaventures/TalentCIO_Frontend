@@ -3,9 +3,38 @@ import { clearAuthSession, getStoredAccessToken } from '../utils/authStorage';
 
 const API_TIMEOUT_MS = 40000;
 const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+const DEFAULT_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const resolveApiUrl = (rawUrl) => {
+  if (typeof window === 'undefined' || !rawUrl) {
+    return rawUrl;
+  }
+
+  const browserHost = String(window.location.hostname || '').trim().toLowerCase();
+  const isLocalBrowserHost = browserHost === 'localhost' || browserHost === '127.0.0.1';
+
+  if (!isLocalBrowserHost) {
+    return rawUrl;
+  }
+
+  try {
+    const parsedUrl = new URL(rawUrl);
+    const apiHost = parsedUrl.hostname.toLowerCase();
+    const isLocalApiHost = apiHost === 'localhost' || apiHost === '127.0.0.1';
+
+    if (!isLocalApiHost || apiHost === browserHost) {
+      return parsedUrl.toString().replace(/\/$/, '');
+    }
+
+    parsedUrl.hostname = browserHost;
+    return parsedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return rawUrl;
+  }
+};
 
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  baseURL: `${resolveApiUrl(DEFAULT_API_URL)}/api`,
   timeout: API_TIMEOUT_MS,
   withCredentials: true,
   headers: {
@@ -13,8 +42,25 @@ const api = axios.create({
   },
 });
 
-// Limitation: Prevent redundant parallel requests to the same sensitive endpoint
+// Prevent redundant parallel mutations by sharing the first in-flight result
+// with any identical follow-up request instead of surfacing a cancellation error.
 const pendingRequests = new Map();
+
+const createSharedRequestRecord = () => {
+  let resolveShared;
+  let rejectShared;
+
+  const sharedPromise = new Promise((resolve, reject) => {
+    resolveShared = resolve;
+    rejectShared = reject;
+  });
+
+  return {
+    sharedPromise,
+    resolve: resolveShared,
+    reject: rejectShared,
+  };
+};
 
 const normalizeSerializableValue = (value) => {
   if (value === null || value === undefined) {
@@ -99,11 +145,17 @@ api.interceptors.request.use(
   (config) => {
     // Block only identical in-flight mutations, including params and payload.
     const requestKey = getRequestKey(config);
-    if (MUTATION_METHODS.has(String(config.method || '').toLowerCase())) {
-      if (pendingRequests.has(requestKey)) {
-        return Promise.reject(new axios.CanceledError('Duplicate request throttled'));
+    const method = String(config.method || '').toLowerCase();
+    if (MUTATION_METHODS.has(method)) {
+      const pendingRecord = pendingRequests.get(requestKey);
+      if (pendingRecord) {
+        config.adapter = () => pendingRecord.sharedPromise;
+        return config;
       }
-      pendingRequests.set(requestKey, true);
+
+      const sharedRecord = createSharedRequestRecord();
+      pendingRequests.set(requestKey, sharedRecord);
+      config.__requestKey = requestKey;
     }
 
     // Automatically remove Content-Type for FormData so Axios can infer the correct boundary
@@ -112,7 +164,7 @@ api.interceptors.request.use(
     }
 
     const accessToken = getStoredAccessToken();
-    if (accessToken) {
+    if (accessToken && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
 
@@ -190,14 +242,22 @@ api.interceptors.request.use(
 // Add a response interceptor to handle errors and clean up tracking
 api.interceptors.response.use(
   (response) => {
-    const requestKey = getRequestKey(response.config);
-    pendingRequests.delete(requestKey);
+    const requestKey = response.config?.__requestKey || getRequestKey(response.config);
+    const pendingRecord = pendingRequests.get(requestKey);
+    if (pendingRecord) {
+      pendingRecord.resolve(response);
+      pendingRequests.delete(requestKey);
+    }
     return response;
   },
   (error) => {
     if (error.config) {
-      const requestKey = getRequestKey(error.config);
-      pendingRequests.delete(requestKey);
+      const requestKey = error.config.__requestKey || getRequestKey(error.config);
+      const pendingRecord = pendingRequests.get(requestKey);
+      if (pendingRecord) {
+        pendingRecord.reject(error);
+        pendingRequests.delete(requestKey);
+      }
     }
 
     if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {

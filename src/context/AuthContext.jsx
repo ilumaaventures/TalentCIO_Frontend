@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import api from '../api/axios';
 import { connectSocket, disconnectSocket } from '../api/socket';
 import InvalidWorkspace from '../pages/InvalidWorkspace';
-import { clearAuthSession, getStoredAccessToken, hasAuthSessionHint, markAuthSessionActive, persistAccessToken, persistAuthUser, readStoredUser } from '../utils/authStorage';
+import { clearAuthSession, hasAuthSessionHint, markAuthSessionActive, persistAccessToken, persistAuthUser, readStoredUser } from '../utils/authStorage';
 import { hasModuleEnabled, normalizeEnabledModules } from '../utils/enabledModules';
 
 const AuthContext = createContext(null);
@@ -13,20 +13,21 @@ const isStandalonePublicRoute = (pathname = '') => (
 );
 const normalizeUserPayload = (rawUser = null) => {
   if (!rawUser) return rawUser;
+  const { token: _token, ...safeUser } = rawUser;
 
-  const normalizedRoles = rawUser.roleNames || (Array.isArray(rawUser.roles)
-    ? rawUser.roles.map((role) => role.name || role)
+  const normalizedRoles = safeUser.roleNames || (Array.isArray(safeUser.roles)
+    ? safeUser.roles.map((role) => role.name || role)
     : []);
 
-  const normalizedCompany = rawUser.company
+  const normalizedCompany = safeUser.company
     ? {
-        ...rawUser.company,
-        enabledModules: normalizeEnabledModules(rawUser.company.enabledModules || [])
+        ...safeUser.company,
+        enabledModules: normalizeEnabledModules(safeUser.company.enabledModules || [])
       }
-    : rawUser.company;
+    : safeUser.company;
 
   return {
-    ...rawUser,
+    ...safeUser,
     roles: normalizedRoles,
     company: normalizedCompany
   };
@@ -34,16 +35,20 @@ const normalizeUserPayload = (rawUser = null) => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(getStoredAccessToken() || hasAuthSessionHint());
+  const [token, setToken] = useState(hasAuthSessionHint());
   const [loading, setLoading] = useState(true);
   const authLoadIdRef = useRef(0);
 
   const [invalidWorkspace, setInvalidWorkspace] = useState(false);
   const [workspace, setWorkspace] = useState(null);
 
+  const invalidatePendingAuthLoads = useCallback(() => {
+    authLoadIdRef.current += 1;
+    return authLoadIdRef.current;
+  }, []);
+
   useEffect(() => {
-    const authLoadId = authLoadIdRef.current + 1;
-    authLoadIdRef.current = authLoadId;
+    const authLoadId = invalidatePendingAuthLoads();
     let active = true;
 
     const loadUserAndVerifyWorkspace = async () => {
@@ -78,7 +83,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Standalone public flows should not trigger the main workspace auth bootstrap.
-      if (isStandalonePublicRoute(currentPath) && !getStoredAccessToken()) {
+      if (isStandalonePublicRoute(currentPath) && !hasAuthSessionHint()) {
         setLoading(false);
         return;
       }
@@ -91,6 +96,9 @@ export const AuthProvider = ({ children }) => {
         const normalisedUser = normalizeUserPayload(response.data);
         setToken(true);
         setUser(normalisedUser);
+        if (response.data?.token) {
+          persistAccessToken(response.data.token);
+        }
         markAuthSessionActive();
         persistAuthUser(normalisedUser);
 
@@ -118,9 +126,10 @@ export const AuthProvider = ({ children }) => {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [invalidatePendingAuthLoads, token]);
 
   const login = async (email, password, companyId = null) => {
+    invalidatePendingAuthLoads();
     const loginData = { email: normalizeEmail(email), password };
 
     // Priority: 1. Explicit selection, 2. Auto-detected from domain, 3. Empty (discovers via email)
@@ -133,14 +142,12 @@ export const AuthProvider = ({ children }) => {
       return response.data;
     }
 
-    const { token: newToken, ...userData } = response.data;
-
-    // Normalise roles before storing
-    const normalisedUser = normalizeUserPayload(userData);
-
-    persistAccessToken(newToken);
-    setToken(newToken);
+    const normalisedUser = normalizeUserPayload(response.data);
+    setToken(true);
     setUser(normalisedUser);
+    if (response.data?.token) {
+      persistAccessToken(response.data.token);
+    }
     markAuthSessionActive();
     persistAuthUser(normalisedUser);
 
@@ -152,33 +159,38 @@ export const AuthProvider = ({ children }) => {
     return response.data;
   };
 
-  const loginWithToken = useCallback((newToken, userData) => {
+  const loginWithToken = useCallback((userData) => {
+    invalidatePendingAuthLoads();
     const normalisedUser = normalizeUserPayload(userData);
 
-    persistAccessToken(newToken);
-    setToken(newToken || true);
+    setToken(true);
     setUser(normalisedUser);
+    if (userData?.token) {
+      persistAccessToken(userData.token);
+    }
     markAuthSessionActive();
     persistAuthUser(normalisedUser);
 
     if (normalisedUser?._id) {
       connectSocket(normalisedUser._id);
     }
-  }, []);
+  }, [invalidatePendingAuthLoads]);
 
   const register = async (data) => {
+    invalidatePendingAuthLoads();
     const response = await api.post('/auth/register-company', data);
-    const { token: newToken, ...userData } = response.data;
-
-    const normalisedUser = normalizeUserPayload(userData);
-    persistAccessToken(newToken);
-    setToken(newToken || true);
+    const normalisedUser = normalizeUserPayload(response.data);
+    setToken(true);
     setUser(normalisedUser);
+    if (response.data?.token) {
+      persistAccessToken(response.data.token);
+    }
     markAuthSessionActive();
     persistAuthUser(normalisedUser);
   };
 
   const logout = useCallback(async () => {
+    invalidatePendingAuthLoads();
     const currentUserId = user?._id || '';
 
     try {
@@ -188,12 +200,12 @@ export const AuthProvider = ({ children }) => {
         console.error('Logout error:', err);
       }
     } finally {
-          disconnectSocket();
-          setToken(false);
-          setUser(null);
+      disconnectSocket();
+      setToken(false);
+      setUser(null);
       clearAuthSession({ userId: currentUserId });
     }
-  }, [user?._id]);
+  }, [invalidatePendingAuthLoads, user?._id]);
 
   const logoutAndThrow = useCallback(async (err) => {
     await logout();
@@ -201,15 +213,21 @@ export const AuthProvider = ({ children }) => {
   }, [logout]);
 
   const refreshProfile = async () => {
+    const requestId = invalidatePendingAuthLoads();
     try {
       const response = await api.get('/auth/profile');
+      if (authLoadIdRef.current !== requestId) return user;
       const normalisedUser = normalizeUserPayload(response.data);
-      setToken(getStoredAccessToken() || true);
+      setToken(true);
       setUser(normalisedUser);
+      if (response.data?.token) {
+        persistAccessToken(response.data.token);
+      }
       markAuthSessionActive();
       persistAuthUser(normalisedUser);
       return normalisedUser;
     } catch (err) {
+      if (authLoadIdRef.current !== requestId) return user;
       console.error('refreshProfile error:', err);
       // If the token was invalidated (e.g. role change bumped tokenVersion), log out
       if (err.response?.status === 401 || err.response?.status === 403) {

@@ -116,7 +116,7 @@ export default function HandoffLogin() {
                 if (!active) return;
                 sessionStorage.setItem(sessionKey, 'done');
                 localStorage.setItem('tenant', resolvedSubdomain);
-                loginWithToken(response.data.token, response.data.user);
+                loginWithToken(response.data.user);
                 window.location.replace(buildPostLoginUrl(resolvedSubdomain));
             })
             .catch((error) => {

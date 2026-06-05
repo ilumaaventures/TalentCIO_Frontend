@@ -7,6 +7,7 @@ import { Mail, Lock, ArrowRight, CheckCircle2, Eye, EyeOff, Sparkles, Shield, Ba
 
 const MotionDiv = motion.div;
 const normalizeEmail = (value) => value.trim().toLowerCase();
+const LOGIN_TOAST_ID = 'workspace-login';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -20,20 +21,25 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isLoading) return;
     setIsLoading(true);
+    toast.dismiss(LOGIN_TOAST_ID);
     try {
       const data = await login(normalizeEmail(email), password);
 
       if (data?.passwordResetRequired) {
-        toast.success("Identity verification required");
+        toast.success("Identity verification required", { id: LOGIN_TOAST_ID });
         navigate('/reset-password', { state: { email: data.email, userId: data.userId } });
         return;
       }
 
-      toast.success("Welcome back!");
+      toast.success("Welcome back!", { id: LOGIN_TOAST_ID });
       navigate('/');
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Login Failed');
+      const message = error.response?.data?.message
+        || error.message
+        || 'Login Failed';
+      toast.error(message, { id: LOGIN_TOAST_ID });
     } finally {
       setIsLoading(false);
     }
