@@ -317,8 +317,8 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             return;
         }
 
-        navigate(`/ta/hiring-request/${hiringRequest._id}/candidate/${candidateId}/view?phase=${activePhase?.order || 1}`);
-    }, [activePhase?.order, canViewCandidateDetails, hiringRequest._id, navigate]);
+        navigate(`/ta/hiring-request/${hiringRequest._id}/candidate/${candidateId}/view?phase=${activePhaseOrder || 1}`);
+    }, [activePhaseOrder, canViewCandidateDetails, hiringRequest._id, navigate]);
 
     useEffect(() => {
         if (hiringRequest?.phases?.length) {
