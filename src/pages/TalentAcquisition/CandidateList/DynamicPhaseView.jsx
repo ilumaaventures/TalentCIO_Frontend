@@ -14,6 +14,7 @@ import BulkCandidateImport from '../BulkCandidateImport';
 import BulkResumeImport from '../BulkResumeImport';
 import MassMailModal from '../MassMailModal';
 import BulkTransferModal from '../BulkTransferModal';
+import { canViewTACandidateDetails } from '../../../constants/accessPolicies';
 
 
 const TOTAL_CANDIDATE_CARD_KEY = 'total_candidates';
@@ -230,6 +231,12 @@ const getCandidateUploadedByName = (candidate) => (
     `${candidate?.uploadedBy?.firstName || ''} ${candidate?.uploadedBy?.lastName || ''}`.trim()
 );
 
+const hasCandidateCtcDetails = (candidate) => (
+    (candidate?.currentCTC !== undefined && candidate?.currentCTC !== null && candidate?.currentCTC !== '')
+    || (candidate?.expectedCTC !== undefined && candidate?.expectedCTC !== null && candidate?.expectedCTC !== '')
+    || (candidate?.noticePeriod !== undefined && candidate?.noticePeriod !== null && candidate?.noticePeriod !== '')
+);
+
 const DynamicPhaseView = ({ hiringRequest }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -303,6 +310,15 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         || user?.permissions?.includes('ta.config.edit')
         || user?.permissions?.includes('ta.email_template.manage')
         || user?.permissions?.includes('*');
+    const canViewCandidateDetails = canViewTACandidateDetails(user);
+    const openCandidateDetails = useCallback((candidateId) => {
+        if (!canViewCandidateDetails) {
+            toast.error('Candidate details require ta.candidate.manage.all');
+            return;
+        }
+
+        navigate(`/ta/hiring-request/${hiringRequest._id}/candidate/${candidateId}/view?phase=${activePhase?.order || 1}`);
+    }, [activePhase?.order, canViewCandidateDetails, hiringRequest._id, navigate]);
 
     useEffect(() => {
         if (hiringRequest?.phases?.length) {
@@ -1587,6 +1603,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     />
                                 </th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Candidate</th>
+                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">CTC Details</th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Current Status</th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Decision</th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Interviews</th>
@@ -1597,7 +1614,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                         <tbody className="divide-y divide-slate-100">
                             {filteredCandidates.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
                                         No candidates match this phase and filter combination.
                                     </td>
                                 </tr>
@@ -1623,6 +1640,20 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                 <div>
                                                     <div className="font-semibold text-slate-900">{candidate.candidateName}</div>
                                                     <div className="text-sm text-slate-500">{candidate.email}</div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="text-[12px] text-slate-600 space-y-0.5 whitespace-nowrap">
+                                                    {candidate.currentCTC !== undefined && candidate.currentCTC !== null && candidate.currentCTC !== '' && (
+                                                        <div>Current: <span className="font-semibold">{candidate.currentCTC} LPA</span></div>
+                                                    )}
+                                                    {candidate.expectedCTC !== undefined && candidate.expectedCTC !== null && candidate.expectedCTC !== '' && (
+                                                        <div>Expected: <span className="font-semibold">{candidate.expectedCTC} LPA</span></div>
+                                                    )}
+                                                    {candidate.noticePeriod !== undefined && candidate.noticePeriod !== null && candidate.noticePeriod !== '' && (
+                                                        <div>Notice: <span className="font-semibold">{candidate.noticePeriod}d</span></div>
+                                                    )}
+                                                    {!hasCandidateCtcDetails(candidate) && <span className="text-slate-400">-</span>}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">
@@ -1654,7 +1685,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                             <td className="px-4 py-4 text-sm text-slate-700">
                                                 <button
                                                     type="button"
-                                                    onClick={() => navigate(`/ta/hiring-request/${hiringRequest._id}/candidate/${candidate._id}/view?phase=${activePhase?.order || 1}`)}
+                                                    onClick={() => openCandidateDetails(candidate._id)}
                                                     className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-90 ${interviewSummary.color}`}
                                                 >
                                                     <Calendar size={14} />
@@ -1721,7 +1752,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
-                                                                    navigate(`/ta/hiring-request/${hiringRequest._id}/candidate/${candidate._id}/view?phase=${activePhase?.order || 1}`);
+                                                                    openCandidateDetails(candidate._id);
                                                                     setActiveActionMenu(null);
                                                                 }}
                                                                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
@@ -1732,7 +1763,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
-                                                                    navigate(`/ta/hiring-request/${hiringRequest._id}/candidate/${candidate._id}/view?phase=${activePhase?.order || 1}`);
+                                                                    openCandidateDetails(candidate._id);
                                                                     setActiveActionMenu(null);
                                                                 }}
                                                                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"

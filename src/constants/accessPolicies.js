@@ -53,3 +53,9 @@ export const canAccessTAAnalytics = (user) => (
     || hasAnyPermission(user, TA_ANALYTICS_PERMISSIONS)
     || Boolean(user?.isTAAnalyticsViewer)
 );
+
+export const canViewTACandidateDetails = (user) => (
+    Boolean(user?.hasAllPermissions)
+    || user?.permissions?.includes('*')
+    || user?.permissions?.includes('ta.candidate.manage.all')
+);

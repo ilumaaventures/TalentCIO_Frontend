@@ -17,6 +17,7 @@ import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
 import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
+import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -38,6 +39,12 @@ const getCandidateUploadType = (candidate) => (
 
 const getCandidateUploadedByName = (candidate) => (
     `${candidate?.uploadedBy?.firstName || ''} ${candidate?.uploadedBy?.lastName || ''}`.trim()
+);
+
+const hasCandidateCtcDetails = (candidate) => (
+    (candidate?.currentCTC !== undefined && candidate?.currentCTC !== null && candidate?.currentCTC !== '')
+    || (candidate?.expectedCTC !== undefined && candidate?.expectedCTC !== null && candidate?.expectedCTC !== '')
+    || (candidate?.noticePeriod !== undefined && candidate?.noticePeriod !== null && candidate?.noticePeriod !== '')
 );
 
 const interviewFilterOptions = [
@@ -204,7 +211,7 @@ const formatDateInputValue = (date) => {
     return `${year}-${month}-${day}`;
 };
 
-const getCreatedAtPresetRange = (preset) => {
+const getPresetDateRange = (preset) => {
     if (!preset) {
         return { dateField: '', startDate: '', endDate: '' };
     }
@@ -230,7 +237,7 @@ const getCreatedAtPresetRange = (preset) => {
     }
 
     return {
-        dateField: 'createdAt',
+        dateField: 'updatedAt',
         startDate: formatDateInputValue(startDate),
         endDate: formatDateInputValue(today)
     };
@@ -490,6 +497,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.config.edit')
         || user?.permissions?.includes('ta.email_template.manage')
         || user?.permissions?.includes('*');
+    const canViewCandidateDetails = canViewTACandidateDetails(user);
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
     , []);
@@ -501,6 +509,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     ), [isProfileSharedCandidate]);
 
     const handleSelectCandidate = (candId) => {
+        if (!canViewCandidateDetails) {
+            return;
+        }
         const newParams = new URLSearchParams(searchParams);
         if (selectedCandidateId === candId) {
             newParams.delete('candidateId');
@@ -908,8 +919,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [navigate, hiringRequestId]);
 
     const handleView = useCallback((candidate) => {
+        if (!canViewCandidateDetails) {
+            toast.error('Candidate details require ta.candidate.manage.all');
+            return;
+        }
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view?phase=${activePhase}`);
-    }, [navigate, hiringRequestId, activePhase]);
+    }, [activePhase, canViewCandidateDetails, hiringRequestId, navigate]);
 
     const handleDelete = useCallback(async (candidateId) => {
         if (!window.confirm('Are you sure you want to delete this candidate?')) return;
@@ -1627,7 +1642,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             type="button"
                                             onClick={() => {
                                                 setCreatedDatePreset(option.value);
-                                                const range = getCreatedAtPresetRange(option.value);
+                                                const range = getPresetDateRange(option.value);
                                                 setDateFilterField(range.dateField);
                                                 setDateFrom(range.startDate);
                                                 setDateTo(range.endDate);
@@ -2531,7 +2546,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                 <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
-
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">CTC Details</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled / Uploaded</th>}
@@ -2541,7 +2556,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         <tbody className="divide-y divide-slate-200">
                                             {paginatedCandidates.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={!selectedCandidateId && !isLegacyView ? 8 : 7} className="px-4 py-8 text-center text-slate-500">
+                                                    <td colSpan={!selectedCandidateId && !isLegacyView ? 9 : 7} className="px-4 py-8 text-center text-slate-500">
                                                         No candidates match the selected filters.
                                                     </td>
                                                 </tr>
@@ -2549,8 +2564,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                 paginatedCandidates.map((candidate) => (
                                                     <tr
                                                         key={candidate._id}
-                                                        onClick={() => handleSelectCandidate(candidate._id)}
-                                                        className={`transition-colors border-b border-slate-100 last:border-0 cursor-pointer ${selectedCandidateId === candidate._id
+                                                        onClick={canViewCandidateDetails ? () => handleSelectCandidate(candidate._id) : undefined}
+                                                        className={`transition-colors border-b border-slate-100 last:border-0 ${canViewCandidateDetails ? 'cursor-pointer' : 'cursor-default'} ${selectedCandidateId === candidate._id
                                                             ? 'bg-blue-50 ring-1 ring-inset ring-blue-100'
                                                             : 'hover:bg-slate-50 bg-white'
                                                             }`}
@@ -2603,6 +2618,22 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
                                                                 <span className="text-[13px] font-bold text-slate-700">{candidate.totalExperience || '-'} yrs</span>
+                                                            </td>
+                                                        )}
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                                <div className="text-[12px] text-slate-600 space-y-0.5 whitespace-nowrap">
+                                                                    {candidate.currentCTC !== undefined && candidate.currentCTC !== null && candidate.currentCTC !== '' && (
+                                                                        <div>Current: <span className="font-semibold">{candidate.currentCTC} LPA</span></div>
+                                                                    )}
+                                                                    {candidate.expectedCTC !== undefined && candidate.expectedCTC !== null && candidate.expectedCTC !== '' && (
+                                                                        <div>Expected: <span className="font-semibold">{candidate.expectedCTC} LPA</span></div>
+                                                                    )}
+                                                                    {candidate.noticePeriod !== undefined && candidate.noticePeriod !== null && candidate.noticePeriod !== '' && (
+                                                                        <div>Notice: <span className="font-semibold">{candidate.noticePeriod}d</span></div>
+                                                                    )}
+                                                                    {!hasCandidateCtcDetails(candidate) && <span className="text-slate-400">-</span>}
+                                                                </div>
                                                             </td>
                                                         )}
 
