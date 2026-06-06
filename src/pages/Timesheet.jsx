@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText, Paperclip, Trash2, Upload, Loader2 } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
-import { format, startOfWeek, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
+import { format, startOfISOWeek, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -23,10 +23,7 @@ const getNormalizedTimesheetCycle = (cycle = 'Monthly') => {
 };
 
 const getWeekStartFromYearAndNumber = (year, weekNumber) => {
-    const firstDayOfYear = new Date(year, 0, 1);
-    const daysToFirstMonday = (8 - firstDayOfYear.getDay()) % 7;
-    const firstMonday = new Date(year, 0, 1 + daysToFirstMonday);
-    return startOfWeek(addWeeks(firstMonday, weekNumber - 1));
+    return addWeeks(startOfISOWeek(new Date(year, 0, 4)), weekNumber - 1);
 };
 
 const getTimesheetPeriodId = (date, cycle = 'Monthly') => {
@@ -53,7 +50,7 @@ const getVisibleDaysForCycle = (date, cycle = 'Monthly') => {
     const normalizedCycle = getNormalizedTimesheetCycle(cycle);
 
     if (normalizedCycle === 'Weekly') {
-        const start = startOfWeek(date);
+        const start = startOfISOWeek(date);
         return eachDayOfInterval({ start, end: addDays(start, 6) });
     }
 
@@ -77,6 +74,82 @@ const getVisibleDaysForCycle = (date, cycle = 'Monthly') => {
     return eachDayOfInterval({ start: startOfMonth(date), end: endOfMonth(date) });
 };
 
+const getDateForTimesheetPeriod = (periodId, cycle = 'Monthly') => {
+    if (!periodId) return new Date();
+
+    const normalizedCycle = getNormalizedTimesheetCycle(cycle);
+
+    if (normalizedCycle === 'Weekly') {
+        const match = String(periodId).match(/^(\d{4})-W(\d{2})$/);
+        if (match) {
+            return getWeekStartFromYearAndNumber(parseInt(match[1], 10), parseInt(match[2], 10));
+        }
+    }
+
+    if (normalizedCycle === 'Bi-Weekly') {
+        const match = String(periodId).match(/^(\d{4})-BW(\d{2})$/);
+        if (match) {
+            const year = parseInt(match[1], 10);
+            const biWeeklyNumber = parseInt(match[2], 10);
+            const firstWeekNumber = ((biWeeklyNumber - 1) * 2) + 1;
+            return getWeekStartFromYearAndNumber(year, firstWeekNumber);
+        }
+    }
+
+    if (normalizedCycle === 'Daily') {
+        return startOfDay(new Date(periodId));
+    }
+
+    if (/^\d{4}-\d{2}$/.test(String(periodId))) {
+        const [year, month] = String(periodId).split('-').map(Number);
+        return new Date(year, month - 1, 1);
+    }
+
+    const fallbackDate = new Date(periodId);
+    return Number.isNaN(fallbackDate.getTime()) ? new Date() : fallbackDate;
+};
+
+const getTimesheetPeriodLabel = (date, cycle = 'Monthly') => {
+    const normalizedCycle = getNormalizedTimesheetCycle(cycle);
+
+    if (normalizedCycle === 'Weekly') {
+        const days = getVisibleDaysForCycle(date, normalizedCycle);
+        return `${format(days[0], 'dd MMM yyyy')} - ${format(days[days.length - 1], 'dd MMM yyyy')}`;
+    }
+
+    if (normalizedCycle === 'Bi-Weekly') {
+        const days = getVisibleDaysForCycle(date, normalizedCycle);
+        return `${format(days[0], 'dd MMM yyyy')} - ${format(days[days.length - 1], 'dd MMM yyyy')}`;
+    }
+
+    if (normalizedCycle === 'Daily') {
+        return format(date, 'dd MMM yyyy');
+    }
+
+    return format(date, 'MMMM yyyy');
+};
+
+const buildCellLogFingerprint = (logs = []) => logs.map((log) => [
+    log?._id,
+    log?.hours,
+    log?.description,
+    log?.status,
+    log?.rejectionReason,
+    log?.task?._id || log?.task,
+    log?.module?._id || log?.module,
+    log?.project?._id || log?.project,
+    log?.taskName
+].join(':')).join('|');
+
+const readRouteState = () => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        month: params.get('month') || '',
+        userId: params.get('userId') || '',
+        name: params.get('name') || ''
+    };
+};
+
 const isFullyRejectedTimesheet = (timesheet) =>
     timesheet?.status === 'REJECTED' &&
     (timesheet.entries || []).length > 0 &&
@@ -84,11 +157,9 @@ const isFullyRejectedTimesheet = (timesheet) =>
 
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
     const { user, hasModule } = useAuth();
-    const [viewDate, setViewDate] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        const m = params.get('month');
-        return m ? new Date(m) : new Date();
-    });
+    const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
+    const [routeState, setRouteState] = useState(() => readRouteState());
+    const [viewDate, setViewDate] = useState(() => getDateForTimesheetPeriod(readRouteState().month, cycle));
     const [timesheet, setTimesheet] = useState(null);
     const [attendanceLogs, setAttendanceLogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -100,12 +171,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
 
     // Identification for Manager/Admin View
-    const queryParams = new URLSearchParams(window.location.search);
-    const targetUserId = propUserId || queryParams.get('userId');
-    const targetUserName = propUserName || queryParams.get('name');
+    const targetUserId = propUserId || routeState.userId;
+    const targetUserName = propUserName || routeState.name;
     const effectiveUserId = targetUserId || user?._id;
 
     const lastFetchKeyRef = useRef('');
+    const timesheetRef = useRef(null);
     // Approval Logic
     const [activeTab, setActiveTab] = useState(initialTab || 'timesheet');
     const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -150,6 +221,62 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const canUseProjectWorkLogs = hasModule('projects');
 
     const isEditableTimesheetStatus = !timesheet || timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED';
+
+    useEffect(() => {
+        timesheetRef.current = timesheet;
+    }, [timesheet]);
+
+    useEffect(() => {
+        if (!routeState.month) return;
+
+        const nextDate = getDateForTimesheetPeriod(routeState.month, cycle);
+        if (Number.isNaN(nextDate.getTime())) return;
+
+        setViewDate(prev => (prev.getTime() === nextDate.getTime() ? prev : nextDate));
+    }, [cycle, routeState.month]);
+
+    useEffect(() => {
+        if (propUserId || propUserName) return;
+
+        const nextMonth = getTimesheetPeriodId(viewDate, cycle);
+        if (routeState.month === nextMonth) return;
+
+        const url = new URL(window.location);
+        url.searchParams.set('month', nextMonth);
+        window.history.replaceState({}, '', url);
+        setRouteState(prev => ({ ...prev, month: nextMonth }));
+    }, [cycle, propUserId, propUserName, routeState.month, viewDate]);
+
+    useEffect(() => {
+        if (propUserId || propUserName) return undefined;
+
+        const handlePopState = () => setRouteState(readRouteState());
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [propUserId, propUserName]);
+
+    const updateRouteContext = useCallback((nextState = {}) => {
+        if (propUserId || propUserName) return;
+
+        const url = new URL(window.location);
+        const mergedState = {
+            month: nextState.month !== undefined ? nextState.month : routeState.month,
+            userId: nextState.userId !== undefined ? nextState.userId : routeState.userId,
+            name: nextState.name !== undefined ? nextState.name : routeState.name
+        };
+
+        if (mergedState.month) url.searchParams.set('month', mergedState.month);
+        else url.searchParams.delete('month');
+
+        if (mergedState.userId) url.searchParams.set('userId', mergedState.userId);
+        else url.searchParams.delete('userId');
+
+        if (mergedState.name) url.searchParams.set('name', mergedState.name);
+        else url.searchParams.delete('name');
+
+        window.history.pushState({}, '', url);
+        setRouteState(mergedState);
+    }, [propUserId, propUserName, routeState.month, routeState.name, routeState.userId]);
 
     const formatTime = (isoString, istString) => {
         if (istString) return istString.split(',')[1]?.trim() || istString;
@@ -453,6 +580,105 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         );
     };
 
+    const upsertAttendanceLog = useCallback((nextLog) => {
+        if (!nextLog) return;
+
+        setAttendanceLogs(prev => {
+            const nextLogDateKey = format(new Date(nextLog.date), 'yyyy-MM-dd');
+            const existingIndex = prev.findIndex((log) => String(log._id) === String(nextLog._id));
+            const dateIndex = existingIndex >= 0
+                ? existingIndex
+                : prev.findIndex((log) => format(new Date(log.date), 'yyyy-MM-dd') === nextLogDateKey);
+
+            if (dateIndex === -1) {
+                return [...prev, nextLog];
+            }
+
+            const nextLogs = [...prev];
+            nextLogs[dateIndex] = { ...nextLogs[dateIndex], ...nextLog };
+            return nextLogs;
+        });
+    }, []);
+
+    const upsertTimesheetEntry = useCallback((nextEntry) => {
+        if (!nextEntry) return;
+
+        setTimesheet(prev => {
+            if (!prev) return prev;
+
+            const nextEntries = [...(prev.entries || [])];
+            const existingIndex = nextEntries.findIndex((entry) => String(entry._id) === String(nextEntry._id));
+
+            if (existingIndex === -1) {
+                nextEntries.push(nextEntry);
+            } else {
+                nextEntries[existingIndex] = nextEntry;
+            }
+
+            nextEntries.sort((left, right) => new Date(left.date) - new Date(right.date));
+            return { ...prev, entries: nextEntries };
+        });
+    }, []);
+
+    const applyTimesheetDecisionToCurrentView = useCallback(({ timesheetId, status, rejectionReason = '', type = 'FULL', rejectedIds = [] }) => {
+        setTimesheet(prev => {
+            if (!prev || String(prev._id) !== String(timesheetId)) {
+                return prev;
+            }
+
+            const rejectedWorkLogIds = new Set(
+                rejectedIds
+                    .filter((entryId) => String(entryId).startsWith('worklog:'))
+                    .map((entryId) => String(entryId).slice('worklog:'.length))
+            );
+
+            const nextEntries = (prev.entries || []).map((entry) => {
+                if (status === 'APPROVED') {
+                    return { ...entry, status: 'APPROVED', rejectionReason: undefined };
+                }
+
+                if (type === 'PARTIAL') {
+                    if (!rejectedWorkLogIds.has(String(entry._id))) {
+                        return entry;
+                    }
+                    return { ...entry, status: 'REJECTED', rejectionReason };
+                }
+
+                return { ...entry, status: 'REJECTED', rejectionReason };
+            });
+
+            return {
+                ...prev,
+                status,
+                rejectionReason: status === 'REJECTED' ? rejectionReason : '',
+                entries: nextEntries
+            };
+        });
+
+        setAttendanceLogs(prev => {
+            const rejectedAttendanceIds = new Set(
+                rejectedIds
+                    .filter((entryId) => String(entryId).startsWith('attendance:'))
+                    .map((entryId) => String(entryId).slice('attendance:'.length))
+            );
+
+            return prev.map((log) => {
+                if (status === 'APPROVED') {
+                    return { ...log, approvalStatus: 'APPROVED', rejectionReason: undefined };
+                }
+
+                if (type === 'PARTIAL') {
+                    if (!rejectedAttendanceIds.has(String(log._id))) {
+                        return log;
+                    }
+                    return { ...log, approvalStatus: 'REJECTED', rejectionReason };
+                }
+
+                return { ...log, approvalStatus: 'REJECTED', rejectionReason };
+            });
+        });
+    }, []);
+
     const submitRejection = async () => {
         if (!rejectReason.trim()) {
             toast.error('Please provide a reason for rejection');
@@ -471,6 +697,13 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 rejectedEntryIds: rejectionType === 'PARTIAL' ? rejectedEntryIds : []
             });
             toast.success('Timesheet rejection processed');
+            applyTimesheetDecisionToCurrentView({
+                timesheetId: selectedTimesheet._id,
+                status: 'REJECTED',
+                rejectionReason: rejectReason,
+                type: rejectionType,
+                rejectedIds: rejectionType === 'PARTIAL' ? rejectedEntryIds : []
+            });
             setShowRejectModal(false);
             fetchApprovals();
             await refreshTimesheetData(true); // Silent Refresh
@@ -634,17 +867,20 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             }
             // Validation: Check Joining Date
             const targetDate = startOfDay(new Date(entryToEdit.date));
-            const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+            const joiningDate = viewUser?.joiningDate ? startOfDay(new Date(viewUser.joiningDate)) : null;
             if (joiningDate && targetDate < joiningDate) {
                 toast.error('Cannot edit timesheet before joining date');
                 return;
             }
 
+            let updatedAttendance = null;
+            let updatedEntry = null;
+
             if (entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY') {
-                await api.post('/attendance', {
+                updatedAttendance = (await api.post('/attendance', {
                     date: entryToEdit.date,
                     userId: targetUserId || undefined
-                });
+                })).data;
                 toast.success('Attendance marked as present');
 
             } else if (entryToEdit.type === 'ATTENDANCE_CREATE') {
@@ -664,16 +900,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     return;
                 }
 
-                await api.post('/attendance', {
+                updatedAttendance = (await api.post('/attendance', {
                     date: entryToEdit.date,
                     clockIn: inTime, // Axios will serialize to ISO string
                     clockOut: outTime,
                     userId: targetUserId || undefined
-                });
+                })).data;
                 toast.success('Attendance created');
 
             } else if (entryToEdit.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit)) {
-                await api.put(`/attendance/${entryToEdit._id}`, {});
+                updatedAttendance = (await api.put(`/attendance/${entryToEdit._id}`, {})).data;
                 toast.success('Attendance marked as present');
             } else if (entryToEdit.type === 'ATTENDANCE') {
                 // Update Existing
@@ -688,17 +924,17 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     return;
                 }
 
-                await api.put(`/attendance/${entryToEdit._id}`, {
+                updatedAttendance = (await api.put(`/attendance/${entryToEdit._id}`, {
                     clockIn: inTime,
                     clockOut: outTime
-                });
+                })).data;
                 toast.success('Attendance updated');
             } else {
                 const h = parseFloat(editHours) || 0;
                 const m = parseFloat(editMinutes) || 0;
                 const totalHours = h + (m / 60);
 
-                await api.put(`/timesheet/entry/${entryToEdit._id}`, {
+                updatedEntry = (await api.put(`/timesheet/entry/${entryToEdit._id}`, {
                     hours: totalHours.toFixed(2),
                     description: editDescription,
                     startTime: editStartTime,
@@ -707,60 +943,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     projectId: editProjectId,
                     moduleId: editModuleId,
                     taskId: editTaskId
-                });
+                })).data;
                 toast.success('Entry updated');
             }
             setEntryToEdit(null);
 
             // Local Sync for immediate UI feedback
-            if (
-                entryToEdit.type === 'ATTENDANCE'
-                || entryToEdit.type === 'ATTENDANCE_CREATE'
-                || entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY'
-            ) {
-                const baseDate = format(new Date(entryToEdit.date), 'yyyy-MM-dd');
-                const inTime = editStartTime ? new Date(`${baseDate}T${editStartTime}:00`) : null;
-                const outTime = editEndTime ? new Date(`${baseDate}T${editEndTime}:00`) : null;
-
-                if (entryToEdit.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit)) {
-                    setAttendanceLogs(prev => prev.map(l =>
-                        l._id === entryToEdit._id
-                            ? {
-                                ...l,
-                                attendanceMode: 'present_only',
-                                status: 'PRESENT',
-                                clockIn: null,
-                                clockOut: null,
-                                clockInIST: null,
-                                clockOutIST: null,
-                                maxWorkingHours: null
-                            }
-                            : l
-                    ));
-                } else if (entryToEdit.type === 'ATTENDANCE') {
-                    setAttendanceLogs(prev => prev.map(l =>
-                        l._id === entryToEdit._id ? { ...l, clockIn: inTime?.toISOString(), clockOut: outTime?.toISOString() } : l
-                    ));
-                } else {
-                    // Create local placeholder for new attendance
-                    const newLog = {
-                        _id: Date.now().toString(), // temporary id
-                        date: entryToEdit.date,
-                        clockIn: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : inTime?.toISOString(),
-                        clockOut: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : outTime?.toISOString(),
-                        clockInIST: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : undefined,
-                        clockOutIST: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? null : undefined,
-                        attendanceMode: entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY' ? 'present_only' : 'clock_in_out',
-                        maxWorkingHours: null,
-                        status: 'PRESENT'
-                    };
-                    setAttendanceLogs(prev => [...prev, newLog]);
-                }
-            } else if (timesheet) {
-                const refreshedEntries = (timesheet.entries || []).map(e =>
-                    e._id === entryToEdit._id ? { ...e, hours: parseFloat(editHours || 0) + (parseFloat(editMinutes || 0) / 60), description: editDescription, status: 'PENDING' } : e
-                );
-                setTimesheet({ ...timesheet, entries: refreshedEntries });
+            if (updatedAttendance) {
+                upsertAttendanceLog(updatedAttendance);
+            } else if (updatedEntry) {
+                upsertTimesheetEntry(updatedEntry);
             }
 
             await refreshTimesheetData(true); // Silent Refresh
@@ -810,10 +1002,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             await api.put(`/timesheet/${ts._id}/approve`, { status });
             toast.success(`Timesheet ${status.toLowerCase()}`);
 
-            // Local State Update
-            if (timesheet && ts._id === timesheet._id) {
-                setTimesheet({ ...timesheet, status });
-            }
+            applyTimesheetDecisionToCurrentView({
+                timesheetId: ts._id,
+                status,
+                rejectionReason: ''
+            });
             fetchApprovals(); // Refresh list
             await refreshTimesheetData(true); // Silent Refresh
         } catch {
@@ -831,7 +1024,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     // Identification already handled at the top
 
     const getCurrentTimesheetCacheKey = () => {
-        const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
         const formattedMonth = getTimesheetPeriodId(viewDate, cycle);
 
         return `timesheet_${user?._id}_${targetUserId || 'self'}_${formattedMonth}_${cycle}`;
@@ -841,7 +1033,6 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         const skipCache = typeof options === 'boolean' ? options : !!options.skipCache;
         const silent = typeof options === 'object' ? !!options.silent : false;
 
-        const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
         const formattedMonth = getTimesheetPeriodId(viewDate, cycle);
 
         // Cache Key: Scoped by User, Period, and Cycle
@@ -952,7 +1143,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             applyData(cached.data);
             setLoading(false);
             if (isCacheFresh(cached, TIMESHEET_CACHE_TTL_MS)) return;
-        } else if (skipCache && (timesheet || silent)) {
+        } else if (skipCache && (timesheetRef.current || silent)) {
             // Background refresh - don't show loading spinner if we already have data or silent is requested
         } else {
             setLoading(true);
@@ -990,7 +1181,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [targetUserId, user, viewDate, timesheet]);
+    }, [cycle, targetUserId, user, viewDate]);
 
     const refreshTimesheetData = async (silent = false) => {
         // When silent, we don't clear cache manually, fetchData will overwrite it
@@ -1048,7 +1239,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
         try {
             const normalizedEntryDate = getLocalDateInputValue(newEntry.date);
-            await api.post('/timesheet/entry', {
+            const createdEntry = (await api.post('/timesheet/entry', {
                 date: normalizedEntryDate,
                 hours: totalHours.toFixed(2), // Send total
                 description: newEntry.description,
@@ -1056,10 +1247,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 moduleId: newEntry.moduleId,
                 taskId: newEntry.taskId,
                 userId: targetUserId || undefined // Pass target user ID if Admin view
-            });
+            })).data;
             toast.success("Work Log Added");
             setIsAddingEntry(false);
             setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', minutes: '', description: '', date: '' });
+            setTimesheet(prev => {
+                if (!prev) return prev;
+
+                const nextEntries = [...(prev.entries || []), createdEntry].sort((left, right) => new Date(left.date) - new Date(right.date));
+                return { ...prev, entries: nextEntries };
+            });
             await refreshTimesheetData(true); // Silent Refresh
             // Update selected cell logs? fetchData will update timesheet, but we might need to locally update selectedCell or close it.
             // Closing it is easiest to ensure consistency.
@@ -1074,8 +1271,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         if (activeTab !== 'attendance_documents') return;
         try {
             setLoadingAttachments(true);
-            const formattedMonth = format(viewDate, 'yyyy-MM');
-            const res = await api.get(`/attendance/attachments/${effectiveUserId}/${formattedMonth}`);
+            const periodId = getTimesheetPeriodId(viewDate, cycle);
+            const res = await api.get(`/attendance/attachments/${effectiveUserId}/${periodId}`);
             setAttachments(res.data || { files: [] });
         } catch (error) {
             console.error('Failed to fetch attachments:', error);
@@ -1083,7 +1280,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         } finally {
             setLoadingAttachments(false);
         }
-    }, [activeTab, effectiveUserId, viewDate]);
+    }, [activeTab, cycle, effectiveUserId, viewDate]);
 
     useEffect(() => {
         fetchAttachments();
@@ -1094,12 +1291,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             const loadingToast = toast.loading('Uploading document...');
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('month', format(viewDate, 'yyyy-MM'));
+            formData.append('month', getTimesheetPeriodId(viewDate, cycle));
             if (targetUserId) {
                 formData.append('userId', targetUserId);
             }
 
-            await api.post(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}`, formData, {
+            await api.post(`/attendance/attachments/${effectiveUserId}/${getTimesheetPeriodId(viewDate, cycle)}`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             toast.success('Document uploaded successfully', { id: loadingToast });
@@ -1113,7 +1310,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         if (!window.confirm('Are you sure you want to delete this document?')) return;
         try {
             const loadingToast = toast.loading('Deleting document...');
-            await api.delete(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}`);
+            await api.delete(`/attendance/attachments/${effectiveUserId}/${getTimesheetPeriodId(viewDate, cycle)}/${fileId}`);
             toast.success('Document deleted', { id: loadingToast });
             fetchAttachments();
         } catch {
@@ -1124,7 +1321,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const handleSubmitAttachment = async (fileId) => {
         try {
             const loadingToast = toast.loading('Submitting document...');
-            await api.put(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}/submit`);
+            await api.put(`/attendance/attachments/${effectiveUserId}/${getTimesheetPeriodId(viewDate, cycle)}/${fileId}/submit`);
             toast.success('Document submitted for approval', { id: loadingToast });
             fetchAttachments();
         } catch (error) {
@@ -1136,7 +1333,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         try {
             const action = status === 'Approved' ? 'Approving' : 'Rejecting';
             const loadingToast = toast.loading(`${action} document...`);
-            await api.put(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}/review`, { status, reason });
+            await api.put(`/attendance/attachments/${effectiveUserId}/${getTimesheetPeriodId(viewDate, cycle)}/${fileId}/review`, { status, reason });
             toast.success(`Document ${status.toLowerCase()}`, { id: loadingToast });
             fetchAttachments();
         } catch (error) {
@@ -1152,7 +1349,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             formData.append('file', newFile);
 
             loadingToast = toast.loading('Replacing document...');
-            await api.put(`/attendance/attachments/${effectiveUserId}/${format(viewDate, 'yyyy-MM')}/${fileId}/replace`, formData, {
+            await api.put(`/attendance/attachments/${effectiveUserId}/${getTimesheetPeriodId(viewDate, cycle)}/${fileId}/replace`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             toast.success('Document replaced successfully', { id: loadingToast });
@@ -1171,24 +1368,22 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     const handleUserChange = (e) => {
         const selectedId = e.target.value;
-        if (!selectedId) return;
+        if (!selectedId) {
+            updateRouteContext({ userId: '', name: '' });
+            return;
+        }
 
         const selectedUser = usersList.find(u => u._id === selectedId);
         if (selectedUser) {
-            // Update URL and reload (or trigger re-render if handled via state)
-            const url = new URL(window.location);
-            url.searchParams.set('userId', selectedId);
-            url.searchParams.set('name', `${selectedUser.firstName} ${selectedUser.lastName}`);
-            window.history.pushState({}, '', url);
-            // We need to force a re-fetch since our main fetch depends on window.location.search which might not react to pushState immediately in this component structure
-            // Or better, we can reload or use a navigation hook if available.
-            // For now, reloading is safe to ensure clean state.
-            window.location.reload();
+            updateRouteContext({
+                userId: selectedId,
+                name: `${selectedUser.firstName} ${selectedUser.lastName}`
+            });
         }
     };
 
     useEffect(() => {
-        const fetchKey = `${targetUserId || 'self'}::${viewDate.toISOString()}`;
+        const fetchKey = `${targetUserId || 'self'}::${getTimesheetPeriodId(viewDate, cycle)}::${cycle}`;
         if (lastFetchKeyRef.current === fetchKey) return;
         lastFetchKeyRef.current = fetchKey;
 
@@ -1197,11 +1392,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         // Background polling for real-time timesheet status/entry updates
         const pollInterval = setInterval(() => fetchData({ skipCache: true, silent: true }), 30000);
         return () => clearInterval(pollInterval);
-    }, [fetchData, targetUserId, viewDate]); // Re-fetch when month or user changes
+    }, [cycle, fetchData, targetUserId, viewDate]); // Re-fetch when month or user changes
 
     // Generate days for current view (Monthly)
-    const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
-    const weeklyOff = weeklyOffs;
     const visibleDays = getVisibleDaysForCycle(viewDate, cycle);
 
     // State for Details Modal
@@ -1218,8 +1411,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             return entryDateKey === dateKey && String(entryProjectId) === String(selectedProjectId);
         });
 
-        const hasSameLogs = (selectedCell.logs || []).length === refreshedLogs.length
-            && (selectedCell.logs || []).every((log, index) => log?._id === refreshedLogs[index]?._id);
+        const hasSameLogs = buildCellLogFingerprint(selectedCell.logs) === buildCellLogFingerprint(refreshedLogs);
         if (hasSameLogs) return;
 
         setSelectedCell(prev => prev ? { ...prev, logs: refreshedLogs } : prev);
@@ -1610,13 +1802,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 </select>
                                 {targetUserId && (
                                     <button
-                                        onClick={() => {
-                                            const url = new URL(window.location);
-                                            url.searchParams.delete('userId');
-                                            url.searchParams.delete('name');
-                                            window.history.pushState({}, '', url);
-                                            window.location.reload();
-                                        }}
+                                        onClick={() => updateRouteContext({ userId: '', name: '' })}
                                         className="text-xs text-blue-600 hover:underline"
                                     >
                                         View Own
@@ -1821,12 +2007,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button
                                                             onClick={() => {
-                                                                const u = new URL(window.location);
-                                                                u.searchParams.set('userId', ts.user._id);
-                                                                u.searchParams.set('name', `${ts.user.firstName} ${ts.user.lastName}`);
-                                                                u.searchParams.set('month', ts.month);
-                                                                window.history.pushState({}, '', u);
-                                                                window.location.reload();
+                                                                updateRouteContext({
+                                                                    userId: ts.user._id,
+                                                                    name: `${ts.user.firstName} ${ts.user.lastName}`,
+                                                                    month: ts.month
+                                                                });
+                                                                setActiveTab('timesheet');
                                                             }}
                                                             className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-xs font-semibold transition-colors border border-blue-100"
                                                         >
@@ -1917,7 +2103,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 const { holiday, leave, isWeeklyOff } = getDayContext(day);
 
                                                 // Joining Date Check
-                                                const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+                                                const joiningDate = viewUser?.joiningDate ? startOfDay(new Date(viewUser.joiningDate)) : null;
                                                 const isBeforeJoining = joiningDate && day < joiningDate;
                                                 const isFutureDate = day > new Date();
                                                 const isLockedFutureDate = isFutureDate && !canUpdateFutureDays;
@@ -2000,7 +2186,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             const dayStatusMeta = getDayStatusMeta(logs);
 
                                                             // Joining Date Check
-                                                            const joiningDate = user?.joiningDate ? startOfDay(new Date(user.joiningDate)) : null;
+                                                            const joiningDate = viewUser?.joiningDate ? startOfDay(new Date(viewUser.joiningDate)) : null;
                                                             const isBeforeJoining = joiningDate && day < joiningDate;
                                                             const isFutureDate = day > new Date();
                                                             const isLockedFutureDate = isFutureDate && !canUpdateFutureDays;
@@ -2746,7 +2932,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                             onUpload={handleUploadAttachment}
                             onDelete={handleDeleteAttachment}
                             isReadOnly={effectiveUserId !== user?._id && !(user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || user?.permissions?.includes('*'))}
-                            monthName={format(viewDate, 'MMMM yyyy')}
+                            monthName={getTimesheetPeriodLabel(viewDate, cycle)}
                             onSubmit={handleSubmitAttachment}
                             onApprove={(id) => handleReviewAttachment(id, 'Approved')}
                             onReject={(id, reason) => handleReviewAttachment(id, 'Rejected', reason)}

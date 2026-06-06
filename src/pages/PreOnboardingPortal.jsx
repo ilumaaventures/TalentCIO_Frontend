@@ -345,9 +345,13 @@ const PreOnboardingPortal = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('onboardingToken');
-    localStorage.removeItem('onboardingEmployee');
-    navigate('/pre-onboarding/login');
+    axios.post(`${API_URL}/logout`, {}, { headers: getHeaders() })
+      .catch(() => {})
+      .finally(() => {
+        localStorage.removeItem('onboardingToken');
+        localStorage.removeItem('onboardingEmployee');
+        navigate('/pre-onboarding/login');
+      });
   };
 
   const handleRequestExtension = async (e) => {

@@ -27,6 +27,7 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import {
     GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS,
+    OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
     ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
     getSupportedPlaceholderTokens,
     renderTemplateBody,
@@ -46,7 +47,8 @@ const TABS = [
 
 const EMAIL_TEMPLATE_TYPE_TABS = [
     { id: 'general', label: 'General' },
-    { id: 'onboarding', label: 'Onboarding' }
+    { id: 'onboarding', label: 'Onboarding' },
+    { id: 'offboarding', label: 'Offboarding' }
 ];
 
 const SAMPLE_DATA = {
@@ -65,6 +67,9 @@ const SAMPLE_DATA = {
     department: 'Engineering',
     offerDate: '10 May 2026',
     dateOfOffer: '10 May 2026',
+    joiningDate: '01 Jan 2024',
+    lastWorkingDay: '30 June 2026',
+    exitType: 'Resignation',
     workLocation: 'Bengaluru',
     employmentDetails: 'Frontend Engineer | Engineering | Bengaluru',
     location: 'Bengaluru',
@@ -1415,13 +1420,17 @@ const BUILT_IN_ONBOARDING_TEMPLATE = {
     isBuiltIn: true
 };
 
-const getEmailTemplateType = (template = {}) => template?.templateType === 'onboarding' ? 'onboarding' : 'general';
+const getEmailTemplateType = (template = {}) => {
+    if (template?.templateType === 'onboarding') return 'onboarding';
+    if (template?.templateType === 'offboarding') return 'offboarding';
+    return 'general';
+};
 const isBuiltInEmailTemplate = (template = {}) => Boolean(template?.isBuiltIn) || template?._id === BUILT_IN_ONBOARDING_TEMPLATE_ID;
-const getEmailTemplatePlaceholderSet = (templateType = 'general') => (
-    templateType === 'onboarding'
-        ? ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS
-        : GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS
-);
+const getEmailTemplatePlaceholderSet = (templateType = 'general') => {
+    if (templateType === 'onboarding') return ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS;
+    if (templateType === 'offboarding') return OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS;
+    return GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS;
+};
 const getEmailTemplateOptionsForType = (templates = [], templateType = 'general') => {
     const filteredTemplates = (Array.isArray(templates) ? templates : []).filter((template) => getEmailTemplateType(template) === templateType);
 
@@ -1453,7 +1462,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
             isActive: template.isActive !== false
         } : {
             ...DEFAULT_TEMPLATE_FORM,
-            templateType: defaultTemplateType === 'onboarding' ? 'onboarding' : 'general',
+            templateType: ['onboarding', 'offboarding'].includes(defaultTemplateType) ? defaultTemplateType : 'general',
             subject: defaultTemplateType === 'onboarding' ? DEFAULT_ONBOARDING_EMAIL_SUBJECT : '',
             htmlBody: defaultTemplateType === 'onboarding' ? DEFAULT_ONBOARDING_EMAIL_BODY : ''
         });
@@ -1490,7 +1499,7 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
         () => renderTemplateBody(form.htmlBody, SAMPLE_DATA),
         [form.htmlBody]
     );
-    const activeTemplateType = form.templateType === 'onboarding' ? 'onboarding' : 'general';
+    const activeTemplateType = ['onboarding', 'offboarding'].includes(form.templateType) ? form.templateType : 'general';
     const allowedPlaceholders = useMemo(
         () => getEmailTemplatePlaceholderSet(activeTemplateType),
         [activeTemplateType]
@@ -1605,7 +1614,11 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                                 type="text"
                                 value={form.name}
                                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                                placeholder={activeTemplateType === 'onboarding' ? 'Pre-Onboarding Reminder' : 'Employee Policy Update'}
+                                placeholder={activeTemplateType === 'onboarding'
+                                    ? 'Pre-Onboarding Reminder'
+                                    : activeTemplateType === 'offboarding'
+                                        ? 'Exit Communication'
+                                        : 'Employee Policy Update'}
                                 disabled={!canManage}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                             />
@@ -1619,7 +1632,11 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                             type="text"
                             value={form.subject}
                             onChange={(event) => setForm((current) => ({ ...current, subject: event.target.value }))}
-                            placeholder={activeTemplateType === 'onboarding' ? 'Complete Your Pre-Onboarding' : 'Update Regarding {{designation}}'}
+                            placeholder={activeTemplateType === 'onboarding'
+                                ? 'Complete Your Pre-Onboarding'
+                                : activeTemplateType === 'offboarding'
+                                    ? 'Exit Documents for {{fullName}}'
+                                    : 'Update Regarding {{designation}}'}
                             disabled={!canManage}
                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                         />
@@ -1647,7 +1664,9 @@ const TemplateEditorModal = ({ isOpen, template, defaultTemplateType, onClose, o
                                     onChange={(event) => setForm((current) => ({ ...current, htmlBody: event.target.value }))}
                                     placeholder={activeTemplateType === 'onboarding'
                                         ? '<div>...full onboarding email HTML with {{credentialsSection}}, {{requestedDocumentsBlock}}, {{deadlineBlock}}, and {{portalButton}}...</div>'
-                                        : '<p>Dear {{firstName}},</p>\n<p>Welcome to {{companyName}}. Please review the update shared below.</p>'}
+                                        : activeTemplateType === 'offboarding'
+                                            ? '<p>Dear {{firstName}},</p>\n<p>Please find attached your exit documents for {{lastWorkingDay}}.</p>\n<p>Regards,<br />{{companyName}}</p>'
+                                            : '<p>Dear {{firstName}},</p>\n<p>Welcome to {{companyName}}. Please review the update shared below.</p>'}
                                     disabled={!canManage}
                                     rows={12}
                                     className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"

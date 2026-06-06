@@ -1,6 +1,36 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const DEFAULT_SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const resolveSocketUrl = (rawUrl) => {
+    if (typeof window === 'undefined' || !rawUrl) {
+        return rawUrl;
+    }
+
+    const browserHost = String(window.location.hostname || '').trim().toLowerCase();
+    const isLocalBrowserHost = browserHost === 'localhost' || browserHost === '127.0.0.1';
+
+    if (!isLocalBrowserHost) {
+        return rawUrl;
+    }
+
+    try {
+        const parsedUrl = new URL(rawUrl);
+        const socketHost = parsedUrl.hostname.toLowerCase();
+        const isLocalSocketHost = socketHost === 'localhost' || socketHost === '127.0.0.1';
+
+        if (!isLocalSocketHost || socketHost === browserHost) {
+            return parsedUrl.toString().replace(/\/$/, '');
+        }
+
+        parsedUrl.hostname = browserHost;
+        return parsedUrl.toString().replace(/\/$/, '');
+    } catch {
+        return rawUrl;
+    }
+};
+
+const SOCKET_URL = resolveSocketUrl(DEFAULT_SOCKET_URL);
 
 const socket = io(SOCKET_URL, {
     autoConnect: false, // We connect manually once the user is authenticated

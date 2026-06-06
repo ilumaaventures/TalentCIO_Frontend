@@ -17,6 +17,7 @@ import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
 import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
+import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -40,8 +41,14 @@ const getCandidateUploadedByName = (candidate) => (
     `${candidate?.uploadedBy?.firstName || ''} ${candidate?.uploadedBy?.lastName || ''}`.trim()
 );
 
+const hasCandidateCtcDetails = (candidate) => (
+    (candidate?.currentCTC !== undefined && candidate?.currentCTC !== null && candidate?.currentCTC !== '')
+    || (candidate?.expectedCTC !== undefined && candidate?.expectedCTC !== null && candidate?.expectedCTC !== '')
+    || (candidate?.noticePeriod !== undefined && candidate?.noticePeriod !== null && candidate?.noticePeriod !== '')
+);
+
 const interviewFilterOptions = [
-    { value: 'All', label: 'All Candidates' },
+    { value: 'All', label: 'All' },
     { value: 'Scheduled', label: 'Scheduled' },
     { value: 'Shortlisted', label: 'Shortlisted' },
     { value: 'Failed', label: 'Failed' }
@@ -63,7 +70,7 @@ const getPhase2InterviewStatusValue = (candidate = {}) => {
         return 'Rejected';
     }
 
-    if (candidate?.phase2Decision === 'Shortlisted' || candidate?.phase2Decision === 'Selected') {
+    if (candidate?.phase2Decision === 'Selected') {
         return 'Shortlisted';
     }
 
@@ -204,17 +211,21 @@ const formatDateInputValue = (date) => {
     return `${year}-${month}-${day}`;
 };
 
-const getCreatedAtPresetRange = (preset) => {
+const DEFAULT_DATE_FILTER_FIELD = 'updatedAt';
+
+const getPresetDateRange = (preset) => {
     if (!preset) {
-        return { dateField: '', startDate: '', endDate: '' };
+        return { startDate: '', endDate: '' };
     }
 
     const today = new Date();
     const startDate = new Date(today);
 
     switch (preset) {
-        case 'last3days':
-            startDate.setDate(today.getDate() - 2);
+        case 'today':
+            break;
+        case 'last2days':
+            startDate.setDate(today.getDate() - 1);
             break;
         case 'last7days':
             startDate.setDate(today.getDate() - 6);
@@ -226,21 +237,37 @@ const getCreatedAtPresetRange = (preset) => {
             startDate.setDate(1);
             break;
         default:
-            return { dateField: '', startDate: '', endDate: '' };
+            return { startDate: '', endDate: '' };
     }
 
     return {
-        dateField: 'createdAt',
         startDate: formatDateInputValue(startDate),
         endDate: formatDateInputValue(today)
     };
 };
 
+const getDefaultDateFilterState = () => {
+    return {
+        createdDatePreset: '',
+        dateFilterField: '',
+        dateFrom: '',
+        dateTo: ''
+    };
+};
+
 const createdDatePresetOptions = [
-    { value: 'last3days', label: 'Last 3 Days' },
+    { value: 'today', label: 'Today' },
+    { value: 'last2days', label: 'Last 2 Days' },
     { value: 'last7days', label: 'Last 7 Days' },
     { value: 'last2weeks', label: 'Last 2 Weeks' },
-    { value: 'thisMonth', label: 'This Month' }
+    { value: 'thisMonth', label: 'This Month' },
+    { value: 'custom', label: 'Custom' }
+];
+
+const dateFilterFieldOptions = [
+    { value: '', label: 'None' },
+    { value: 'updatedAt', label: 'Updated At' },
+    { value: 'createdAt', label: 'Created At' }
 ];
 
 const getCreatedDatePresetLabel = (preset) => (
@@ -407,7 +434,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     // Filter States
     const [filterPreference, setFilterPreference] = useState('All');
-    const [filterStatus, setFilterStatus] = useState('Interested');
+    const [filterStatus, setFilterStatus] = useState('All');
     const [filterDecision, setFilterDecision] = useState('All');
     const [filterExperience, setFilterExperience] = useState('');
     const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
@@ -443,8 +470,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [openMultiFilter, setOpenMultiFilter] = useState(null);
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
-    const filtersScrollRef = useRef(null);
-    const dateFilterControlsRef = useRef(null);
     const isAdmin = user?.roles?.includes('Admin');
     const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
         || user?.permissions?.includes('ta.analytics.global');
@@ -490,6 +515,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.config.edit')
         || user?.permissions?.includes('ta.email_template.manage')
         || user?.permissions?.includes('*');
+    const canViewCandidateDetails = canViewTACandidateDetails(user);
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
     , []);
@@ -501,6 +527,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     ), [isProfileSharedCandidate]);
 
     const handleSelectCandidate = (candId) => {
+        if (!canViewCandidateDetails) {
+            return;
+        }
         const newParams = new URLSearchParams(searchParams);
         if (selectedCandidateId === candId) {
             newParams.delete('candidateId');
@@ -561,24 +590,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         setPage(1);
     }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
 
-    useEffect(() => {
-        if (!dateFilterField) return;
-
-        const frameId = window.requestAnimationFrame(() => {
-            const scrollContainer = filtersScrollRef.current;
-            const dateControls = dateFilterControlsRef.current;
-            if (!scrollContainer || !dateControls) return;
-
-            const targetLeft = Math.max(0, dateControls.offsetLeft - 120);
-            scrollContainer.scrollTo({
-                left: targetLeft,
-                behavior: 'smooth'
-            });
-        });
-
-        return () => window.cancelAnimationFrame(frameId);
-    }, [dateFilterField]);
-
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
         if (!normalizedCandidateNameSearch) {
@@ -606,6 +617,37 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
         return options.sort((left, right) => left.localeCompare(right));
     }, [candidates, filterUploadedBy]);
+
+    const applyCreatedDatePreset = useCallback((preset) => {
+        if (preset === 'custom') {
+            setCreatedDatePreset('custom');
+            setDateFilterField((prev) => prev || DEFAULT_DATE_FILTER_FIELD);
+            return;
+        }
+
+        const range = getPresetDateRange(preset);
+        setCreatedDatePreset(preset);
+        setDateFilterField((prev) => prev || DEFAULT_DATE_FILTER_FIELD);
+        setDateFrom(range.startDate);
+        setDateTo(range.endDate);
+    }, []);
+
+    const resetDateFiltersToDefault = useCallback(() => {
+        const defaultDateFilterState = getDefaultDateFilterState();
+        setCreatedDatePreset(defaultDateFilterState.createdDatePreset);
+        setDateFilterField(defaultDateFilterState.dateFilterField);
+        setDateFrom(defaultDateFilterState.dateFrom);
+        setDateTo(defaultDateFilterState.dateTo);
+    }, []);
+
+    const isDefaultDateFilterState = useMemo(() => {
+        const defaultDateFilterState = getDefaultDateFilterState();
+        return (
+            dateFilterField === defaultDateFilterState.dateFilterField
+            && dateFrom === defaultDateFilterState.dateFrom
+            && dateTo === defaultDateFilterState.dateTo
+        );
+    }, [dateFilterField, dateFrom, dateTo]);
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -908,8 +950,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [navigate, hiringRequestId]);
 
     const handleView = useCallback((candidate) => {
+        if (!canViewCandidateDetails) {
+            toast.error('Candidate details require ta.candidate.manage.all');
+            return;
+        }
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view?phase=${activePhase}`);
-    }, [navigate, hiringRequestId, activePhase]);
+    }, [activePhase, canViewCandidateDetails, hiringRequestId, navigate]);
 
     const handleDelete = useCallback(async (candidateId) => {
         if (!window.confirm('Are you sure you want to delete this candidate?')) return;
@@ -1401,10 +1447,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const handlePhase2DecisionChange = async (candidateId, newDecision) => {
         try {
-            await api.patch(`/ta/candidates/${candidateId}/phase2-decision`, { phase2Decision: newDecision });
+            const response = await api.patch(`/ta/candidates/${candidateId}/phase2-decision`, { phase2Decision: newDecision });
+            const updatedCandidate = response.data?.candidate;
             toast.success('Phase 2 Decision updated');
             setCandidates(prev => prev.map(c =>
-                c._id === candidateId ? { ...c, phase2Decision: newDecision } : c
+                c._id === candidateId
+                    ? (updatedCandidate ? { ...c, ...updatedCandidate } : { ...c, phase2Decision: newDecision })
+                    : c
             ));
         } catch (error) {
             console.error('Error updating Phase 2 decision:', error);
@@ -1542,7 +1591,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             onClick={() => {
                                 setActivePhase(1);
                                 setPage(1);
-                                setFilterStatus('Interested');
+                                setFilterStatus('All');
                                 setFilterDecision('All');
                                 setFilterInterviewStatus('All');
                                 setFilterPreference('All');
@@ -1615,7 +1664,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             {showCreatedDateSortMenu && (
                                 <div
                                     data-created-sort-panel="true"
-                                    className="absolute left-0 top-14 z-30 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
+                                    className={`absolute right-0 top-14 z-30 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-2 pr-3 shadow-xl shadow-slate-200/70 ${
+                                        createdDatePreset === 'custom'
+                                            ? 'w-[min(18.5rem,calc(100vw-2rem))]'
+                                            : 'w-48'
+                                    }`}
                                     onClick={(event) => event.stopPropagation()}
                                 >
                                     <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
@@ -1626,12 +1679,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             key={option.value}
                                             type="button"
                                             onClick={() => {
-                                                setCreatedDatePreset(option.value);
-                                                const range = getCreatedAtPresetRange(option.value);
-                                                setDateFilterField(range.dateField);
-                                                setDateFrom(range.startDate);
-                                                setDateTo(range.endDate);
-                                                setShowCreatedDateSortMenu(false);
+                                                applyCreatedDatePreset(option.value);
+                                                if (option.value !== 'custom') {
+                                                    setShowCreatedDateSortMenu(false);
+                                                }
                                             }}
                                             className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
                                                 createdDatePreset === option.value
@@ -1642,6 +1693,38 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             {option.label}
                                         </button>
                                     ))}
+                                    {createdDatePreset === 'custom' && (
+                                        <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                                            <div className="grid grid-cols-1 gap-3">
+                                                <div className="min-w-0">
+                                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">From</label>
+                                                    <input
+                                                        type="date"
+                                                        value={dateFrom}
+                                                        onChange={(e) => {
+                                                            setCreatedDatePreset('custom');
+                                                            setDateFrom(e.target.value);
+                                                        }}
+                                                        max={dateTo || undefined}
+                                                        className="min-w-0 w-full max-w-[13.5rem] rounded-xl border border-slate-300 px-3 py-2 text-[13px] outline-none transition focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">To</label>
+                                                    <input
+                                                        type="date"
+                                                        value={dateTo}
+                                                        onChange={(e) => {
+                                                            setCreatedDatePreset('custom');
+                                                            setDateTo(e.target.value);
+                                                        }}
+                                                        min={dateFrom || undefined}
+                                                        className="min-w-0 w-full max-w-[13.5rem] rounded-xl border border-slate-300 px-3 py-2 text-[13px] outline-none transition focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="my-2 border-t border-slate-100" />
                                     <button
                                         type="button"
@@ -2243,7 +2326,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                     {/* Filters - Only show when no candidate is selected */}
                     {!selectedCandidateId && (
-                        <div ref={filtersScrollRef} className="scrollbar-hide bg-white p-4 rounded-xl border border-slate-200 overflow-x-auto">
+                        <div className="scrollbar-hide bg-white p-4 rounded-xl border border-slate-200 overflow-x-auto">
                             <div className="flex flex-nowrap gap-4 items-end min-w-max">
                                 <div className="shrink-0">
                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Candidate Name</label>
@@ -2267,7 +2350,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             onChange={(e) => setFilterStatus(e.target.value)}
                                             className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
                                         >
-                                            <option value="All">All Statuses</option>
+                                            <option value="All">All</option>
                                             <option value="Interested">Interested</option>
                                             <option value="Not Interested">Not Interested</option>
                                             <option value="Not Relevant">Not Relevant</option>
@@ -2282,7 +2365,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         onChange={(e) => setFilterDecision(e.target.value)}
                                         className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="All">All Decisions</option>
+                                        <option value="All">All</option>
                                         {activePhase === 1 && (
                                             <>
                                                 <option value="Shortlisted">Shortlisted</option>
@@ -2294,7 +2377,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         {activePhase === 2 && (
                                             <>
                                                 <option value="Selected">Selected</option>
-                                                <option value="Shortlisted">Shortlisted (Screened)</option>
+                                                <option value="Shortlisted">Shortlisted</option>
                                                 <option value="Rejected">Rejected</option>
                                                 <option value="On Hold">On Hold</option>
                                             </>
@@ -2331,7 +2414,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         onChange={(e) => setFilterRating(e.target.value)}
                                         className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-30"
                                     >
-                                        <option value="All">All Ratings</option>
+                                        <option value="All">All</option>
                                         <option value="9">9+ (Excellent)</option>
                                         <option value="7">7+ (Good)</option>
                                         <option value="5">5+ (Average)</option>
@@ -2357,7 +2440,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     onClear={() => setFilterPulledBy([])}
                                     isOpen={openMultiFilter === 'Pulled By'}
                                     onToggleOpen={setOpenMultiFilter}
-                                    emptyLabel="All Users"
+                                    emptyLabel="All"
                                     widthClass="w-40"
                                 />
                                 <MultiSelectFilter
@@ -2375,7 +2458,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     onClear={() => setFilterUploadedBy([])}
                                     isOpen={openMultiFilter === 'Uploaded By'}
                                     onToggleOpen={setOpenMultiFilter}
-                                    emptyLabel="All Uploaders"
+                                    emptyLabel="All"
                                     widthClass="w-44"
                                 />
                                 <div className="shrink-0">
@@ -2385,7 +2468,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         onChange={(e) => setFilterUploadType(e.target.value)}
                                         className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32"
                                     >
-                                        <option value="All">All Types</option>
+                                        <option value="All">All</option>
                                         <option value="CV">CV</option>
                                         <option value="Excel">Excel</option>
                                     </select>
@@ -2415,59 +2498,33 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-28"
                                     />
                                 </div>
-                                <div ref={dateFilterControlsRef} className="shrink-0">
+                                <div className="shrink-0">
                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Date Filter</label>
                                     <select
                                         value={dateFilterField}
                                         onChange={(e) => {
                                             const value = e.target.value;
-                                            setCreatedDatePreset('');
                                             setDateFilterField(value);
+
                                             if (!value) {
+                                                setCreatedDatePreset('');
                                                 setDateFrom('');
                                                 setDateTo('');
                                             }
                                         }}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32"
+                                        className="w-40 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 outline-none transition focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="">None</option>
-                                        <option value="createdAt">Created At</option>
-                                        <option value="updatedAt">Updated At</option>
+                                        {dateFilterFieldOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
-                                {dateFilterField && (
-                                    <>
-                                        <div className="shrink-0">
-                                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">From</label>
-                                            <input
-                                                type="date"
-                                                value={dateFrom}
-                                                onChange={(e) => {
-                                                    setCreatedDatePreset('');
-                                                    setDateFrom(e.target.value);
-                                                }}
-                                                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                                            />
-                                        </div>
-                                        <div className="shrink-0">
-                                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">To</label>
-                                            <input
-                                                type="date"
-                                                value={dateTo}
-                                                onChange={(e) => {
-                                                    setCreatedDatePreset('');
-                                                    setDateTo(e.target.value);
-                                                }}
-                                                min={dateFrom || undefined}
-                                                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36"
-                                            />
-                                        </div>
-                                    </>
-                                )}
-                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'Interested' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy.length > 0 || filterUploadedBy.length > 0 || filterUploadType !== 'All' || dateFilterField !== '' || dateFrom !== '' || dateTo !== '' || filterTransferred !== 'All') && (
+                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'All' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy.length > 0 || filterUploadedBy.length > 0 || filterUploadType !== 'All' || !isDefaultDateFilterState || filterTransferred !== 'All') && (
                                     <button
                                         onClick={() => {
-                                            if (activePhase === 1) setFilterStatus('Interested');
+                                            if (activePhase === 1) setFilterStatus('All');
                                             else setFilterStatus('All');
                                             setCandidateNameSearch('');
                                             setFilterProfileShared(false);
@@ -2478,10 +2535,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             setFilterPulledBy([]);
                                             setFilterUploadedBy([]);
                                             setFilterUploadType('All');
-                                            setCreatedDatePreset('');
-                                            setDateFilterField('');
-                                            setDateFrom('');
-                                            setDateTo('');
+                                            resetDateFiltersToDefault();
                                             setFilterTransferred('All');
                                             setShowCreatedDateSortMenu(false);
                                             setOpenMultiFilter(null);
@@ -2531,7 +2585,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                 <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
-
+                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">CTC Details</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
                                                 {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled / Uploaded</th>}
@@ -2541,7 +2595,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         <tbody className="divide-y divide-slate-200">
                                             {paginatedCandidates.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={!selectedCandidateId && !isLegacyView ? 8 : 7} className="px-4 py-8 text-center text-slate-500">
+                                                    <td colSpan={!selectedCandidateId && !isLegacyView ? 9 : 7} className="px-4 py-8 text-center text-slate-500">
                                                         No candidates match the selected filters.
                                                     </td>
                                                 </tr>
@@ -2549,8 +2603,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                 paginatedCandidates.map((candidate) => (
                                                     <tr
                                                         key={candidate._id}
-                                                        onClick={() => handleSelectCandidate(candidate._id)}
-                                                        className={`transition-colors border-b border-slate-100 last:border-0 cursor-pointer ${selectedCandidateId === candidate._id
+                                                        onClick={canViewCandidateDetails ? () => handleSelectCandidate(candidate._id) : undefined}
+                                                        className={`transition-colors border-b border-slate-100 last:border-0 ${canViewCandidateDetails ? 'cursor-pointer' : 'cursor-default'} ${selectedCandidateId === candidate._id
                                                             ? 'bg-blue-50 ring-1 ring-inset ring-blue-100'
                                                             : 'hover:bg-slate-50 bg-white'
                                                             }`}
@@ -2603,6 +2657,22 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                         {!selectedCandidateId && (
                                                             <td className="px-4 py-4 align-top">
                                                                 <span className="text-[13px] font-bold text-slate-700">{candidate.totalExperience || '-'} yrs</span>
+                                                            </td>
+                                                        )}
+                                                        {!selectedCandidateId && (
+                                                            <td className="px-4 py-4 align-top">
+                                                                <div className="text-[12px] text-slate-600 space-y-0.5 whitespace-nowrap">
+                                                                    {candidate.currentCTC !== undefined && candidate.currentCTC !== null && candidate.currentCTC !== '' && (
+                                                                        <div>Current: <span className="font-semibold">{candidate.currentCTC} LPA</span></div>
+                                                                    )}
+                                                                    {candidate.expectedCTC !== undefined && candidate.expectedCTC !== null && candidate.expectedCTC !== '' && (
+                                                                        <div>Expected: <span className="font-semibold">{candidate.expectedCTC} LPA</span></div>
+                                                                    )}
+                                                                    {candidate.noticePeriod !== undefined && candidate.noticePeriod !== null && candidate.noticePeriod !== '' && (
+                                                                        <div>Notice: <span className="font-semibold">{candidate.noticePeriod}d</span></div>
+                                                                    )}
+                                                                    {!hasCandidateCtcDetails(candidate) && <span className="text-slate-400">-</span>}
+                                                                </div>
                                                             </td>
                                                         )}
 

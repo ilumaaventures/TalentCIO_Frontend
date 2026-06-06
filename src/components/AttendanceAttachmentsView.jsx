@@ -44,15 +44,17 @@ const AttendanceAttachmentsView = ({
                     </p>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <label className="flex flex-col gap-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Month</span>
-                        <input
-                            type="month"
-                            value={monthValue}
-                            onChange={(event) => onMonthChange && onMonthChange(event.target.value)}
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-500 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100"
-                        />
-                    </label>
+                    {monthValue && onMonthChange && (
+                        <label className="flex flex-col gap-1">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Month</span>
+                            <input
+                                type="month"
+                                value={monthValue}
+                                onChange={(event) => onMonthChange(event.target.value)}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-500 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100"
+                            />
+                        </label>
+                    )}
                     {!isReadOnly && (
                         <>
                             <input
@@ -197,7 +199,7 @@ const AttendanceAttachmentsView = ({
                     <div className="col-span-full py-12 flex flex-col items-center justify-center text-center opacity-50">
                         <Calendar size={48} className="text-slate-200 mb-3" />
                         <h4 className="text-slate-800 font-bold mb-1">No Documents Uploaded</h4>
-                        <p className="text-xs text-slate-500">Documents uploaded for this month will appear here.</p>
+                        <p className="text-xs text-slate-500">Documents uploaded for this period will appear here.</p>
                     </div>
                 )}
             </div>

@@ -26,6 +26,14 @@ export const TEMPLATE_PLACEHOLDERS = [
     'interviewDate',
     'interviewLink',
     'customNote',
+    'employeeCode',
+    'exitType',
+    'lastWorkingDay',
+    'documentList',
+    'documentListBlock',
+    'personalNote',
+    'offboardingStatus',
+    'hrRemarks',
     'employeeFirstName',
     'employeeFullName',
     'employeeId',
@@ -55,7 +63,15 @@ export const GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS = [
     'location',
     'managerName',
     'managerEmail',
-    'companyName'
+    'companyName',
+    'employeeCode',
+    'exitType',
+    'lastWorkingDay',
+    'documentList',
+    'documentListBlock',
+    'personalNote',
+    'offboardingStatus',
+    'hrRemarks'
 ];
 
 export const ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
@@ -81,6 +97,20 @@ export const ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
     'currentYear'
 ];
 
+export const OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
+    'firstName',
+    'lastName',
+    'fullName',
+    'email',
+    'designation',
+    'department',
+    'joiningDate',
+    'lastWorkingDay',
+    'exitType',
+    'companyName',
+    'currentYear'
+];
+
 export const getSupportedPlaceholderTokens = (placeholders = TEMPLATE_PLACEHOLDERS) => placeholders.map((placeholder) => `{{${placeholder}}}`);
 const SUPPORTED_PLACEHOLDER_PATTERN = TEMPLATE_PLACEHOLDERS.join('|');
 const TRUSTED_HTML_PLACEHOLDERS = new Set([
@@ -89,7 +119,9 @@ const TRUSTED_HTML_PLACEHOLDERS = new Set([
     'requestedDocumentsBlock',
     'sharedFilesBlock',
     'deadlineBlock',
-    'portalButton'
+    'portalButton',
+    'documentListBlock',
+    'personalNote'
 ]);
 const ALLOWED_HTML_TAGS = new Set([
     'a', 'article', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',

@@ -14,6 +14,12 @@ export const ONBOARDING_VIEW_PERMISSIONS = [
     'onboarding.complete',
     'onboarding.manage'
 ];
+export const OFFBOARDING_VIEW_PERMISSIONS = [
+    'offboarding.read',
+    'offboarding.create',
+    'offboarding.update'
+];
+export const OFFBOARDING_PERMISSIONS = OFFBOARDING_VIEW_PERMISSIONS;
 export const TA_CONFIG_PERMISSIONS = ['ta.manage', 'ta.config.view', 'ta.config.edit'];
 export const TA_ANALYTICS_PERMISSIONS = ['ta.manage', 'ta.analytics.global', 'ta.analytics.assigned'];
 export const TA_EMAIL_TEMPLATE_PERMISSIONS = ['ta.email_template.manage'];
@@ -46,4 +52,10 @@ export const canAccessTAAnalytics = (user) => (
     isAdminUser(user)
     || hasAnyPermission(user, TA_ANALYTICS_PERMISSIONS)
     || Boolean(user?.isTAAnalyticsViewer)
+);
+
+export const canViewTACandidateDetails = (user) => (
+    Boolean(user?.hasAllPermissions)
+    || user?.permissions?.includes('*')
+    || user?.permissions?.includes('ta.candidate.manage.all')
 );

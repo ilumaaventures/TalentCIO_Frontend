@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import BulkTransferModal from './BulkTransferModal';
+import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const Phase1Candidates = () => {
     const { hiringRequestId } = useParams();
@@ -53,6 +54,7 @@ const Phase1Candidates = () => {
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.edit');
+    const canViewCandidateDetails = canViewTACandidateDetails(user);
     const hasMovedToPhase2 = useCallback((candidate) => (
         candidate?.profileShared === true
         || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
@@ -199,8 +201,12 @@ const Phase1Candidates = () => {
     }, [navigate, hiringRequestId]);
 
     const handleView = useCallback((candidate) => {
+        if (!canViewCandidateDetails) {
+            toast.error('Candidate details require ta.candidate.manage.all');
+            return;
+        }
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view?phase=1`);
-    }, [navigate, hiringRequestId]);
+    }, [canViewCandidateDetails, hiringRequestId, navigate]);
 
     const handleDelete = useCallback(async (candidateId) => {
         if (!window.confirm('Are you sure you want to delete this candidate?')) return;

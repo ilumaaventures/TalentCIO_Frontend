@@ -7,6 +7,7 @@ import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, C
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 import { ProfileReviewModal } from './PublicApplicationsView';
+import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -26,6 +27,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [searchParams] = useSearchParams();
     const phaseParam = searchParams.get('phase');
     const currentPhase = phaseParam ? parseInt(phaseParam, 10) : 2;
+    const canViewCandidateDetails = useMemo(() => canViewTACandidateDetails(user), [user]);
 
     const [candidate, setCandidate] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             try {
                 setLoading(true);
                 const [candRes, usersRes, rolesRes, workflowsRes] = await Promise.all([
-                    api.get(`/ta/candidates/candidate/${candidateId}`),
+                    api.get(`/ta/candidates/candidate/${candidateId}/details`),
                     api.get('/admin/users'),
                     api.get('/admin/roles'),
                     api.get('/ta/interview-workflows')
@@ -95,13 +97,18 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         };
 
         if (candidateId) {
+            if (!canViewCandidateDetails) {
+                setCandidate(null);
+                setLoading(false);
+                return;
+            }
             initializeData();
         }
-    }, [candidateId]);
+    }, [candidateId, canViewCandidateDetails]);
 
     const fetchCandidate = useCallback(async () => {
         try {
-            const res = await api.get(`/ta/candidates/candidate/${candidateId}`);
+            const res = await api.get(`/ta/candidates/candidate/${candidateId}/details`);
             setCandidate(res.data);
         } catch (error) {
             console.error('Error fetching candidate:', error);
@@ -439,6 +446,29 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!canViewCandidateDetails) {
+        return (
+            <div className={`${isSidePanel ? 'p-6' : 'min-h-screen bg-slate-50 p-6'} flex items-center justify-center`}>
+                <div className="w-full max-w-xl rounded-2xl border border-amber-200 bg-white p-6 text-center shadow-sm">
+                    <h2 className="text-lg font-bold text-slate-900">Candidate details are restricted</h2>
+                    <p className="mt-2 text-sm text-slate-600">
+                        This page now requires the <code>ta.candidate.manage.all</code> permission.
+                    </p>
+                    {!isSidePanel && (
+                        <button
+                            type="button"
+                            onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)}
+                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                        >
+                            <ArrowLeft size={16} />
+                            Back to applications
+                        </button>
+                    )}
                 </div>
             </div>
         );

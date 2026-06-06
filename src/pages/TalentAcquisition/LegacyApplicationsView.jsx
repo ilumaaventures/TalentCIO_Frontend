@@ -13,6 +13,7 @@ import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
+import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const decisionColor = (d) => {
     switch (d) {
@@ -33,6 +34,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     const [menuPosition, setMenuPosition] = useState({});
     const navigate = useNavigate();
     const { user } = useAuth();
+    const canViewCandidateDetails = canViewTACandidateDetails(user);
 
     // Filtering State
     const [filterPreference, setFilterPreference] = useState('All');
@@ -224,6 +226,11 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                                 >
                                                     <button
                                                         onClick={() => {
+                                                            if (!canViewCandidateDetails) {
+                                                                toast.error('Candidate details require ta.candidate.manage.all');
+                                                                return;
+                                                            }
+
                                                             navigate(`/ta/hiring-request/${candidate.hiringRequestId}/candidate/${candidate._id}/view`);
                                                             setActiveMenu(null);
                                                         }}
