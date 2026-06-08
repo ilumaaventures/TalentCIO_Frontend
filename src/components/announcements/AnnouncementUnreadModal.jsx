@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, ChevronRight } from 'lucide-react';
 import AnnouncementAvatar from './AnnouncementAvatar';
+import AnnouncementAttachmentCard from './AnnouncementAttachmentCard';
 import {
   formatAnnouncementDateTime,
   getCategoryTheme,
@@ -126,6 +127,9 @@ const AnnouncementUnreadModal = ({
 
           <div className="mt-5 max-h-[38vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white px-5 py-5 text-sm leading-7 text-slate-700 shadow-inner">
             <div className="whitespace-pre-wrap">{activeAnnouncement.content}</div>
+            {activeAnnouncement?.attachment ? (
+              <AnnouncementAttachmentCard attachment={activeAnnouncement.attachment} className="mt-5" />
+            ) : null}
           </div>
         </div>
 

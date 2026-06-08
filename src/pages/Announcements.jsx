@@ -14,6 +14,7 @@ import {
   EMPTY_ANNOUNCEMENT_FORM,
   formatAnnouncementDate,
   formatDateInputValue,
+  getAnnouncementAttachmentValidationError,
   getAnnouncementValidationErrors,
   isAnnouncementManager,
   sortAnnouncementsByPublishedAt,
@@ -53,7 +54,33 @@ const buildFormFromAnnouncement = (announcement = {}) => ({
   audienceEmploymentTypes: announcement.audienceEmploymentTypes || [],
   audienceUserIds: (announcement.audienceUserIds || []).map((value) => String(value?._id || value)),
   expiresAt: formatDateInputValue(announcement.expiresAt),
+  attachment: announcement.attachment || null,
+  attachmentFile: null,
+  removeAttachment: false,
 });
+
+const buildAnnouncementFormData = (form, status) => {
+  const formData = new FormData();
+
+  formData.append('title', form.title || '');
+  formData.append('summary', form.summary || '');
+  formData.append('content', form.content || '');
+  formData.append('category', form.category || 'General');
+  formData.append('status', status);
+  formData.append('pinned', String(Boolean(form.pinned)));
+  formData.append('audienceType', form.audienceType || 'all');
+  formData.append('audienceDepartments', JSON.stringify(form.audienceDepartments || []));
+  formData.append('audienceEmploymentTypes', JSON.stringify(form.audienceEmploymentTypes || []));
+  formData.append('audienceUserIds', JSON.stringify(form.audienceUserIds || []));
+  formData.append('expiresAt', form.expiresAt || '');
+  formData.append('removeAttachment', String(Boolean(form.removeAttachment && !form.attachmentFile)));
+
+  if (form.attachmentFile) {
+    formData.append('attachment', form.attachmentFile);
+  }
+
+  return formData;
+};
 
 const isManageOnlyAnnouncement = (announcement = {}) => (
   announcement.status !== 'published' || announcement.isExpired
@@ -85,6 +112,7 @@ const Announcements = () => {
 
   const formErrors = useMemo(() => getAnnouncementValidationErrors(form), [form]);
   const reactionTypes = composerSetup.reactionTypes?.length ? composerSetup.reactionTypes : DEFAULT_COMPOSER_SETUP.reactionTypes;
+  const showLegacyDraftCards = location.hash === '#legacy-draft-cards';
 
   const syncAnnouncementEverywhere = useCallback((updatedAnnouncement) => {
     if (!updatedAnnouncement?._id) return;
@@ -219,6 +247,14 @@ const Announcements = () => {
   }, []);
 
   const handleComposerChange = useCallback((patch) => {
+    if (patch?.attachmentFile !== undefined) {
+      const attachmentError = getAnnouncementAttachmentValidationError(patch.attachmentFile);
+      if (attachmentError) {
+        toast.error(attachmentError);
+        return;
+      }
+    }
+
     setForm((current) => ({ ...current, ...patch }));
   }, []);
 
@@ -229,11 +265,7 @@ const Announcements = () => {
       return;
     }
 
-    const payload = {
-      ...form,
-      status,
-      expiresAt: form.expiresAt || null,
-    };
+    const payload = buildAnnouncementFormData(form, status);
 
     try {
       setComposerSaving(true);
@@ -489,7 +521,7 @@ const Announcements = () => {
                 </section>
               ) : null}
 
-              {false && userCanManage && managerDrafts.length > 0 ? (
+              {showLegacyDraftCards && userCanManage && managerDrafts.length > 0 ? (
                 <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">

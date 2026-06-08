@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, Loader2, Search, Sparkles, X } from 'lucide-react';
+import { CalendarDays, Check, Loader2, Paperclip, Search, Sparkles, X } from 'lucide-react';
 import AnnouncementAvatar from './AnnouncementAvatar';
 import {
+  ANNOUNCEMENT_ATTACHMENT_ACCEPT,
+  formatFileSize,
+  getAnnouncementAttachmentTypeLabel,
   AUDIENCE_TYPE_LABELS,
   getCategoryTheme,
   getDisplayName,
@@ -129,6 +132,7 @@ const AnnouncementComposerDrawer = ({
 }) => {
   const drawerRef = useRef(null);
   const titleInputRef = useRef(null);
+  const attachmentInputRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -175,6 +179,9 @@ const AnnouncementComposerDrawer = ({
 
   const categoryTheme = getCategoryTheme(form.category);
   const hasErrors = Object.keys(errors || {}).length > 0;
+  const activeAttachment = form?.attachmentFile || (form?.removeAttachment ? null : form?.attachment);
+  const attachmentSize = activeAttachment?.size ? formatFileSize(activeAttachment.size) : '';
+  const attachmentTypeLabel = activeAttachment ? getAnnouncementAttachmentTypeLabel(activeAttachment) : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end bg-slate-950/35 backdrop-blur-[2px] md:items-stretch">
@@ -280,6 +287,73 @@ const AnnouncementComposerDrawer = ({
                   <span className="text-xs text-slate-400">{String(form.content || '').length}/8000</span>
                 </div>
               </label>
+
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">Attachment</div>
+                    <p className="mt-1 text-xs text-slate-500">PDF, Word, Excel, or image up to 5 MB.</p>
+                  </div>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    accept={ANNOUNCEMENT_ATTACHMENT_ACCEPT}
+                    className="hidden"
+                    onChange={(event) => {
+                      const nextFile = event.target.files?.[0] || null;
+                      onChange({
+                        attachmentFile: nextFile,
+                        removeAttachment: false,
+                      });
+                      event.target.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => attachmentInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Paperclip size={15} />
+                    {activeAttachment ? 'Replace file' : 'Attach file'}
+                  </button>
+                </div>
+
+                {activeAttachment ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-800" title={activeAttachment?.name || 'Attachment'}>
+                          {activeAttachment?.name || 'Attachment'}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          {attachmentTypeLabel ? <span>{attachmentTypeLabel}</span> : null}
+                          {attachmentSize ? <span>{attachmentSize}</span> : null}
+                          {form?.attachmentFile ? <span className="rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-700">New upload</span> : null}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onChange(
+                          form?.attachmentFile
+                            ? { attachmentFile: null }
+                            : { removeAttachment: true }
+                        )}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                      >
+                        <X size={14} />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                    No attachment selected.
+                  </div>
+                )}
+
+                <div className="text-xs text-red-500">{errors.attachmentFile || ''}</div>
+              </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block space-y-2">
