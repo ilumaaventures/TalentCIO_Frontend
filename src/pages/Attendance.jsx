@@ -82,7 +82,10 @@ const Attendance = () => {
     const [processingRegId, setProcessingRegId] = useState(null);
 
     // Robust Check for Admin (matching SystemRoute.jsx)
-    const isAdmin = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Admin')
+    const isAdmin = user?.roles?.some(r => {
+        const roleName = typeof r === 'string' ? r : r?.name;
+        return roleName === 'Admin' || roleName === 'System Admin';
+    })
         || user?.permissions?.includes('*')
         || user?.permissions?.includes('all')
         || user?.permissions?.includes('admin')
@@ -2087,6 +2090,7 @@ const Attendance = () => {
                                     onUpload={handleUploadAttachment}
                                     onDelete={handleDeleteAttachment}
                                     isReadOnly={selectedUserId !== user?._id && !isAdmin}
+                                    isAdmin={isAdmin}
                                     monthName={format(calendarDate, 'MMMM yyyy')}
                                     monthValue={format(calendarDate, 'yyyy-MM')}
                                     onMonthChange={handleTrackerMonthChange}

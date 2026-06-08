@@ -186,6 +186,15 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [attachments, setAttachments] = useState({ files: [] });
     const [loadingAttachments, setLoadingAttachments] = useState(false);
 
+    const isAdmin = user?.roles?.some((role) => {
+        const roleName = typeof role === 'string' ? role : role?.name;
+        return roleName === 'Admin' || roleName === 'System Admin';
+    }) ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('all') ||
+        user?.permissions?.includes('admin') ||
+        user?.role === 'Admin';
+
     const canApprove = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('attendance.approve') ||
@@ -2932,6 +2941,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                             onUpload={handleUploadAttachment}
                             onDelete={handleDeleteAttachment}
                             isReadOnly={effectiveUserId !== user?._id && !(user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') || user?.permissions?.includes('*'))}
+                            isAdmin={isAdmin}
                             monthName={getTimesheetPeriodLabel(viewDate, cycle)}
                             onSubmit={handleSubmitAttachment}
                             onApprove={(id) => handleReviewAttachment(id, 'Approved')}
