@@ -202,7 +202,7 @@ const Phase1Candidates = () => {
 
     const handleView = useCallback((candidate) => {
         if (!canViewCandidateDetails) {
-            toast.error('Candidate details require ta.candidate.manage.all');
+            toast.error('Candidate details require ta.candidate.manage.all or ta.candidate.manage.assigned');
             return;
         }
         navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidate._id}/view?phase=1`);

@@ -457,7 +457,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 <div className="w-full max-w-xl rounded-2xl border border-amber-200 bg-white p-6 text-center shadow-sm">
                     <h2 className="text-lg font-bold text-slate-900">Candidate details are restricted</h2>
                     <p className="mt-2 text-sm text-slate-600">
-                        This page now requires the <code>ta.candidate.manage.all</code> permission.
+                        This page requires either <code>ta.candidate.manage.all</code> or <code>ta.candidate.manage.assigned</code>.
                     </p>
                     {!isSidePanel && (
                         <button
