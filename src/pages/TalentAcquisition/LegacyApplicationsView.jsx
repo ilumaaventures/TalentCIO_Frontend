@@ -227,7 +227,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                                     <button
                                                         onClick={() => {
                                                             if (!canViewCandidateDetails) {
-                                                                toast.error('Candidate details require ta.candidate.manage.all');
+                                                                toast.error('Candidate details require ta.candidate.manage.all or ta.candidate.manage.assigned');
                                                                 return;
                                                             }
 

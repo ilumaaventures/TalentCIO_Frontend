@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     User, Briefcase, FileText, DollarSign, Calendar, Shield, Settings,
-    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search, Eye
+    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search, Eye, RotateCcw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -39,6 +39,14 @@ const DEFAULT_COMPANY_LOGO_ALIGNMENT = 'left';
 const DEFAULT_COMPANY_LOGO_SIZE = 140;
 const MIN_COMPANY_LOGO_SIZE = 80;
 const MAX_COMPANY_LOGO_SIZE = 170;
+const DOSSIER_FILE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+const DOSSIER_ALLOWED_FILE_TYPES = new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/jpg',
+    'image/webp'
+]);
 
 // Helper Components defined outside to prevent re-renders
 const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required }) => {
@@ -234,7 +242,7 @@ documentCategories.splice(documentCategories.length - 1, 0, {
     fixedDocs: []
 });
 
-documentCategories.splice(documentCategories.length - 1, 0, {
+documentCategories.push({
     name: 'Custom Files',
     category: 'Other',
     allowMultiple: true,
@@ -246,7 +254,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const userId = propUserId || paramUserId;
     const navigate = useNavigate();
     const { user: currentUser, refreshProfile } = useAuth();
-    const isCurrentUserAdmin = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
+    const isCurrentUserAdmin = currentUser?.roles?.some((role) => {
+        const roleName = typeof role === 'string' ? role : role?.name;
+        return ['Admin', 'System Admin', 'Super Admin'].includes(roleName);
+    });
 
     // Permissions
     const canEdit = isCurrentUserAdmin || currentUser?.permissions?.includes('dossier.edit');
@@ -270,12 +281,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const [isDocumentDeclared, setIsDocumentDeclared] = useState(false);
     const [showUploadPreview, setShowUploadPreview] = useState(false);
     const [uploadCategory, setUploadCategory] = useState(null);
+    const [replaceDocumentContext, setReplaceDocumentContext] = useState(null);
     const fileInputRef = useRef(null);
 
     // New state for custom document titles
     const [showTitleModal, setShowTitleModal] = useState(false);
     const [customDocTitle, setCustomDocTitle] = useState('');
     const [selectedCategory, setSelectedCategory] = useState(null);
+    const [documentReviewModal, setDocumentReviewModal] = useState(null);
+    const [documentReviewReason, setDocumentReviewReason] = useState('');
+    const [processingDocumentReview, setProcessingDocumentReview] = useState(false);
 
     // HRIS Requests State
     const [hrisRequests, setHrisRequests] = useState([]);
@@ -357,6 +372,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         const file = e.target.files[0];
         if (!file) return;
 
+        if (!DOSSIER_ALLOWED_FILE_TYPES.has(file.type)) {
+            toast.error('Only PDF and image files are allowed.');
+            e.target.value = '';
+            return;
+        }
+
+        if (file.size > DOSSIER_FILE_MAX_SIZE_BYTES) {
+            toast.error('File size must be 5MB or less.');
+            e.target.value = '';
+            return;
+        }
+
         // If we have a fixed title (from old flow), use it
         if (uploadingDocTitle) {
             let category = 'Other';
@@ -398,6 +425,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         setShowTitleModal(false);
         setCustomDocTitle('');
         setSelectedCategory(null);
+        setReplaceDocumentContext(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -416,22 +444,30 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         formData.append('file', previewFile);
         formData.append('title', title);
         formData.append('category', category);
+        if (replaceDocumentContext?.docId) {
+            formData.append('replaceDocId', replaceDocumentContext.docId);
+        }
 
         try {
             setIsUploading(true);
-            const toastId = toast.loading('Uploading document...');
-            await api.post(`/dossier/${userId}/documents`, formData, {
+            const toastId = toast.loading(replaceDocumentContext ? 'Uploading corrected version...' : 'Uploading document...');
+            const response = await api.post(`/dossier/${userId}/documents`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             toast.dismiss(toastId);
-            toast.success('Document uploaded successfully');
+            toast.success(replaceDocumentContext ? 'Corrected version uploaded successfully' : 'Document uploaded successfully');
             setIsDocumentDeclared(false);
+            setProfile((prev) => ({
+                ...prev,
+                documents: response.data?.documents || prev?.documents || [],
+                documentSubmissionStatus: response.data?.submissionStatus || prev?.documentSubmissionStatus
+            }));
             fetchDossier(); // Refresh
             if (activeTab === 'history') fetchHistory(); // Refresh history if needed
             handleCancelUpload(); // Close and reset
         } catch (error) {
             console.error('Upload failed', error);
-            toast.error('Upload failed');
+            toast.error(error.response?.data?.message || 'Upload failed');
         } finally {
             setIsUploading(false);
         }
@@ -439,6 +475,24 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
     const triggerUpload = (docTitle) => {
         setUploadingDocTitle(docTitle);
+        setTimeout(() => {
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+                fileInputRef.current.click();
+            }
+        }, 0);
+    };
+
+    const triggerReplaceUpload = (doc) => {
+        setReplaceDocumentContext({
+            docId: doc._id,
+            title: doc.title,
+            category: doc.category
+        });
+        setUploadingDocTitle(doc.title);
+        setSelectedCategory(doc.category);
+        setUploadCategory(doc.category);
+
         setTimeout(() => {
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
@@ -464,15 +518,20 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         try {
             setDeletingDocId(docId);
             const toastId = toast.loading('Deleting document...');
-            await api.delete(`/dossier/${userId}/documents/${docId}`);
+            const response = await api.delete(`/dossier/${userId}/documents/${docId}`);
             toast.dismiss(toastId);
             toast.success('Document deleted successfully');
             setIsDocumentDeclared(false);
+            setProfile((prev) => ({
+                ...prev,
+                documents: response.data?.documents || prev?.documents || [],
+                documentSubmissionStatus: response.data?.submissionStatus || prev?.documentSubmissionStatus
+            }));
             fetchDossier(); // Refresh
             if (activeTab === 'history') fetchHistory();
         } catch (error) {
             console.error('Delete failed', error);
-            toast.error('Failed to delete document');
+            toast.error(error.response?.data?.message || 'Failed to delete document');
         } finally {
             setDeletingDocId(null);
         }
@@ -501,6 +560,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             const res = await api.get(`/dossier/${userId}`);
             setProfile(res.data);
             setFormData(res.data); // Initialize form data
+            setIsDocumentDeclared(false);
         } catch (error) {
             console.error(error);
             toast.error('Failed to load employee dossier');
@@ -716,9 +776,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     };
 
 
-    const handleExcelExport = async (targetUserId = null) => {
+    const handleExcelExport = async (targetUser = null) => {
         try {
             const toastId = toast.loading('Generating Excel...');
+            const targetUserId = targetUser?._id || null;
             const params = targetUserId ? { userId: targetUserId } : {};
             const response = await api.get('/dossier/export-excel', {
                 params,
@@ -727,10 +788,19 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `HRIS_Export_${format(new Date(), 'dd_MMM_yyyy')}.xlsx`);
+            const displayName = [targetUser?.firstName, targetUser?.lastName]
+                .filter(Boolean)
+                .join(' ')
+                .trim();
+            const safeBaseName = (displayName || 'Employee')
+                .replace(/\s+/g, '_')
+                .replace(/[^a-zA-Z0-9_-]/g, '')
+                || 'Employee';
+            link.setAttribute('download', `${safeBaseName}_HRIS.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
+            window.URL.revokeObjectURL(url);
             toast.dismiss(toastId);
             toast.success('Excel exported successfully');
         } catch (error) {
@@ -1610,13 +1680,37 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     };
 
     const renderDocuments = () => {
-        const canVerify = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin')
+        const normalizeDocumentStatus = (status) => (status === 'Pending' || !status ? 'Pending Review' : status);
+        const getActorName = (person) => {
+            if (!person) return '';
+            if (typeof person === 'string') return person;
+            return [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || person.email || '';
+        };
+        const formatAuditDateTime = (value) => (value ? format(new Date(value), 'dd MMM yyyy, hh:mm a') : '');
+        const canVerify = isCurrentUserAdmin
             || currentUser?.permissions?.includes('dossier.verify_documents')
             || currentUser?.permissions?.includes('dossier.approve');
-        const hasPendingDocs = profile.documents?.some(d => d.verificationStatus === 'Pending');
+        const hasPendingDocs = profile.documents?.some((doc) => normalizeDocumentStatus(doc.verificationStatus) === 'Pending Review');
         const onboardingCustomFiles = Array.isArray(profile.onboardingCustomFiles) ? profile.onboardingCustomFiles : [];
         // Robust ID comparison
         const isSelf = currentUser?._id && userId && (currentUser._id.toString() === userId.toString());
+        const visibleDocuments = Array.isArray(profile.documents) ? profile.documents : [];
+        const getDocumentStatusClasses = (status) => {
+            if (status === 'Verified') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+            if (status === 'Rejected') return 'bg-red-100 text-red-700 border-red-200';
+            return 'bg-orange-100 text-orange-700 border-orange-200';
+        };
+
+        const openDocumentReviewModal = (mode, doc) => {
+            setDocumentReviewModal({ mode, doc });
+            setDocumentReviewReason('');
+        };
+
+        const closeDocumentReviewModal = () => {
+            if (processingDocumentReview) return;
+            setDocumentReviewModal(null);
+            setDocumentReviewReason('');
+        };
 
         const handleVerifyAllDocuments = async () => {
             try {
@@ -1624,12 +1718,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 const response = await api.patch(`/dossier/${targetUserId}/documents/verify-all`, { status: 'Verified' });
                 if (response.status === 200) {
                     toast.success(`All pending documents verified`);
-                    // Optimistic update
                     setProfile(prev => ({
                         ...prev,
                         documentSubmissionStatus: response.data.submissionStatus,
-                        documents: prev.documents.map(d => d.verificationStatus === 'Pending' ? { ...d, verificationStatus: 'Verified' } : d)
+                        documents: response.data.documents || prev.documents
                     }));
+                    fetchDossier();
+                    if (activeTab === 'history') fetchHistory();
                 }
             } catch (error) {
                 console.error('Verify All Documents Error:', error);
@@ -1639,7 +1734,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         const handleSubmitDocuments = async () => {
             // Validation: Check for mandatory documents
-            const uploadedTitles = profile.documents?.map(d => d.title.toLowerCase()) || [];
+            const uploadedTitles = visibleDocuments.map(d => d.title.toLowerCase()) || [];
 
             // 1. Mandatory Identity Docs (Except Passport)
             const identityCategory = documentCategories.find(c => c.name === 'Identity Documents');
@@ -1674,6 +1769,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         documentSubmissionStatus: response.data.submissionStatus
                         // documents status doesn't change on submit, just global status
                     }));
+                    fetchDossier();
+                    if (activeTab === 'history') fetchHistory();
                 }
             } catch (error) {
                 console.error('Submit Documents Error:', error);
@@ -1692,10 +1789,76 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         documentSubmissionStatus: response.data.submissionStatus,
                         documents: response.data.documents
                     }));
+                    fetchDossier();
+                    if (activeTab === 'history') fetchHistory();
                 }
             } catch (error) {
                 console.error('Verify Document Error:', error);
                 toast.error(error.response?.data?.message || 'Failed to verify document');
+            }
+        };
+
+        const handleRejectDocument = async (docId, reason) => {
+            try {
+                const targetUserId = userId || currentUser?._id;
+                const response = await api.patch(`/dossier/${targetUserId}/documents/${docId}/verify`, { status: 'Rejected', reason });
+                if (response.status === 200) {
+                    toast.success('Document rejected');
+                    setProfile(prev => ({
+                        ...prev,
+                        documentSubmissionStatus: response.data.submissionStatus,
+                        documents: response.data.documents
+                    }));
+                    fetchDossier();
+                    if (activeTab === 'history') fetchHistory();
+                }
+            } catch (error) {
+                console.error('Reject Document Error:', error);
+                toast.error(error.response?.data?.message || 'Failed to reject document');
+                throw error;
+            }
+        };
+
+        const handleRevokeVerification = async (docId, reason) => {
+            try {
+                const targetUserId = userId || currentUser?._id;
+                const response = await api.patch(`/dossier/${targetUserId}/documents/${docId}/revoke`, { reason });
+                if (response.status === 200) {
+                    toast.success('Verification revoked');
+                    setProfile(prev => ({
+                        ...prev,
+                        documentSubmissionStatus: response.data.submissionStatus,
+                        documents: response.data.documents
+                    }));
+                    fetchDossier();
+                    if (activeTab === 'history') fetchHistory();
+                }
+            } catch (error) {
+                console.error('Revoke Verification Error:', error);
+                toast.error(error.response?.data?.message || 'Failed to revoke verification');
+                throw error;
+            }
+        };
+
+        const submitDocumentReviewAction = async () => {
+            if (!documentReviewModal?.doc?._id) return;
+
+            const trimmedReason = documentReviewReason.trim();
+            if (!trimmedReason) {
+                toast.error(documentReviewModal.mode === 'reject' ? 'Rejection reason is required' : 'Revocation reason is required');
+                return;
+            }
+
+            try {
+                setProcessingDocumentReview(true);
+                if (documentReviewModal.mode === 'reject') {
+                    await handleRejectDocument(documentReviewModal.doc._id, trimmedReason);
+                } else {
+                    await handleRevokeVerification(documentReviewModal.doc._id, trimmedReason);
+                }
+                closeDocumentReviewModal();
+            } finally {
+                setProcessingDocumentReview(false);
             }
         };
 
@@ -1725,88 +1888,138 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
 
 
+        const DocumentActionButton = ({ icon: Icon, label, onClick, tone = 'slate', disabled = false }) => {
+            const toneClasses = {
+                slate: 'border-slate-200 text-slate-700 hover:bg-slate-50',
+                blue: 'border-blue-200 text-blue-700 hover:bg-blue-50',
+                green: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',
+                red: 'border-red-200 text-red-700 hover:bg-red-50',
+                amber: 'border-amber-200 text-amber-700 hover:bg-amber-50'
+            };
+
+            return (
+                <button
+                    type="button"
+                    onClick={onClick}
+                    disabled={disabled}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[11px] font-semibold transition-colors ${toneClasses[tone]} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                    <Icon size={14} />
+                    <span>{label}</span>
+                </button>
+            );
+        };
+
         // Render a single document card
-        const DocumentCard = ({ doc, isSharedOnboardingFile = false }) => (
-            <div className="group relative bg-white border border-slate-200 rounded-xl p-4 hover:shadow-lg hover:border-blue-200 transition-all duration-300 flex flex-col justify-between min-w-[280px] max-w-[280px]">
-                <div className="flex justify-between items-start mb-3">
-                    <div className="p-2.5 bg-blue-50 rounded-lg text-blue-600 group-hover:bg-blue-100 transition-colors">
-                        <FileText size={20} />
-                    </div>
-                    <div className={`px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${isSharedOnboardingFile
-                        ? 'bg-blue-100 text-blue-700'
-                        : doc.verificationStatus === 'Verified' ? 'bg-emerald-100 text-emerald-700' :
-                            doc.verificationStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                'bg-amber-100 text-amber-700'
-                        }`}>
-                        {isSharedOnboardingFile ? 'Shared' : (doc.verificationStatus || 'Pending')}
-                    </div>
-                </div>
+        const DocumentCard = ({ doc, isSharedOnboardingFile = false }) => {
+            const docStatus = isSharedOnboardingFile ? 'Shared' : normalizeDocumentStatus(doc.verificationStatus);
+            const canDeleteDocument = !isSharedOnboardingFile
+                && docStatus !== 'Verified'
+                && (isSelf || canVerify || canEdit);
+            const canCorrectRejectedDocument = !isSharedOnboardingFile && isSelf && docStatus === 'Rejected';
+            const canApprovePendingDocument = canVerify && !isSharedOnboardingFile && docStatus === 'Pending Review';
+            const canRevokeVerifiedDocument = canVerify && !isSharedOnboardingFile && docStatus === 'Verified';
 
-                <div className="mb-3">
-                    <h4 className="font-semibold text-slate-800 text-sm mb-1 line-clamp-2" title={doc.title}>{doc.title}</h4>
-                    <p className="text-xs text-slate-500 flex items-center gap-2">
-                        <span>{isSharedOnboardingFile ? (doc.sourceLabel || 'Shared during onboarding') : (doc.category || 'Document')}</span>
-                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                        <span>{format(new Date(doc.uploadDate), 'MMM dd, yyyy')}</span>
-                    </p>
-                </div>
-
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
-                    <div className="flex gap-1">
-                        <button
-                            onClick={() => window.open(doc.url, '_blank')}
-                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="View"
-                        >
-                            <Eye size={16} />
-                        </button>
-                        <button
-                            onClick={() => handleDownload(doc)}
-                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Download"
-                        >
-                            <Download size={16} />
-                        </button>
-                    </div>
-
-                    {!isSharedOnboardingFile && (
-                        <div className="flex gap-1 pl-2 border-l border-slate-100">
-                            {canVerify && (
-                                <>
-                                    <button
-                                        onClick={() => handleVerifyDocument(doc._id, 'Verified')}
-                                        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                        title="Approve"
-                                    >
-                                        <CheckCircle size={16} />
-                                    </button>
-                                    <button
-                                        onClick={() => handleVerifyDocument(doc._id, 'Rejected')}
-                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Reject"
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                </>
-                            )}
-
-                            <button
-                                onClick={() => handleDeleteDocument(doc._id)}
-                                disabled={deletingDocId === doc._id}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                            >
-                                {deletingDocId === doc._id ? (
-                                    <span className="block h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></span>
-                                ) : (
-                                    <Trash2 size={16} />
-                                )}
-                            </button>
+            return (
+                <div className="group relative flex min-h-[280px] min-w-[320px] max-w-[320px] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="rounded-xl bg-blue-50 p-3 text-blue-600 transition-colors group-hover:bg-blue-100">
+                                <FileText size={20} />
+                            </div>
+                            <div>
+                                <div className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${isSharedOnboardingFile ? 'border-blue-200 bg-blue-100 text-blue-700' : getDocumentStatusClasses(docStatus)}`}>
+                                    {docStatus}
+                                </div>
+                            </div>
                         </div>
-                    )}
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                        <h4 className="line-clamp-2 text-sm font-semibold text-slate-900" title={doc.title}>{doc.title}</h4>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                            <span>{isSharedOnboardingFile ? (doc.sourceLabel || 'Shared during onboarding') : (doc.category || 'Document')}</span>
+                            <span className="h-1 w-1 rounded-full bg-slate-300"></span>
+                            <span>{format(new Date(doc.uploadDate), 'MMM dd, yyyy')}</span>
+                        </div>
+                    </div>
+
+                    {docStatus === 'Rejected' && doc.rejectionReason ? (
+                        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+                            <div className="font-semibold uppercase tracking-wide">Rejection Reason</div>
+                            <div className="mt-1 leading-relaxed">{doc.rejectionReason}</div>
+                        </div>
+                    ) : null}
+
+                    {doc.revocationReason && docStatus === 'Pending Review' ? (
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+                            <div className="font-semibold uppercase tracking-wide">Verification Revoked</div>
+                            <div className="mt-1 leading-relaxed">{doc.revocationReason}</div>
+                        </div>
+                    ) : null}
+
+                    <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                        <DocumentActionButton
+                            icon={Eye}
+                            label="View"
+                            tone="blue"
+                            onClick={() => window.open(doc.url, '_blank')}
+                        />
+                        <DocumentActionButton
+                            icon={Download}
+                            label="Download"
+                            tone="blue"
+                            onClick={() => handleDownload(doc)}
+                        />
+
+                        {canApprovePendingDocument ? (
+                            <>
+                                <DocumentActionButton
+                                    icon={CheckCircle}
+                                    label="Approve"
+                                    tone="green"
+                                    onClick={() => handleVerifyDocument(doc._id, 'Verified')}
+                                />
+                                <DocumentActionButton
+                                    icon={X}
+                                    label="Reject"
+                                    tone="red"
+                                    onClick={() => openDocumentReviewModal('reject', doc)}
+                                />
+                            </>
+                        ) : null}
+
+                        {canRevokeVerifiedDocument ? (
+                            <DocumentActionButton
+                                icon={RotateCcw}
+                                label="Revoke"
+                                tone="amber"
+                                onClick={() => openDocumentReviewModal('revoke', doc)}
+                            />
+                        ) : null}
+
+                        {canCorrectRejectedDocument ? (
+                            <DocumentActionButton
+                                icon={Upload}
+                                label="Upload Corrected"
+                                tone="amber"
+                                onClick={() => triggerReplaceUpload(doc)}
+                            />
+                        ) : null}
+
+                        {canDeleteDocument ? (
+                            <DocumentActionButton
+                                icon={Trash2}
+                                label="Delete"
+                                tone="red"
+                                disabled={deletingDocId === doc._id}
+                                onClick={() => handleDeleteDocument(doc._id)}
+                            />
+                        ) : null}
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        };
 
         return (
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
@@ -1817,8 +2030,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     {canVerify && (
                         <Button
                             onClick={handleVerifyAllDocuments}
-                            disabled={!profile.documents?.some(d => d.verificationStatus === 'Pending')}
-                            className={`flex items-center gap-2 shadow-sm ${!profile.documents?.some(d => d.verificationStatus === 'Pending')
+                            disabled={!hasPendingDocs}
+                            className={`flex items-center gap-2 shadow-sm ${!hasPendingDocs
                                 ? 'bg-emerald-900 text-emerald-400'
                                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                                 }`}
@@ -1864,14 +2077,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     type="file"
                     ref={fileInputRef}
                     className="hidden"
-                    accept=".pdf,.jpg,.jpeg,.png"
+                                            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                     onChange={handleFileSelect}
                 />
 
                 {/* Document Categories */}
                 <div className="space-y-8">
                     {documentCategories.map((catConfig) => {
-                        const categoryDocs = profile.documents?.filter(d => d.category === catConfig.category) || [];
+                        const categoryDocs = visibleDocuments.filter(d => d.category === catConfig.category) || [];
                         const mergedCategoryDocs = catConfig.category === 'Other'
                             ? [...categoryDocs, ...onboardingCustomFiles]
                             : categoryDocs;
@@ -1962,8 +2175,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 <div className="space-y-4 flex flex-col items-center">
                                     <div className="flex items-center text-emerald-600 space-x-2 font-bold bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
                                         <CheckCircle size={20} />
-                                        <span>Declared on {profile.updatedAt ? format(new Date(profile.updatedAt), 'dd MMM yyyy') : 'Recently'}</span>
+                                        <span>Submitted for review on {profile.updatedAt ? format(new Date(profile.updatedAt), 'dd MMM yyyy') : 'Recently'}</span>
                                     </div>
+                                    <p className="text-xs text-slate-500">Your documents are in the HR verification queue. You can still review statuses here.</p>
                                 </div>
                             ) : (
                                 <div className="space-y-4 flex flex-col items-center">
@@ -2006,13 +2220,59 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     </div>
                 )}
 
+                {documentReviewModal?.doc ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeDocumentReviewModal}>
+                        <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                            <div className="border-b border-slate-100 px-6 py-5">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Document Review</div>
+                                <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                                    {documentReviewModal.mode === 'reject' ? 'Reject Document' : 'Revoke Verification'}
+                                </h3>
+                                <p className="mt-1 text-sm text-slate-500">{documentReviewModal.doc.title}</p>
+                            </div>
+                            <div className="px-6 py-5">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    {documentReviewModal.mode === 'reject' ? 'Rejection Reason' : 'Revocation Reason'}
+                                </label>
+                                <textarea
+                                    value={documentReviewReason}
+                                    onChange={(event) => setDocumentReviewReason(event.target.value)}
+                                    rows={5}
+                                    autoFocus
+                                    className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                    placeholder={documentReviewModal.mode === 'reject'
+                                        ? 'Explain what needs to be corrected before this document can be verified.'
+                                        : 'Explain why this verified document is being moved back to pending review.'}
+                                />
+                            </div>
+                            <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+                                <Button
+                                    variant="ghost"
+                                    onClick={closeDocumentReviewModal}
+                                    disabled={processingDocumentReview}
+                                    className="border border-slate-200"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={submitDocumentReviewAction}
+                                    isLoading={processingDocumentReview}
+                                    className={documentReviewModal.mode === 'reject' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-amber-600 hover:bg-amber-700 text-white'}
+                                >
+                                    {documentReviewModal.mode === 'reject' ? 'Reject Document' : 'Revoke Verification'}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
                 {/* Fixed Document Upload Preview */}
                 {showUploadPreview && previewFile && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={handleCancelUpload}>
-                        <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={e => e.stopPropagation()}>
                             <div className="p-6">
                                 <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-lg font-bold text-slate-800">Confirm Upload</h3>
+                                    <h3 className="text-lg font-bold text-slate-800">{replaceDocumentContext ? 'Confirm Corrected Version' : 'Confirm Upload'}</h3>
                                     <button onClick={handleCancelUpload} className="text-slate-400 hover:text-slate-600 transition-colors">
                                         <X size={20} />
                                     </button>
@@ -2022,12 +2282,33 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center shrink-0 text-blue-600">
                                         <FileText size={24} />
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="font-semibold text-slate-700 text-sm truncate" title={uploadingDocTitle}>{uploadingDocTitle}</p>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-semibold text-slate-700 text-sm truncate" title={uploadingDocTitle || previewFile.name}>{uploadingDocTitle || previewFile.name}</p>
                                         <p className="text-xs text-slate-500 mt-1">
                                             {(previewFile.size / 1024 / 1024).toFixed(2)} MB • {previewFile.name.split('.').pop().toUpperCase()}
                                         </p>
                                     </div>
+                                    {previewUrl ? (
+                                        <a
+                                            href={previewUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                        >
+                                            <Eye size={16} />
+                                            <span>Preview</span>
+                                        </a>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-400">
+                                            <Eye size={16} />
+                                            <span>Preview</span>
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="mb-6 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Before Upload</div>
+                                    <p className="mt-2">Use the eye button to review the selected file in a separate preview tab before you upload it to the dossier.</p>
                                 </div>
 
                                 <div className="flex gap-3">
@@ -2036,7 +2317,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         isLoading={isUploading}
                                         className="flex-1 shadow-lg shadow-blue-100"
                                     >
-                                        Upload Now
+                                        {replaceDocumentContext ? 'Upload Corrected Version' : 'Upload Now'}
                                     </Button>
                                     <Button
                                         variants="ghost"
@@ -2056,22 +2337,62 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 {
                     showTitleModal && (
                         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleCancelUpload}>
-                            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                                <h3 className="text-lg font-bold text-slate-800 mb-4">Enter Document Title</h3>
-                                <input
-                                    type="text"
-                                    value={customDocTitle}
-                                    onChange={(e) => setCustomDocTitle(e.target.value)}
-                                    placeholder="e.g., B.Tech Degree Certificate"
-                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && customDocTitle.trim()) {
-                                            handleConfirmUpload();
-                                        }
-                                    }}
-                                />
-                                <div className="flex gap-3">
+                            <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                                <h3 className="text-lg font-bold text-slate-800">Preview Before Upload</h3>
+                                <p className="mt-1 text-sm text-slate-500">Confirm the document and set the title that should appear in the dossier.</p>
+
+                                <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center shrink-0 text-blue-600">
+                                            <FileText size={24} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-semibold text-slate-700 text-sm truncate" title={previewFile?.name}>{previewFile?.name}</p>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {previewFile ? `${(previewFile.size / 1024 / 1024).toFixed(2)} MB` : '-'} • {previewFile?.name?.split('.').pop()?.toUpperCase()}
+                                            </p>
+                                        </div>
+                                        {previewUrl ? (
+                                            <a
+                                                href={previewUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                            >
+                                                <Eye size={16} />
+                                                <span>Preview</span>
+                                            </a>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-400">
+                                                <Eye size={16} />
+                                                <span>Preview</span>
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-4 space-y-2 text-sm text-slate-600">
+                                        <div><span className="font-semibold text-slate-700">Category:</span> {selectedCategory || 'Document'}</div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-5">
+                                    <h4 className="text-sm font-semibold text-slate-700 mb-2">Enter Document Title</h4>
+                                    <input
+                                        type="text"
+                                        value={customDocTitle}
+                                        onChange={(e) => setCustomDocTitle(e.target.value)}
+                                        placeholder="e.g., B.Tech Degree Certificate"
+                                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        autoFocus
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && customDocTitle.trim()) {
+                                                handleConfirmUpload();
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="mt-5 flex gap-3">
                                     <Button
                                         onClick={handleConfirmUpload}
                                         disabled={!customDocTitle.trim()}
@@ -2649,7 +2970,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     <div className="flex justify-between items-start mb-2">
                                         <p className="text-sm font-semibold text-slate-800">
                                             {log.action === 'UPDATE_DOSSIER' ? `Updated ${log.details?.section || 'Dossier'}` :
-                                                log.action === 'UPLOAD_DOCUMENT' ? 'Uploaded Document' : log.action}
+                                                log.action === 'UPLOAD_DOCUMENT' ? 'Uploaded Document' :
+                                                    log.action === 'UPLOAD_DOCUMENT_VERSION' ? 'Uploaded Corrected Document Version' :
+                                                        log.action === 'VERIFY_DOCUMENT' ? 'Verified Document' :
+                                                            log.action === 'REJECT_DOCUMENT' ? 'Rejected Document' :
+                                                                log.action === 'REVOKE_DOCUMENT_VERIFICATION' ? 'Revoked Document Verification' :
+                                                                    log.action === 'DELETE_DOCUMENT' ? 'Deleted Document' :
+                                                                        log.action === 'SUBMIT_DOCUMENTS' ? 'Submitted Documents for Review' :
+                                                                            log.action}
                                         </p>
                                         <span className="text-xs text-slate-400 whitespace-nowrap">
                                             {format(new Date(log.createdAt), 'dd MMM yyyy, hh:mm a')}
@@ -2680,6 +3008,20 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     {log.details?.docTitle && (
                                         <div className="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200 mt-2">
                                             Document: <span className="font-medium">{log.details.docTitle}</span>
+                                            {log.details?.versionNumber ? <span className="ml-2 text-slate-400">v{log.details.versionNumber}</span> : null}
+                                        </div>
+                                    )}
+                                    {(log.details?.reason || log.details?.status) && (
+                                        <div className="text-xs text-slate-600 bg-white p-2 rounded border border-slate-200 mt-2 space-y-1">
+                                            {log.details?.status ? (
+                                                <div>Status: <span className="font-medium">{log.details.status}</span></div>
+                                            ) : null}
+                                            {log.details?.reason ? (
+                                                <div>Reason: <span className="font-medium">{log.details.reason}</span></div>
+                                            ) : null}
+                                            {log.details?.newSubmissionStatus ? (
+                                                <div>Submission Status: <span className="font-medium">{log.details.newSubmissionStatus}</span></div>
+                                            ) : null}
                                         </div>
                                     )}
                                 </div>
@@ -2789,7 +3131,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                         <FileText size={18} />
                                                     </button>
                                                     <button
-                                                        onClick={() => handleExcelExport(req._id)}
+                                                        onClick={() => handleExcelExport(req)}
                                                         className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
                                                         title="Download Excel"
                                                     >

@@ -313,7 +313,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const canViewCandidateDetails = canViewTACandidateDetails(user);
     const openCandidateDetails = useCallback((candidateId) => {
         if (!canViewCandidateDetails) {
-            toast.error('Candidate details require ta.candidate.manage.all');
+            toast.error('Candidate details require ta.candidate.manage.all or ta.candidate.manage.assigned');
             return;
         }
 

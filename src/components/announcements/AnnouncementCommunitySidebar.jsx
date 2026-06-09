@@ -5,10 +5,10 @@ import { getDisplayName } from './announcementUtils';
 
 const SECTION_META = {
   birthdays: {
-    title: 'Birthdays This Month',
+    title: "Today's Birthdays",
     emoji: '🎂',
     accentClassName: 'text-pink-600',
-    emptyLabel: 'No birthdays lined up this month.',
+    emptyLabel: 'No birthdays today.',
   },
   anniversaries: {
     title: 'Work Anniversaries',
@@ -27,9 +27,9 @@ const SECTION_META = {
 const buildSectionItems = (sectionKey, communityData = {}) => {
   if (sectionKey === 'birthdays') {
     return {
-      items: communityData?.birthdays?.currentMonth || [],
+      items: communityData?.birthdays?.today || [],
       todayIds: new Set((communityData?.birthdays?.today || []).map((person) => String(person._id))),
-      count: communityData?.birthdays?.count || 0,
+      count: (communityData?.birthdays?.today || []).length,
     };
   }
 
@@ -132,6 +132,7 @@ const AnnouncementCommunitySidebar = ({ communityData, loading = false }) => {
         const isExpanded = expandedSections[sectionKey];
         const showAll = showAllSections[sectionKey];
         const displayedItems = showAll ? items : items.slice(0, 5);
+        const countLabel = sectionKey === 'birthdays' ? `${count} today` : `${count} this month`;
 
         return (
           <section key={sectionKey} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -146,7 +147,7 @@ const AnnouncementCommunitySidebar = ({ communityData, loading = false }) => {
                   <span aria-hidden="true">{meta.emoji}</span>
                   <span>{meta.title}</span>
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">{count} this month</p>
+                <p className="mt-1 text-sm text-slate-500">{countLabel}</p>
               </div>
               <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </button>

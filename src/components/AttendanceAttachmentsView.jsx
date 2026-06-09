@@ -7,6 +7,7 @@ const AttendanceAttachmentsView = ({
     onUpload,
     onDelete,
     isReadOnly,
+    isAdmin = false,
     monthName,
     monthValue,
     onMonthChange,
@@ -96,6 +97,15 @@ const AttendanceAttachmentsView = ({
                                     </div>
                                 </div>
                                 <div className="flex gap-1">
+                                    {(() => {
+                                        const canDeleteFile = ((!isReadOnly && file.status !== 'Approved' && file.status !== 'Submitted')
+                                            || (isAdmin && file.status === 'Submitted'));
+                                        const deleteButtonClass = file.status === 'Submitted' && isAdmin
+                                            ? 'p-1.5 text-red-500 hover:text-white hover:bg-red-600 rounded transition-all'
+                                            : 'p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-all';
+
+                                        return (
+                                            <>
                                     {(!isReadOnly && (!file.status || file.status === 'Pending' || file.status === 'Rejected')) && (
                                         <button
                                             type="button"
@@ -130,11 +140,11 @@ const AttendanceAttachmentsView = ({
                                             </button>
                                         </>
                                     )}
-                                    {(!isReadOnly && file.status !== 'Approved' && file.status !== 'Submitted') && (
+                                    {canDeleteFile && (
                                         <button
                                             type="button"
                                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(file._id); }}
-                                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                                            className={deleteButtonClass}
                                             title="Delete"
                                         >
                                             <Trash2 size={16} />
@@ -162,6 +172,9 @@ const AttendanceAttachmentsView = ({
                                             </button>
                                         </>
                                     )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                             

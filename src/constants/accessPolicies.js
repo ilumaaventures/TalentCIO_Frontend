@@ -58,4 +58,5 @@ export const canViewTACandidateDetails = (user) => (
     Boolean(user?.hasAllPermissions)
     || user?.permissions?.includes('*')
     || user?.permissions?.includes('ta.candidate.manage.all')
+    || user?.permissions?.includes('ta.candidate.manage.assigned')
 );

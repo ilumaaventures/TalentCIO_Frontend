@@ -13,6 +13,7 @@ import {
   HeartHandshake,
 } from 'lucide-react';
 import AnnouncementAvatar from './AnnouncementAvatar';
+import AnnouncementAttachmentCard from './AnnouncementAttachmentCard';
 import {
   formatAnnouncementDate,
   formatAnnouncementDateTime,
@@ -268,6 +269,10 @@ const AnnouncementFeedCard = ({
             </button>
           ) : null}
         </div>
+
+        {announcement?.attachment ? (
+          <AnnouncementAttachmentCard attachment={announcement.attachment} className="mt-4" />
+        ) : null}
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
