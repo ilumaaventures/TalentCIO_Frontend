@@ -418,7 +418,7 @@ const EmployeeProfile = () => {
                                         <div>
                                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Work Location</p>
                                             <p className="text-[14px] font-semibold text-slate-800 flex items-center gap-2">
-                                                <MapPin size={16} className="text-slate-400" /> {profile.workLocation || 'Headquarters'}
+                                                <MapPin size={16} className="text-slate-400" /> {profile.workLocation || ''}
                                             </p>
                                         </div>
                                         <div>

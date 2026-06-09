@@ -486,7 +486,7 @@ const Profile = () => {
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Location</label>
                                     <div className="flex items-center mt-1 text-slate-700">
                                         <MapPin size={18} className="mr-2 text-slate-400" />
-                                        <span>{profile.workLocation || 'Headquarters'}</span>
+                                        <span>{profile.workLocation || ''}</span>
                                     </div>
                                 </div>
                                 <div>
