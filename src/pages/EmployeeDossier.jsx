@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     User, Briefcase, FileText, DollarSign, Calendar, Shield, Settings,
-    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search, Eye, RotateCcw
+    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search, Eye, RotateCcw, Mail
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -251,9 +251,11 @@ documentCategories.push({
 
 const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'personal', onTabChange }) => {
     const { userId: paramUserId } = useParams();
+    const location = useLocation();
     const userId = propUserId || paramUserId;
     const navigate = useNavigate();
     const { user: currentUser, refreshProfile } = useAuth();
+    const queryTab = useMemo(() => new URLSearchParams(location.search).get('tab') || '', [location.search]);
     const isCurrentUserAdmin = currentUser?.roles?.some((role) => {
         const roleName = typeof role === 'string' ? role : role?.name;
         return ['Admin', 'System Admin', 'Super Admin'].includes(roleName);
@@ -267,10 +269,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     // State
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState(initialTab || 'personal');
+    const [activeTab, setActiveTab] = useState(initialTab || queryTab || 'personal');
     const [editMode, setEditMode] = useState(false);
     const [formData, setFormData] = useState({});
     const [historyLogs, setHistoryLogs] = useState([]);
+    const [emailHistory, setEmailHistory] = useState([]);
+    const [loadingEmailHistory, setLoadingEmailHistory] = useState(false);
     const [uploadingDocTitle, setUploadingDocTitle] = useState(null);
     const [savingSection, setSavingSection] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -307,6 +311,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const [uploadingCompanyLogo, setUploadingCompanyLogo] = useState(false);
     const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
     const companySettingsSectionRef = useRef(null);
+    const hasDossierModule = currentUser?.company?.enabledModules?.includes('employeeDossier');
+    const hasAdminRole = isCurrentUserAdmin;
+    const canViewRolesSettings = hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions;
+    const canViewAttendanceSettings = currentUser?.company?.enabledModules?.includes('attendance') && (hasAdminRole || currentUser?.permissions?.includes('user.update') || currentUser?.hasAllPermissions);
+    const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions);
+    const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies || canManageCompanyBranding;
+    const canViewEmailHistory = hasAdminRole || currentUser?.permissions?.includes('hr_email.send') || currentUser?.hasAllPermissions;
+    const isManager = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
 
     // Cleanup preview URL on unmount
     useEffect(() => {
@@ -551,7 +563,28 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         if (activeTab === 'history') {
             fetchHistory();
         }
-    }, [activeTab, userId, fetchHistory]);
+    }, [activeTab, fetchHistory]);
+
+    const fetchEmailHistory = useCallback(async () => {
+        if (!canViewEmailHistory) return;
+
+        try {
+            setLoadingEmailHistory(true);
+            const response = await api.get(`/hr-email/history/${userId}`);
+            setEmailHistory(Array.isArray(response.data?.history) ? response.data.history : []);
+        } catch (error) {
+            console.error('Failed to fetch HR email history', error);
+            toast.error(error.response?.data?.message || 'Could not load email history');
+        } finally {
+            setLoadingEmailHistory(false);
+        }
+    }, [canViewEmailHistory, userId]);
+
+    useEffect(() => {
+        if (activeTab === 'email-history') {
+            fetchEmailHistory();
+        }
+    }, [activeTab, fetchEmailHistory]);
 
     // Fetch Dossier Data
     const fetchDossier = useCallback(async () => {
@@ -626,14 +659,6 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
     }, [activeTab, canApprove, currentUser]);
 
-    const hasDossierModule = currentUser?.company?.enabledModules?.includes('employeeDossier');
-    const hasAdminRole = isCurrentUserAdmin;
-    const canViewRolesSettings = hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions;
-    const canViewAttendanceSettings = currentUser?.company?.enabledModules?.includes('attendance') && (hasAdminRole || currentUser?.permissions?.includes('user.update') || currentUser?.hasAllPermissions);
-    const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions);
-    const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies || canManageCompanyBranding;
-
-    const isManager = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
     const tabs = useMemo(() => {
         const nextTabs = [
             { id: 'personal', label: 'Personal', icon: User },
@@ -646,6 +671,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 { id: 'hris', label: 'HRIS', icon: Shield },
                 { id: 'history', label: 'Activities', icon: Calendar }
             );
+
+            if (canViewEmailHistory) {
+                nextTabs.push({ id: 'email-history', label: 'Email History', icon: Mail });
+            }
         }
 
         if (isManager && hasDossierModule) {
@@ -657,23 +686,24 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
 
         return nextTabs;
-    }, [canViewSettingsTab, hasDossierModule, isManager]);
+    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, isManager]);
 
     // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
     useEffect(() => {
-        if (!hasDossierModule && ['documents', 'hris', 'history', 'requests'].includes(activeTab)) {
+        if (!hasDossierModule && ['documents', 'hris', 'history', 'email-history', 'requests'].includes(activeTab)) {
             setActiveTab('personal');
         }
     }, [hasDossierModule, activeTab]);
 
     useEffect(() => {
-        if (!initialTab) return;
+        const requestedTab = initialTab || queryTab;
+        if (!requestedTab) return;
 
-        const tabExists = tabs.some((tab) => tab.id === initialTab);
+        const tabExists = tabs.some((tab) => tab.id === requestedTab);
         if (tabExists) {
-            setActiveTab(initialTab);
+            setActiveTab(requestedTab);
         }
-    }, [initialTab, tabs]);
+    }, [initialTab, queryTab, tabs]);
 
     const handleTabSelect = useCallback((tabId) => {
         setActiveTab(tabId);
@@ -3033,6 +3063,94 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         );
     };
 
+    const renderEmailHistory = () => (
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center gap-3 mb-6">
+                <Mail size={18} className="text-blue-600" />
+                <div>
+                    <h3 className="text-lg font-bold text-slate-800">Email History</h3>
+                    <p className="text-sm text-slate-500">Sent HR emails and dossier-save outcomes for this employee.</p>
+                </div>
+            </div>
+
+            {loadingEmailHistory ? (
+                <div className="space-y-4">
+                    {[0, 1, 2].map((item) => (
+                        <Skeleton key={item} className="h-24 w-full rounded-2xl" />
+                    ))}
+                </div>
+            ) : emailHistory.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+                    No HR email history has been recorded for this employee yet.
+                </div>
+            ) : (
+                <div className="relative ml-3 border-l border-slate-200 space-y-6">
+                    {emailHistory.map((entry, index) => (
+                        <div key={entry._id || index} className="relative ml-6">
+                            <span className="absolute -left-[31px] h-4 w-4 rounded-full border-2 border-white bg-blue-500"></span>
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                        <div className="text-base font-semibold text-slate-900">{entry.subject || 'Untitled email'}</div>
+                                        <div className="mt-1 text-sm text-slate-500">
+                                            Sent by {entry.sentBy ? `${entry.sentBy.firstName || ''} ${entry.sentBy.lastName || ''}`.trim() : 'Unknown'}
+                                        </div>
+                                    </div>
+                                    <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                                        {entry.sentAt ? format(new Date(entry.sentAt), 'dd MMM yyyy, hh:mm a') : '-'}
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 grid gap-3 md:grid-cols-2 text-sm text-slate-600">
+                                    <div><span className="font-semibold text-slate-900">Template:</span> {entry.templateName || entry.templateId?.name || 'Custom'}</div>
+                                    <div><span className="font-semibold text-slate-900">Sender:</span> {entry.emailAccountLabel || 'TalentCIO Platform'}</div>
+                                    <div><span className="font-semibold text-slate-900">Recipient:</span> {entry.recipientEmail || '-'}</div>
+                                    <div><span className="font-semibold text-slate-900">Dossier:</span> {entry.dossierSaved ? `Saved · ${entry.dossierCategory || 'Other'}` : `Not saved${entry.dossierSaveError ? ` · ${entry.dossierSaveError}` : ''}`}</div>
+                                </div>
+
+                                {entry.notes ? (
+                                    <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                                        <span className="font-semibold text-slate-900">Notes:</span> {entry.notes}
+                                    </div>
+                                ) : null}
+
+                                {Array.isArray(entry.attachments) && entry.attachments.length > 0 ? (
+                                    <div className="mt-4">
+                                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Attachments</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {entry.attachments.map((attachment, attachmentIndex) => (
+                                                attachment.cloudinaryUrl ? (
+                                                    <a
+                                                        key={`${attachment.filename || 'attachment'}-${attachmentIndex}`}
+                                                        href={attachment.cloudinaryUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:border-blue-200 hover:bg-blue-50"
+                                                    >
+                                                        <FileText size={14} />
+                                                        {attachment.filename || 'Attachment'}
+                                                    </a>
+                                                ) : (
+                                                    <span
+                                                        key={`${attachment.filename || 'attachment'}-${attachmentIndex}`}
+                                                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-500"
+                                                    >
+                                                        <FileText size={14} />
+                                                        {attachment.filename || 'Attachment'}
+                                                    </span>
+                                                )
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
     const renderHRISRequests = () => {
         const filtered = hrisRequests.filter(req =>
             `${req.firstName} ${req.lastName}`.toLowerCase().includes(hrisSearchTerm.toLowerCase()) ||
@@ -3208,6 +3326,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     {activeTab === 'documents' && renderDocuments()}
                     {activeTab === 'hris' && renderHRIS()}
                     {activeTab === 'history' && renderHistory()}
+                    {activeTab === 'email-history' && renderEmailHistory()}
                     {activeTab === 'requests' && renderHRISRequests()}
                     {activeTab === 'settings' && renderSettings()}
                 </div>

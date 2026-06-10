@@ -51,6 +51,7 @@ import Announcements from './pages/Announcements';
 import GlobalTADashboard from './pages/TalentAcquisition/GlobalTADashboard';
 import Onboarding from './pages/Onboarding';
 import Offboarding from './pages/Offboarding';
+import HREmailSend from './pages/HREmailSend';
 import RecycleBin from './pages/RecycleBin';
 import PreOnboardingLogin from './pages/PreOnboardingLogin';
 import PreOnboardingPortal from './pages/PreOnboardingPortal';
@@ -67,6 +68,7 @@ import {
   CLIENT_CREATE_PERMISSIONS,
   CLIENT_UPDATE_PERMISSIONS,
   EMAIL_SETTINGS_PERMISSIONS,
+  HR_EMAIL_PERMISSIONS,
   NOTIFICATION_SETTINGS_PERMISSIONS,
   ONBOARDING_VIEW_PERMISSIONS,
   OFFBOARDING_PERMISSIONS,
@@ -215,6 +217,11 @@ function App() {
                 <Route path="/offboarding" element={(
                   <ProtectedRoute requiredPermissions={OFFBOARDING_PERMISSIONS} redirectTo="/">
                     <Offboarding />
+                  </ProtectedRoute>
+                )} />
+                <Route path="/hr-email/send" element={(
+                  <ProtectedRoute requiredPermissions={HR_EMAIL_PERMISSIONS} redirectTo="/">
+                    <HREmailSend />
                   </ProtectedRoute>
                 )} />
 
