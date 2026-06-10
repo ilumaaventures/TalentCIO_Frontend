@@ -11,6 +11,37 @@ const normalizeSkillLabel = (value) => String(value || '').trim();
 const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();
 const normalizeHeaderValue = (value) => String(value || '').trim().toLowerCase();
 const ROUND_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled'];
+const LEGACY_CANDIDATE_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+
+const getCandidateStatusOptionsForImport = (request) => {
+    if (request?.useDynamicPhases && Array.isArray(request?.phases) && request.phases.length > 0) {
+        const firstPhase = [...request.phases].sort((left, right) => (left.order || 0) - (right.order || 0))[0];
+        const dynamicOptions = (firstPhase?.statusOptions || [])
+            .map((option) => String(option?.value || option?.label || '').trim())
+            .filter(Boolean);
+
+        if (dynamicOptions.length > 0) {
+            return [...new Set(dynamicOptions)];
+        }
+    }
+
+    return LEGACY_CANDIDATE_STATUS_OPTIONS;
+};
+
+const normalizeCandidateImportStatus = (value, allowedStatuses = LEGACY_CANDIDATE_STATUS_OPTIONS) => {
+    const rawStatus = String(value || '').trim();
+    if (!rawStatus) {
+        return { value: '', isValid: true };
+    }
+
+    const matchedStatus = allowedStatuses.find((statusOption) => (
+        String(statusOption || '').trim().toLowerCase() === rawStatus.toLowerCase()
+    ));
+
+    return matchedStatus
+        ? { value: matchedStatus, isValid: true }
+        : { value: rawStatus, isValid: false };
+};
 
 const normalizeRoundImportStatus = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
@@ -400,6 +431,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                         .map(skill => [normalizeSkillKey(skill), skill])
                 );
 
+            const candidateStatusOptions = getCandidateStatusOptionsForImport(request);
+
             worksheet.eachRow((row, rowNumber) => {
                 if (rowNumber === 1 || (isTwoTier && rowNumber === 2)) return; // Skip headers
 
@@ -488,6 +521,11 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     return 'None';
                 })();
 
+                const normalizedCandidateStatus = normalizeCandidateImportStatus(
+                    getCellValue(columnMapping.status),
+                    candidateStatusOptions
+                );
+
                 const mappedRow = {
                     candidateName: toStr(getCellValue(columnMapping.candidateName)),
                     email: toStr(getCellValue(columnMapping.email)),
@@ -506,7 +544,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     noticePeriod: extractNumeric(getCellValue(columnMapping.noticePeriod)),
                     tatToJoin: extractNumeric(getCellValue(columnMapping.tatToJoin)),
                     inHandOffer: toStr(getCellValue(columnMapping.inHandOffer))?.toLowerCase() === 'yes',
-                    status: toStr(getCellValue(columnMapping.status)) || '',
+                    status: normalizedCandidateStatus.value || '',
 
                     remark: toStr(getCellValue(columnMapping.remark)),
                     offerCompany: toStr(getCellValue(columnMapping.offerCompany)),
@@ -526,6 +564,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     })(),
                     mustHaveSkills: [],
                     interviewRounds: [],
+                    invalidStatusValue: !normalizedCandidateStatus.isValid ? normalizedCandidateStatus.value : '',
                     invalidPhase2InterviewStatus: !normalizedPhase2InterviewStatus.isValid ? normalizedPhase2InterviewStatus.value : '',
                     invalidProfileShortlistedValue: hasInvalidYesNoValue(rawShortlistedValue, shortlistedFlag),
                     invalidProfileSharedValue: hasInvalidYesNoValue(rawProfileSharedValue, profileSharedFlag),
@@ -751,6 +790,9 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (!mappedRow.email) errors.push('Email missing');
                 else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mappedRow.email)) errors.push('Invalid Email Format');
                 if (!mappedRow.mobile) errors.push('Mobile missing');
+                if (mappedRow.invalidStatusValue) {
+                    errors.push(`Status must be one of ${candidateStatusOptions.join(', ')}`);
+                }
                 if (mappedRow.invalidProfileShortlistedValue) errors.push('Profile Shortlisted (Yes/No) must be Yes or No');
                 if (mappedRow.invalidProfileSharedValue) errors.push('Profile Shared must be Yes or No');
                 if (mappedRow.invalidPhase2ShortlistedValue) errors.push('Shortlisted (Phase 2) must be Yes or No');
@@ -887,6 +929,29 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             setIsDownloadingTemplate(true);
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Candidate Import Template');
+            const candidateStatusOptions = getCandidateStatusOptionsForImport(request);
+            const validationSheet = workbook.addWorksheet('_ValidationLists');
+            const yesNoOptions = ['Yes', 'No'];
+
+            const buildValidationRangeFormula = (columnLetter, itemCount) => (
+                `'${validationSheet.name}'!$${columnLetter}$1:$${columnLetter}$${Math.max(itemCount, 1)}`
+            );
+
+            candidateStatusOptions.forEach((option, index) => {
+                validationSheet.getCell(`A${index + 1}`).value = option;
+            });
+            ROUND_INTERVIEW_STATUS_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`B${index + 1}`).value = option;
+            });
+            yesNoOptions.forEach((option, index) => {
+                validationSheet.getCell(`C${index + 1}`).value = option;
+            });
+
+            validationSheet.state = 'hidden';
+
+            const candidateStatusValidationFormula = buildValidationRangeFormula('A', candidateStatusOptions.length);
+            const interviewStatusValidationFormula = buildValidationRangeFormula('B', ROUND_INTERVIEW_STATUS_OPTIONS.length);
+            const yesNoValidationFormula = buildValidationRangeFormula('C', yesNoOptions.length);
 
             // Skills from Hiring Request
             const techSkills = (Array.isArray(request?.requirements?.mustHaveSkills)
@@ -939,6 +1004,29 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 currentCol += s.width;
             });
 
+            const applyCandidateStatusValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                sections.forEach((section) => {
+                    if (section.title === 'Status & Remarks') {
+                        const statusOffset = section.subHeaders.indexOf('Status');
+                        if (statusOffset >= 0) {
+                            const statusCol = sectionStartCol + statusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, statusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [candidateStatusValidationFormula],
+                                    errorTitle: 'Invalid Status',
+                                    error: `Status must be one of: ${candidateStatusOptions.join(', ')}.`
+                                };
+                            }
+                        }
+                    }
+                    sectionStartCol += section.width;
+                });
+            };
+
             const applyRoundColumnValidation = (startRow, endRow) => {
                 let sectionStartCol = 1;
                 sections.forEach((section) => {
@@ -968,7 +1056,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                     type: 'list',
                                     allowBlank: true,
                                     showErrorMessage: true,
-                                    formulae: [`"${ROUND_INTERVIEW_STATUS_OPTIONS.join(',')}"`],
+                                    formulae: [interviewStatusValidationFormula],
                                     errorTitle: 'Invalid Interview Status',
                                     error: `Interview Status must be one of: ${ROUND_INTERVIEW_STATUS_OPTIONS.join(', ')}.`
                                 };
@@ -992,7 +1080,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                     type: 'list',
                                     allowBlank: true,
                                     showErrorMessage: true,
-                                    formulae: [`"${ROUND_INTERVIEW_STATUS_OPTIONS.join(',')}"`],
+                                    formulae: [interviewStatusValidationFormula],
                                     errorTitle: 'Invalid Phase 2 Interview Status',
                                     error: `Interview Status (Phase2) must be one of: ${ROUND_INTERVIEW_STATUS_OPTIONS.join(', ')}.`
                                 };
@@ -1016,7 +1104,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                         type: 'list',
                                         allowBlank: true,
                                         showErrorMessage: true,
-                                        formulae: ['"Yes,No"'],
+                                        formulae: [yesNoValidationFormula],
                                         errorTitle: 'Invalid Value',
                                         error: `${headerName} must be either Yes or No.`
                                     };
@@ -1061,7 +1149,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (lower === 'name of candidate') return 'Sample Candidate';
                 if (lower === 'email') return 'sample@example.com';
                 if (lower === 'mobile no.') return '9876543210';
-                if (lower === 'status') return 'Interested';
+                if (lower === 'status') return candidateStatusOptions[0] || 'Interested';
                 if (lower === 'profile shortlisted (yes/no)') return 'No';
                 if (lower === 'profile shared') return 'No';
                 if (lower === 'performance rating') return 8;
@@ -1073,6 +1161,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             sheet.addRow(sampleRow);
 
             sheet.views = [{ state: 'frozen', ySplit: 2 }];
+            applyCandidateStatusValidation(3, 1000);
             applyRoundColumnValidation(3, 1000);
             applyPhase2InterviewStatusValidation(3, 1000);
             applyFinalDecisionValidation(3, 1000);

@@ -19,6 +19,8 @@ import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
     (
@@ -1298,6 +1300,17 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Candidates');
+            const validationSheet = workbook.addWorksheet('_ValidationLists');
+
+            const buildValidationRangeFormula = (columnLetter, itemCount) => (
+                `'${validationSheet.name}'!$${columnLetter}$1:$${columnLetter}$${Math.max(itemCount, 1)}`
+            );
+
+            LEGACY_EXPORT_STATUS_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`A${index + 1}`).value = option;
+            });
+            validationSheet.state = 'hidden';
+            const candidateStatusValidationFormula = buildValidationRangeFormula('A', LEGACY_EXPORT_STATUS_OPTIONS.length);
 
             // Row 1: MAIN HEADINGS
             const row1Data = [];
@@ -1355,6 +1368,30 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     formulae: ['"Shortlisted,Rejected,Scheduled"'],
                                     errorTitle: 'Invalid Interview Status',
                                     error: 'Interview Status must be one of: Shortlisted, Rejected, Scheduled.'
+                                };
+                            }
+                        }
+                    }
+
+                    sectionStartCol += section.width;
+                });
+            };
+
+            const applyCandidateStatusValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title === 'Status & Remarks') {
+                        const statusOffset = section.subHeaders.indexOf('Status');
+                        if (statusOffset >= 0) {
+                            const statusCol = sectionStartCol + statusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, statusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [candidateStatusValidationFormula],
+                                    errorTitle: 'Invalid Status',
+                                    error: `Status must be one of: ${LEGACY_EXPORT_STATUS_OPTIONS.join(', ')}.`
                                 };
                             }
                         }
@@ -1576,7 +1613,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 }
             });
 
-            const lastCandidateRow = Math.max(3, dataToExport.length + 2);
+            const lastCandidateRow = Math.max(1000, dataToExport.length + 2);
+            applyCandidateStatusValidation(3, lastCandidateRow);
             applyRoundColumnValidation(3, lastCandidateRow);
             applyPhase2InterviewStatusValidation(3, lastCandidateRow);
             applyFinalDecisionValidation(3, lastCandidateRow);

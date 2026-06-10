@@ -15,6 +15,8 @@ import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+
 const decisionColor = (d) => {
     switch (d) {
         case 'Shortlisted': return 'bg-sky-100 text-sky-700 border-sky-200';
@@ -546,6 +548,16 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
             };
 
             const workbook = new ExcelJS.Workbook();
+            const validationSheet = workbook.addWorksheet('_ValidationLists');
+            const buildValidationRangeFormula = (columnLetter, itemCount) => (
+                `'${validationSheet.name}'!$${columnLetter}$1:$${columnLetter}$${Math.max(itemCount, 1)}`
+            );
+
+            LEGACY_EXPORT_STATUS_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`A${index + 1}`).value = option;
+            });
+            validationSheet.state = 'hidden';
+            const candidateStatusValidationFormula = buildValidationRangeFormula('A', LEGACY_EXPORT_STATUS_OPTIONS.length);
 
             selectedOpenings.forEach(idx => {
                 const opening = openings[idx];
@@ -577,6 +589,19 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
                         pulledBy: toEmptyCell(c.profilePulledBy)
                     });
                 });
+
+                const statusColumnNumber = 5;
+                const lastStatusRow = Math.max(1000, opening.candidates.length + 1);
+                for (let rowNumber = 2; rowNumber <= lastStatusRow; rowNumber += 1) {
+                    sheet.getCell(rowNumber, statusColumnNumber).dataValidation = {
+                        type: 'list',
+                        allowBlank: true,
+                        showErrorMessage: true,
+                        formulae: [candidateStatusValidationFormula],
+                        errorTitle: 'Invalid Status',
+                        error: `Status must be one of: ${LEGACY_EXPORT_STATUS_OPTIONS.join(', ')}.`
+                    };
+                }
             });
 
             const buffer = await workbook.xlsx.writeBuffer();
