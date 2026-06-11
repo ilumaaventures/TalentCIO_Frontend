@@ -291,7 +291,7 @@ const HREmailSend = () => {
         ];
 
         return (
-            <div className="grid grid-cols-2 gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2.5 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-4">
                 {steps.map((item) => {
                     const isActive = step === item.id;
                     const isDone = step > item.id;
@@ -299,7 +299,7 @@ const HREmailSend = () => {
                     return (
                         <div
                             key={item.id}
-                            className={`rounded-2xl border px-4 py-3 transition-colors ${
+                            className={`rounded-2xl border px-3 py-2.5 transition-colors ${
                                 isActive
                                     ? 'border-blue-200 bg-blue-50 text-blue-700'
                                     : isDone
@@ -307,8 +307,8 @@ const HREmailSend = () => {
                                         : 'border-slate-200 bg-slate-50 text-slate-500'
                             }`}
                         >
-                            <div className="text-xs font-semibold uppercase tracking-[0.24em]">Step {item.id}</div>
-                            <div className="mt-2 text-sm font-semibold">{item.label}</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em]">Step {item.id}</div>
+                            <div className="mt-1.5 text-sm font-semibold">{item.label}</div>
                         </div>
                     );
                 })}
@@ -321,28 +321,28 @@ const HREmailSend = () => {
         const primaryHistoryUserId = result.sent?.[0]?.userId || selectedEmployees[0]?._id;
 
         return (
-            <div className="space-y-6">
-                <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <div className="space-y-5">
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex items-center gap-3 text-emerald-600">
-                        <CheckCircle2 size={28} />
+                        <CheckCircle2 size={24} />
                         <div>
-                            <h1 className="text-2xl font-bold text-slate-900">HR Email Summary</h1>
+                            <h1 className="text-xl font-bold text-slate-900">HR Email Summary</h1>
                             <p className="mt-1 text-sm text-slate-500">The send flow has finished for the selected employees.</p>
                         </div>
                     </div>
 
-                    <div className="mt-8 grid gap-4 md:grid-cols-3">
+                    <div className="mt-6 grid gap-3 md:grid-cols-3">
                         <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                            <div className="text-sm font-semibold text-emerald-700">Sent</div>
-                            <div className="mt-2 text-3xl font-black text-emerald-700">{result.totalSent || 0}</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Sent</div>
+                            <div className="mt-2 text-2xl font-black text-emerald-700">{result.totalSent || 0}</div>
                         </div>
                         <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
-                            <div className="text-sm font-semibold text-amber-700">Failed</div>
-                            <div className="mt-2 text-3xl font-black text-amber-700">{result.totalFailed || 0}</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Failed</div>
+                            <div className="mt-2 text-2xl font-black text-amber-700">{result.totalFailed || 0}</div>
                         </div>
                         <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                            <div className="text-sm font-semibold text-blue-700">Dossier Saves</div>
-                            <div className="mt-2 text-3xl font-black text-blue-700">{dossierSavedCount}</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Dossier Saves</div>
+                            <div className="mt-2 text-2xl font-black text-blue-700">{dossierSavedCount}</div>
                         </div>
                     </div>
 
@@ -365,11 +365,11 @@ const HREmailSend = () => {
                         </div>
                     )}
 
-                    <div className="mt-8 flex flex-wrap gap-3">
+                    <div className="mt-6 flex flex-wrap gap-3">
                         <button
                             type="button"
                             onClick={resetForm}
-                            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                         >
                             Send Another
                         </button>
@@ -377,7 +377,7 @@ const HREmailSend = () => {
                             <button
                                 type="button"
                                 onClick={() => navigate(`/dossier/${primaryHistoryUserId}?tab=email-history`)}
-                                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                             >
                                 View History
                             </button>
@@ -389,20 +389,20 @@ const HREmailSend = () => {
     }
 
     return (
-        <div className="space-y-6">
-            <div className="rounded-[32px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50 p-8 shadow-sm">
-                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-5">
+            <div className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50 p-6 shadow-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                     <div>
                         <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">
                             <Mail size={14} />
                             HR Communication
                         </div>
-                        <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900">Send HR Email</h1>
+                        <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900">Send HR Email</h1>
                         <p className="mt-2 max-w-2xl text-sm text-slate-600">
                             Select active employees, compose a reusable message with placeholders, attach supporting files, and save them into each employee dossier after sending.
                         </p>
                     </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600">
                         <span className="font-semibold text-slate-900">{selectedEmployees.length}</span> employee(s) selected
                     </div>
                 </div>
@@ -411,10 +411,10 @@ const HREmailSend = () => {
             {renderStepIndicator()}
 
             {step === 1 && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900">Choose Recipients</h2>
+                            <h2 className="text-lg font-bold text-slate-900">Choose Recipients</h2>
                             <p className="mt-1 text-sm text-slate-500">Search active employees and build your recipient list.</p>
                         </div>
                         <div className="relative w-full md:w-80">
@@ -423,7 +423,7 @@ const HREmailSend = () => {
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
                                 placeholder="Search by name, email, code..."
-                                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
                             />
                         </div>
                     </div>
@@ -435,7 +435,7 @@ const HREmailSend = () => {
                                     key={employee._id}
                                     type="button"
                                     onClick={() => removeEmployee(employee._id)}
-                                    className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700"
+                                    className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
                                 >
                                     <span>{`${employee.firstName} ${employee.lastName}`.trim()}</span>
                                     <X size={14} />
@@ -445,47 +445,65 @@ const HREmailSend = () => {
                     )}
 
                     <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
-                        <div className="grid grid-cols-[auto,1.3fr,1fr,1fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            <div>Select</div>
-                            <div>Employee</div>
-                            <div>Role</div>
-                            <div>Email</div>
-                        </div>
-                        <div className="max-h-[420px] overflow-y-auto">
-                            {loadingEmployees ? (
-                                <div className="flex items-center justify-center gap-3 px-4 py-10 text-sm text-slate-500">
-                                    <Loader size={18} className="animate-spin" />
-                                    Loading employees...
-                                </div>
-                            ) : employees.length === 0 ? (
-                                <div className="px-4 py-10 text-center text-sm text-slate-500">No active employees matched your search.</div>
-                            ) : employees.map((employee) => {
-                                const isSelected = selectedEmployees.some((item) => String(item._id) === String(employee._id));
+                        <div className="max-h-[420px] overflow-auto">
+                            <table className="w-full min-w-[860px] border-collapse text-sm">
+                                <thead className="sticky top-0 z-10 bg-slate-50">
+                                    <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        <th className="w-16 px-4 py-3 text-left">Select</th>
+                                        <th className="px-4 py-3 text-left">Employee</th>
+                                        <th className="px-4 py-3 text-left">Designation</th>
+                                        <th className="px-4 py-3 text-left">Department</th>
+                                        <th className="px-4 py-3 text-left">Email</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                    {loadingEmployees ? (
+                                        <tr>
+                                            <td colSpan={5} className="px-4 py-10">
+                                                <div className="flex items-center justify-center gap-3 text-sm text-slate-500">
+                                                    <Loader size={18} className="animate-spin" />
+                                                    Loading employees...
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : employees.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                                                No active employees matched your search.
+                                            </td>
+                                        </tr>
+                                    ) : employees.map((employee) => {
+                                        const isSelected = selectedEmployees.some((item) => String(item._id) === String(employee._id));
 
-                                return (
-                                    <button
-                                        key={employee._id}
-                                        type="button"
-                                        onClick={() => toggleEmployee(employee)}
-                                        className={`grid w-full grid-cols-[auto,1.3fr,1fr,1fr] gap-3 border-b border-slate-100 px-4 py-4 text-left transition hover:bg-slate-50 ${
-                                            isSelected ? 'bg-blue-50/60' : 'bg-white'
-                                        }`}
-                                    >
-                                        <div className="pt-1">
-                                            <input type="checkbox" readOnly checked={isSelected} className="h-4 w-4 rounded border-slate-300" />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="font-semibold text-slate-900">{`${employee.firstName} ${employee.lastName}`.trim()}</div>
-                                            <div className="mt-1 text-xs text-slate-500">Code: {employee.employeeCode || 'N/A'}</div>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="text-sm text-slate-700">{employee.designation || 'Not set'}</div>
-                                            <div className="mt-1 text-xs text-slate-500">{employee.department || 'No department'}</div>
-                                        </div>
-                                        <div className="truncate text-sm text-slate-600">{employee.email || 'No email found'}</div>
-                                    </button>
-                                );
-                            })}
+                                        return (
+                                            <tr
+                                                key={employee._id}
+                                                onClick={() => toggleEmployee(employee)}
+                                                className={`cursor-pointer transition hover:bg-slate-50 ${
+                                                    isSelected ? 'bg-blue-50/60' : 'bg-white'
+                                                }`}
+                                            >
+                                                <td className="px-4 py-3 align-top">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => toggleEmployee(employee)}
+                                                        onClick={(event) => event.stopPropagation()}
+                                                        className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-3 align-top">
+                                                    <div className="font-semibold text-slate-900">{`${employee.firstName} ${employee.lastName}`.trim()}</div>
+                                                    <div className="mt-1 text-xs text-slate-500">Code: {employee.employeeCode || 'N/A'}</div>
+                                                </td>
+                                                <td className="px-4 py-3 align-top text-slate-700">{employee.designation || 'Not set'}</td>
+                                                <td className="px-4 py-3 align-top text-slate-600">{employee.department || 'No department'}</td>
+                                                <td className="px-4 py-3 align-top text-slate-600">{employee.email || 'No email found'}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -494,7 +512,7 @@ const HREmailSend = () => {
                             type="button"
                             disabled={selectedEmployees.length === 0}
                             onClick={() => setStep(2)}
-                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                         >
                             Next
                             <ChevronRight size={16} />
@@ -505,22 +523,22 @@ const HREmailSend = () => {
 
             {step === 2 && (
                 <div className="grid gap-6 lg:grid-cols-[1.25fr,0.75fr]">
-                    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="text-xl font-bold text-slate-900">Compose Email</h2>
+                                <h2 className="text-lg font-bold text-slate-900">Compose Email</h2>
                                 <p className="mt-1 text-sm text-slate-500">Pick a template or write from scratch.</p>
                             </div>
                             {loadingOptions && <Loader size={18} className="animate-spin text-slate-400" />}
                         </div>
 
-                        <div className="mt-6 grid gap-4 md:grid-cols-2">
+                        <div className="mt-5 grid gap-4 md:grid-cols-2">
                             <div>
                                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Template</label>
                                 <select
                                     value={selectedTemplateId}
                                     onChange={(event) => handleTemplateChange(event.target.value)}
-                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
+                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
                                 >
                                     <option value="">None (compose manually)</option>
                                     {templates.map((template) => (
@@ -533,7 +551,7 @@ const HREmailSend = () => {
                                 <select
                                     value={selectedAccountId}
                                     onChange={(event) => setSelectedAccountId(event.target.value)}
-                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
+                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
                                 >
                                     {emailAccounts.map((account) => (
                                         <option key={account._id} value={account._id}>
@@ -550,7 +568,7 @@ const HREmailSend = () => {
                                 value={subject}
                                 onChange={(event) => setSubject(event.target.value)}
                                 placeholder="Use placeholders like {{firstName}} and {{companyName}}"
-                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
                             />
                         </div>
 
@@ -559,15 +577,15 @@ const HREmailSend = () => {
                             <textarea
                                 value={htmlBody}
                                 onChange={(event) => setHtmlBody(event.target.value)}
-                                rows={16}
+                                rows={14}
                                 placeholder="Write plain text or HTML. Placeholder syntax is supported."
-                                className="w-full rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 font-mono text-sm text-slate-100 outline-none transition focus:border-blue-400"
+                                className="w-full rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3.5 font-mono text-sm text-slate-100 outline-none transition focus:border-blue-400"
                             />
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
                             {PLACEHOLDERS.map((placeholder) => (
-                                <span key={placeholder} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                                <span key={placeholder} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
                                     {`{{${placeholder}}}`}
                                 </span>
                             ))}
@@ -577,7 +595,7 @@ const HREmailSend = () => {
                             <button
                                 type="button"
                                 onClick={() => setStep(1)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                             >
                                 <ChevronLeft size={16} />
                                 Back
@@ -586,7 +604,7 @@ const HREmailSend = () => {
                                 type="button"
                                 disabled={!subject.trim() || !htmlBody.trim()}
                                 onClick={() => setStep(3)}
-                                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                             >
                                 Next
                                 <ChevronRight size={16} />
@@ -594,7 +612,7 @@ const HREmailSend = () => {
                         </div>
                     </div>
 
-                    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div className="flex items-center gap-2">
                             <Eye size={18} className="text-blue-600" />
                             <div>
@@ -605,12 +623,12 @@ const HREmailSend = () => {
                             </div>
                         </div>
 
-                        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Subject</div>
                             <div className="mt-2 text-sm font-semibold text-slate-900">{previewSubject || 'Subject preview appears here'}</div>
                         </div>
 
-                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                             <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Body</div>
                             <div
                                 className="prose prose-sm max-w-none text-slate-700"
@@ -622,22 +640,22 @@ const HREmailSend = () => {
             )}
 
             {step === 3 && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <h2 className="text-xl font-bold text-slate-900">Attachments & Dossier</h2>
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 className="text-lg font-bold text-slate-900">Attachments & Dossier</h2>
                     <p className="mt-1 text-sm text-slate-500">Attach files for the email and decide whether they should be saved into employee dossiers.</p>
 
                     <div
                         onDragOver={(event) => event.preventDefault()}
                         onDrop={handleDrop}
-                        className="mt-6 rounded-3xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center"
+                        className="mt-5 rounded-3xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center"
                     >
                         <Upload size={24} className="mx-auto text-slate-400" />
-                        <h3 className="mt-4 text-lg font-semibold text-slate-900">Drop files here or browse</h3>
+                        <h3 className="mt-3 text-base font-semibold text-slate-900">Drop files here or browse</h3>
                         <p className="mt-2 text-sm text-slate-500">PDF, DOC, DOCX, and image files are supported. Maximum 5 files, 10MB each.</p>
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="mt-5 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                            className="mt-4 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                         >
                             Choose Files
                         </button>
@@ -670,7 +688,7 @@ const HREmailSend = () => {
                         </div>
                     )}
 
-                    <div className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
                         <div className="flex items-start justify-between gap-4">
                             <div>
                                 <h3 className="text-base font-bold text-slate-900">Save attachments to Employee Dossier</h3>
@@ -696,7 +714,7 @@ const HREmailSend = () => {
                                     <select
                                         value={dossierCategory}
                                         onChange={(event) => setDossierCategory(event.target.value)}
-                                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-300"
+                                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-blue-300"
                                     >
                                         {DOSSIER_CATEGORIES.map((category) => (
                                             <option key={category} value={category}>{category}</option>
@@ -717,7 +735,7 @@ const HREmailSend = () => {
                             onChange={(event) => setNotes(event.target.value)}
                             rows={4}
                             placeholder="Add an internal note for HR records. This is not included in the email body."
-                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
                         />
                     </div>
 
@@ -725,7 +743,7 @@ const HREmailSend = () => {
                         <button
                             type="button"
                             onClick={() => setStep(2)}
-                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                         >
                             <ChevronLeft size={16} />
                             Back
@@ -733,7 +751,7 @@ const HREmailSend = () => {
                         <button
                             type="button"
                             onClick={() => setStep(4)}
-                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                         >
                             Next
                             <ChevronRight size={16} />
@@ -743,8 +761,8 @@ const HREmailSend = () => {
             )}
 
             {step === 4 && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <h2 className="text-xl font-bold text-slate-900">Review & Send</h2>
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 className="text-lg font-bold text-slate-900">Review & Send</h2>
                     <p className="mt-1 text-sm text-slate-500">Check the summary before sending.</p>
 
                     <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -755,7 +773,7 @@ const HREmailSend = () => {
                             </div>
                             <div className="mt-4 flex flex-wrap gap-2">
                                 {selectedEmployees.map((employee) => (
-                                    <span key={employee._id} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700">
+                                    <span key={employee._id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700">
                                         {`${employee.firstName} ${employee.lastName}`.trim()} · {employee.email || 'No email'}
                                     </span>
                                 ))}
