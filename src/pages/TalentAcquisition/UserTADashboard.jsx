@@ -114,6 +114,7 @@ const UserTADashboard = ({ providedUserName }) => {
     const getDecisionColor = useCallback((decision) => {
         switch (decision) {
             case 'Rejected': return 'text-red-600 font-bold';
+            case 'Did Not Turn Up': return 'text-rose-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
             default: return 'text-slate-600';
         }

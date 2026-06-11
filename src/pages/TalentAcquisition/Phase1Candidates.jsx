@@ -248,6 +248,7 @@ const Phase1Candidates = () => {
         switch (decision) {
             case 'Shortlisted': return 'text-emerald-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
+            case 'Did Not Turn Up': return 'text-rose-600 font-bold';
             case 'On Hold': return 'text-amber-600 font-bold';
             default: return 'text-slate-600';
         }
@@ -591,6 +592,7 @@ const Phase1Candidates = () => {
                                                                 <option value="None" className="text-slate-600">None</option>
                                                                 <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
                                                                 <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                <option value="Did Not Turn Up" className="text-rose-600 font-bold">Did Not Turn Up</option>
                                                                 <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                             </select>
                                                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">

@@ -122,6 +122,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('offboarding.create')
     || user?.permissions?.includes('offboarding.update')
     || user?.permissions?.includes('*');
+  const showHREmail = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('hr_email.send')
+    || user?.permissions?.includes('*');
   const showRecycleBin = user?.roles?.includes('Admin') || user?.permissions?.includes('bin.view');
   const showBusinessUnits = hasModule('businessUnits') && (
     user?.roles?.includes('Admin')
@@ -139,7 +142,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   );
   const showProjects = hasModule('projects');
   const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
-  const showOrganizationSection = showEmployees || showOnboarding || showOffboarding;
+  const showOrganizationSection = showEmployees || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = user?.roles?.includes('Admin')
     || user?.permissions?.includes('settings.email.view')
@@ -414,6 +417,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <Link to="/offboarding" className={getSidebarLinkClass(location.pathname === '/offboarding')} onClick={onClose}>
                   <LogOut size={18} />
                   <span>Offboarding</span>
+                </Link>
+              )}
+              {showHREmail && (
+                <Link to="/hr-email/send" className={getSidebarLinkClass(location.pathname === '/hr-email/send')} onClick={onClose}>
+                  <Mail size={18} />
+                  <span>Send HR Email</span>
                 </Link>
               )}
               {showRecycleBin && (

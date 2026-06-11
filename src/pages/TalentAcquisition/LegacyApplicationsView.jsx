@@ -15,11 +15,14 @@ import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+
 const decisionColor = (d) => {
     switch (d) {
         case 'Shortlisted': return 'bg-sky-100 text-sky-700 border-sky-200';
         case 'Profile Shared': return 'bg-blue-100 text-blue-700 border-blue-200';
         case 'Rejected': return 'bg-red-100 text-red-700 border-red-200';
+        case 'Did Not Turn Up': return 'bg-rose-100 text-rose-700 border-rose-200';
         case 'On Hold': return 'bg-amber-100 text-amber-700 border-amber-200';
         case 'Selected': return 'bg-purple-100 text-purple-700 border-purple-200';
         case 'None': return 'bg-slate-100 text-slate-500 border-slate-200';
@@ -383,7 +386,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                 ['All', 'All Statuses'], ['Interested', 'Interested'], ['Not Interested', 'Not Interested'], ['Not Relevant', 'Not Relevant'], ['Not Picking', 'Not Picking']
                             ]} />
                             <FilterSelect label="Decision" val={filterDecision} onChange={setFilterDecision} options={
-                                activePhase === 1 ? [['All', 'All Decisions'], ['Shortlisted', 'Shortlisted'], ['Profile Shared', 'Profile Shared'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['None', 'None']] :
+                                activePhase === 1 ? [['All', 'All Decisions'], ['Shortlisted', 'Shortlisted'], ['Profile Shared', 'Profile Shared'], ['Rejected', 'Rejected'], ['Did Not Turn Up', 'Did Not Turn Up'], ['On Hold', 'On Hold'], ['None', 'None']] :
                                 activePhase === 2 ? [['All', 'All Decisions'], ['Shortlisted_Selected', 'Shortlisted/Selected'], ['Selected', 'Selected'], ['Rejected', 'Rejected'], ['On Hold', 'On Hold'], ['None', 'None']] :
                                     [['All', 'All Decisions'], ['Offer Sent', 'Offer Sent'], ['Offer Accepted', 'Offer Accepted'], ['Joined', 'Joined'], ['No Show_Offer Declined', 'Declined'], ['Rejected', 'Rejected'], ['None', 'None']]
                             } />
@@ -546,6 +549,16 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
             };
 
             const workbook = new ExcelJS.Workbook();
+            const validationSheet = workbook.addWorksheet('_ValidationLists');
+            const buildValidationRangeFormula = (columnLetter, itemCount) => (
+                `'${validationSheet.name}'!$${columnLetter}$1:$${columnLetter}$${Math.max(itemCount, 1)}`
+            );
+
+            LEGACY_EXPORT_STATUS_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`A${index + 1}`).value = option;
+            });
+            validationSheet.state = 'hidden';
+            const candidateStatusValidationFormula = buildValidationRangeFormula('A', LEGACY_EXPORT_STATUS_OPTIONS.length);
 
             selectedOpenings.forEach(idx => {
                 const opening = openings[idx];
@@ -577,6 +590,19 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
                         pulledBy: toEmptyCell(c.profilePulledBy)
                     });
                 });
+
+                const statusColumnNumber = 5;
+                const lastStatusRow = Math.max(1000, opening.candidates.length + 1);
+                for (let rowNumber = 2; rowNumber <= lastStatusRow; rowNumber += 1) {
+                    sheet.getCell(rowNumber, statusColumnNumber).dataValidation = {
+                        type: 'list',
+                        allowBlank: true,
+                        showErrorMessage: true,
+                        formulae: [candidateStatusValidationFormula],
+                        errorTitle: 'Invalid Status',
+                        error: `Status must be one of: ${LEGACY_EXPORT_STATUS_OPTIONS.join(', ')}.`
+                    };
+                }
             });
 
             const buffer = await workbook.xlsx.writeBuffer();

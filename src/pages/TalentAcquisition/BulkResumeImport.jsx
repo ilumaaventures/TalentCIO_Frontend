@@ -284,7 +284,8 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                     resumeUrl,
                     resumePublicId,
                     niceToHaveSkills: dataItem.niceToHaveSkills,
-                    source: 'Direct Upload'
+                    source: 'Direct Upload',
+                    allowOwnedDuplicateUpdate: true
                 };
 
                 const createRes = await api.post('/ta/candidates', candidatePayload);

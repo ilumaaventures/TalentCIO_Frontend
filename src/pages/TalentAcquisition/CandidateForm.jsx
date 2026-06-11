@@ -525,8 +525,19 @@ const CandidateForm = () => {
                 params.mobile = value;
             }
 
-            const res = await api.get('/ta/candidates/duplicate-check', { params });
+            const res = await api.get('/ta/candidates/duplicate-check', {
+                params: {
+                    ...params,
+                    allowOwnedDuplicateUpdate: true
+                }
+            });
             if (res.data?.exists) {
+                if (res.data?.canAutoUpdate) {
+                    setDupCheck(prev => ({ ...prev, [field]: null }));
+                    setDuplicateCandidates(prev => ({ ...prev, [field]: null }));
+                    return;
+                }
+
                 const duplicateMessage = res.data?.message || 'This candidate already exists in the system.';
                 setDuplicateCandidates(prev => ({ ...prev, [field]: true }));
                 setDupCheck(prev => ({
@@ -610,11 +621,12 @@ const CandidateForm = () => {
                     params: {
                         hiringRequestId,
                         email: formData.email,
-                        mobile: formData.mobile
+                        mobile: formData.mobile,
+                        allowOwnedDuplicateUpdate: true
                     }
                 });
 
-                if (duplicateResponse.data?.exists) {
+                if (duplicateResponse.data?.exists && !duplicateResponse.data?.canAutoUpdate) {
                     toast.error(duplicateResponse.data?.message || 'This candidate already exists in the system.');
                     setLoading(false);
                     return;
@@ -655,7 +667,8 @@ const CandidateForm = () => {
                 totalExperience: Number(formData.totalExperience),
                 tatToJoin: formData.tatToJoin ? Number(formData.tatToJoin) : undefined,
                 noticePeriod: formData.noticePeriod ? Number(formData.noticePeriod) : undefined,
-                lastWorkingDay: formData.lastWorkingDay || undefined
+                lastWorkingDay: formData.lastWorkingDay || undefined,
+                allowOwnedDuplicateUpdate: !isEditMode
             };
 
             let response;

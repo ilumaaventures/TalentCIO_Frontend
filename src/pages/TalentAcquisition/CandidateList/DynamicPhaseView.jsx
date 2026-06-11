@@ -19,6 +19,7 @@ import { canViewTACandidateDetails } from '../../../constants/accessPolicies';
 
 const TOTAL_CANDIDATE_CARD_KEY = 'total_candidates';
 const INTERVIEWS_CARD_KEY = 'interviews';
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
 
 const getPhaseEntryForOrder = (candidate, phaseOrder) => {
     const matches = (candidate?.phaseHistory || []).filter((entry) => Number(entry.phaseOrder) === Number(phaseOrder));
@@ -921,6 +922,26 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Candidates');
+            const validationSheet = workbook.addWorksheet('_ValidationLists');
+            const candidateStatusOptions = (() => {
+                const phaseStatusOptions = (activePhase?.statusOptions || [])
+                    .map((statusOption) => String(statusOption?.label || statusOption?.value || '').trim())
+                    .filter(Boolean);
+
+                return phaseStatusOptions.length > 0
+                    ? [...new Set(phaseStatusOptions)]
+                    : LEGACY_EXPORT_STATUS_OPTIONS;
+            })();
+
+            const buildValidationRangeFormula = (columnLetter, itemCount) => (
+                `'${validationSheet.name}'!$${columnLetter}$1:$${columnLetter}$${Math.max(itemCount, 1)}`
+            );
+
+            candidateStatusOptions.forEach((option, index) => {
+                validationSheet.getCell(`A${index + 1}`).value = option;
+            });
+            validationSheet.state = 'hidden';
+            const candidateStatusValidationFormula = buildValidationRangeFormula('A', candidateStatusOptions.length);
 
             const row1Data = [];
             excelSections.forEach((section) => {
@@ -944,6 +965,30 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                 }
                 currentCol += section.width;
             });
+
+            const applyCandidateStatusValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title === 'Status & Remarks') {
+                        const statusOffset = section.subHeaders.indexOf('Status');
+                        if (statusOffset >= 0) {
+                            const statusCol = sectionStartCol + statusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, statusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [candidateStatusValidationFormula],
+                                    errorTitle: 'Invalid Status',
+                                    error: `Status must be one of: ${candidateStatusOptions.join(', ')}.`
+                                };
+                            }
+                        }
+                    }
+
+                    sectionStartCol += section.width;
+                });
+            };
 
             row2Data.forEach((header, index) => {
                 const column = sheet.getColumn(index + 1);
@@ -1105,6 +1150,9 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                     row.getCell(decisionStatusColIndex).value = null;
                 }
             });
+
+            const lastCandidateRow = Math.max(1000, dataToExport.length + 2);
+            applyCandidateStatusValidation(3, lastCandidateRow);
 
             const buffer = await workbook.xlsx.writeBuffer();
             const roleTitle = requisitionData?.roleDetails?.title || hiringRequest.positionName || hiringRequest.requestId || 'Candidates';

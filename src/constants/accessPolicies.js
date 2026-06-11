@@ -19,6 +19,7 @@ export const OFFBOARDING_VIEW_PERMISSIONS = [
     'offboarding.create',
     'offboarding.update'
 ];
+export const HR_EMAIL_PERMISSIONS = ['hr_email.send'];
 export const OFFBOARDING_PERMISSIONS = OFFBOARDING_VIEW_PERMISSIONS;
 export const TA_CONFIG_PERMISSIONS = ['ta.manage', 'ta.config.view', 'ta.config.edit'];
 export const TA_ANALYTICS_PERMISSIONS = ['ta.manage', 'ta.analytics.global', 'ta.analytics.assigned'];

@@ -19,6 +19,11 @@ import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Scheduled'];
+const PROFILE_SHORTLISTED_EXPORT_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
+const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
+
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
     (
@@ -426,11 +431,16 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
 };
 
 const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
+    const itemsPerPage = 15;
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
+    const [serverTotalPages, setServerTotalPages] = useState(1);
+    const [serverResultCount, setServerResultCount] = useState(0);
+    const [serverSummary, setServerSummary] = useState(null);
+    const [actionCandidates, setActionCandidates] = useState([]);
 
     // Filter States
     const [filterPreference, setFilterPreference] = useState('All');
@@ -471,6 +481,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const [isSidePanelMaximized, setIsSidePanelMaximized] = useState(false);
     const isAdmin = user?.roles?.includes('Admin');
+    const usesBackendPagination = !isLegacyView;
     const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
         || user?.permissions?.includes('ta.analytics.global');
     const canEditCandidates = isAdmin
@@ -588,7 +599,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
+    }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
 
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
@@ -598,6 +609,63 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
         return String(candidate?.candidateName || '').toLowerCase().includes(normalizedCandidateNameSearch);
     }, [normalizedCandidateNameSearch]);
+
+    const buildCandidateRequestParams = useCallback((overrides = {}) => {
+        const {
+            paginate = usesBackendPagination,
+            pageOverride = page,
+            limitOverride = itemsPerPage
+        } = overrides;
+
+        const params = {
+            t: Date.now()
+        };
+
+        if (dateFilterField) params.dateField = dateFilterField;
+        if (dateFrom) params.startDate = dateFrom;
+        if (dateTo) params.endDate = dateTo;
+
+        if (usesBackendPagination) {
+            params.paginate = paginate;
+            params.page = pageOverride;
+            params.limit = limitOverride;
+            params.activePhase = activePhase;
+            params.search = debouncedCandidateNameSearch.trim();
+            params.filterPreference = filterPreference;
+            params.filterStatus = filterStatus;
+            params.filterDecision = filterDecision;
+            params.filterExperience = filterExperience;
+            params.filterInterviewStatus = filterInterviewStatus;
+            params.filterRating = filterRating;
+            params.filterPulledBy = JSON.stringify(filterPulledBy);
+            params.filterUploadedBy = JSON.stringify(filterUploadedBy);
+            params.filterUploadType = filterUploadType;
+            params.filterTransferred = filterTransferred;
+            params.filterProfileShared = filterProfileShared;
+        }
+
+        return params;
+    }, [
+        activePhase,
+        dateFilterField,
+        dateFrom,
+        dateTo,
+        debouncedCandidateNameSearch,
+        filterDecision,
+        filterExperience,
+        filterInterviewStatus,
+        filterPreference,
+        filterProfileShared,
+        filterPulledBy,
+        filterRating,
+        filterStatus,
+        filterTransferred,
+        filterUploadType,
+        filterUploadedBy,
+        itemsPerPage,
+        page,
+        usesBackendPagination
+    ]);
 
     const pulledByOptions = useMemo(() => {
         const options = normalizeMultiValueFilter([
@@ -692,6 +760,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // This allows the cards to show correct overall metrics even when a specific card (which sets Status/Decision) is clicked.
     // 1. Structural population: Only structural filters (Pulled By, Transferred, Legacy)
     const structuralPhase1Candidates = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 1 ? candidates : [];
+        }
+
         return candidates.filter(candidate => {
             const matchCandidateName = matchesCandidateNameSearch(candidate);
             const matchPulledBy = matchesMultiValueFilter(filterPulledBy, candidate.profilePulledBy);
@@ -704,10 +776,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     : !candidate.isTransferred;
             return matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch]);
+    }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch, usesBackendPagination]);
 
     // 2. Base for Dynamic Cards: Structural + (Rating, Exp, Preference)
     const basePhase1Candidates = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 1 ? candidates : [];
+        }
+
         return structuralPhase1Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
@@ -726,10 +802,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchPreference && matchExperience && matchRating;
         });
-    }, [structuralPhase1Candidates, filterPreference, filterExperience, filterRating]);
+    }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase1Candidates, usesBackendPagination]);
 
     // 3. Final Filtered list for the table: Base + (Status, Decision, InterviewStatus)
     const filteredCandidates = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 1 ? candidates : [];
+        }
+
         return basePhase1Candidates.filter(candidate => {
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
@@ -742,10 +822,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared;
         });
-    }, [basePhase1Candidates, filterStatus, filterDecision, filterInterviewStatus, filterProfileShared, isProfileSharedCandidate]);
+    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
 
     // Compute Metrics for Summary Boxes (Phase 1 — computed from structuralPhase1Candidates for stability)
     const metrics = useMemo(() => {
+        if (usesBackendPagination && serverSummary?.phase1Metrics) {
+            return serverSummary.phase1Metrics;
+        }
+
         const counts = {
             total: structuralPhase1Candidates.length,
             interested: structuralPhase1Candidates.filter(c => c.status === 'Interested').length,
@@ -754,15 +838,21 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             ).length,
             shortlisted: structuralPhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
             rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected').length,
+            didNotTurnUp: structuralPhase1Candidates.filter(c => c.decision === 'Did Not Turn Up').length,
+            onHold: structuralPhase1Candidates.filter(c => c.decision === 'On Hold').length,
             profileShared: structuralPhase1Candidates.filter(c => isProfileSharedCandidate(c)).length,
             transferred: structuralPhase1Candidates.filter(c => c.isTransferred).length,
         };
         return counts;
-    }, [structuralPhase1Candidates, isProfileSharedCandidate]);
+    }, [serverSummary, structuralPhase1Candidates, isProfileSharedCandidate, usesBackendPagination]);
 
     // --- Phase 2: shortlisted candidates + their metrics ---
     // Structural Phase 2 population
     const structuralPhase2Candidates = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 2 ? candidates : [];
+        }
+
         return candidates.filter(c => {
             const isShortlisted = isProfileSharedCandidate(c);
             const matchCandidateName = matchesCandidateNameSearch(c);
@@ -772,10 +862,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
             return isShortlisted && matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, isProfileSharedCandidate, matchesCandidateNameSearch]);
+    }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, isProfileSharedCandidate, matchesCandidateNameSearch, usesBackendPagination]);
 
     // Base for Phase 2 dynamic cards
     const basePhase2Candidates = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 2 ? candidates : [];
+        }
+
         return structuralPhase2Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
@@ -790,10 +884,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchPreference && matchExperience && matchRating;
         });
-    }, [structuralPhase2Candidates, filterPreference, filterExperience, filterRating]);
+    }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase2Candidates, usesBackendPagination]);
 
     // Final Phase 2 list
     const phase2Filtered = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 2 ? candidates : [];
+        }
+
         return basePhase2Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'Shortlisted_Selected'
@@ -807,9 +905,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchDecision && matchInterviewStatus;
         });
-    }, [basePhase2Candidates, filterDecision, filterInterviewStatus]);
+    }, [activePhase, basePhase2Candidates, candidates, filterDecision, filterInterviewStatus, usesBackendPagination]);
 
     const phase2Metrics = useMemo(() => {
+        if (usesBackendPagination && serverSummary?.phase2Metrics) {
+            return serverSummary.phase2Metrics;
+        }
+
         return {
             totalShortlisted: structuralPhase2Candidates.length,
             totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
@@ -817,10 +919,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
             interviewScheduled: structuralPhase2Candidates.filter(hasPhase2InterviewActivity).length
         };
-    }, [structuralPhase2Candidates]);
+    }, [serverSummary, structuralPhase2Candidates, usesBackendPagination]);
 
     // Structural Phase 3 population
     const structuralPhase3Candidates = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 3 ? candidates : [];
+        }
+
         return candidates.filter(c => {
             const isSelected = c.phase2Decision === 'Selected';
             const matchCandidateName = matchesCandidateNameSearch(c);
@@ -830,10 +936,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
             return isSelected && matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
         });
-    }, [candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch]);
+    }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch, usesBackendPagination]);
 
     // Base for Phase 3 dynamic cards
     const basePhase3Candidates = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 3 ? candidates : [];
+        }
+
         return structuralPhase3Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
@@ -848,9 +958,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchPreference && matchExperience && matchRating;
         });
-    }, [structuralPhase3Candidates, filterPreference, filterExperience, filterRating]);
+    }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase3Candidates, usesBackendPagination]);
 
     const phase3Filtered = useMemo(() => {
+        if (usesBackendPagination) {
+            return activePhase === 3 ? candidates : [];
+        }
+
         return basePhase3Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'No Show_Offer Declined'
@@ -868,9 +982,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchDecision && matchInterviewStatus;
         });
-    }, [basePhase3Candidates, filterDecision, filterInterviewStatus]);
+    }, [activePhase, basePhase3Candidates, candidates, filterDecision, filterInterviewStatus, usesBackendPagination]);
 
     const phase3Metrics = useMemo(() => {
+        if (usesBackendPagination && serverSummary?.phase3Metrics) {
+            return serverSummary.phase3Metrics;
+        }
+
         return {
             total: structuralPhase3Candidates.length,
             offerSent: structuralPhase3Candidates.filter(c => ['Offer Sent', 'Offer Accepted', 'Joined'].includes(c.phase3Decision)).length,
@@ -878,18 +996,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             joined: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Joined').length,
             noShow: structuralPhase3Candidates.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
         };
-    }, [structuralPhase3Candidates]);
-
-    const itemsPerPage = 15;
-    const activeList = activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered;
-    const totalPages = Math.ceil(activeList.length / itemsPerPage) || 1;
-    const paginatedCandidates = activeList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
-    const allVisibleSelected = activeList.length > 0 && activeList.every((candidate) => selectedCandidateIds.includes(candidate._id));
-
-    useEffect(() => {
-        const visibleIds = new Set(activeList.map((candidate) => candidate._id));
-        setSelectedCandidateIds((prev) => prev.filter((id) => visibleIds.has(id)));
-    }, [activeList]);
+    }, [serverSummary, structuralPhase3Candidates, usesBackendPagination]);
 
     const fetchCandidates = useCallback(async () => {
         try {
@@ -897,19 +1004,79 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const endpoint = isLegacyView
                 ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
                 : `/ta/candidates/${hiringRequestId}`;
-            const params = { t: Date.now() };
-            if (dateFilterField) params.dateField = dateFilterField;
-            if (dateFrom) params.startDate = dateFrom;
-            if (dateTo) params.endDate = dateTo;
+            const params = isLegacyView ? { t: Date.now() } : buildCandidateRequestParams();
+            if (isLegacyView) {
+                if (dateFilterField) params.dateField = dateFilterField;
+                if (dateFrom) params.startDate = dateFrom;
+                if (dateTo) params.endDate = dateTo;
+            }
             const response = await api.get(endpoint, { params });
-            setCandidates(isLegacyView ? response.data : response.data.candidates || []);
+            if (isLegacyView) {
+                setCandidates(response.data);
+                setServerTotalPages(1);
+                setServerResultCount(Array.isArray(response.data) ? response.data.length : 0);
+                setServerSummary(null);
+            } else {
+                setCandidates(response.data.candidates || []);
+                setPage(response.data.currentPage || 1);
+                setServerTotalPages(response.data.totalPages || 1);
+                setServerResultCount(response.data.count || 0);
+                setServerSummary(response.data.summary || null);
+            }
         } catch (error) {
             console.error('Error fetching candidates:', error);
             toast.error('Failed to load candidates');
         } finally {
             setLoading(false);
         }
-    }, [dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView]);
+    }, [buildCandidateRequestParams, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView]);
+
+    const fetchAllMatchingCandidates = useCallback(async () => {
+        const endpoint = isLegacyView
+            ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
+            : `/ta/candidates/${hiringRequestId}`;
+        const params = isLegacyView
+            ? { t: Date.now() }
+            : buildCandidateRequestParams({
+                paginate: true,
+                pageOverride: 1,
+                limitOverride: Math.max(serverResultCount || itemsPerPage, itemsPerPage)
+            });
+
+        if (isLegacyView) {
+            if (dateFilterField) params.dateField = dateFilterField;
+            if (dateFrom) params.startDate = dateFrom;
+            if (dateTo) params.endDate = dateTo;
+        }
+
+        const response = await api.get(endpoint, { params });
+        return isLegacyView ? response.data : (response.data.candidates || []);
+    }, [
+        buildCandidateRequestParams,
+        dateFilterField,
+        dateFrom,
+        dateTo,
+        hiringRequestId,
+        isLegacyView,
+        itemsPerPage,
+        serverResultCount
+    ]);
+
+    const activeList = usesBackendPagination
+        ? candidates
+        : (activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered);
+    const totalPages = usesBackendPagination
+        ? serverTotalPages
+        : (Math.ceil(activeList.length / itemsPerPage) || 1);
+    const paginatedCandidates = usesBackendPagination
+        ? candidates
+        : activeList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+    const allVisibleSelected = activeList.length > 0 && activeList.every((candidate) => selectedCandidateIds.includes(candidate._id));
+
+    useEffect(() => {
+        const visibleIds = new Set(activeList.map((candidate) => candidate._id));
+        setSelectedCandidateIds((prev) => prev.filter((id) => visibleIds.has(id)));
+    }, [activeList]);
 
     useEffect(() => {
         if (hiringRequestId) {
@@ -992,14 +1159,28 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         });
     }, [activeList, allVisibleSelected]);
 
-    const openMassMailModal = useCallback(() => {
-        setShowMassMailModal(true);
-    }, []);
+    const openMassMailModal = useCallback(async () => {
+        try {
+            const matchingCandidates = await fetchAllMatchingCandidates();
+            setActionCandidates(matchingCandidates);
+            setShowMassMailModal(true);
+        } catch (error) {
+            console.error('Error preparing mass mail candidates:', error);
+            toast.error('Failed to load candidates for mass mail');
+        }
+    }, [fetchAllMatchingCandidates]);
 
-    const openTransferModal = useCallback((candidateIds = []) => {
-        setTransferPresetIds(candidateIds);
-        setShowTransferModal(true);
-    }, []);
+    const openTransferModal = useCallback(async (candidateIds = []) => {
+        try {
+            const matchingCandidates = await fetchAllMatchingCandidates();
+            setActionCandidates(matchingCandidates);
+            setTransferPresetIds(candidateIds);
+            setShowTransferModal(true);
+        } catch (error) {
+            console.error('Error preparing transfer candidates:', error);
+            toast.error('Failed to load candidates for transfer');
+        }
+    }, [fetchAllMatchingCandidates]);
 
     const handleTransferToOnboarding = useCallback(async (candidateId) => {
         if (!window.confirm("Are you sure you want to transfer this candidate to the onboarding pipeline? This will create a new onboarding record for them.")) return;
@@ -1081,7 +1262,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const techSkillsHeaders = Array.isArray(techSkillsFromReq) ? techSkillsFromReq : [];
 
             // 3. Determine Maximum Interview Rounds among all candidates for sizing the table
-            const dataToExport = activeList;
+            const dataToExport = await fetchAllMatchingCandidates();
             let maxRoundsCount = 1;
             dataToExport.forEach(candidate => {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
@@ -1119,11 +1300,26 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
                 ...roundSections,
-                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
+                { title: 'Final Status & Decision', subHeaders: [PROFILE_SHORTLISTED_HEADER, 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(sec => sec.width > 0);
 
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet('Candidates');
+            const validationSheet = workbook.addWorksheet('_ValidationLists');
+
+            const buildValidationRangeFormula = (columnLetter, itemCount) => (
+                `'${validationSheet.name}'!$${columnLetter}$1:$${columnLetter}$${Math.max(itemCount, 1)}`
+            );
+
+            LEGACY_EXPORT_STATUS_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`A${index + 1}`).value = option;
+            });
+            PROFILE_SHORTLISTED_EXPORT_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`B${index + 1}`).value = option;
+            });
+            validationSheet.state = 'hidden';
+            const candidateStatusValidationFormula = buildValidationRangeFormula('A', LEGACY_EXPORT_STATUS_OPTIONS.length);
+            const profileShortlistedValidationFormula = buildValidationRangeFormula('B', PROFILE_SHORTLISTED_EXPORT_OPTIONS.length);
 
             // Row 1: MAIN HEADINGS
             const row1Data = [];
@@ -1178,9 +1374,33 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     type: 'list',
                                     allowBlank: true,
                                     showErrorMessage: true,
-                                    formulae: ['"Shortlisted,Rejected,Scheduled"'],
+                                    formulae: [`"${EXPORT_INTERVIEW_STATUS_OPTIONS.join(',')}"`],
                                     errorTitle: 'Invalid Interview Status',
-                                    error: 'Interview Status must be one of: Shortlisted, Rejected, Scheduled.'
+                                    error: `Interview Status must be one of: ${EXPORT_INTERVIEW_STATUS_OPTIONS.join(', ')}.`
+                                };
+                            }
+                        }
+                    }
+
+                    sectionStartCol += section.width;
+                });
+            };
+
+            const applyCandidateStatusValidation = (startRow, endRow) => {
+                let sectionStartCol = 1;
+                excelSections.forEach((section) => {
+                    if (section.title === 'Status & Remarks') {
+                        const statusOffset = section.subHeaders.indexOf('Status');
+                        if (statusOffset >= 0) {
+                            const statusCol = sectionStartCol + statusOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, statusCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [candidateStatusValidationFormula],
+                                    errorTitle: 'Invalid Status',
+                                    error: `Status must be one of: ${LEGACY_EXPORT_STATUS_OPTIONS.join(', ')}.`
                                 };
                             }
                         }
@@ -1217,7 +1437,22 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 let sectionStartCol = 1;
                 excelSections.forEach((section) => {
                     if (section.title === 'Final Status & Decision') {
-                        ['Profile Shortlisted (Yes/No)', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
+                        const profileShortlistedOffset = section.subHeaders.indexOf(PROFILE_SHORTLISTED_HEADER);
+                        if (profileShortlistedOffset >= 0) {
+                            const targetCol = sectionStartCol + profileShortlistedOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, targetCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [profileShortlistedValidationFormula],
+                                    errorTitle: 'Invalid Value',
+                                    error: `${PROFILE_SHORTLISTED_HEADER} must be one of: ${PROFILE_SHORTLISTED_EXPORT_OPTIONS.join(', ')}.`
+                                };
+                            }
+                        }
+
+                        ['Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
                             const offset = section.subHeaders.indexOf(headerName);
                             if (offset >= 0) {
                                 const targetCol = sectionStartCol + offset;
@@ -1323,7 +1558,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     }
                 }
 
-                const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : (candidate.decision === 'Rejected' ? 'No' : '');
+                const profileShortlisted = candidate.decision === 'Shortlisted'
+                    ? 'Yes'
+                    : candidate.decision === 'Rejected'
+                        ? 'No'
+                        : candidate.decision === 'Did Not Turn Up'
+                            ? 'Did Not Turn Up'
+                            : candidate.decision === 'On Hold'
+                                ? 'On Hold'
+                                : '';
                 const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected') ? 'Yes' : null;
                 const phase2Selected = candidate.phase2Decision === 'Selected' ? 'Yes' : null;
                 const phase2InterviewStatus = getPhase2InterviewStatusExportValue(candidate);
@@ -1394,15 +1637,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 const formulaRow = row.number;
                 if (profileShortlisted) {
                     row.getCell(decisionStatusColIndex).value = {
-                        formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",""))`,
-                        result: profileShortlisted === 'Yes' ? 'Shortlisted' : (profileShortlisted === 'No' ? 'Rejected' : '')
+                        formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",IF(${colLetter}${formulaRow}="Did Not Turn Up","Did Not Turn Up",IF(${colLetter}${formulaRow}="On Hold","On Hold",""))))`,
+                        result: profileShortlisted === 'Yes'
+                            ? 'Shortlisted'
+                            : profileShortlisted === 'No'
+                                ? 'Rejected'
+                                : profileShortlisted
                     };
                 } else {
                     row.getCell(decisionStatusColIndex).value = null;
                 }
             });
 
-            const lastCandidateRow = Math.max(3, dataToExport.length + 2);
+            const lastCandidateRow = Math.max(1000, dataToExport.length + 2);
+            applyCandidateStatusValidation(3, lastCandidateRow);
             applyRoundColumnValidation(3, lastCandidateRow);
             applyPhase2InterviewStatusValidation(3, lastCandidateRow);
             applyFinalDecisionValidation(3, lastCandidateRow);
@@ -1485,6 +1733,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             case 'Offer Sent': return 'text-blue-600 font-bold';
             case 'Offer Accepted': return 'text-amber-600 font-bold';
             case 'Joined': return 'text-emerald-600 font-bold';
+            case 'Did Not Turn Up': return 'text-rose-600 font-bold';
             case 'No Show':
             case 'Offer Declined': return 'text-rose-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
@@ -1793,7 +2042,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             Send Mail
                                         </span>
                                         <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                                            {selectedCandidateIds.length || candidates.length}
+                                            {selectedCandidateIds.length || serverResultCount || candidates.length}
                                         </span>
                                     </button>
                                 )}
@@ -1955,14 +2204,35 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 });
                             }
 
-                            if (filterDecision === 'Rejected' && !filterProfileShared) {
-                                dynamicCards.push({
-                                    label: 'Rejected',
-                                    value: metrics.rejected,
-                                    icon: XCircle,
-                                    color: 'rose',
-                                    onClick: () => { }
-                                });
+                            if (!filterProfileShared) {
+                                const phase1DecisionCardMap = {
+                                    Rejected: {
+                                        label: 'Rejected',
+                                        value: metrics.rejected,
+                                        icon: XCircle,
+                                        color: 'rose'
+                                    },
+                                    'Did Not Turn Up': {
+                                        label: 'Did Not Turn Up',
+                                        value: metrics.didNotTurnUp,
+                                        icon: XCircle,
+                                        color: 'rose'
+                                    },
+                                    'On Hold': {
+                                        label: 'On Hold',
+                                        value: metrics.onHold,
+                                        icon: Clock,
+                                        color: 'slate'
+                                    }
+                                };
+
+                                const decisionCard = phase1DecisionCardMap[filterDecision];
+                                if (decisionCard) {
+                                    dynamicCards.push({
+                                        ...decisionCard,
+                                        onClick: () => { }
+                                    });
+                                }
                             }
 
                             if (filterPreference !== 'All') {
@@ -2370,6 +2640,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             <>
                                                 <option value="Shortlisted">Shortlisted</option>
                                                 <option value="Rejected">Rejected</option>
+                                                <option value="Did Not Turn Up">Did Not Turn Up</option>
                                                 <option value="On Hold">On Hold</option>
                                                 <option value="None">None</option>
                                             </>
@@ -2735,6 +3006,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
                                                                             <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                            <option value="Did Not Turn Up" className="text-rose-600 font-bold">Did Not Turn Up</option>
                                                                             <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                                         </select>
                                                                     ) : activePhase === 2 ? (
@@ -2964,7 +3236,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             </div>
 
                             {/* Pagination Controls */}
-                            {!loading && filteredCandidates.length > 0 && (
+                            {!loading && activeList.length > 0 && (
                                 <div className="flex justify-end items-center mt-6 gap-4 pr-4 pb-4">
                                     <button
                                         onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -3040,13 +3312,17 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             {showMassMailModal && (
                 <MassMailModal
                     isOpen={showMassMailModal}
-                    onClose={() => setShowMassMailModal(false)}
+                    onClose={() => {
+                        setShowMassMailModal(false);
+                        setActionCandidates([]);
+                    }}
                     hiringRequestId={hiringRequestId}
                     requestMeta={requestMeta}
-                    candidates={candidates}
+                    candidates={actionCandidates}
                     initialSelectedIds={selectedCandidateIds}
                     onSent={() => {
                         setSelectedCandidateIds([]);
+                        setActionCandidates([]);
                         fetchCandidates();
                     }}
                 />
@@ -3058,12 +3334,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     onClose={() => {
                         setShowTransferModal(false);
                         setTransferPresetIds([]);
+                        setActionCandidates([]);
                     }}
-                    candidates={candidates}
+                    candidates={actionCandidates}
                     fromHiringRequestId={hiringRequestId}
                     initialSelectedIds={transferPresetIds.length ? transferPresetIds : selectedCandidateIds}
                     onTransferred={() => {
                         setSelectedCandidateIds([]);
+                        setActionCandidates([]);
                         fetchCandidates();
                     }}
                 />
