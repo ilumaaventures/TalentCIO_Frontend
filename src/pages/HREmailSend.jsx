@@ -99,7 +99,7 @@ const HREmailSend = () => {
             } finally {
                 setLoadingEmployees(false);
             }
-        }, 300);
+        }, 1500);
 
         return () => window.clearTimeout(timer);
     }, [search]);
@@ -139,6 +139,16 @@ const HREmailSend = () => {
     const selectedEmployeeMap = useMemo(() => (
         new Map(selectedEmployees.map((employee) => [String(employee._id), employee]))
     ), [selectedEmployees]);
+    const visibleEmployeeIds = useMemo(() => (
+        employees.map((employee) => String(employee._id))
+    ), [employees]);
+    const visibleEmployeeIdSet = useMemo(() => (
+        new Set(visibleEmployeeIds)
+    ), [visibleEmployeeIds]);
+    const visibleSelectedCount = useMemo(() => (
+        visibleEmployeeIds.filter((employeeId) => selectedEmployeeMap.has(employeeId)).length
+    ), [selectedEmployeeMap, visibleEmployeeIds]);
+    const allVisibleSelected = visibleEmployeeIds.length > 0 && visibleSelectedCount === visibleEmployeeIds.length;
 
     const previewEmployee = selectedEmployees[0] || null;
     const previewData = useMemo(() => ({
@@ -170,6 +180,22 @@ const HREmailSend = () => {
 
     const removeEmployee = (employeeId) => {
         setSelectedEmployees((current) => current.filter((employee) => String(employee._id) !== String(employeeId)));
+    };
+
+    const toggleAllVisibleEmployees = () => {
+        setSelectedEmployees((current) => {
+            const currentMap = new Map(current.map((employee) => [String(employee._id), employee]));
+            const shouldSelectAll = employees.some((employee) => !currentMap.has(String(employee._id)));
+
+            if (shouldSelectAll) {
+                employees.forEach((employee) => {
+                    currentMap.set(String(employee._id), employee);
+                });
+                return Array.from(currentMap.values());
+            }
+
+            return current.filter((employee) => !visibleEmployeeIdSet.has(String(employee._id)));
+        });
     };
 
     const handleTemplateChange = (templateId) => {
@@ -321,7 +347,7 @@ const HREmailSend = () => {
         const primaryHistoryUserId = result.sent?.[0]?.userId || selectedEmployees[0]?._id;
 
         return (
-            <div className="space-y-5">
+            <div className="mx-auto max-w-6xl space-y-5">
                 <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex items-center gap-3 text-emerald-600">
                         <CheckCircle2 size={24} />
@@ -389,7 +415,7 @@ const HREmailSend = () => {
     }
 
     return (
-        <div className="space-y-5">
+        <div className="mx-auto max-w-6xl space-y-5">
             <div className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50 p-6 shadow-sm">
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                     <div>
@@ -398,12 +424,6 @@ const HREmailSend = () => {
                             HR Communication
                         </div>
                         <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900">Send HR Email</h1>
-                        <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                            Select active employees, compose a reusable message with placeholders, attach supporting files, and save them into each employee dossier after sending.
-                        </p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600">
-                        <span className="font-semibold text-slate-900">{selectedEmployees.length}</span> employee(s) selected
                     </div>
                 </div>
             </div>
@@ -428,6 +448,24 @@ const HREmailSend = () => {
                         </div>
                     </div>
 
+                    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
+                        <div className="text-sm text-slate-600">
+                            {visibleEmployeeIds.length > 0
+                                ? `${visibleSelectedCount} of ${visibleEmployeeIds.length} visible employees selected`
+                                : 'No employees available to select'}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={toggleAllVisibleEmployees}
+                                disabled={visibleEmployeeIds.length === 0}
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                {allVisibleSelected ? 'Clear Visible' : 'Select All Visible'}
+                            </button>
+                        </div>
+                    </div>
+
                     {selectedEmployees.length > 0 && (
                         <div className="mt-6 flex flex-wrap gap-2">
                             {selectedEmployees.map((employee) => (
@@ -446,10 +484,21 @@ const HREmailSend = () => {
 
                     <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
                         <div className="max-h-[420px] overflow-auto">
-                            <table className="w-full min-w-[860px] border-collapse text-sm">
+                            <table className="w-full min-w-[720px] border-collapse text-sm">
                                 <thead className="sticky top-0 z-10 bg-slate-50">
                                     <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        <th className="w-16 px-4 py-3 text-left">Select</th>
+                                        <th className="w-16 px-4 py-3 text-left">
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={allVisibleSelected}
+                                                    onChange={toggleAllVisibleEmployees}
+                                                    disabled={visibleEmployeeIds.length === 0}
+                                                    className="h-4 w-4 rounded border-slate-300"
+                                                />
+                                                <span>Select</span>
+                                            </div>
+                                        </th>
                                         <th className="px-4 py-3 text-left">Employee</th>
                                         <th className="px-4 py-3 text-left">Designation</th>
                                         <th className="px-4 py-3 text-left">Department</th>
