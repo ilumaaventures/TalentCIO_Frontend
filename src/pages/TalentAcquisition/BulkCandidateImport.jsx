@@ -11,6 +11,8 @@ const normalizeSkillLabel = (value) => String(value || '').trim();
 const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();
 const normalizeHeaderValue = (value) => String(value || '').trim().toLowerCase();
 const ROUND_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled'];
+const PROFILE_SHORTLISTED_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
+const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
 const LEGACY_CANDIDATE_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
 
 const getCandidateStatusOptionsForImport = (request) => {
@@ -88,6 +90,33 @@ const normalizePhase2InterviewStatus = (value) => {
 const hasInvalidYesNoValue = (rawValue, parsedValue) => {
     const normalized = String(rawValue || '').trim();
     return normalized !== '' && parsedValue === null;
+};
+
+const normalizeProfileShortlistedValue = (value) => {
+    const rawValue = String(value || '').trim();
+    const normalized = rawValue.toLowerCase();
+
+    if (!normalized) {
+        return { value: '', decision: '', isValid: true };
+    }
+
+    if (normalized === 'yes') {
+        return { value: 'Yes', decision: 'Shortlisted', isValid: true };
+    }
+
+    if (normalized === 'no') {
+        return { value: 'No', decision: 'Rejected', isValid: true };
+    }
+
+    if (normalized === 'did not turn up') {
+        return { value: 'Did Not Turn Up', decision: 'Did Not Turn Up', isValid: true };
+    }
+
+    if (normalized === 'on hold') {
+        return { value: 'On Hold', decision: 'On Hold', isValid: true };
+    }
+
+    return { value: rawValue, decision: '', isValid: false };
 };
 
 const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess }) => {
@@ -495,7 +524,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 const rawProfileSharedValue = getCellValue(columnMapping.profileShared);
                 const rawPhase2ShortlistedValue = getCellValue(columnMapping.phase2Shortlisted);
                 const rawPhase2SelectedValue = getCellValue(columnMapping.phase2Selected);
-                const shortlistedFlag = parseYesNo(rawShortlistedValue);
+                const normalizedProfileShortlisted = normalizeProfileShortlistedValue(rawShortlistedValue);
                 const profileSharedFlag = parseYesNo(rawProfileSharedValue);
                 const phase2ShortlistedFlag = parseYesNo(rawPhase2ShortlistedValue);
                 const phase2SelectedFlag = parseYesNo(rawPhase2SelectedValue);
@@ -557,16 +586,12 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     phase2Decision: derivedPhase2Decision,
                     phase2InterviewerFeedback: phase2InterviewerFeedback || '',
                     phase2InterviewStatus: derivedPhase2InterviewStatus,
-                    decision: (() => {
-                        if (shortlistedFlag === true) return 'Shortlisted';
-                        if (shortlistedFlag === false && profileSharedFlag !== true) return 'Rejected';
-                        return '';
-                    })(),
+                    decision: normalizedProfileShortlisted.decision,
                     mustHaveSkills: [],
                     interviewRounds: [],
                     invalidStatusValue: !normalizedCandidateStatus.isValid ? normalizedCandidateStatus.value : '',
                     invalidPhase2InterviewStatus: !normalizedPhase2InterviewStatus.isValid ? normalizedPhase2InterviewStatus.value : '',
-                    invalidProfileShortlistedValue: hasInvalidYesNoValue(rawShortlistedValue, shortlistedFlag),
+                    invalidProfileShortlistedValue: !normalizedProfileShortlisted.isValid ? normalizedProfileShortlisted.value : '',
                     invalidProfileSharedValue: hasInvalidYesNoValue(rawProfileSharedValue, profileSharedFlag),
                     invalidPhase2ShortlistedValue: hasInvalidYesNoValue(rawPhase2ShortlistedValue, phase2ShortlistedFlag),
                     invalidPhase2SelectedValue: hasInvalidYesNoValue(rawPhase2SelectedValue, phase2SelectedFlag)
@@ -581,7 +606,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 );
 
                 // Identify and Parse Must-Have Skills
-                const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 's.no', 'serial no.', 'serial no', 'slno', 'submission date', 'date', 'relevant experience', 'custom remark', 'profile shortlisted (yes/no)', 'final scoring', 'profile shared', 'shortlisted (phase 2)', 'selected (phase 2)', 'interviewer feedback (phase 2)', 'interview status (phase2)', 'phase 2 interview status', 'performance rating', 'interview status', 'reason', 'decision status (auto-calculated)');
+                const standardHeaders = [].concat(...Object.values(columnMapping), 'sl no', 's.no', 'serial no.', 'serial no', 'slno', 'submission date', 'date', 'relevant experience', 'custom remark', 'profile shortlisted (yes/no)', 'profile shortlisted', 'final scoring', 'profile shared', 'shortlisted (phase 2)', 'selected (phase 2)', 'interviewer feedback (phase 2)', 'interview status (phase2)', 'phase 2 interview status', 'performance rating', 'interview status', 'reason', 'decision status (auto-calculated)');
 
                 if (isTwoTier) {
                     // In two-tier, technical skills are specifically under "Technical Skills (Experience)"
@@ -793,7 +818,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (mappedRow.invalidStatusValue) {
                     errors.push(`Status must be one of ${candidateStatusOptions.join(', ')}`);
                 }
-                if (mappedRow.invalidProfileShortlistedValue) errors.push('Profile Shortlisted (Yes/No) must be Yes or No');
+                if (mappedRow.invalidProfileShortlistedValue) errors.push(`Profile Shortlisted must be one of ${PROFILE_SHORTLISTED_OPTIONS.join(', ')}`);
                 if (mappedRow.invalidProfileSharedValue) errors.push('Profile Shared must be Yes or No');
                 if (mappedRow.invalidPhase2ShortlistedValue) errors.push('Shortlisted (Phase 2) must be Yes or No');
                 if (mappedRow.invalidPhase2SelectedValue) errors.push('Selected (Phase 2) must be Yes or No');
@@ -946,12 +971,16 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             yesNoOptions.forEach((option, index) => {
                 validationSheet.getCell(`C${index + 1}`).value = option;
             });
+            PROFILE_SHORTLISTED_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`D${index + 1}`).value = option;
+            });
 
             validationSheet.state = 'hidden';
 
             const candidateStatusValidationFormula = buildValidationRangeFormula('A', candidateStatusOptions.length);
             const interviewStatusValidationFormula = buildValidationRangeFormula('B', ROUND_INTERVIEW_STATUS_OPTIONS.length);
             const yesNoValidationFormula = buildValidationRangeFormula('C', yesNoOptions.length);
+            const profileShortlistedValidationFormula = buildValidationRangeFormula('D', PROFILE_SHORTLISTED_OPTIONS.length);
 
             // Skills from Hiring Request
             const techSkills = (Array.isArray(request?.requirements?.mustHaveSkills)
@@ -977,7 +1006,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     subHeaders: ['Interviewer Feedback', 'Interview date', 'Interviewer Name', ...softSkills, ...techSkills, 'Performance Rating', 'Interview Status'],
                     width: 5 + softSkills.length + techSkills.length
                 },
-                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
+                { title: 'Final Status & Decision', subHeaders: [PROFILE_SHORTLISTED_HEADER, 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(s => s.width > 0);
 
             // Row 1: Main Headings
@@ -1095,7 +1124,22 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 let sectionStartCol = 1;
                 sections.forEach((section) => {
                     if (section.title === 'Final Status & Decision') {
-                        ['Profile Shortlisted (Yes/No)', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
+                        const profileShortlistedOffset = section.subHeaders.indexOf(PROFILE_SHORTLISTED_HEADER);
+                        if (profileShortlistedOffset >= 0) {
+                            const targetCol = sectionStartCol + profileShortlistedOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, targetCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [profileShortlistedValidationFormula],
+                                    errorTitle: 'Invalid Value',
+                                    error: `${PROFILE_SHORTLISTED_HEADER} must be one of: ${PROFILE_SHORTLISTED_OPTIONS.join(', ')}.`
+                                };
+                            }
+                        }
+
+                        ['Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
                             const offset = section.subHeaders.indexOf(headerName);
                             if (offset >= 0) {
                                 const targetCol = sectionStartCol + offset;
@@ -1150,7 +1194,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (lower === 'email') return 'sample@example.com';
                 if (lower === 'mobile no.') return '9876543210';
                 if (lower === 'status') return candidateStatusOptions[0] || 'Interested';
-                if (lower === 'profile shortlisted (yes/no)') return 'No';
+                if (lower === 'profile shortlisted') return 'No';
                 if (lower === 'profile shared') return 'No';
                 if (lower === 'performance rating') return 8;
                 if (lower === 'interview status') return 'Scheduled';

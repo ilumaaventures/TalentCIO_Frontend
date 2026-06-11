@@ -327,7 +327,7 @@ const MassMailModal = ({
 
                             <div className="grid gap-4 lg:grid-cols-2">
                                 <CheckboxGroup label="Status" options={['Interested', 'Not Interested', 'Shortlisted']} values={filters.status} onToggle={(value) => toggleFilter('status', value)} />
-                                <CheckboxGroup label="Decision" options={['None', 'Shortlisted', 'Rejected', 'On Hold']} values={filters.decision} onToggle={(value) => toggleFilter('decision', value)} />
+                                <CheckboxGroup label="Decision" options={['None', 'Shortlisted', 'Rejected', 'Did Not Turn Up', 'On Hold']} values={filters.decision} onToggle={(value) => toggleFilter('decision', value)} />
                                 <CheckboxGroup label="Phase 2" options={['None', 'Shortlisted', 'Selected', 'Rejected', 'On Hold']} values={filters.phase2Decision} onToggle={(value) => toggleFilter('phase2Decision', value)} />
                                 <CheckboxGroup label="Phase 3" options={['None', 'Offer Sent', 'Offer Accepted', 'Joined', 'No Show', 'Offer Declined']} values={filters.phase3Decision} onToggle={(value) => toggleFilter('phase3Decision', value)} />
                             </div>

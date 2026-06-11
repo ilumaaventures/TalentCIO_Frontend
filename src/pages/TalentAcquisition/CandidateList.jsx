@@ -20,6 +20,9 @@ import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Scheduled'];
+const PROFILE_SHORTLISTED_EXPORT_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
+const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -834,7 +837,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 getRoundsForPhase(c, 1).length > 0
             ).length,
             shortlisted: structuralPhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
-            rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected').length,
+            rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected' || c.decision === 'Did Not Turn Up').length,
             profileShared: structuralPhase1Candidates.filter(c => isProfileSharedCandidate(c)).length,
             transferred: structuralPhase1Candidates.filter(c => c.isTransferred).length,
         };
@@ -1295,7 +1298,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
                 ...roundSections,
-                { title: 'Final Status & Decision', subHeaders: ['Profile Shortlisted (Yes/No)', 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
+                { title: 'Final Status & Decision', subHeaders: [PROFILE_SHORTLISTED_HEADER, 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(sec => sec.width > 0);
 
             const workbook = new ExcelJS.Workbook();
@@ -1309,8 +1312,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             LEGACY_EXPORT_STATUS_OPTIONS.forEach((option, index) => {
                 validationSheet.getCell(`A${index + 1}`).value = option;
             });
+            PROFILE_SHORTLISTED_EXPORT_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`B${index + 1}`).value = option;
+            });
             validationSheet.state = 'hidden';
             const candidateStatusValidationFormula = buildValidationRangeFormula('A', LEGACY_EXPORT_STATUS_OPTIONS.length);
+            const profileShortlistedValidationFormula = buildValidationRangeFormula('B', PROFILE_SHORTLISTED_EXPORT_OPTIONS.length);
 
             // Row 1: MAIN HEADINGS
             const row1Data = [];
@@ -1365,9 +1372,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     type: 'list',
                                     allowBlank: true,
                                     showErrorMessage: true,
-                                    formulae: ['"Shortlisted,Rejected,Scheduled"'],
+                                    formulae: [`"${EXPORT_INTERVIEW_STATUS_OPTIONS.join(',')}"`],
                                     errorTitle: 'Invalid Interview Status',
-                                    error: 'Interview Status must be one of: Shortlisted, Rejected, Scheduled.'
+                                    error: `Interview Status must be one of: ${EXPORT_INTERVIEW_STATUS_OPTIONS.join(', ')}.`
                                 };
                             }
                         }
@@ -1428,7 +1435,22 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 let sectionStartCol = 1;
                 excelSections.forEach((section) => {
                     if (section.title === 'Final Status & Decision') {
-                        ['Profile Shortlisted (Yes/No)', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
+                        const profileShortlistedOffset = section.subHeaders.indexOf(PROFILE_SHORTLISTED_HEADER);
+                        if (profileShortlistedOffset >= 0) {
+                            const targetCol = sectionStartCol + profileShortlistedOffset;
+                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
+                                sheet.getCell(rowNumber, targetCol).dataValidation = {
+                                    type: 'list',
+                                    allowBlank: true,
+                                    showErrorMessage: true,
+                                    formulae: [profileShortlistedValidationFormula],
+                                    errorTitle: 'Invalid Value',
+                                    error: `${PROFILE_SHORTLISTED_HEADER} must be one of: ${PROFILE_SHORTLISTED_EXPORT_OPTIONS.join(', ')}.`
+                                };
+                            }
+                        }
+
+                        ['Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
                             const offset = section.subHeaders.indexOf(headerName);
                             if (offset >= 0) {
                                 const targetCol = sectionStartCol + offset;
@@ -1534,7 +1556,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     }
                 }
 
-                const profileShortlisted = candidate.decision === 'Shortlisted' ? 'Yes' : (candidate.decision === 'Rejected' ? 'No' : '');
+                const profileShortlisted = candidate.decision === 'Shortlisted'
+                    ? 'Yes'
+                    : candidate.decision === 'Rejected'
+                        ? 'No'
+                        : candidate.decision === 'Did Not Turn Up'
+                            ? 'Did Not Turn Up'
+                            : candidate.decision === 'On Hold'
+                                ? 'On Hold'
+                                : '';
                 const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected') ? 'Yes' : null;
                 const phase2Selected = candidate.phase2Decision === 'Selected' ? 'Yes' : null;
                 const phase2InterviewStatus = getPhase2InterviewStatusExportValue(candidate);
@@ -1605,8 +1635,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 const formulaRow = row.number;
                 if (profileShortlisted) {
                     row.getCell(decisionStatusColIndex).value = {
-                        formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",""))`,
-                        result: profileShortlisted === 'Yes' ? 'Shortlisted' : (profileShortlisted === 'No' ? 'Rejected' : '')
+                        formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",IF(${colLetter}${formulaRow}="Did Not Turn Up","Did Not Turn Up",IF(${colLetter}${formulaRow}="On Hold","On Hold",""))))`,
+                        result: profileShortlisted === 'Yes'
+                            ? 'Shortlisted'
+                            : profileShortlisted === 'No'
+                                ? 'Rejected'
+                                : profileShortlisted
                     };
                 } else {
                     row.getCell(decisionStatusColIndex).value = null;
@@ -1697,6 +1731,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             case 'Offer Sent': return 'text-blue-600 font-bold';
             case 'Offer Accepted': return 'text-amber-600 font-bold';
             case 'Joined': return 'text-emerald-600 font-bold';
+            case 'Did Not Turn Up': return 'text-rose-600 font-bold';
             case 'No Show':
             case 'Offer Declined': return 'text-rose-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
@@ -2582,6 +2617,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             <>
                                                 <option value="Shortlisted">Shortlisted</option>
                                                 <option value="Rejected">Rejected</option>
+                                                <option value="Did Not Turn Up">Did Not Turn Up</option>
                                                 <option value="On Hold">On Hold</option>
                                                 <option value="None">None</option>
                                             </>
@@ -2947,6 +2983,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             <option value="None" className="text-slate-600">None</option>
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
                                                                             <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                            <option value="Did Not Turn Up" className="text-rose-600 font-bold">Did Not Turn Up</option>
                                                                             <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                                         </select>
                                                                     ) : activePhase === 2 ? (
