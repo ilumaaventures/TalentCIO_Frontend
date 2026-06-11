@@ -837,7 +837,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 getRoundsForPhase(c, 1).length > 0
             ).length,
             shortlisted: structuralPhase1Candidates.filter(c => c.decision === 'Shortlisted').length,
-            rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected' || c.decision === 'Did Not Turn Up').length,
+            rejected: structuralPhase1Candidates.filter(c => c.decision === 'Rejected').length,
+            didNotTurnUp: structuralPhase1Candidates.filter(c => c.decision === 'Did Not Turn Up').length,
+            onHold: structuralPhase1Candidates.filter(c => c.decision === 'On Hold').length,
             profileShared: structuralPhase1Candidates.filter(c => isProfileSharedCandidate(c)).length,
             transferred: structuralPhase1Candidates.filter(c => c.isTransferred).length,
         };
@@ -2202,14 +2204,35 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 });
                             }
 
-                            if (filterDecision === 'Rejected' && !filterProfileShared) {
-                                dynamicCards.push({
-                                    label: 'Rejected',
-                                    value: metrics.rejected,
-                                    icon: XCircle,
-                                    color: 'rose',
-                                    onClick: () => { }
-                                });
+                            if (!filterProfileShared) {
+                                const phase1DecisionCardMap = {
+                                    Rejected: {
+                                        label: 'Rejected',
+                                        value: metrics.rejected,
+                                        icon: XCircle,
+                                        color: 'rose'
+                                    },
+                                    'Did Not Turn Up': {
+                                        label: 'Did Not Turn Up',
+                                        value: metrics.didNotTurnUp,
+                                        icon: XCircle,
+                                        color: 'rose'
+                                    },
+                                    'On Hold': {
+                                        label: 'On Hold',
+                                        value: metrics.onHold,
+                                        icon: Clock,
+                                        color: 'slate'
+                                    }
+                                };
+
+                                const decisionCard = phase1DecisionCardMap[filterDecision];
+                                if (decisionCard) {
+                                    dynamicCards.push({
+                                        ...decisionCard,
+                                        onClick: () => { }
+                                    });
+                                }
                             }
 
                             if (filterPreference !== 'All') {
