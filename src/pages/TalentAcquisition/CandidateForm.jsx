@@ -23,14 +23,6 @@ const resolveDynamicPhase = (request, candidatePhaseState = null) => {
         || phases[0];
 };
 
-const getDefaultDynamicStatus = (phase) => {
-    if (!Array.isArray(phase?.statusOptions) || phase.statusOptions.length === 0) {
-        return '';
-    }
-
-    return phase.statusOptions.find((option) => option?.isDefault)?.value || phase.statusOptions[0]?.value || '';
-};
-
 const normalizeSkillLabel = (value) => String(
     typeof value === 'string' ? value : (value?.skill || '')
 ).trim();
@@ -250,17 +242,6 @@ const CandidateForm = () => {
                 }));
             }
 
-            if (reqData?.useDynamicPhases) {
-                const firstPhase = resolveDynamicPhase(reqData);
-                const defaultStatus = getDefaultDynamicStatus(firstPhase);
-                if (defaultStatus) {
-                    setFormData((prev) => (
-                        prev.status
-                            ? prev
-                            : { ...prev, status: defaultStatus }
-                    ));
-                }
-            }
         } catch (error) {
             console.error('Failed to fetch requisition skills', error);
         }
@@ -338,7 +319,7 @@ const CandidateForm = () => {
                     lastWorkingDay: candidate.lastWorkingDay ? new Date(candidate.lastWorkingDay).toISOString().split('T')[0] : '',
                     status: reqData?.useDynamicPhases
                         ? (candidate.currentPhaseStatus || '')
-                        : (candidate.status || 'Interested'),
+                        : (candidate.status || ''),
                     remark: candidate.remark || '',
                     mustHaveSkills: mergedMustHaveSkills,
                     niceToHaveSkills: mergedNiceToHaveSkills
@@ -373,35 +354,6 @@ const CandidateForm = () => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [candidateId, hiringRequestId]);
-
-    useEffect(() => {
-        if (!isDynamicRequest || !isAddMode || formData.status) {
-            return;
-        }
-
-        const defaultStatus = getDefaultDynamicStatus(activeDynamicPhase);
-        if (!defaultStatus) {
-            return;
-        }
-
-        setFormData((prev) => (
-            prev.status
-                ? prev
-                : { ...prev, status: defaultStatus }
-        ));
-    }, [activeDynamicPhase, formData.status, isAddMode, isDynamicRequest]);
-
-    useEffect(() => {
-        if (isDynamicRequest || !isAddMode || formData.status) {
-            return;
-        }
-
-        setFormData((prev) => (
-            prev.status
-                ? prev
-                : { ...prev, status: 'Interested' }
-        ));
-    }, [formData.status, isAddMode, isDynamicRequest]);
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
@@ -1056,7 +1008,7 @@ const CandidateForm = () => {
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">
                                                 {isDynamicRequest
                                                     ? `Current Phase Status${activeDynamicPhase?.name ? ` (${activeDynamicPhase.name})` : ''}`
-                                                    : 'Status *'}
+                                                    : 'Status'}
                                             </label>
                                             {isDynamicRequest ? (
                                                 <>
@@ -1067,9 +1019,7 @@ const CandidateForm = () => {
                                                         className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-700 bg-blue-50 disabled:bg-slate-100 disabled:text-slate-500"
                                                         disabled={isViewMode || dynamicStatusOptions.length === 0}
                                                     >
-                                                        <option value="">
-                                                            {dynamicStatusOptions.length > 0 ? 'Select phase status' : 'No phase statuses configured'}
-                                                        </option>
+                                                        <option value="">{dynamicStatusOptions.length > 0 ? 'None' : 'No phase statuses configured'}</option>
                                                         {dynamicStatusOptions.map((option) => (
                                                             <option key={option.value} value={option.value}>
                                                                 {option.label || option.value}
@@ -1083,7 +1033,8 @@ const CandidateForm = () => {
                                                     </p>
                                                 </>
                                             ) : (
-                                                <select name="status" value={formData.status} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-700 bg-blue-50" required disabled={isViewMode}>
+                                                <select name="status" value={formData.status} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-700 bg-blue-50" disabled={isViewMode}>
+                                                    <option value="">None</option>
                                                     <option value="Interested">Interested</option>
                                                     <option value="In Interview">In Interview</option>
                                                     <option value="Not Interested">Not Interested</option>
