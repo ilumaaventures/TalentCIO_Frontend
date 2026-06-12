@@ -88,6 +88,11 @@ export const AUDIENCE_TYPE_LABELS = {
 };
 
 export const ANNOUNCEMENT_MANAGER_ROLES = ['Admin', 'Manager', 'HR Admin', 'System Admin'];
+export const ANNOUNCEMENT_COMMUNITY_SECTION_PERMISSIONS = {
+  birthdays: 'announcement.community.birthdays.view',
+  anniversaries: 'announcement.community.work_anniversaries.view',
+  joinees: 'announcement.community.new_joiners.view',
+};
 export const ACK_STORAGE_KEY_PREFIX = 'talentcio_ack_announcements_';
 export const SKIP_STORAGE_KEY_PREFIX = 'talentcio_skip_announcements_';
 export const SESSION_GATE_KEY_PREFIX = 'talentcio_announcement_gate_seen_';
@@ -101,6 +106,20 @@ export const isAnnouncementManager = (user) => {
   return (
     roles.some((role) => ANNOUNCEMENT_MANAGER_ROLES.includes(role))
     || permissions.includes('announcement.manage')
+    || permissions.includes('*')
+    || permissions.includes('admin')
+  );
+};
+
+export const canViewAnnouncementCommunitySection = (user, sectionKey) => {
+  const permissionKey = ANNOUNCEMENT_COMMUNITY_SECTION_PERMISSIONS[sectionKey];
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+
+  if (!permissionKey) return false;
+
+  return (
+    Boolean(user?.hasAllPermissions)
+    || permissions.includes(permissionKey)
     || permissions.includes('*')
     || permissions.includes('admin')
   );

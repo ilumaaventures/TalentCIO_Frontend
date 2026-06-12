@@ -16,6 +16,7 @@ import {
   formatDateInputValue,
   getAnnouncementAttachmentValidationError,
   getAnnouncementValidationErrors,
+  canViewAnnouncementCommunitySection,
   isAnnouncementManager,
   sortAnnouncementsByPublishedAt,
 } from '../components/announcements/announcementUtils';
@@ -91,6 +92,11 @@ const Announcements = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const userCanManage = useMemo(() => isAnnouncementManager(user), [user]);
+  const visibleCommunitySections = useMemo(
+    () => ['birthdays', 'anniversaries', 'joinees'].filter((sectionKey) => canViewAnnouncementCommunitySection(user, sectionKey)),
+    [user],
+  );
+  const canViewCommunitySidebar = visibleCommunitySections.length > 0;
   const [feedLoading, setFeedLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -129,18 +135,24 @@ const Announcements = () => {
         setFeedLoading(true);
       }
 
-      const requests = [
-        api.get('/announcements'),
-        api.get('/announcements/community'),
-      ];
+      const requests = [api.get('/announcements')];
+
+      if (canViewCommunitySidebar) {
+        requests.push(api.get('/announcements/community'));
+      }
 
       if (userCanManage) {
         requests.push(api.get('/announcements?scope=manage&limit=50'));
       }
 
-      const [visibleResponse, communityResponse, manageResponse] = await Promise.all(requests);
+      const responses = await Promise.all(requests);
+      let responseIndex = 0;
+      const visibleResponse = responses[responseIndex++];
+      const communityResponse = canViewCommunitySidebar ? responses[responseIndex++] : null;
+      const manageResponse = userCanManage ? responses[responseIndex++] : null;
+
       setVisibleAnnouncements(Array.isArray(visibleResponse.data?.announcements) ? visibleResponse.data.announcements : []);
-      setCommunityData(communityResponse.data || EMPTY_COMMUNITY_DATA);
+      setCommunityData(communityResponse?.data || EMPTY_COMMUNITY_DATA);
       setComposerSetup((current) => ({
         ...current,
         reactionTypes: Array.isArray(visibleResponse.data?.reactionTypes) && visibleResponse.data.reactionTypes.length
@@ -159,7 +171,7 @@ const Announcements = () => {
       setFeedLoading(false);
       setRefreshing(false);
     }
-  }, [userCanManage]);
+  }, [canViewCommunitySidebar, userCanManage]);
 
   useEffect(() => {
     void loadPageData();
@@ -442,7 +454,7 @@ const Announcements = () => {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_360px]">
+          <div className={`mt-6 grid gap-6 ${canViewCommunitySidebar ? 'xl:grid-cols-[minmax(0,1.6fr)_360px]' : ''}`}>
             <div className="space-y-6">
               {userCanManage && managerDrafts.length > 0 ? (
                 <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -670,10 +682,13 @@ const Announcements = () => {
               )}
             </div>
 
-            <AnnouncementCommunitySidebar
-              communityData={communityData}
-              loading={feedLoading}
-            />
+            {canViewCommunitySidebar ? (
+              <AnnouncementCommunitySidebar
+                communityData={communityData}
+                loading={feedLoading}
+                visibleSections={visibleCommunitySections}
+              />
+            ) : null}
           </div>
         </div>
       </div>
