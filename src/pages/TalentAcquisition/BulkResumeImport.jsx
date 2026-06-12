@@ -285,6 +285,7 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
                     resumePublicId,
                     niceToHaveSkills: dataItem.niceToHaveSkills,
                     source: 'Direct Upload',
+                    status: '',
                     allowOwnedDuplicateUpdate: true
                 };
 

@@ -84,8 +84,13 @@ const TodayBadge = ({ sectionKey, yearsCompleted = 0 }) => {
  * @param {object} props
  * @param {object} props.communityData - Community payload from the backend.
  * @param {boolean} [props.loading] - Whether sidebar content is still loading.
+ * @param {Array<'birthdays'|'anniversaries'|'joinees'>} [props.visibleSections] - Allowed community sections.
  */
-const AnnouncementCommunitySidebar = ({ communityData, loading = false }) => {
+const AnnouncementCommunitySidebar = ({
+  communityData,
+  loading = false,
+  visibleSections = ['birthdays', 'anniversaries', 'joinees'],
+}) => {
   const [expandedSections, setExpandedSections] = useState({
     birthdays: true,
     anniversaries: true,
@@ -97,16 +102,20 @@ const AnnouncementCommunitySidebar = ({ communityData, loading = false }) => {
     joinees: false,
   });
 
-  const sections = useMemo(() => (['birthdays', 'anniversaries', 'joinees'].map((sectionKey) => ({
+  const sections = useMemo(() => (visibleSections.map((sectionKey) => ({
     sectionKey,
     ...buildSectionItems(sectionKey, communityData),
-  }))), [communityData]);
+  }))), [communityData, visibleSections]);
+
+  if (sections.length === 0) {
+    return null;
+  }
 
   if (loading) {
     return (
       <aside className="space-y-4">
-        {[1, 2, 3].map((item) => (
-          <div key={item} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        {sections.map(({ sectionKey }) => (
+          <div key={sectionKey} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
             <div className="mt-4 space-y-3">
               {[1, 2, 3].map((row) => (

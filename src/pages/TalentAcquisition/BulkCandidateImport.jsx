@@ -1193,7 +1193,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (lower === 'name of candidate') return 'Sample Candidate';
                 if (lower === 'email') return 'sample@example.com';
                 if (lower === 'mobile no.') return '9876543210';
-                if (lower === 'status') return candidateStatusOptions[0] || 'Interested';
+                if (lower === 'status') return '';
                 if (lower === 'profile shortlisted') return 'No';
                 if (lower === 'profile shared') return 'No';
                 if (lower === 'performance rating') return 8;
