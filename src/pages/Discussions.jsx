@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, MoreVertical } from 'lucide-react';
+import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, MoreVertical, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -31,8 +31,14 @@ const Discussions = () => {
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
 
+    const [expandedRows, setExpandedRows] = useState({});
+    const toggleRowExpanded = (id) => {
+        setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+    };
+
     const { user } = useAuth();
     const [supervisors, setSupervisors] = useState([]);
+    const [projects, setProjects] = useState([]);
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [detailsDiscussion, setDetailsDiscussion] = useState(null);
     const [createVisibleSearch, setCreateVisibleSearch] = useState('');
@@ -43,7 +49,8 @@ const Discussions = () => {
         status: 'inprogress',
         dueDate: '',
         supervisor: '',
-        visibleToUserIds: []
+        visibleToUserIds: [],
+        project: ''
     });
 
     // Pagination state
@@ -101,6 +108,7 @@ const Discussions = () => {
                     createdBy: d.createdBy ? { _id: d.createdBy._id, firstName: d.createdBy.firstName, lastName: d.createdBy.lastName, profilePicture: d.createdBy.profilePicture } : null,
                     supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null,
                     visibleToUsers: Array.isArray(d.visibleToUsers) ? d.visibleToUsers.map((u) => ({ _id: u._id, firstName: u.firstName, lastName: u.lastName, profilePicture: u.profilePicture })) : [],
+                    project: d.project ? { _id: d.project._id, name: d.project.name } : null,
                     canEdit: d.canEdit,
                     canDelete: d.canDelete,
                     canChangeRestrictedStatus: d.canChangeRestrictedStatus,
@@ -170,10 +178,25 @@ const Discussions = () => {
         }
     }, [SUPERVISOR_CACHE_TTL_MS, user?._id]);
 
+    const fetchAssignedProjects = useCallback(async () => {
+        try {
+            const res = await api.get('/projects', { params: { assignedOnly: true } });
+            setProjects(res.data || []);
+        } catch (error) {
+            console.error('Error fetching assigned projects:', error);
+        }
+    }, []);
+
     useEffect(() => {
         fetchDiscussions(currentPage);
-        if (currentPage === 1) fetchSupervisors();
+        if (currentPage === 1) {
+            fetchSupervisors();
+        }
     }, [currentPage, fetchDiscussions, fetchSupervisors]);
+
+    useEffect(() => {
+        fetchAssignedProjects();
+    }, [fetchAssignedProjects]);
 
     // Close export menu when clicking outside
     useEffect(() => {
@@ -221,7 +244,8 @@ const Discussions = () => {
             status: 'inprogress',
             dueDate: '',
             supervisor: '',
-            visibleToUserIds: []
+            visibleToUserIds: [],
+            project: ''
         });
         setCreateVisibleSearch('');
     };
@@ -282,6 +306,7 @@ const Discussions = () => {
                 { header: 'Created By', key: 'createdBy', width: 24 },
                 { header: 'Supervisor', key: 'supervisor', width: 24 },
                 { header: 'Visible To', key: 'visibleTo', width: 36 },
+                { header: 'Project', key: 'project', width: 24 },
                 { header: 'Created Date', key: 'createdDate', width: 20 },
                 { header: 'Due Date', key: 'dueDate', width: 20 },
                 { header: 'Status', key: 'status', width: 20 },
@@ -297,6 +322,7 @@ const Discussions = () => {
                     createdBy: formatPersonName(item.createdBy) || '-',
                     supervisor: formatPersonName(item.supervisor) || '-',
                     visibleTo: formatVisibleUsers(item.visibleToUsers) || '-',
+                    project: item.project?.name || '-',
                     createdDate: item.createdAt ? format(new Date(item.createdAt), 'dd MMM yyyy') : '-',
                     dueDate: item.dueDate ? format(new Date(item.dueDate), 'dd MMM yyyy') : 'No due date',
                     status: item.status || '-',
@@ -412,7 +438,8 @@ const Discussions = () => {
             status: discussion.status,
             dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : '',
             supervisor: discussion.supervisor?._id || discussion.supervisor,
-            visibleToUserIds: Array.isArray(discussion.visibleToUsers) ? discussion.visibleToUsers.map((u) => u._id || u) : []
+            visibleToUserIds: Array.isArray(discussion.visibleToUsers) ? discussion.visibleToUsers.map((u) => u._id || u) : [],
+            project: discussion.project?._id || discussion.project || ''
         });
         setEditVisibleSearch('');
     };
@@ -485,7 +512,8 @@ const Discussions = () => {
         const styles = {
             'inprogress': 'bg-amber-100 text-amber-700 border-amber-200',
             'mark as complete': 'bg-green-100 text-green-700 border-green-200',
-            'on-hold': 'bg-slate-100 text-slate-700 border-slate-200'
+            'on-hold': 'bg-slate-100 text-slate-700 border-slate-200',
+            'planning': 'bg-sky-100 text-sky-700 border-sky-200'
         };
         return styles[status] || 'bg-blue-100 text-blue-700 border-blue-200';
     };
@@ -653,7 +681,7 @@ const Discussions = () => {
         );
     };
 
-    const truncateDescription = (text, limit = 60) => {
+    const truncateDescription = (text, limit = 40) => {
         if (!text) return '';
         return text.length > limit ? `${text.substring(0, limit)}...` : text;
     };
@@ -820,17 +848,18 @@ const Discussions = () => {
 
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-slate-700">Status</label>
-                                    <select
-                                        value={editingId ? editData?.status || 'inprogress' : newDiscussion.status}
-                                        onChange={(event) => editingId
-                                            ? setEditData({ ...editData, status: event.target.value })
-                                            : setNewDiscussion({ ...newDiscussion, status: event.target.value })}
-                                        className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${getStatusBadgeColor(editingId ? editData?.status : newDiscussion.status)}`}
-                                    >
-                                        <option value="inprogress">In Progress</option>
-                                        <option value="on-hold">On-hold</option>
-                                        <option value="mark as complete">Mark as complete</option>
-                                    </select>
+                                        <select
+                                            value={editingId ? editData?.status || 'inprogress' : newDiscussion.status}
+                                            onChange={(event) => editingId
+                                                ? setEditData({ ...editData, status: event.target.value })
+                                                : setNewDiscussion({ ...newDiscussion, status: event.target.value })}
+                                            className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${getStatusBadgeColor(editingId ? editData?.status : newDiscussion.status)}`}
+                                        >
+                                            <option value="inprogress">In Progress</option>
+                                            <option value="planning">Planning</option>
+                                            <option value="on-hold">On-hold</option>
+                                            <option value="mark as complete">Mark as complete</option>
+                                        </select>
                                 </div>
 
                                 <div className="space-y-2">
@@ -846,6 +875,24 @@ const Discussions = () => {
                                         {supervisors.map((supervisor) => (
                                             <option key={supervisor._id} value={supervisor._id}>
                                                 {getUserDisplayName(supervisor)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Project</label>
+                                    <select
+                                        value={editingId ? editData?.project || '' : newDiscussion.project}
+                                        onChange={(event) => editingId
+                                            ? setEditData({ ...editData, project: event.target.value })
+                                            : setNewDiscussion({ ...newDiscussion, project: event.target.value })}
+                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                                    >
+                                        <option value="">Select Project</option>
+                                        {projects.map((project) => (
+                                            <option key={project._id} value={project._id}>
+                                                {project.name}
                                             </option>
                                         ))}
                                     </select>
@@ -916,7 +963,7 @@ const Discussions = () => {
                                         <div className="flex-1 min-w-0">
                                             <span className="text-xs font-semibold text-slate-400 mr-1">#{(currentPage - 1) * limit + index + 1}</span>
                                             <span className="text-sm text-slate-700 break-words leading-relaxed">
-                                                {truncateDescription(discussion.discussion, 60)}
+                                                {truncateDescription(discussion.discussion, 40)}
                                             </span>
                                         </div>
                                         {renderActionMenu(discussion, 'right')}
@@ -929,9 +976,15 @@ const Discussions = () => {
                                             className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
                                         >
                                             <option value="inprogress">In Progress</option>
+                                            <option value="planning" disabled={!canChangeRestrictedStatus(discussion)}>Planning {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                             <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                             <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                         </select>
+                                        {discussion.project && (
+                                            <span className="px-2 py-0.5 text-xs font-medium bg-slate-200/80 text-slate-700 rounded border border-slate-300 truncate max-w-[150px]">
+                                                {discussion.project.name}
+                                            </span>
+                                        )}
                                         {discussion.dueDate ? (
                                             <div className="flex items-center text-slate-500 text-xs">
                                                 <Calendar size={12} className="mr-1 text-slate-400" />
@@ -952,24 +1005,25 @@ const Discussions = () => {
 
                     {/* ── Desktop table (hidden below md) ── */}
                     <div className="hidden md:block overflow-x-auto">
-                        <table className="min-w-full text-sm table-auto">
+                        <table className="min-w-full text-sm table-fixed">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-16">S.No</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600">Description</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Created Date</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-32">Due Date</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-36">Status</th>
-                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-24">Actions</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[6%]">S.No</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[34%]">Description</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Created Date</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Due Date</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Project</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Status</th>
+                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-[8%]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {loading ? (
-                                    <tr><td colSpan="6" className="px-6 py-8">
+                                    <tr><td colSpan="7" className="px-6 py-8">
                                         <div className="flex justify-center"><Skeleton className="h-8 w-8 rounded-full" /></div>
                                     </td></tr>
                                 ) : discussions.length === 0 && !isCreating ? (
-                                    <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">
+                                    <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-500 font-medium">
                                         <div className="flex flex-col items-center justify-center">
                                             <MessageSquare size={48} className="text-slate-200 mb-4" />
                                             <p className="text-lg font-medium text-slate-600">No discussions found</p>
@@ -978,11 +1032,24 @@ const Discussions = () => {
                                     </td></tr>
                                 ) : (
                                     discussions.map((discussion, index) => (
-                                        <tr key={discussion._id} className="hover:bg-slate-50 transition-colors">
+                                        <tr key={discussion._id} className="hover:bg-slate-50 transition-colors group">
                                             <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
                                             <td className="px-6 py-4">
-                                                <div className="max-w-xl text-sm text-slate-600 break-words whitespace-normal leading-relaxed">
-                                                    {truncateDescription(discussion.discussion, 60)}
+                                                <div className="flex items-center justify-between gap-2 max-w-xl text-sm text-slate-600 leading-relaxed min-w-0">
+                                                    <div className="break-all whitespace-pre-wrap min-w-0">
+                                                        {expandedRows[discussion._id]
+                                                            ? discussion.discussion
+                                                            : truncateDescription(discussion.discussion, 40)}
+                                                    </div>
+                                                    {discussion.discussion?.length > 40 && (
+                                                        <button
+                                                            onClick={() => toggleRowExpanded(discussion._id)}
+                                                            className="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 transition-all opacity-0 group-hover:opacity-100 cursor-pointer flex-shrink-0"
+                                                            title={expandedRows[discussion._id] ? "Show less" : "Show more"}
+                                                        >
+                                                            <Eye size={16} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-slate-700 text-sm whitespace-nowrap">
@@ -998,12 +1065,16 @@ const Discussions = () => {
                                                     <span className="text-slate-400 text-xs italic">No due date</span>
                                                 )}
                                             </td>
+                                            <td className="px-6 py-4 text-slate-700 text-sm break-all whitespace-normal">
+                                                {discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}
+                                            </td>
                                             <td className="px-6 py-4">
                                                 <select value={discussion.status}
                                                     onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
                                                     disabled={!canUpdateStatus(discussion)}
                                                     className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                                                     <option value="inprogress">In Progress</option>
+                                                    <option value="planning" disabled={!canChangeRestrictedStatus(discussion)}>Planning {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                                     <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                                     <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                                 </select>
@@ -1076,7 +1147,17 @@ const Discussions = () => {
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
                                         <p className="mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold text-slate-700">
-                                            {detailsDiscussion.status === 'inprogress' ? 'In Progress' : detailsDiscussion.status}
+                                            {detailsDiscussion.status === 'inprogress' ? 'In Progress' : 
+                                             detailsDiscussion.status === 'planning' ? 'Planning' : 
+                                             detailsDiscussion.status === 'on-hold' ? 'On Hold' : 
+                                             detailsDiscussion.status === 'mark as complete' ? 'Mark as complete' : 
+                                             detailsDiscussion.status}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project</p>
+                                        <p className="mt-2 text-sm font-medium text-slate-700">
+                                            {detailsDiscussion.project?.name || 'No Project'}
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
