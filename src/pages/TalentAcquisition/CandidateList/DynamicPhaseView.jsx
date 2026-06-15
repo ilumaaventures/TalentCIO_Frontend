@@ -346,9 +346,9 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         fetchPhases();
     }, [hiringRequest]);
 
-    const fetchCandidates = useCallback(async () => {
+    const fetchCandidates = useCallback(async (silent = false) => {
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const params = { t: Date.now() };
             if (dateFilterField) params.dateField = dateFilterField;
             if (dateFrom) params.startDate = dateFrom;
@@ -359,7 +359,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             console.error('Failed to fetch dynamic candidates:', error);
             toast.error(error.response?.data?.message || 'Failed to load candidates');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [dateFilterField, dateFrom, dateTo, hiringRequest._id]);
 
@@ -777,7 +777,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                 status
             });
             toast.success('Candidate status updated');
-            await fetchCandidates();
+            await fetchCandidates(true);
         } catch (error) {
             console.error('Failed to update dynamic status:', error);
             toast.error(error.response?.data?.message || 'Failed to update status');
@@ -798,7 +798,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             } else {
                 toast.success('Decision saved');
             }
-            await fetchCandidates();
+            await fetchCandidates(true);
         } catch (error) {
             console.error('Failed to update dynamic decision:', error);
             toast.error(error.response?.data?.message || 'Failed to save decision');
@@ -818,7 +818,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                 targetPhaseOrder: Number(targetPhase.order)
             });
             toast.success(`Candidate moved to ${targetPhase.name}`);
-            await fetchCandidates();
+            await fetchCandidates(true);
         } catch (error) {
             console.error('Failed to move candidate between phases:', error);
             toast.error(error.response?.data?.message || 'Failed to move candidate');
