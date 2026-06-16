@@ -460,10 +460,6 @@ const Onboarding = () => {
   }, [allDocumentLabels, allSectionLabels]);
 
   const handleSendOnboardingEmail = async () => {
-    if (checkedSections.size === 0 && checkedDocuments.size === 0) {
-      toast.error('Please select at least one section or document');
-      return;
-    }
     if (!customEmailSubject.trim() || !customEmailBody.trim()) {
       toast.error('Email subject and body are required');
       return;
@@ -2014,7 +2010,30 @@ const Onboarding = () => {
                                 <div><span style={{ color: '#94a3b8' }}>Blood Group:</span> <br /> <strong>{s.data?.bloodGroup || '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Email:</span> <br /> <strong>{s.data?.personalEmail || '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Mobile:</span> <br /> <strong>{s.data?.personalMobile || '—'}</strong></div>
-                                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>Current Address:</span> <br /> <strong>{s.data?.currentAddress && s.data.currentAddress.line1 ? `${s.data.currentAddress.line1}, ${s.data.currentAddress.city}, ${s.data.currentAddress.state} - ${s.data.currentAddress.pincode}` : (selectedEmployee.address || '—')}</strong></div>
+                                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+                                  <div style={{ gridColumn: '1 / -1', fontWeight: '700', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>Current Address</div>
+                                  <div><span style={{ color: '#94a3b8' }}>Street</span> <br /> <strong>{s.data?.currentAddress?.line1 || 'Not Set'}</strong></div>
+                                  <div><span style={{ color: '#94a3b8' }}>Line 2</span> <br /> <strong>{s.data?.currentAddress?.line2 || 'Not Set'}</strong></div>
+                                  <div><span style={{ color: '#94a3b8' }}>City</span> <br /> <strong>{s.data?.currentAddress?.city || 'Not Set'}</strong></div>
+                                  <div><span style={{ color: '#94a3b8' }}>State</span> <br /> <strong>{s.data?.currentAddress?.state || 'Not Set'}</strong></div>
+                                  <div><span style={{ color: '#94a3b8' }}>Pincode</span> <br /> <strong>{s.data?.currentAddress?.pincode || 'Not Set'}</strong></div>
+                                  <div><span style={{ color: '#94a3b8' }}>Country</span> <br /> <strong>{s.data?.currentAddress?.country || 'Not Set'}</strong></div>
+                                </div>
+                                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px', borderTop: '1px dashed #f1f5f9', paddingTop: '12px' }}>
+                                  <div style={{ gridColumn: '1 / -1', fontWeight: '700', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>Permanent Address {s.data?.sameAsCurrent ? '(Same as Current)' : ''}</div>
+                                  {!s.data?.sameAsCurrent ? (
+                                    <>
+                                      <div><span style={{ color: '#94a3b8' }}>Street</span> <br /> <strong>{s.data?.permanentAddress?.line1 || 'Not Set'}</strong></div>
+                                      <div><span style={{ color: '#94a3b8' }}>Line 2</span> <br /> <strong>{s.data?.permanentAddress?.line2 || 'Not Set'}</strong></div>
+                                      <div><span style={{ color: '#94a3b8' }}>City</span> <br /> <strong>{s.data?.permanentAddress?.city || 'Not Set'}</strong></div>
+                                      <div><span style={{ color: '#94a3b8' }}>State</span> <br /> <strong>{s.data?.permanentAddress?.state || 'Not Set'}</strong></div>
+                                      <div><span style={{ color: '#94a3b8' }}>Pincode</span> <br /> <strong>{s.data?.permanentAddress?.pincode || 'Not Set'}</strong></div>
+                                      <div><span style={{ color: '#94a3b8' }}>Country</span> <br /> <strong>{s.data?.permanentAddress?.country || 'Not Set'}</strong></div>
+                                    </>
+                                  ) : (
+                                    <div style={{ gridColumn: '1 / -1', color: '#64748b', fontStyle: 'italic' }}>Same as Current Address</div>
+                                  )}
+                                </div>
                                 {s.data?.linkedinUrl && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8' }}>LinkedIn:</span> <br /> <a href={s.data.linkedinUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>{s.data.linkedinUrl}</a></div>}
                               </div>
                             )}
