@@ -425,6 +425,40 @@ const Onboarding = () => {
     setCheckedDocuments(new Set());
   }, []);
 
+  const handleSelectPhase1 = useCallback(() => {
+    const phase1Sections = ['Personal Details'];
+    const phase1Docs = [
+      'Aadhaar Card (Front)',
+      'Aadhaar Card (Back)',
+      'PAN Card',
+      'Pan Card',
+      '10th Marksheet / Certificate',
+      '12th Marksheet / Certificate',
+      'Graduation Marksheet / Certificate'
+    ];
+    const sectionsToSelect = allSectionLabels.filter(label => phase1Sections.includes(label));
+    const docsToSelect = allDocumentLabels.filter(label => phase1Docs.includes(label));
+    setCheckedSections(new Set(sectionsToSelect));
+    setCheckedDocuments(new Set(docsToSelect));
+  }, [allDocumentLabels, allSectionLabels]);
+
+  const handleSelectPhase2 = useCallback(() => {
+    const phase1Sections = ['Personal Details'];
+    const phase1Docs = [
+      'Aadhaar Card (Front)',
+      'Aadhaar Card (Back)',
+      'PAN Card',
+      'Pan Card',
+      '10th Marksheet / Certificate',
+      '12th Marksheet / Certificate',
+      'Graduation Marksheet / Certificate'
+    ];
+    const sectionsToSelect = allSectionLabels.filter(label => !phase1Sections.includes(label));
+    const docsToSelect = allDocumentLabels.filter(label => !phase1Docs.includes(label));
+    setCheckedSections(new Set(sectionsToSelect));
+    setCheckedDocuments(new Set(docsToSelect));
+  }, [allDocumentLabels, allSectionLabels]);
+
   const handleSendOnboardingEmail = async () => {
     if (checkedSections.size === 0 && checkedDocuments.size === 0) {
       toast.error('Please select at least one section or document');
@@ -1830,30 +1864,30 @@ const Onboarding = () => {
                     {canManageOnboardingCredentials && (
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={async () => {
-                        try {
-                          const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' });
-                          toast.success('Extension rejected');
-                          if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
-                          else fetchEmployees();
-                          setSelectedEmployee(prev => ({ ...prev, extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? { ...r, status: 'Rejected' } : r) }));
-                        } catch { toast.error('Failed to reject extension'); }
-                        }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
-                        <button onClick={() => {
-                        const currentDeadline = selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline) : new Date();
-                        currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
-                        api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
-                          .then((res) => {
-                            toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString()}`);
+                          try {
+                            const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' });
+                            toast.success('Extension rejected');
                             if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
                             else fetchEmployees();
-                            const updatedExt = { ...ext, status: 'Approved' };
-                            setSelectedEmployee(prev => ({
-                              ...prev,
-                              documentDeadline: currentDeadline.toISOString(),
-                              extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? updatedExt : r)
-                            }));
-                          })
-                          .catch(() => toast.error('Failed to approve extension'));
+                            setSelectedEmployee(prev => ({ ...prev, extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? { ...r, status: 'Rejected' } : r) }));
+                          } catch { toast.error('Failed to reject extension'); }
+                        }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
+                        <button onClick={() => {
+                          const currentDeadline = selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline) : new Date();
+                          currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
+                          api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
+                            .then((res) => {
+                              toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString()}`);
+                              if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
+                              else fetchEmployees();
+                              const updatedExt = { ...ext, status: 'Approved' };
+                              setSelectedEmployee(prev => ({
+                                ...prev,
+                                documentDeadline: currentDeadline.toISOString(),
+                                extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? updatedExt : r)
+                              }));
+                            })
+                            .catch(() => toast.error('Failed to approve extension'));
                         }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#fff', background: '#2563eb', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Approve ({ext.requestedDays} Days)</button>
                       </div>
                     )}
@@ -1891,6 +1925,48 @@ const Onboarding = () => {
                     </button>
                     <button
                       type="button"
+                      onClick={handleSelectPhase1}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        border: '1px solid #bfdbfe',
+                        background: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                        color: '#1d4ed8',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s',
+                        boxShadow: '0 1px 2px rgba(37,99,235,0.05)'
+                      }}
+                    >
+                      Phase 1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectPhase2}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        border: '1px solid #e9d5ff',
+                        background: 'linear-gradient(135deg, #faf5ff, #f3e8ff)',
+                        color: '#7e22ce',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s',
+                        boxShadow: '0 1px 2px rgba(126,34,206,0.05)'
+                      }}
+                    >
+                      Phase 2
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleClearAllItems}
                       disabled={selectedItemCount === 0}
                       style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontSize: '12px', fontWeight: '700', cursor: selectedItemCount === 0 ? 'not-allowed' : 'pointer', opacity: selectedItemCount === 0 ? 0.6 : 1 }}
@@ -1900,6 +1976,7 @@ const Onboarding = () => {
                     <div style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 12px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '700', color: '#475569' }}>{selectedItemCount} selected</div>
                   </div>
                 </div>
+
                 <div style={{ display: 'grid', gap: '10px', marginBottom: '24px' }}>
                   {detailSections.map((s) => {
                     const isRequested = Array.isArray(selectedEmployee.requestedSections) && selectedEmployee.requestedSections.find((rs) => getRequestedLabel(rs) === s.label);
@@ -2199,43 +2276,43 @@ const Onboarding = () => {
                   </button>
 
                   {showEmailTemplateEditor && (
-                  <>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
-                    Subject
-                  </label>
-                  <input
-                    type="text"
-                    value={customEmailSubject}
-                    onChange={(e) => setCustomEmailSubject(e.target.value)}
-                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', marginBottom: '12px' }}
-                  />
+                    <>
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
+                        Subject
+                      </label>
+                      <input
+                        type="text"
+                        value={customEmailSubject}
+                        onChange={(e) => setCustomEmailSubject(e.target.value)}
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', marginBottom: '12px' }}
+                      />
 
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
-                    Email HTML / Template
-                  </label>
-                  <textarea
-                    value={customEmailBody}
-                    onChange={(e) => setCustomEmailBody(e.target.value)}
-                    rows={6}
-                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
-                  />
-                  <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
-                    You can fully customize the onboarding email here. The selected logo comes from Email Settings Email Branding. Supported placeholders: {templatePlaceholderHelp}
-                  </p>
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', display: 'block' }}>
+                        Email HTML / Template
+                      </label>
+                      <textarea
+                        value={customEmailBody}
+                        onChange={(e) => setCustomEmailBody(e.target.value)}
+                        rows={6}
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
+                      />
+                      <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                        You can fully customize the onboarding email here. The selected logo comes from Email Settings Email Branding. Supported placeholders: {templatePlaceholderHelp}
+                      </p>
 
-                  <div style={{ marginTop: '14px', padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
-                      Preview
-                    </div>
-                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>
-                      {onboardingPreviewSubject || '(empty subject)'}
-                    </div>
-                    <div
-                      style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', pointerEvents: 'none' }}
-                      dangerouslySetInnerHTML={{ __html: onboardingPreviewHtml || '<p>(empty body)</p>' }}
-                    />
-                  </div>
-                  </>
+                      <div style={{ marginTop: '14px', padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                          Preview
+                        </div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>
+                          {onboardingPreviewSubject || '(empty subject)'}
+                        </div>
+                        <div
+                          style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', pointerEvents: 'none' }}
+                          dangerouslySetInnerHTML={{ __html: onboardingPreviewHtml || '<p>(empty body)</p>' }}
+                        />
+                      </div>
+                    </>
                   )}
                 </div>
 
