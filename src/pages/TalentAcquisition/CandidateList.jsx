@@ -998,9 +998,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         };
     }, [serverSummary, structuralPhase3Candidates, usesBackendPagination]);
 
-    const fetchCandidates = useCallback(async () => {
+    const fetchCandidates = useCallback(async (silent = false) => {
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const endpoint = isLegacyView
                 ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
                 : `/ta/candidates/${hiringRequestId}`;
@@ -1027,7 +1027,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             console.error('Error fetching candidates:', error);
             toast.error('Failed to load candidates');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [buildCandidateRequestParams, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView]);
 
@@ -1676,6 +1676,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             setCandidates(prev => prev.map(c =>
                 c._id === candidateId ? { ...c, decision: newDecision } : c
             ));
+            fetchCandidates(true);
         } catch (error) {
             console.error('Error updating decision:', error);
             toast.error(error.response?.data?.message || 'Failed to update decision');
@@ -1703,6 +1704,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     ? (updatedCandidate ? { ...c, ...updatedCandidate } : { ...c, phase2Decision: newDecision })
                     : c
             ));
+            fetchCandidates(true);
         } catch (error) {
             console.error('Error updating Phase 2 decision:', error);
             toast.error('Failed to update Phase 2 decision');
@@ -1716,6 +1718,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             setCandidates(prev => prev.map(c =>
                 c._id === candidateId ? { ...c, phase3Decision: newDecision } : c
             ));
+            fetchCandidates(true);
         } catch (error) {
             console.error('Error updating Phase 3 decision:', error);
             toast.error('Failed to update Phase 3 decision');
@@ -3282,7 +3285,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 candidateId={selectedCandidateId}
                                 hiringRequestId={hiringRequestId}
                                 isSidePanel={true}
-                                onUpdate={fetchCandidates}
+                                onUpdate={() => fetchCandidates(true)}
                                 isSidePanelMaximized={isSidePanelMaximized}
                                 onToggleMaximize={handleToggleMaximize}
                             />

@@ -86,6 +86,8 @@ const formatUserName = (user) => {
     return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Unassigned';
 };
 
+const normalizeClientName = (value) => String(value || '').trim().toLowerCase();
+
 const AccessUserList = ({ title, users = [], emptyLabel }) => (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</p>
@@ -120,6 +122,11 @@ const AccessRequestList = ({ title, requests = [], emptyLabel }) => (
                         <p className="mt-1 text-xs text-slate-500">
                             {request.requestId} • {request.client || 'No client'}
                         </p>
+                        {request.accessReason ? (
+                            <span className="mt-2 inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                                {request.accessReason}
+                            </span>
+                        ) : null}
                     </div>
                 ))}
             </div>
@@ -329,6 +336,8 @@ const TAAccessSettings = () => {
         if (!selectedUser) {
             return {
                 assignedRequests: [],
+                directAssignedRequests: [],
+                clientAssignedRequests: [],
                 hiringManagerOn: [],
                 analyticsViewerOn: [],
                 interviewPanelOn: [],
@@ -338,9 +347,47 @@ const TAAccessSettings = () => {
 
         const normalizedUserId = String(selectedUser._id);
         const includesUser = (list = []) => list.some((entry) => String(entry?._id || entry) === normalizedUserId);
+        const assignedClientNames = new Set(
+            (Array.isArray(selectedUser.taAssignedClients) ? selectedUser.taAssignedClients : [])
+                .map(normalizeClientName)
+                .filter(Boolean)
+        );
+        const assignedRequests = requests.reduce((coverage, request) => {
+            const hasDirectAssignment = includesUser(request.assignedUsers || []);
+            const hasClientAssignment = assignedClientNames.has(normalizeClientName(request.client));
+
+            if (!hasDirectAssignment && !hasClientAssignment) {
+                return coverage;
+            }
+
+            const enrichedRequest = {
+                ...request,
+                accessReason: hasDirectAssignment && hasClientAssignment
+                    ? 'Direct + client'
+                    : hasDirectAssignment
+                        ? 'Direct requisition'
+                        : 'Client assignment'
+            };
+
+            coverage.assignedRequests.push(enrichedRequest);
+            if (hasDirectAssignment) {
+                coverage.directAssignedRequests.push(enrichedRequest);
+            }
+            if (hasClientAssignment) {
+                coverage.clientAssignedRequests.push(enrichedRequest);
+            }
+
+            return coverage;
+        }, {
+            assignedRequests: [],
+            directAssignedRequests: [],
+            clientAssignedRequests: []
+        });
 
         return {
-            assignedRequests: requests.filter((request) => includesUser(request.assignedUsers || [])),
+            assignedRequests: assignedRequests.assignedRequests,
+            directAssignedRequests: assignedRequests.directAssignedRequests,
+            clientAssignedRequests: assignedRequests.clientAssignedRequests,
             hiringManagerOn: requests.filter((request) => String(request.ownership?.hiringManager?._id || request.ownership?.hiringManager || '') === normalizedUserId),
             analyticsViewerOn: requests.filter((request) => includesUser(request.analyticsViewers || [])),
             interviewPanelOn: requests.filter((request) => includesUser(request.ownership?.interviewPanel || [])),
@@ -407,12 +454,7 @@ const TAAccessSettings = () => {
         try {
             setSavingRequestId(selectedRequest._id);
             const response = await api.put(`/ta/settings/access/requisitions/${selectedRequest._id}`, requestAccessDraft);
-            const updatedRequest = response.data?.request;
-            setRequests((current) => current.map((request) => (
-                request._id === updatedRequest?._id
-                    ? { ...request, ...updatedRequest }
-                    : request
-            )));
+            await fetchOverview();
             toast.success(response.data?.message || 'Requisition access updated');
         } catch (error) {
             console.error('Failed to save requisition access:', error);
@@ -439,8 +481,7 @@ const TAAccessSettings = () => {
                 clientName: selectedClientName,
                 userIds: clientAssignedUserIdsDraft
             });
-            const updatedUsers = response.data?.users || [];
-            setUsers(updatedUsers);
+            await fetchOverview();
             toast.success(response.data?.message || 'TA client assignments updated');
         } catch (error) {
             console.error('Failed to save TA client assignments:', error);
@@ -1055,6 +1096,9 @@ const TAAccessSettings = () => {
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Requests</p>
                                     <p className="mt-2 text-sm font-semibold text-slate-800">{userCoverage.assignedRequests.length}</p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Direct: {selectedUser.directAssignedRequests || 0} | Via client: {selectedUser.clientDerivedRequests || 0}
+                                    </p>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Interview Rounds</p>
@@ -1066,7 +1110,7 @@ const TAAccessSettings = () => {
                                 <AccessRequestList
                                     title="Shared Requisitions"
                                     requests={userCoverage.assignedRequests}
-                                    emptyLabel="No shared requisitions"
+                                    emptyLabel="No requisitions shared directly or through client assignment"
                                 />
                                 <AccessRequestList
                                     title="Hiring Manager On"
