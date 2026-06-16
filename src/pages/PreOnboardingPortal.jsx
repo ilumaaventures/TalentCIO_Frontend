@@ -115,6 +115,7 @@ const PreOnboardingPortal = () => {
   const [emergencyContact, setEmergencyContact] = useState({});
   const [bankDetails, setBankDetails] = useState({});
   const [offerDeclaration, setOfferDeclaration] = useState({});
+  const [validationErrors, setValidationErrors] = useState({});
 
   const getHeaders = useCallback(() => {
     const token = localStorage.getItem('onboardingToken');
@@ -525,7 +526,71 @@ const PreOnboardingPortal = () => {
   }
 
   const inputStyle = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: isReadOnly ? '#f1f5f9' : '#fff' };
+  const errorInputStyle = { ...inputStyle, border: '1px solid #ef4444', background: '#fef2f2' };
   const labelStyle = { display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' };
+  const getFieldStyle = (fieldKey) => validationErrors[fieldKey] ? errorInputStyle : inputStyle;
+
+  const validatePersonalDetails = (data) => {
+    const missing = [];
+    if (!data.fullName?.trim()) missing.push('Full Name');
+    if (!data.dateOfBirth) missing.push('Date of Birth');
+    if (!data.gender) missing.push('Gender');
+    if (!data.bloodGroup?.trim()) missing.push('Blood Group');
+    if (!data.personalEmail?.trim()) missing.push('Personal Email');
+    if (!data.personalMobile?.trim()) missing.push('Personal Mobile');
+    if (!data.currentAddress?.line1?.trim()) missing.push('Current Address Street');
+    if (!data.currentAddress?.city?.trim()) missing.push('Current Address City');
+    if (!data.currentAddress?.state?.trim()) missing.push('Current Address State');
+    if (!data.currentAddress?.pincode?.trim()) missing.push('Current Address Pincode');
+    if (!data.sameAsCurrent) {
+      if (!data.permanentAddress?.line1?.trim()) missing.push('Permanent Address Street');
+      if (!data.permanentAddress?.city?.trim()) missing.push('Permanent Address City');
+      if (!data.permanentAddress?.state?.trim()) missing.push('Permanent Address State');
+      if (!data.permanentAddress?.pincode?.trim()) missing.push('Permanent Address Pincode');
+    }
+    return missing;
+  };
+
+  const validateEmergencyContact = (data) => {
+    const missing = [];
+    if (!data.contactName?.trim()) missing.push('Contact Person Name');
+    if (!data.relationship?.trim()) missing.push('Relationship');
+    if (!data.phoneNumber?.trim()) missing.push('Phone Number');
+    if (!data.address?.trim()) missing.push('Address');
+    return missing;
+  };
+
+  const validateBankDetails = (data) => {
+    const missing = [];
+    if (!data.bankName?.trim()) missing.push('Bank Name');
+    if (!data.accountNumber?.trim()) missing.push('Account Number');
+    if (!data.confirmAccountNumber?.trim()) missing.push('Confirm Account Number');
+    if (data.accountNumber?.trim() && data.confirmAccountNumber?.trim() && data.accountNumber.trim() !== data.confirmAccountNumber.trim()) missing.push('Account Numbers do not match');
+    if (!data.ifscCode?.trim()) missing.push('IFSC Code');
+    if (!data.branchName?.trim()) missing.push('Branch Name');
+    if (!data.accountType) missing.push('Account Type');
+    return missing;
+  };
+
+  const buildValidationErrorMap = (missing, prefix) => {
+    const errors = {};
+    const fieldMap = {
+      'Full Name': 'fullName', 'Date of Birth': 'dateOfBirth', 'Gender': 'gender',
+      'Blood Group': 'bloodGroup', 'Personal Email': 'personalEmail', 'Personal Mobile': 'personalMobile',
+      'Current Address Street': 'currentAddress.line1', 'Current Address City': 'currentAddress.city',
+      'Current Address State': 'currentAddress.state', 'Current Address Pincode': 'currentAddress.pincode',
+      'Permanent Address Street': 'permanentAddress.line1', 'Permanent Address City': 'permanentAddress.city',
+      'Permanent Address State': 'permanentAddress.state', 'Permanent Address Pincode': 'permanentAddress.pincode',
+      'Contact Person Name': 'contactName', 'Relationship': 'relationship', 'Phone Number': 'phoneNumber', 'Address': 'address',
+      'Bank Name': 'bankName', 'Account Number': 'accountNumber', 'Confirm Account Number': 'confirmAccountNumber',
+      'IFSC Code': 'ifscCode', 'Branch Name': 'branchName', 'Account Type': 'accountType'
+    };
+    missing.forEach(label => {
+      const key = fieldMap[label];
+      if (key) errors[`${prefix}.${key}`] = true;
+    });
+    return errors;
+  };
 
   const markChange = () => setUnsavedChanges(true);
 
@@ -728,25 +793,27 @@ const PreOnboardingPortal = () => {
                     <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Personal & Contact Details</h3>
                     {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                      <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} readOnly={sRO} value={personalDetails.fullName || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, fullName: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Date of Birth</label><input type="date" style={inputStyle} readOnly={sRO} value={personalDetails.dateOfBirth?.split('T')[0] || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, dateOfBirth: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Full Name *</label><input style={getFieldStyle('pd.fullName')} readOnly={sRO} value={personalDetails.fullName || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, fullName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.fullName']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Date of Birth *</label><input type="date" style={getFieldStyle('pd.dateOfBirth')} readOnly={sRO} value={personalDetails.dateOfBirth?.split('T')[0] || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, dateOfBirth: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.dateOfBirth']; return n; }); markChange(); }} /></div>
                       <div>
-                        <label style={labelStyle}>Gender</label>
-                        <select style={inputStyle} disabled={sRO} value={personalDetails.gender || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, gender: e.target.value }); markChange(); }}>
+                        <label style={labelStyle}>Gender *</label>
+                        <select style={getFieldStyle('pd.gender')} disabled={sRO} value={personalDetails.gender || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, gender: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.gender']; return n; }); markChange(); }}>
                           <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
                         </select>
                       </div>
-                      <div><label style={labelStyle}>Blood Group</label><input style={inputStyle} readOnly={sRO} value={personalDetails.bloodGroup || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, bloodGroup: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Personal Email</label><input type="email" style={inputStyle} readOnly={sRO} value={personalDetails.personalEmail || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalEmail: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Personal Mobile *</label><input style={inputStyle} readOnly={sRO} value={personalDetails.personalMobile || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalMobile: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Blood Group *</label><input style={getFieldStyle('pd.bloodGroup')} readOnly={sRO} value={personalDetails.bloodGroup || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, bloodGroup: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.bloodGroup']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Personal Email *</label><input type="email" style={getFieldStyle('pd.personalEmail')} readOnly={sRO} value={personalDetails.personalEmail || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalEmail: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.personalEmail']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Personal Mobile *</label><input style={getFieldStyle('pd.personalMobile')} readOnly={sRO} value={personalDetails.personalMobile || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalMobile: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.personalMobile']; return n; }); markChange(); }} /></div>
                     </div>
 
                     <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Current Address</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address Line 1</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, line1: e.target.value } }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>City</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, city: e.target.value } }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>State</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, state: e.target.value } }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Pincode</label><input style={inputStyle} readOnly={sRO} value={personalDetails.currentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, currentAddress: { ...personalDetails.currentAddress, pincode: e.target.value } }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Street *</label><input style={getFieldStyle('pd.currentAddress.line1')} readOnly={sRO} value={personalDetails.currentAddress?.line1 || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, line1: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.line1']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.line1']; return n; }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Line 2</label><input style={getFieldStyle('pd.currentAddress.line2')} readOnly={sRO} value={personalDetails.currentAddress?.line2 || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, line2: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>City *</label><input style={getFieldStyle('pd.currentAddress.city')} readOnly={sRO} value={personalDetails.currentAddress?.city || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, city: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.city']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.city']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>State *</label><input style={getFieldStyle('pd.currentAddress.state')} readOnly={sRO} value={personalDetails.currentAddress?.state || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, state: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.state']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.state']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Pincode *</label><input style={getFieldStyle('pd.currentAddress.pincode')} readOnly={sRO} value={personalDetails.currentAddress?.pincode || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, pincode: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.pincode']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.pincode']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Country</label><input style={getFieldStyle('pd.currentAddress.country')} readOnly={sRO} value={personalDetails.currentAddress?.country || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, country: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); markChange(); }} /></div>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '20px 0 12px' }}>
@@ -754,24 +821,22 @@ const PreOnboardingPortal = () => {
                         const checked = e.target.checked;
                         setPersonalDetails(prev => ({
                           ...prev, sameAsCurrent: checked,
-                          permanentAddress: checked ? { ...prev.currentAddress } : { line1: '', line2: '', city: '', state: '', pincode: '', country: 'India' }
+                          permanentAddress: checked ? { ...prev.currentAddress } : { line1: '', line2: '', city: '', state: '', pincode: '', country: '' }
                         }));
                         markChange();
                       }} />
                       <label htmlFor="sameAddr" style={{ fontSize: '14px', color: '#475569', cursor: 'pointer' }}>Permanent address same as current</label>
                     </div>
 
-                    {!personalDetails.sameAsCurrent && (
-                      <>
-                        <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>Permanent Address</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                          <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address Line 1</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, line1: e.target.value } }); markChange(); }} /></div>
-                          <div><label style={labelStyle}>City</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, city: e.target.value } }); markChange(); }} /></div>
-                          <div><label style={labelStyle}>State</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, state: e.target.value } }); markChange(); }} /></div>
-                          <div><label style={labelStyle}>Pincode</label><input style={inputStyle} readOnly={sRO} value={personalDetails.permanentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, pincode: e.target.value } }); markChange(); }} /></div>
-                        </div>
-                      </>
-                    )}
+                    <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>Permanent Address</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Street *</label><input style={getFieldStyle('pd.permanentAddress.line1')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, line1: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.line1']; return n; }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Line 2</label><input style={getFieldStyle('pd.permanentAddress.line2')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.line2 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, line2: e.target.value } }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>City *</label><input style={getFieldStyle('pd.permanentAddress.city')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, city: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.city']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>State *</label><input style={getFieldStyle('pd.permanentAddress.state')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, state: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.state']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Pincode *</label><input style={getFieldStyle('pd.permanentAddress.pincode')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, pincode: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.pincode']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Country</label><input style={getFieldStyle('pd.permanentAddress.country')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.country || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, country: e.target.value } }); markChange(); }} /></div>
+                    </div>
 
                     <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Social Links (Optional)</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
@@ -783,6 +848,15 @@ const PreOnboardingPortal = () => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
                         <input type="checkbox" id="pd_complete" checked={personalDetails.isComplete || false} onChange={(e) => {
                           const isChecked = e.target.checked;
+                          if (isChecked) {
+                            const missing = validatePersonalDetails(personalDetails);
+                            if (missing.length > 0) {
+                              toast.error(`Please fill all mandatory fields: ${missing.join(', ')}`);
+                              setValidationErrors(buildValidationErrorMap(missing, 'pd'));
+                              return;
+                            }
+                            setValidationErrors({});
+                          }
                           const updated = { ...personalDetails, isComplete: isChecked };
                           setPersonalDetails(updated);
                           if (isChecked) handleSaveSection('personalDetails', false, updated);
@@ -802,15 +876,24 @@ const PreOnboardingPortal = () => {
                     <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Emergency Contact</h3>
                     {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                      <div><label style={labelStyle}>Contact Person Name *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.contactName || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, contactName: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Relationship *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.relationship || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, relationship: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Phone Number *</label><input style={inputStyle} readOnly={sRO} value={emergencyContact.phoneNumber || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, phoneNumber: e.target.value }); markChange(); }} /></div>
-                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address</label><textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} readOnly={sRO} value={emergencyContact.address || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, address: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Contact Person Name *</label><input style={getFieldStyle('ec.contactName')} readOnly={sRO} value={emergencyContact.contactName || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, contactName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.contactName']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Relationship *</label><input style={getFieldStyle('ec.relationship')} readOnly={sRO} value={emergencyContact.relationship || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, relationship: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.relationship']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Phone Number *</label><input style={getFieldStyle('ec.phoneNumber')} readOnly={sRO} value={emergencyContact.phoneNumber || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, phoneNumber: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.phoneNumber']; return n; }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address *</label><textarea style={{ ...(validationErrors['ec.address'] ? errorInputStyle : inputStyle), minHeight: '80px', resize: 'vertical' }} readOnly={sRO} value={emergencyContact.address || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, address: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.address']; return n; }); markChange(); }} /></div>
                     </div>
                     {!isGlobalReadOnly && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
                         <input type="checkbox" id="ec_complete" checked={emergencyContact.isComplete || false} onChange={(e) => {
                           const isChecked = e.target.checked;
+                          if (isChecked) {
+                            const missing = validateEmergencyContact(emergencyContact);
+                            if (missing.length > 0) {
+                              toast.error(`Please fill all mandatory fields: ${missing.join(', ')}`);
+                              setValidationErrors(buildValidationErrorMap(missing, 'ec'));
+                              return;
+                            }
+                            setValidationErrors({});
+                          }
                           const updated = { ...emergencyContact, isComplete: isChecked };
                           setEmergencyContact(updated);
                           if (isChecked) handleSaveSection('emergencyContact', false, updated);
@@ -955,14 +1038,14 @@ const PreOnboardingPortal = () => {
                     <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Bank / Payroll Details</h3>
                     {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                      <div><label style={labelStyle}>Bank Name *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.bankName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, bankName: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Account Number *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.accountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountNumber: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Confirm Account Number *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.confirmAccountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, confirmAccountNumber: e.target.value }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>IFSC Code *</label><input style={inputStyle} readOnly={sRO} value={bankDetails.ifscCode || ''} onChange={(e) => { setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() }); markChange(); }} /></div>
-                      <div><label style={labelStyle}>Branch Name</label><input style={inputStyle} readOnly={sRO} value={bankDetails.branchName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, branchName: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Bank Name *</label><input style={getFieldStyle('bd.bankName')} readOnly={sRO} value={bankDetails.bankName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, bankName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.bankName']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Account Number *</label><input style={getFieldStyle('bd.accountNumber')} readOnly={sRO} value={bankDetails.accountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountNumber: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.accountNumber']; delete n['bd.confirmAccountNumber']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Confirm Account Number *</label><input style={getFieldStyle('bd.confirmAccountNumber')} readOnly={sRO} value={bankDetails.confirmAccountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, confirmAccountNumber: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.confirmAccountNumber']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>IFSC Code *</label><input style={getFieldStyle('bd.ifscCode')} readOnly={sRO} value={bankDetails.ifscCode || ''} onChange={(e) => { setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.ifscCode']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Branch Name *</label><input style={getFieldStyle('bd.branchName')} readOnly={sRO} value={bankDetails.branchName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, branchName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.branchName']; return n; }); markChange(); }} /></div>
                       <div>
                         <label style={labelStyle}>Account Type *</label>
-                        <select style={inputStyle} disabled={sRO} value={bankDetails.accountType || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountType: e.target.value }); markChange(); }}>
+                        <select style={getFieldStyle('bd.accountType')} disabled={sRO} value={bankDetails.accountType || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountType: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.accountType']; return n; }); markChange(); }}>
                           <option value="">Select</option><option value="Savings">Savings</option><option value="Current">Current</option>
                         </select>
                       </div>
@@ -991,6 +1074,15 @@ const PreOnboardingPortal = () => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
                         <input type="checkbox" id="bd_complete" checked={bankDetails.isComplete || false} onChange={(e) => {
                           const isChecked = e.target.checked;
+                          if (isChecked) {
+                            const missing = validateBankDetails(bankDetails);
+                            if (missing.length > 0) {
+                              toast.error(`Please fill all mandatory fields: ${missing.join(', ')}`);
+                              setValidationErrors(buildValidationErrorMap(missing, 'bd'));
+                              return;
+                            }
+                            setValidationErrors({});
+                          }
                           const updated = { ...bankDetails, isComplete: isChecked };
                           setBankDetails(updated);
                           if (isChecked) handleSaveSection('bankDetails', false, updated);
