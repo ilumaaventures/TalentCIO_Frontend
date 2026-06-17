@@ -861,7 +861,7 @@ const CandidateForm = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Total Exp (Years) *</label>
-                                            <input type="number" step="0.1" name="totalExperience" value={formData.totalExperience} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" required disabled={isViewMode} />
+                                            <input type="number" step="0.1" name="totalExperience" value={formData.totalExperience} onChange={handleChange} onWheel={(e) => e.target.blur()} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" required disabled={isViewMode} />
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Current Company</label>
@@ -869,19 +869,19 @@ const CandidateForm = () => {
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Current CTC (LPA)</label>
-                                            <input type="number" step="0.01" name="currentCTC" value={formData.currentCTC} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
+                                            <input type="number" step="0.01" name="currentCTC" value={formData.currentCTC} onChange={handleChange} onWheel={(e) => e.target.blur()} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Expected CTC (LPA)</label>
-                                            <input type="number" step="0.01" name="expectedCTC" value={formData.expectedCTC} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
+                                            <input type="number" step="0.01" name="expectedCTC" value={formData.expectedCTC} onChange={handleChange} onWheel={(e) => e.target.blur()} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Notice Period (Days)</label>
-                                            <input type="number" name="noticePeriod" value={formData.noticePeriod} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
+                                            <input type="number" name="noticePeriod" value={formData.noticePeriod} onChange={handleChange} onWheel={(e) => e.target.blur()} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">TAT to Join (Days)</label>
-                                            <input type="number" name="tatToJoin" value={formData.tatToJoin} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
+                                            <input type="number" name="tatToJoin" value={formData.tatToJoin} onChange={handleChange} onWheel={(e) => e.target.blur()} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Last Working Day</label>
