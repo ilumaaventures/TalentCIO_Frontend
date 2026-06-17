@@ -6,6 +6,7 @@ import { Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import AnnouncementUnreadModal from './announcements/AnnouncementUnreadModal';
+import BirthdayCelebrationModal from './BirthdayCelebrationModal';
 import {
     getAcknowledgedAnnouncementIds,
     getAnnouncementSessionGateKey,
@@ -23,6 +24,8 @@ const Layout = () => {
     const [announcementIndex, setAnnouncementIndex] = useState(0);
     const [announcementConfirmed, setAnnouncementConfirmed] = useState(false);
     const [announcementAckBuffer, setAnnouncementAckBuffer] = useState([]);
+    const [showBirthdayModal, setShowBirthdayModal] = useState(false);
+    const [birthdayEmployeeName, setBirthdayEmployeeName] = useState('');
     const location = useLocation();
     const timerRef = useRef(null);
     const { user } = useAuth();
@@ -32,8 +35,46 @@ const Layout = () => {
             document.documentElement.style.setProperty('--primary-color', user.company.settings.themeColor);
             // Also set a hover variant or lighter variant if needed
             document.documentElement.style.setProperty('--primary-hover', `${user.company.settings.themeColor}dd`);
+            const shadowColor = user.company.settings.themeColor.startsWith('#')
+                ? `${user.company.settings.themeColor}4d`
+                : 'rgba(37, 99, 235, 0.3)';
+            document.documentElement.style.setProperty('--primary-color-shadow', shadowColor);
         }
     }, [user]);
+
+    useEffect(() => {
+        if (!user?._id) return;
+
+        // Use sessionStorage so the modal only shows once per login session.
+        // sessionStorage is cleared when the tab/browser is closed, so a new
+        // login will always show it again. Page refreshes within the same
+        // session will NOT re-trigger the modal.
+        const sessionKey = `birthday_shown_${user._id}`;
+        if (sessionStorage.getItem(sessionKey)) return;
+
+        let isActive = true;
+        const checkBirthday = async () => {
+            try {
+                const response = await api.get('/auth/birthday-status');
+                if (!isActive) return;
+
+                if (response.data?.isBirthday) {
+                    setBirthdayEmployeeName(response.data.employeeName || `${user.firstName || ''} ${user.lastName || ''}`.trim());
+                    setShowBirthdayModal(true);
+                }
+                // Mark as checked for this session regardless of result
+                sessionStorage.setItem(sessionKey, 'true');
+            } catch (error) {
+                console.error('Failed to check birthday status:', error);
+            }
+        };
+
+        checkBirthday();
+
+        return () => {
+            isActive = false;
+        };
+    }, [user?._id]);
 
     useEffect(() => {
         // Show progress bar on route change
@@ -208,6 +249,13 @@ const Layout = () => {
                     onSkip={handleAnnouncementSkip}
                 />
             ) : null}
+
+            {showBirthdayModal && (
+                <BirthdayCelebrationModal
+                    employeeName={birthdayEmployeeName}
+                    onClose={() => setShowBirthdayModal(false)}
+                />
+            )}
         </div>
     );
 };

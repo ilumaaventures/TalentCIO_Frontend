@@ -775,11 +775,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         // HRIS Validation
         const p = formData.personal || {};
         const b = formData.compensation?.bankDetails || {};
+        const uan = formData.compensation?.uanNumber;
 
         if (!p.firstName || !p.lastName || !p.fullName) return toast.error('All fields are required');
 
         if (!b.accountNumber || !b.ifscCode || !b.bankName || !b.accountHolderName || !b.branchAddress) {
             return toast.error('All fields are required');
+        }
+
+        if (uan && !/^\d{12}$/.test(uan)) {
+            return toast.error('UAN must be a 12-digit number');
         }
 
         try {
@@ -2107,7 +2112,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     type="file"
                     ref={fileInputRef}
                     className="hidden"
-                                            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                     onChange={handleFileSelect}
                 />
 
@@ -2547,6 +2552,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
                             <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
                             <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                            <Field
+                                section="compensation" isEditing={isEditing} label="UAN (Universal Account Number)" field="uanNumber"
+                                value={profile.compensation?.uanNumber}
+                                valueOverride={formData.compensation?.uanNumber}
+                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, uanNumber: e.target.value.replace(/\D/g, '') } }))}
+                                maxLength={12}
+                            />
                         </div>
                     </div>
 

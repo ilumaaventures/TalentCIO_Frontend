@@ -2374,7 +2374,7 @@ const Onboarding = () => {
                         disabled={sendingEmail}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: sendingEmail ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 14px rgba(37,99,235,0.3)', opacity: sendingEmail ? 0.7 : 1, transition: 'all 0.2s' }}
                       >
-                        <Mail size={18} /> {sendingEmail ? 'Sending...' : 'Send Pre-Onboarding Email'}
+                        <Mail size={18} /> {sendingEmail ? 'Sending...' : 'Send Mail'}
                       </button>
                     )}
                   </div>
