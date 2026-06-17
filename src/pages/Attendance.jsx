@@ -715,7 +715,9 @@ const Attendance = () => {
                     recentLogs: minimalLogs,
                     history: minimalHistory,
                     approvedLeaves: (data.approvedLeaves || []).map(l => ({ _id: l._id, leaveType: l.leaveType, startDate: l.startDate, endDate: l.endDate, status: l.status })),
-                    timesheetSummary: data.timesheetSummary || null
+                    timesheetSummary: data.timesheetSummary || null,
+                    weeklyOff: data.weeklyOff || [],
+                    holidays: data.holidays || []
                 }, fingerprint);
 
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
@@ -735,7 +737,9 @@ const Attendance = () => {
             const historyStr = (payload.history || []).length;
             const leavesStr = (payload.approvedLeaves || []).length;
             const timesheetStr = payload.timesheetSummary?.status || 'none';
-            return `${statusStr}::${logsStr}::H${historyStr}::L${leavesStr}::TS${timesheetStr}`;
+            const weeklyOffStr = (payload.weeklyOff || []).join(',');
+            const holidaysStr = (payload.holidays || []).map(h => `${h._id || h.date}|${h.name}`).join(',');
+            return `${statusStr}::${logsStr}::H${historyStr}::L${leavesStr}::TS${timesheetStr}::WO${weeklyOffStr}::HD${holidaysStr}`;
         };
 
         const applyData = (payload) => {
@@ -744,6 +748,8 @@ const Attendance = () => {
             if (payload.history) setHistory(payload.history);
             if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
             if (payload.timesheetSummary !== undefined) setTimesheetSummary(payload.timesheetSummary);
+            if (payload.weeklyOff) setWeeklyOffs(payload.weeklyOff);
+            if (payload.holidays) setHolidays(payload.holidays);
         };
 
         // 1. Try Cache First (Instant UI)
@@ -777,7 +783,8 @@ const Attendance = () => {
                 history: bootstrapData?.history || [],
                 holidays: bootstrapData?.holidays || [],
                 approvedLeaves: bootstrapData?.approvedLeaves || [],
-                timesheetSummary: bootstrapData?.timesheetSummary || null
+                timesheetSummary: bootstrapData?.timesheetSummary || null,
+                weeklyOff: bootstrapData?.weeklyOff || []
             };
 
             const freshFingerprint = buildFingerprint(freshData);
@@ -786,8 +793,6 @@ const Attendance = () => {
             // 3. Update React only if data changed
             if (!cached || cachedFingerprint !== freshFingerprint) {
                 applyData(freshData);
-                if (bootstrapData?.weeklyOff) setWeeklyOffs(bootstrapData.weeklyOff);
-                if (bootstrapData?.holidays) setHolidays(bootstrapData.holidays);
                 writeCache(freshData, freshFingerprint);
             }
         }).finally(() => {
