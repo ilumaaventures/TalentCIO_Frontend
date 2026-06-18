@@ -184,6 +184,22 @@ const Onboarding = () => {
     };
   }, []);
 
+  // Clear onboarding cache on mount/refresh to ensure fresh data loads on entry
+  useEffect(() => {
+    if (user?._id) {
+      const prefix = `onboarding_employees_${user._id}_`;
+      try {
+        Object.keys(sessionStorage).forEach((key) => {
+          if (key.startsWith(prefix)) {
+            sessionStorage.removeItem(key);
+          }
+        });
+      } catch (e) {
+        console.error('Failed to clear onboarding cache on mount', e);
+      }
+    }
+  }, [user?._id]);
+
   const toggleMenu = useCallback((e, employeeId) => {
     e.stopPropagation();
     if (activeMenu === employeeId) {
@@ -602,40 +618,33 @@ const Onboarding = () => {
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  const syncEmployeeState = useCallback((updatedEmp, mode = 'update') => {
-    setEmployees(prev => {
-      let nextEmployees;
-      if (mode === 'delete') {
-        nextEmployees = prev.filter(e => e._id !== updatedEmp._id);
-      } else if (mode === 'add') {
-        nextEmployees = [updatedEmp, ...prev];
-      } else {
-        nextEmployees = prev.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
-      }
-
-      const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${debouncedSearchTerm || 'all'}`;
+  const clearOnboardingCache = useCallback(() => {
+    if (user?._id) {
+      const prefix = `onboarding_employees_${user._id}_`;
       try {
-        const cached = readSessionCache(cacheKey);
-        if (cached) {
-          const parsed = cached.data || {};
-          let nextCachedEmp = parsed.employees || [];
-          if (mode === 'delete') {
-            nextCachedEmp = nextCachedEmp.filter(e => e._id !== updatedEmp._id);
-          } else if (mode === 'add') {
-            nextCachedEmp = [updatedEmp, ...nextCachedEmp];
-          } else {
-            nextCachedEmp = nextCachedEmp.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
+        Object.keys(sessionStorage).forEach((key) => {
+          if (key.startsWith(prefix)) {
+            sessionStorage.removeItem(key);
           }
-          parsed.employees = nextCachedEmp;
-          sessionStorage.setItem(cacheKey, JSON.stringify({ ...cached, data: parsed }));
-        }
-      } catch {
-        // Ignore cache sync failures and continue with the in-memory update.
+        });
+      } catch (e) {
+        console.error('Failed to clear onboarding cache', e);
       }
+    }
+  }, [user?._id]);
 
-      return nextEmployees;
+  const syncEmployeeState = useCallback((updatedEmp, mode = 'update') => {
+    clearOnboardingCache();
+    setEmployees(prev => {
+      if (mode === 'delete') {
+        return prev.filter(e => e._id !== updatedEmp._id);
+      } else if (mode === 'add') {
+        return [updatedEmp, ...prev];
+      } else {
+        return prev.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
+      }
     });
-  }, [debouncedSearchTerm, page, statusFilter, user?._id]);
+  }, [clearOnboardingCache]);
 
   const fetchEmployees = useCallback(async ({ force = false } = {}) => {
     const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${debouncedSearchTerm || 'all'}`;
@@ -686,7 +695,13 @@ const Onboarding = () => {
         offerDate: employee.offerDate,
         status: employee.status,
         tempEmployeeId: employee.tempEmployeeId,
-        createdBy: employee.createdBy
+        createdBy: employee.createdBy,
+        sourcedFromTA: employee.sourcedFromTA,
+        documents: employee.documents,
+        personalDetails: employee.personalDetails,
+        emergencyContact: employee.emergencyContact,
+        bankDetails: employee.bankDetails,
+        offerDeclaration: employee.offerDeclaration
       }));
 
       sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload({

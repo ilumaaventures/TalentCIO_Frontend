@@ -119,25 +119,27 @@ const BulkResumeImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess })
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                if (file.name.endsWith('.zip')) {
+                const fileNameLower = file.name.toLowerCase();
+                if (fileNameLower.endsWith('.zip')) {
                     const zip = new JSZip();
                     const contents = await zip.loadAsync(file);
                     
                     const zipPromises = [];
                     contents.forEach((relativePath, zipEntry) => {
-                        if (!zipEntry.dir && (relativePath.endsWith('.pdf') || relativePath.endsWith('.docx') || relativePath.endsWith('.doc'))) {
+                        const pathLower = relativePath.toLowerCase();
+                        if (!zipEntry.dir && (pathLower.endsWith('.pdf') || pathLower.endsWith('.docx') || pathLower.endsWith('.doc'))) {
                             zipPromises.push(
                                 zipEntry.async('blob').then(blob => {
                                     // Extract filename from path
                                     const fileName = relativePath.split('/').pop();
-                                    return new File([blob], fileName, { type: relativePath.endsWith('.pdf') ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                                    return new File([blob], fileName, { type: pathLower.endsWith('.pdf') ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
                                 })
                             );
                         }
                     });
                     const unzippedFiles = await Promise.all(zipPromises);
                     extractedFiles = [...extractedFiles, ...unzippedFiles];
-                } else if (file.name.endsWith('.pdf') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+                } else if (fileNameLower.endsWith('.pdf') || fileNameLower.endsWith('.docx') || fileNameLower.endsWith('.doc')) {
                     extractedFiles.push(file);
                 } else {
                     toast.error(`Ignored unsupported file: ${file.name}`);
