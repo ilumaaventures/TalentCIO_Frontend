@@ -728,7 +728,6 @@ const TalentAcquisitionDashboard = () => {
     const renderInterviews = () => (
         <SectionCard
             title="Interview Queue"
-            action={<Link to="/ta/workflows" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Manage interview workflows</Link>}
         >
             <div className="overflow-x-auto">
                 {interviews.length ? (
