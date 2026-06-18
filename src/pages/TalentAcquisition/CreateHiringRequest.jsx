@@ -733,7 +733,7 @@ const CreateHiringRequest = () => {
                     />
                     <Input label="Min Experience (Yrs)" name="experienceMin" type="number" value={formData.experienceMin} onChange={handleChange} />
                     <Input label="Max Experience (Yrs)" name="experienceMax" type="number" value={formData.experienceMax} onChange={handleChange} />
-                    <Input label="Work Location" name="location" value={formData.location} onChange={handleChange} options={['Onsite', 'Remote', 'Hybrid']} />
+                    <Input label="Work Location" name="location" value={formData.location} onChange={handleChange} placeholder="e.g. Onsite - Noida, Remote, Hybrid" />
                     <Input label="Shift" name="shift" value={formData.shift} onChange={handleChange} placeholder="e.g. General, UK Shift" />
                 </Section>
 

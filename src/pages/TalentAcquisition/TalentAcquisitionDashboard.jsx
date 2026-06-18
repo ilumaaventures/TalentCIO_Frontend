@@ -10,7 +10,10 @@ import {
     FileText,
     RefreshCw,
     Target,
-    Users
+    Users,
+    Search,
+    SlidersHorizontal,
+    Filter
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
@@ -251,6 +254,49 @@ const TalentAcquisitionDashboard = () => {
     const [clients, setClients] = useState([]);
     const [interviews, setInterviews] = useState([]);
 
+    // Global Candidate Search states
+    const [candidateSearchText, setCandidateSearchText] = useState('');
+    const [searchTriggerVal, setSearchTriggerVal] = useState('');
+    const [selectedSources, setSelectedSources] = useState([]);
+    const [minExp, setMinExp] = useState('');
+    const [maxExp, setMaxExp] = useState('');
+    const [searchSkills, setSearchSkills] = useState([]);
+    const [searchClient, setSearchClient] = useState('');
+    const [searchLocation, setSearchLocation] = useState('');
+    const [maxNoticePeriod, setMaxNoticePeriod] = useState('');
+    const [minCurrentCTC, setMinCurrentCTC] = useState('');
+    const [maxCurrentCTC, setMaxCurrentCTC] = useState('');
+    const [minExpectedCTC, setMinExpectedCTC] = useState('');
+    const [maxExpectedCTC, setMaxExpectedCTC] = useState('');
+    const [searchInHandOffer, setSearchInHandOffer] = useState('');
+    const [searchDecision, setSearchDecision] = useState('');
+    const [candidateResults, setCandidateResults] = useState([]);
+    const [isSearchLoading, setIsSearchLoading] = useState(false);
+    const [searchPage, setSearchPage] = useState(1);
+    const [searchPagination, setSearchPagination] = useState({ currentPage: 1, totalPages: 1, count: 0, limit: 15 });
+    const [showFilters, setShowFilters] = useState(false);
+    const [availableSources, setAvailableSources] = useState([]);
+    const [availableSkills, setAvailableSkills] = useState([]);
+    const [skillsFilterText, setSkillsFilterText] = useState('');
+
+    // Applied states used for search execution
+    const [appliedFilters, setAppliedFilters] = useState({
+        search: '',
+        sources: [],
+        minExp: '',
+        maxExp: '',
+        skills: [],
+        client: '',
+        location: '',
+        maxNoticePeriod: '',
+        minCurrentCTC: '',
+        maxCurrentCTC: '',
+        minExpectedCTC: '',
+        maxExpectedCTC: '',
+        inHandOffer: '',
+        decision: ''
+    });
+
     const canViewAnalytics = useMemo(() => (
         user?.roles?.includes('Admin') ||
         user?.permissions?.includes('ta.analytics.global') ||
@@ -261,14 +307,124 @@ const TalentAcquisitionDashboard = () => {
 
     const availableTabs = useMemo(() => (
         canViewAnalytics
-            ? ['overview', 'requisitions', 'clients', 'interviews']
-            : ['requisitions', 'clients', 'interviews']
+            ? ['overview', 'requisitions', 'clients', 'interviews', 'candidates']
+            : ['requisitions', 'clients', 'interviews', 'candidates']
     ), [canViewAnalytics]);
 
     const activeTab = useMemo(() => {
         const currentTab = searchParams.get('tab');
         return availableTabs.includes(currentTab) ? currentTab : availableTabs[0];
     }, [availableTabs, searchParams]);
+
+    useEffect(() => {
+        const fetchSearchMetaData = async () => {
+            try {
+                const [sourcesRes, skillsRes] = await Promise.all([
+                    api.get('/ta/candidates/sources'),
+                    api.get('/ta/candidates/skills/distinct')
+                ]);
+                if (Array.isArray(sourcesRes.data)) {
+                    setAvailableSources(sourcesRes.data.map(s => s.name));
+                }
+                if (Array.isArray(skillsRes.data)) {
+                    setAvailableSkills(skillsRes.data);
+                }
+            } catch (err) {
+                console.error('Error fetching search metadata:', err);
+            }
+        };
+
+        if (activeTab === 'candidates') {
+            void fetchSearchMetaData();
+        }
+    }, [activeTab]);
+
+    const fetchGlobalCandidates = useCallback(async () => {
+        setIsSearchLoading(true);
+        try {
+            const params = {
+                page: searchPage,
+                limit: 15
+            };
+
+            if (appliedFilters.search.trim()) {
+                params.search = appliedFilters.search.trim();
+            }
+
+            if (appliedFilters.sources.length > 0) {
+                params.source = appliedFilters.sources.join(',');
+            }
+
+            if (appliedFilters.minExp !== '') {
+                params.minExperience = appliedFilters.minExp;
+            }
+
+            if (appliedFilters.maxExp !== '') {
+                params.maxExperience = appliedFilters.maxExp;
+            }
+
+            if (appliedFilters.skills && appliedFilters.skills.length > 0) {
+                params.skills = appliedFilters.skills.join(',');
+            }
+
+            if (appliedFilters.client.trim()) {
+                params.client = appliedFilters.client.trim();
+            }
+
+            if (appliedFilters.location.trim()) {
+                params.location = appliedFilters.location.trim();
+            }
+
+            if (appliedFilters.maxNoticePeriod !== '') {
+                params.maxNoticePeriod = appliedFilters.maxNoticePeriod;
+            }
+
+            if (appliedFilters.minCurrentCTC !== '') {
+                params.minCurrentCTC = appliedFilters.minCurrentCTC;
+            }
+
+            if (appliedFilters.maxCurrentCTC !== '') {
+                params.maxCurrentCTC = appliedFilters.maxCurrentCTC;
+            }
+
+            if (appliedFilters.minExpectedCTC !== '') {
+                params.minExpectedCTC = appliedFilters.minExpectedCTC;
+            }
+
+            if (appliedFilters.maxExpectedCTC !== '') {
+                params.maxExpectedCTC = appliedFilters.maxExpectedCTC;
+            }
+
+            if (appliedFilters.inHandOffer !== '') {
+                params.inHandOffer = appliedFilters.inHandOffer;
+            }
+
+            if (appliedFilters.decision !== '') {
+                params.decision = appliedFilters.decision;
+            }
+
+            const response = await api.get('/ta/candidates/global/search', { params });
+            if (response.data) {
+                setCandidateResults(response.data.candidates || []);
+                setSearchPagination({
+                    currentPage: response.data.currentPage || 1,
+                    totalPages: response.data.totalPages || 1,
+                    count: response.data.count || 0,
+                    limit: response.data.limit || 15
+                });
+            }
+        } catch (err) {
+            console.error('Error fetching global search candidates:', err);
+        } finally {
+            setIsSearchLoading(false);
+        }
+    }, [searchPage, appliedFilters]);
+
+    useEffect(() => {
+        if (activeTab === 'candidates') {
+            void fetchGlobalCandidates();
+        }
+    }, [activeTab, searchPage, appliedFilters, fetchGlobalCandidates]);
 
     const loadDashboard = useCallback(async ({ silent = false } = {}) => {
         if (silent) {
@@ -728,7 +884,6 @@ const TalentAcquisitionDashboard = () => {
     const renderInterviews = () => (
         <SectionCard
             title="Interview Queue"
-            action={<Link to="/ta/workflows" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Manage interview workflows</Link>}
         >
             <div className="overflow-x-auto">
                 {interviews.length ? (
@@ -785,6 +940,590 @@ const TalentAcquisitionDashboard = () => {
         </SectionCard>
     );
 
+    const renderCandidates = () => {
+        const handleSearchSubmit = (e) => {
+            if (e) e.preventDefault();
+            setSearchPage(1);
+            setAppliedFilters({
+                search: candidateSearchText,
+                sources: selectedSources,
+                minExp,
+                maxExp,
+                skills: searchSkills,
+                client: searchClient,
+                location: searchLocation,
+                maxNoticePeriod,
+                minCurrentCTC,
+                maxCurrentCTC,
+                minExpectedCTC,
+                maxExpectedCTC,
+                inHandOffer: searchInHandOffer,
+                decision: searchDecision
+            });
+        };
+
+        const handleResetFilters = () => {
+            setCandidateSearchText('');
+            setSelectedSources([]);
+            setMinExp('');
+            setMaxExp('');
+            setSearchSkills([]);
+            setSearchClient('');
+            setSearchLocation('');
+            setMaxNoticePeriod('');
+            setMinCurrentCTC('');
+            setMaxCurrentCTC('');
+            setMinExpectedCTC('');
+            setMaxExpectedCTC('');
+            setSearchInHandOffer('');
+            setSearchDecision('');
+            setSkillsFilterText('');
+            setSearchPage(1);
+            setAppliedFilters({
+                search: '',
+                sources: [],
+                minExp: '',
+                maxExp: '',
+                skills: [],
+                client: '',
+                location: '',
+                maxNoticePeriod: '',
+                minCurrentCTC: '',
+                maxCurrentCTC: '',
+                minExpectedCTC: '',
+                maxExpectedCTC: '',
+                inHandOffer: '',
+                decision: ''
+            });
+        };
+
+        const toggleSource = (sourceName) => {
+            setSelectedSources(prev =>
+                prev.includes(sourceName)
+                    ? prev.filter(s => s !== sourceName)
+                    : [...prev, sourceName]
+            );
+        };
+
+        const activeFiltersCount = [
+            selectedSources.length > 0,
+            minExp !== '',
+            maxExp !== '',
+            searchSkills.length > 0,
+            searchClient.trim() !== '',
+            searchLocation.trim() !== '',
+            maxNoticePeriod !== '',
+            minCurrentCTC !== '',
+            maxCurrentCTC !== '',
+            minExpectedCTC !== '',
+            maxExpectedCTC !== '',
+            searchInHandOffer !== '',
+            searchDecision !== ''
+        ].filter(Boolean).length;
+
+        const isFilterActive = !!(
+            appliedFilters.search?.trim() ||
+            appliedFilters.sources?.length > 0 ||
+            appliedFilters.minExp !== '' ||
+            appliedFilters.maxExp !== '' ||
+            appliedFilters.skills?.length > 0 ||
+            appliedFilters.client?.trim() !== '' ||
+            appliedFilters.location?.trim() !== '' ||
+            appliedFilters.maxNoticePeriod !== '' ||
+            appliedFilters.minCurrentCTC !== '' ||
+            appliedFilters.maxCurrentCTC !== '' ||
+            appliedFilters.minExpectedCTC !== '' ||
+            appliedFilters.maxExpectedCTC !== '' ||
+            appliedFilters.inHandOffer !== '' ||
+            appliedFilters.decision !== ''
+        );
+
+        return (
+            <div className="space-y-6">
+                {/* Search & Action Bar */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <form onSubmit={handleSearchSubmit} className="flex flex-col gap-3 md:flex-row md:items-center">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={candidateSearchText}
+                                onChange={(e) => setCandidateSearchText(e.target.value)}
+                                placeholder="Search candidates by name, email, phone, location or company..."
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowFilters(!showFilters)}
+                                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-sm transition ${
+                                    showFilters || activeFiltersCount > 0
+                                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                }`}
+                            >
+                                <SlidersHorizontal size={14} />
+                                <span>Filters</span>
+                                {activeFiltersCount > 0 && (
+                                    <span className="ml-1 rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                        {activeFiltersCount}
+                                    </span>
+                                )}
+                            </button>
+                            <button
+                                type="submit"
+                                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+                            >
+                                Search
+                            </button>
+                            {(candidateSearchText || activeFiltersCount > 0) && (
+                                <button
+                                    type="button"
+                                    onClick={handleResetFilters}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+                    </form>
+
+                    {/* Advanced Filters Panel */}
+                    {showFilters && (
+                        <div className="mt-4 border-t border-slate-100 pt-4">
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                {/* Experience Range */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Experience (Years)
+                                    </label>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            value={minExp}
+                                            onChange={(e) => setMinExp(e.target.value)}
+                                            placeholder="Min"
+                                            min="0"
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                        />
+                                        <span className="text-slate-400 text-xs">to</span>
+                                        <input
+                                            type="number"
+                                            value={maxExp}
+                                            onChange={(e) => setMaxExp(e.target.value)}
+                                            placeholder="Max"
+                                            min="0"
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Notice Period */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Max Notice Period (Days)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={maxNoticePeriod}
+                                        onChange={(e) => setMaxNoticePeriod(e.target.value)}
+                                        placeholder="e.g. 30"
+                                        min="0"
+                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                    />
+                                </div>
+
+                                {/* Location */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Location (Current/Pref)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={searchLocation}
+                                        onChange={(e) => setSearchLocation(e.target.value)}
+                                        placeholder="e.g. Bangalore, Noida"
+                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                    />
+                                </div>
+
+                                {/* Client Filter */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Client Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={searchClient}
+                                        onChange={(e) => setSearchClient(e.target.value)}
+                                        placeholder="e.g. Acme Corp"
+                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                    />
+                                </div>
+
+                                {/* Current CTC Range */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Current CTC (LPA)
+                                    </label>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            value={minCurrentCTC}
+                                            onChange={(e) => setMinCurrentCTC(e.target.value)}
+                                            placeholder="Min"
+                                            min="0"
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                        />
+                                        <span className="text-slate-400 text-xs">to</span>
+                                        <input
+                                            type="number"
+                                            value={maxCurrentCTC}
+                                            onChange={(e) => setMaxCurrentCTC(e.target.value)}
+                                            placeholder="Max"
+                                            min="0"
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Expected CTC Range */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Expected CTC (LPA)
+                                    </label>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            value={minExpectedCTC}
+                                            onChange={(e) => setMinExpectedCTC(e.target.value)}
+                                            placeholder="Min"
+                                            min="0"
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                        />
+                                        <span className="text-slate-400 text-xs">to</span>
+                                        <input
+                                            type="number"
+                                            value={maxExpectedCTC}
+                                            onChange={(e) => setMaxExpectedCTC(e.target.value)}
+                                            placeholder="Max"
+                                            min="0"
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Skills Search Autocomplete */}
+                                <div className="relative">
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Skills (Select from Database)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={skillsFilterText}
+                                        onChange={(e) => setSkillsFilterText(e.target.value)}
+                                        placeholder="Type to search skills..."
+                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
+                                    />
+                                    {skillsFilterText.trim() && (
+                                        <div className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                                            {availableSkills
+                                                .filter(skill => 
+                                                    skill.toLowerCase().includes(skillsFilterText.toLowerCase()) &&
+                                                    !searchSkills.includes(skill)
+                                                )
+                                                .map(skill => (
+                                                    <button
+                                                        key={skill}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSearchSkills(prev => [...prev, skill]);
+                                                            setSkillsFilterText('');
+                                                        }}
+                                                        className="w-full px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-100"
+                                                    >
+                                                        {skill}
+                                                    </button>
+                                                ))
+                                            }
+                                        </div>
+                                    )}
+                                    {searchSkills.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {searchSkills.map(skill => (
+                                                <span
+                                                    key={skill}
+                                                    className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-2.5 py-1 text-[11px] font-semibold text-blue-700"
+                                                >
+                                                    <span>{skill}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSearchSkills(prev => prev.filter(s => s !== skill))}
+                                                        className="text-blue-500 hover:text-blue-700 text-xs font-bold font-mono"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Hiring Status / Decision */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Hiring Status
+                                    </label>
+                                    <select
+                                        value={searchDecision}
+                                        onChange={(e) => setSearchDecision(e.target.value)}
+                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
+                                    >
+                                        <option value="">All Statuses</option>
+                                        <option value="Shortlisted">Shortlisted</option>
+                                        <option value="Profile Shared">Profile Shared</option>
+                                        <option value="Rejected">Rejected</option>
+                                        <option value="On Hold">On Hold</option>
+                                        <option value="Did Not Turn Up">Did Not Turn Up</option>
+                                        <option value="Offer Sent">Offer Sent</option>
+                                        <option value="Offer Accepted">Offer Accepted</option>
+                                        <option value="Joined">Joined</option>
+                                        <option value="No Show">No Show</option>
+                                    </select>
+                                </div>
+
+                                {/* In Hand Offer */}
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Has In Hand Offer?
+                                    </label>
+                                    <select
+                                        value={searchInHandOffer}
+                                        onChange={(e) => setSearchInHandOffer(e.target.value)}
+                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
+                                    >
+                                        <option value="">All Candidates</option>
+                                        <option value="true">Yes</option>
+                                        <option value="false">No</option>
+                                    </select>
+                                </div>
+
+                                {/* Source Filter */}
+                                <div className="md:col-span-2 lg:col-span-4">
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">
+                                        Candidate Sources
+                                    </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {availableSources.map((sourceName) => {
+                                            const isSelected = selectedSources.includes(sourceName);
+                                            return (
+                                                <button
+                                                    key={sourceName}
+                                                    type="button"
+                                                    onClick={() => toggleSource(sourceName)}
+                                                    className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition border ${
+                                                        isSelected
+                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {sourceName}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                                <button
+                                    type="button"
+                                    onClick={handleResetFilters}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                >
+                                    Reset Filters
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSearchSubmit}
+                                    className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+                                >
+                                    Apply Filters
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Candidate Results Table */}
+                <SectionCard
+                    title={`All Candidates (${searchPagination.count})`}
+                    action={
+                        <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                            Page {searchPagination.currentPage} of {searchPagination.totalPages}
+                        </span>
+                    }
+                >
+                    <div className="scrollbar-hide overflow-x-auto">
+                        {isSearchLoading ? (
+                            <div className="space-y-4 py-6">
+                                <Skeleton className="h-10 w-full rounded-lg" />
+                                <Skeleton className="h-10 w-full rounded-lg" />
+                                <Skeleton className="h-10 w-full rounded-lg" />
+                                <Skeleton className="h-10 w-full rounded-lg" />
+                            </div>
+                        ) : candidateResults.length > 0 ? (
+                            <table className="min-w-full text-xs">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                                        <th className="px-4 py-3">Candidate</th>
+                                        <th className="px-4 py-3">Exp</th>
+                                        <th className="px-4 py-3">Source</th>
+                                        <th className="px-4 py-3">Matched Skills</th>
+                                        <th className="px-4 py-3">Requisition & Client</th>
+                                        <th className="px-4 py-3">Sourced By</th>
+                                        <th className="px-4 py-3 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {candidateResults.map((candidate) => {
+                                        const allSkills = [
+                                            ...(candidate.mustHaveSkills || []).map(s => s.skill),
+                                            ...(candidate.niceToHaveSkills || []).map(s => s.skill)
+                                        ];
+
+                                        return (
+                                            <tr key={candidate._id} className="border-b border-slate-100 transition hover:bg-slate-50">
+                                                <td className="px-4 py-3.5">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">
+                                                            {getInitials(candidate.candidateName)}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="font-semibold text-slate-900">{candidate.candidateName}</p>
+                                                                {candidate.confidenceRating !== undefined && candidate.confidenceRating !== null && (
+                                                                    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide border ${
+                                                                        candidate.confidenceRating >= 75
+                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                            : candidate.confidenceRating >= 50
+                                                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                                    }`}>
+                                                                        {candidate.confidenceRating}% {isFilterActive ? 'Match' : 'Strength'}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500">
+                                                                {candidate.email || 'No email'} • {candidate.mobile || 'No mobile'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3.5 text-xs text-slate-700 font-medium">
+                                                    {candidate.totalExperience || 0} yrs
+                                                </td>
+                                                <td className="px-4 py-3.5">
+                                                    <span className="rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                                        {candidate.source}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3.5">
+                                                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                                        {allSkills.slice(0, 3).map((skill, index) => (
+                                                            <span
+                                                                key={`${skill}-${index}`}
+                                                                className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 border border-blue-100"
+                                                            >
+                                                                {skill}
+                                                            </span>
+                                                        ))}
+                                                        {allSkills.length > 3 && (
+                                                            <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold text-slate-500">
+                                                                +{allSkills.length - 3}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3.5">
+                                                    <p className="font-medium text-slate-800">
+                                                        {candidate.hiringRequestId?.roleDetails?.title || 'Direct Application'}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-500">
+                                                        {candidate.hiringRequestId?.clientConfidential
+                                                            ? 'Confidential Client'
+                                                            : candidate.hiringRequestId?.client || 'General'}
+                                                    </p>
+                                                </td>
+                                                <td className="px-4 py-3.5">
+                                                    <p className="font-medium text-slate-700">
+                                                        {candidate.uploadedBy ? `${candidate.uploadedBy.firstName} ${candidate.uploadedBy.lastName}`.trim() : 'System'}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-400">
+                                                        {formatShortDate(candidate.createdAt)}
+                                                    </p>
+                                                </td>
+                                                <td className="px-4 py-3.5 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const hrId = candidate.hiringRequestId?._id || candidate.hiringRequestId;
+                                                            if (hrId) {
+                                                                navigate(`/ta/hiring-request/${hrId}/candidate/${candidate._id}/view`);
+                                                            } else {
+                                                                console.error("No hiring request ID found for candidate view");
+                                                            }
+                                                        }}
+                                                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                    >
+                                                        View
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div className="py-8 text-center">
+                                <p className="text-sm font-semibold text-slate-800">No candidates found</p>
+                                <p className="mt-1 text-xs text-slate-500">Try modifying your filters or search keywords.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Pagination Controls */}
+                    {searchPagination.totalPages > 1 && (
+                        <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4 text-xs">
+                            <span className="text-slate-500">
+                                Showing {((searchPage - 1) * 15) + 1} to {Math.min(searchPage * 15, searchPagination.count)} of {searchPagination.count} candidates
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={searchPage === 1 || isSearchLoading}
+                                    onClick={() => setSearchPage(prev => Math.max(prev - 1, 1))}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={searchPage === searchPagination.totalPages || isSearchLoading}
+                                    onClick={() => setSearchPage(prev => Math.min(prev + 1, searchPagination.totalPages))}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </SectionCard>
+            </div>
+        );
+    };
+
     return (
         <div className="font-ta-body min-h-screen bg-[#f4f5f7] p-4 sm:p-5 lg:p-6">
             {loading ? (
@@ -823,6 +1562,7 @@ const TalentAcquisitionDashboard = () => {
                     {activeTab === 'requisitions' && renderRequisitions()}
                     {activeTab === 'clients' && renderClients()}
                     {activeTab === 'interviews' && renderInterviews()}
+                    {activeTab === 'candidates' && renderCandidates()}
 
                     <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

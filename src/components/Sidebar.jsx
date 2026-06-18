@@ -34,7 +34,8 @@ const TA_DASHBOARD_VIEWS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'requisitions', label: 'Requisitions', icon: FolderKanban },
   { id: 'clients', label: 'Clients', icon: Building2 },
-  { id: 'interviews', label: 'Interviews', icon: CalendarClock }
+  { id: 'interviews', label: 'Interviews', icon: CalendarClock },
+  { id: 'candidates', label: 'Candidates', icon: Users }
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {

@@ -808,7 +808,12 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 const ownedByCurrentUser = matchedCandidate
                     ? normalizeEntityId(matchedCandidate.uploadedBy) === normalizeEntityId(user?._id)
                     : false;
-                const canAutoUpdateExisting = isExisting && (ownedByCurrentUser || canOverrideExistingDuplicateImport);
+                const isInterviewerForMatchedCandidate = matchedCandidate
+                    ? Array.isArray(matchedCandidate.interviewRounds) && matchedCandidate.interviewRounds.some(round =>
+                        Array.isArray(round.assignedTo) && round.assignedTo.some(u => String(u?._id || u) === String(user?._id))
+                      )
+                    : false;
+                const canAutoUpdateExisting = isExisting && (ownedByCurrentUser || canOverrideExistingDuplicateImport || isInterviewerForMatchedCandidate);
                 const uploaderName = getUploaderName(matchedCandidate);
                 const errors = [];
                 if (!mappedRow.candidateName) errors.push('Name missing');
@@ -915,6 +920,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
                 const importPayload = {
                     ...row.data,
+                    _id: row.matchedCandidate?._id,
                     allowOwnedDuplicateUpdate: true,
                     status: normalizeDynamicImportStatus(row.data.status),
                     interviewRounds: processedRounds

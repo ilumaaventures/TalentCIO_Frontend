@@ -76,18 +76,30 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         const initializeData = async () => {
             try {
                 setLoading(true);
-                const [candRes, usersRes, rolesRes, workflowsRes] = await Promise.all([
-                    api.get(`/ta/candidates/candidate/${candidateId}/details`),
-                    api.get('/admin/users'),
-                    api.get('/admin/roles'),
-                    api.get('/ta/interview-workflows')
-                ]);
-
+                const candRes = await api.get(`/ta/candidates/candidate/${candidateId}/details`);
                 setCandidate(candRes.data);
                 setInternalRemarkText(candRes.data.internalRemark || '');
-                setUsers(usersRes.data.data || usersRes.data || []);
-                setRoles(rolesRes.data || []);
-                setInterviewWorkflows(workflowsRes.data || []);
+
+                try {
+                    const usersRes = await api.get('/admin/users');
+                    setUsers(usersRes.data.data || usersRes.data || []);
+                } catch (e) {
+                    console.warn('Interviewer user cannot fetch users list:', e);
+                }
+
+                try {
+                    const rolesRes = await api.get('/admin/roles');
+                    setRoles(rolesRes.data || []);
+                } catch (e) {
+                    console.warn('Interviewer user cannot fetch roles list:', e);
+                }
+
+                try {
+                    const workflowsRes = await api.get('/ta/interview-workflows');
+                    setInterviewWorkflows(workflowsRes.data || []);
+                } catch (e) {
+                    console.warn('Interviewer user cannot fetch interview workflows:', e);
+                }
             } catch (error) {
                 console.error('Error initializing candidate details:', error);
                 toast.error('Failed to load candidate details correctly.');

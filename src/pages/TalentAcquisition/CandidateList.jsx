@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search, Calendar } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -15,6 +15,7 @@ import CandidateDetails from './CandidateDetails';
 import { ProfileReviewModal } from './PublicApplicationsView';
 import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
+import MassInterviewScheduleModal from './MassInterviewScheduleModal';
 import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
@@ -475,6 +476,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showMassMailModal, setShowMassMailModal] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const [showMassInterviewModal, setShowMassInterviewModal] = useState(false);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
     const [showCreatedDateSortMenu, setShowCreatedDateSortMenu] = useState(false);
     const [openMultiFilter, setOpenMultiFilter] = useState(null);
@@ -496,6 +498,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || hasAnalyticsCandidateAccess;
+    const isInterviewerForAnyCandidate = useMemo(() => {
+        const userId = String(user?._id || '');
+        return candidates.some((c) =>
+            Array.isArray(c.interviewRounds) && c.interviewRounds.some((round) =>
+                Array.isArray(round.assignedTo) && round.assignedTo.some((uId) => String(uId?._id || uId) === userId)
+            )
+        );
+    }, [candidates, user]);
+    const canImportCandidates = canCreateCandidates || isInterviewerForAnyCandidate;
     const canDeleteCandidates = isAdmin
         || user?.permissions?.includes('*')
         || user?.permissions?.includes('ta.delete')
@@ -1182,6 +1193,17 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [fetchAllMatchingCandidates]);
 
+    const openMassInterviewModal = useCallback(async () => {
+        try {
+            const matchingCandidates = await fetchAllMatchingCandidates();
+            setActionCandidates(matchingCandidates);
+            setShowMassInterviewModal(true);
+        } catch (error) {
+            console.error('Error preparing mass interview candidates:', error);
+            toast.error('Failed to load candidates for scheduling');
+        }
+    }, [fetchAllMatchingCandidates]);
+
     const handleTransferToOnboarding = useCallback(async (candidateId) => {
         if (!window.confirm("Are you sure you want to transfer this candidate to the onboarding pipeline? This will create a new onboarding record for them.")) return;
 
@@ -1533,10 +1555,35 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     const r = rounds[i];
                     if (r) {
                         const feedback = toEmptyCell(r.feedback);
-                        const date = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd-MMM-yyyy') : null;
-                        const interviewer = r.evaluatedBy
-                            ? `${r.evaluatedBy.firstName || ''} ${r.evaluatedBy.lastName || ''}`.trim()
-                            : toEmptyCell(r.interviewerName);
+                        const dateVal = r.scheduledDate || r.evaluatedAt;
+                        const date = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : null;
+                        const resolveUserName = (u) => {
+                            if (!u) return '';
+                            if (typeof u === 'object') {
+                                return `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                            }
+                            if (typeof u === 'string') {
+                                const found = users.find(usr => String(usr._id) === String(u));
+                                if (found) {
+                                    return `${found.firstName || ''} ${found.lastName || ''}`.trim();
+                                }
+                            }
+                            return '';
+                        };
+
+                        let interviewer = '';
+                        if (r.evaluatedBy && resolveUserName(r.evaluatedBy)) {
+                            interviewer = resolveUserName(r.evaluatedBy);
+                        } else if (Array.isArray(r.assignedTo) && r.assignedTo.length > 0) {
+                            interviewer = r.assignedTo
+                                .map(u => resolveUserName(u))
+                                .filter(Boolean)
+                                .join(', ');
+                        }
+
+                        if (!interviewer) {
+                            interviewer = r.interviewerName || '';
+                        }
                         const performanceRating = toEmptyCell(r.rating, { zeroIsEmpty: true });
                         const roundInterviewStatus = getRoundExportInterviewStatus(r);
 
@@ -2068,6 +2115,25 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
+                                {canEditCandidates && !isLegacyView && selectedCandidateIds.length >= 2 && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            openMassInterviewModal();
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                                                <Calendar size={15} />
+                                            </span>
+                                            Schedule Interview
+                                        </span>
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    </button>
+                                )}
                                 {canManageTemplates && (
                                     <button
                                         onClick={() => {
@@ -2100,7 +2166,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
-                                {canCreateCandidates && (
+                                {canImportCandidates && (
                                     <button
                                         onClick={() => {
                                             setShowToolbarMenu(false);
@@ -2972,6 +3038,23 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                                 <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
                                                                                     {rounds.length} rounds total
                                                                                 </span>
+                                                                                {(() => {
+                                                                                    const activeRounds = rounds.filter(r => r.scheduledDate || r.evaluatedAt);
+                                                                                    if (activeRounds.length > 0) {
+                                                                                        const scheduledRound = activeRounds.find(r => ['Pending', 'Scheduled'].includes(r.status));
+                                                                                        const displayRound = scheduledRound || activeRounds[activeRounds.length - 1];
+                                                                                        const dateVal = displayRound.scheduledDate || displayRound.evaluatedAt;
+                                                                                        const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
+                                                                                        if (formatted) {
+                                                                                            return (
+                                                                                                <span className="text-[10px] text-slate-600 font-semibold mt-0.5 whitespace-nowrap bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title={`${displayRound.levelName || 'Interview'} Date`}>
+                                                                                                    {formatted}
+                                                                                                </span>
+                                                                                            );
+                                                                                        }
+                                                                                    }
+                                                                                    return null;
+                                                                                })()}
                                                                                 <div className="flex flex-wrap gap-1 mt-0.5">
                                                                                     {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
                                                                                         <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
@@ -3343,6 +3426,25 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     fromHiringRequestId={hiringRequestId}
                     initialSelectedIds={transferPresetIds.length ? transferPresetIds : selectedCandidateIds}
                     onTransferred={() => {
+                        setSelectedCandidateIds([]);
+                        setActionCandidates([]);
+                        fetchCandidates();
+                    }}
+                />
+            )}
+
+            {showMassInterviewModal && (
+                <MassInterviewScheduleModal
+                    isOpen={showMassInterviewModal}
+                    onClose={() => {
+                        setShowMassInterviewModal(false);
+                        setActionCandidates([]);
+                    }}
+                    candidates={actionCandidates}
+                    initialSelectedIds={selectedCandidateIds}
+                    hiringRequestId={hiringRequestId}
+                    activePhase={activePhase}
+                    onScheduled={() => {
                         setSelectedCandidateIds([]);
                         setActionCandidates([]);
                         fetchCandidates();

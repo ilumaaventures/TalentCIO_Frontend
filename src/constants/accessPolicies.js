@@ -60,4 +60,6 @@ export const canViewTACandidateDetails = (user) => (
     || user?.permissions?.includes('*')
     || user?.permissions?.includes('ta.candidate.manage.all')
     || user?.permissions?.includes('ta.candidate.manage.assigned')
+    || user?.permissions?.includes('ta.interview.evaluate')
+    || user?.isTAParticipant === true
 );

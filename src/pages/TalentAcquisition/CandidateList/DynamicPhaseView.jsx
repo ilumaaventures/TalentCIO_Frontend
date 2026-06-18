@@ -14,6 +14,7 @@ import BulkCandidateImport from '../BulkCandidateImport';
 import BulkResumeImport from '../BulkResumeImport';
 import MassMailModal from '../MassMailModal';
 import BulkTransferModal from '../BulkTransferModal';
+import MassInterviewScheduleModal from '../MassInterviewScheduleModal';
 import { canViewTACandidateDetails } from '../../../constants/accessPolicies';
 
 
@@ -261,6 +262,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [showMassMailModal, setShowMassMailModal] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const [showMassInterviewModal, setShowMassInterviewModal] = useState(false);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
@@ -295,6 +297,15 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.create')
         || hasAnalyticsCandidateAccess;
+    const isInterviewerForAnyCandidate = useMemo(() => {
+        const userId = String(user?._id || '');
+        return candidates.some((c) =>
+            Array.isArray(c.interviewRounds) && c.interviewRounds.some((round) =>
+                Array.isArray(round.assignedTo) && round.assignedTo.some((uId) => String(uId?._id || uId) === userId)
+            )
+        );
+    }, [candidates, user]);
+    const canImport = canCreate || isInterviewerForAnyCandidate;
     const canMassMail = isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
@@ -1055,10 +1066,35 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
                     if (round) {
                         const feedback = toEmptyCell(round.feedback);
-                        const interviewDate = round.scheduledDate ? format(new Date(round.scheduledDate), 'dd-MMM-yyyy') : null;
-                        const interviewerName = round.evaluatedBy
-                            ? `${round.evaluatedBy.firstName || ''} ${round.evaluatedBy.lastName || ''}`.trim()
-                            : toEmptyCell(round.interviewerName);
+                        const dateVal = round.scheduledDate || round.evaluatedAt;
+                        const interviewDate = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : null;
+                        const resolveUserName = (u) => {
+                            if (!u) return '';
+                            if (typeof u === 'object') {
+                                return `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                            }
+                            if (typeof u === 'string') {
+                                const found = pulledByUsers.find(usr => String(usr._id) === String(u));
+                                if (found) {
+                                    return `${found.firstName || ''} ${found.lastName || ''}`.trim();
+                                }
+                            }
+                            return '';
+                        };
+
+                        let interviewerName = '';
+                        if (round.evaluatedBy && resolveUserName(round.evaluatedBy)) {
+                            interviewerName = resolveUserName(round.evaluatedBy);
+                        } else if (Array.isArray(round.assignedTo) && round.assignedTo.length > 0) {
+                            interviewerName = round.assignedTo
+                                .map(u => resolveUserName(u))
+                                .filter(Boolean)
+                                .join(', ');
+                        }
+
+                        if (!interviewerName) {
+                            interviewerName = round.interviewerName || '';
+                        }
 
                         const roundSoftSkillRatings = softSkillsHeaders.map((skillName) => {
                             const skillRating = (round.skillRatings || []).find((entry) => entry.skill === skillName)?.rating;
@@ -1311,6 +1347,27 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     </button>
                                 )}
 
+                                {canEdit && selectedCandidateIds.length >= 2 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            setShowMassInterviewModal(true);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                                                <Calendar size={15} />
+                                            </span>
+                                            Schedule Interview
+                                        </span>
+                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    </button>
+                                )}
+
                                 {canManageTemplates && (
                                     <button
                                         type="button"
@@ -1365,7 +1422,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     </button>
                                 )}
 
-                                {canCreate && (
+                                 {canImport && (
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1625,6 +1682,16 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                         <div className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-600">
                             {selectedCandidateIds.length} selected
                         </div>
+                        {canEdit && selectedCandidateIds.length >= 2 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowMassInterviewModal(true)}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                            >
+                                <Calendar size={16} />
+                                Schedule Interview ({selectedCandidateIds.length})
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={handleExportExcel}
@@ -1731,14 +1798,33 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                 </select>
                                             </td>
                                             <td className="px-4 py-4 text-sm text-slate-700">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openCandidateDetails(candidate._id)}
-                                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-90 ${interviewSummary.color}`}
-                                                >
-                                                    <Calendar size={14} />
-                                                    {interviewSummary.label}
-                                                </button>
+                                                <div className="flex flex-col gap-1.5 items-start">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openCandidateDetails(candidate._id)}
+                                                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-90 ${interviewSummary.color}`}
+                                                    >
+                                                        <Calendar size={14} />
+                                                        {interviewSummary.label}
+                                                    </button>
+                                                    {(() => {
+                                                        const activeRounds = rounds.filter(r => r.scheduledDate || r.evaluatedAt);
+                                                        if (activeRounds.length > 0) {
+                                                            const scheduledRound = activeRounds.find(r => ['Pending', 'Scheduled'].includes(r.status));
+                                                            const displayRound = scheduledRound || activeRounds[activeRounds.length - 1];
+                                                            const dateVal = displayRound.scheduledDate || displayRound.evaluatedAt;
+                                                            const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
+                                                            if (formatted) {
+                                                                return (
+                                                                    <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap mt-0.5" title={`${displayRound.levelName || 'Interview'} Date`}>
+                                                                        {formatted}
+                                                                    </span>
+                                                                );
+                                                            }
+                                                        }
+                                                        return null;
+                                                    })()}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-4 align-top">
                                                 <div className="flex flex-col">
@@ -2048,6 +2134,21 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                     fromHiringRequestId={hiringRequest._id}
                     initialSelectedIds={transferPresetIds.length ? transferPresetIds : selectedCandidateIds}
                     onTransferred={() => {
+                        setSelectedCandidateIds([]);
+                        fetchCandidates();
+                    }}
+                />
+            )}
+
+            {showMassInterviewModal && (
+                <MassInterviewScheduleModal
+                    isOpen={showMassInterviewModal}
+                    onClose={() => setShowMassInterviewModal(false)}
+                    candidates={phaseCandidates}
+                    initialSelectedIds={selectedCandidateIds}
+                    hiringRequestId={hiringRequest._id}
+                    activePhase={activePhaseOrder}
+                    onScheduled={() => {
                         setSelectedCandidateIds([]);
                         fetchCandidates();
                     }}
