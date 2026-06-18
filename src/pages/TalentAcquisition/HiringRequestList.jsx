@@ -70,18 +70,18 @@ const HiringRequestList = () => {
 
     const getStatusBadge = (status) => {
         const styles = {
-            'Draft': 'bg-slate-100 text-slate-600',
-            'Submitted': 'bg-blue-50 text-blue-600',
-            'Pending_L1': 'bg-amber-50 text-amber-600',
-            'Pending_Approval': 'bg-amber-50 text-amber-600',
-            'Pending_Final': 'bg-purple-50 text-purple-600',
-            'Approved': 'bg-emerald-50 text-emerald-600',
-            'Rejected': 'bg-red-50 text-red-600',
-            'Closed': 'bg-gray-100 text-gray-600',
-            'On_Hold': 'bg-gray-200 text-gray-600'
+            'Draft': 'bg-slate-100 text-slate-600 border-slate-200',
+            'Submitted': 'bg-blue-50 text-blue-700 border-blue-200',
+            'Pending_L1': 'bg-amber-50 text-amber-700 border-amber-200',
+            'Pending_Approval': 'bg-amber-50 text-amber-700 border-amber-200',
+            'Pending_Final': 'bg-purple-50 text-purple-700 border-purple-200',
+            'Approved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'Rejected': 'bg-red-50 text-red-700 border-red-200',
+            'Closed': 'bg-slate-100 text-slate-600 border-slate-200',
+            'On_Hold': 'bg-slate-200 text-slate-700 border-slate-300'
         };
         return (
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles['Draft']}`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${styles[status] || styles['Draft']}`}>
                 {status?.replace('_', ' ')}
             </span>
         );
@@ -166,27 +166,29 @@ const HiringRequestList = () => {
 
                 {/* Table */}
                 <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-x-auto">
-                    <table className="w-full text-sm text-left min-w-[900px]">
-                        <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                    <table className="w-full text-xs text-left min-w-full">
+                        <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-[10px] tracking-wider">
                             <tr>
-                                <th className="px-6 py-4">Request ID</th>
-                                <th className="px-6 py-4">Client</th>
-                                <th className="px-6 py-4">Role & Dept</th>
-                                <th className="px-6 py-4">Created On</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4 text-right">Action</th>
+                                <th className="px-3.5 py-3">Request ID</th>
+                                <th className="px-3.5 py-3">Client</th>
+                                <th className="px-3.5 py-3">Role & Dept</th>
+                                <th className="px-3.5 py-3">Work Location</th>
+                                <th className="px-3.5 py-3">Assigned Users</th>
+                                <th className="px-3.5 py-3">Created On</th>
+                                <th className="px-3.5 py-3">Status</th>
+                                <th className="px-3.5 py-3 text-right">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
                                 [...Array(5)].map((_, i) => (
                                     <tr key={i}>
-                                        <td colSpan="6" className="p-4"><Skeleton className="h-8 w-full" /></td>
+                                        <td colSpan="8" className="p-4"><Skeleton className="h-8 w-full" /></td>
                                     </tr>
                                 ))
                             ) : requests.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" className="p-8 text-center text-slate-500">
+                                    <td colSpan="8" className="p-8 text-center text-slate-500">
                                         No hiring requests found for the selected filter.
                                     </td>
                                 </tr>
@@ -194,13 +196,13 @@ const HiringRequestList = () => {
                                 requests.map(req => (
                                     <tr 
                                         key={req._id} 
-                                        className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                                        className="hover:bg-slate-50 transition-colors group cursor-pointer text-xs"
                                         onClick={() => navigate(`/ta/view/${req._id}${(req.status === 'Approved' || req.status === 'Closed') ? '?tab=applications' : ''}`)}
                                     >
-                                        <td className="px-6 py-4 font-medium text-slate-700">
+                                        <td className="px-3.5 py-2.5 font-medium text-slate-700">
                                             {req.requestId}
                                         </td>
-                                        <td className="px-6 py-4 font-medium text-blue-600">
+                                        <td className="px-3.5 py-2.5 font-medium text-blue-600">
                                             {req.client ? (
                                                 (() => {
                                                     const clientId = getClientIdByName(req.client);
@@ -219,26 +221,49 @@ const HiringRequestList = () => {
                                                 })()
                                             ) : '-'}
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="font-semibold text-slate-800">{req.roleDetails.title}</div>
-                                            <div className="text-xs text-slate-500">{req.roleDetails.department} • {req.roleDetails.employmentType}</div>
+                                        <td className="px-3.5 py-2.5">
+                                            <div className="font-semibold text-slate-800 text-xs">{req.roleDetails.title}</div>
+                                            <div className="text-[10px] text-slate-500">{req.roleDetails.department} • {req.roleDetails.employmentType}</div>
                                         </td>
-                                        <td className="px-6 py-4 text-slate-600">
+                                        <td className="px-3.5 py-2.5 text-slate-600 font-medium">
+                                            {req.requirements?.location || '-'}
+                                        </td>
+                                        <td className="px-3.5 py-2.5">
+                                            <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                                {req.assignedUsers && req.assignedUsers.length > 0 ? (
+                                                    req.assignedUsers.map(u => {
+                                                        const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                                                        return (
+                                                            <span 
+                                                                key={u._id}
+                                                                title={fullName}
+                                                                className="inline-flex items-center rounded bg-slate-50 border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600"
+                                                            >
+                                                                {u.firstName || 'User'}
+                                                            </span>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <span className="text-slate-400 font-medium">-</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-3.5 py-2.5 text-slate-600">
                                             {format(new Date(req.createdAt), 'dd MMM yyyy')}
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-3.5 py-2.5">
                                             {getStatusBadge(req.status)}
                                         </td>
-                                        <td className="px-6 py-4 text-right">
+                                        <td className="px-3.5 py-2.5 text-right">
                                             <div className="flex justify-end">
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         navigate(`/ta/view/${req._id}${(req.status === 'Approved' || req.status === 'Closed') ? '?tab=applications' : ''}`);
                                                     }}
-                                                    className="text-blue-600 hover:text-blue-800 font-medium text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                                                    className="text-blue-600 hover:text-blue-800 font-semibold text-[10px] px-2.5 py-1 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                                                 >
-                                                    View Details
+                                                    View
                                                 </button>
                                             </div>
                                         </td>
