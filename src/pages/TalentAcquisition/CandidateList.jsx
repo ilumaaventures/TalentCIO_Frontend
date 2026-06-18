@@ -498,6 +498,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || hasAnalyticsCandidateAccess;
+    const isInterviewerForAnyCandidate = useMemo(() => {
+        const userId = String(user?._id || '');
+        return candidates.some((c) =>
+            Array.isArray(c.interviewRounds) && c.interviewRounds.some((round) =>
+                Array.isArray(round.assignedTo) && round.assignedTo.some((uId) => String(uId?._id || uId) === userId)
+            )
+        );
+    }, [candidates, user]);
+    const canImportCandidates = canCreateCandidates || isInterviewerForAnyCandidate;
     const canDeleteCandidates = isAdmin
         || user?.permissions?.includes('*')
         || user?.permissions?.includes('ta.delete')
@@ -1546,10 +1555,35 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     const r = rounds[i];
                     if (r) {
                         const feedback = toEmptyCell(r.feedback);
-                        const date = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd-MMM-yyyy') : null;
-                        const interviewer = r.evaluatedBy
-                            ? `${r.evaluatedBy.firstName || ''} ${r.evaluatedBy.lastName || ''}`.trim()
-                            : toEmptyCell(r.interviewerName);
+                        const dateVal = r.scheduledDate || r.evaluatedAt;
+                        const date = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : null;
+                        const resolveUserName = (u) => {
+                            if (!u) return '';
+                            if (typeof u === 'object') {
+                                return `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                            }
+                            if (typeof u === 'string') {
+                                const found = users.find(usr => String(usr._id) === String(u));
+                                if (found) {
+                                    return `${found.firstName || ''} ${found.lastName || ''}`.trim();
+                                }
+                            }
+                            return '';
+                        };
+
+                        let interviewer = '';
+                        if (r.evaluatedBy && resolveUserName(r.evaluatedBy)) {
+                            interviewer = resolveUserName(r.evaluatedBy);
+                        } else if (Array.isArray(r.assignedTo) && r.assignedTo.length > 0) {
+                            interviewer = r.assignedTo
+                                .map(u => resolveUserName(u))
+                                .filter(Boolean)
+                                .join(', ');
+                        }
+
+                        if (!interviewer) {
+                            interviewer = r.interviewerName || '';
+                        }
                         const performanceRating = toEmptyCell(r.rating, { zeroIsEmpty: true });
                         const roundInterviewStatus = getRoundExportInterviewStatus(r);
 
@@ -2132,7 +2166,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
-                                {canCreateCandidates && (
+                                {canImportCandidates && (
                                     <button
                                         onClick={() => {
                                             setShowToolbarMenu(false);
@@ -3004,6 +3038,23 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                                 <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
                                                                                     {rounds.length} rounds total
                                                                                 </span>
+                                                                                {(() => {
+                                                                                    const activeRounds = rounds.filter(r => r.scheduledDate || r.evaluatedAt);
+                                                                                    if (activeRounds.length > 0) {
+                                                                                        const scheduledRound = activeRounds.find(r => ['Pending', 'Scheduled'].includes(r.status));
+                                                                                        const displayRound = scheduledRound || activeRounds[activeRounds.length - 1];
+                                                                                        const dateVal = displayRound.scheduledDate || displayRound.evaluatedAt;
+                                                                                        const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
+                                                                                        if (formatted) {
+                                                                                            return (
+                                                                                                <span className="text-[10px] text-slate-600 font-semibold mt-0.5 whitespace-nowrap bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title={`${displayRound.levelName || 'Interview'} Date`}>
+                                                                                                    {formatted}
+                                                                                                </span>
+                                                                                            );
+                                                                                        }
+                                                                                    }
+                                                                                    return null;
+                                                                                })()}
                                                                                 <div className="flex flex-wrap gap-1 mt-0.5">
                                                                                     {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
                                                                                         <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">

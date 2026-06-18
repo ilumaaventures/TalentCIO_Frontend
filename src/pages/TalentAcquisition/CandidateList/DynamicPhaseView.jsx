@@ -297,6 +297,15 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.create')
         || hasAnalyticsCandidateAccess;
+    const isInterviewerForAnyCandidate = useMemo(() => {
+        const userId = String(user?._id || '');
+        return candidates.some((c) =>
+            Array.isArray(c.interviewRounds) && c.interviewRounds.some((round) =>
+                Array.isArray(round.assignedTo) && round.assignedTo.some((uId) => String(uId?._id || uId) === userId)
+            )
+        );
+    }, [candidates, user]);
+    const canImport = canCreate || isInterviewerForAnyCandidate;
     const canMassMail = isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
@@ -1057,10 +1066,35 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
                     if (round) {
                         const feedback = toEmptyCell(round.feedback);
-                        const interviewDate = round.scheduledDate ? format(new Date(round.scheduledDate), 'dd-MMM-yyyy') : null;
-                        const interviewerName = round.evaluatedBy
-                            ? `${round.evaluatedBy.firstName || ''} ${round.evaluatedBy.lastName || ''}`.trim()
-                            : toEmptyCell(round.interviewerName);
+                        const dateVal = round.scheduledDate || round.evaluatedAt;
+                        const interviewDate = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : null;
+                        const resolveUserName = (u) => {
+                            if (!u) return '';
+                            if (typeof u === 'object') {
+                                return `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                            }
+                            if (typeof u === 'string') {
+                                const found = pulledByUsers.find(usr => String(usr._id) === String(u));
+                                if (found) {
+                                    return `${found.firstName || ''} ${found.lastName || ''}`.trim();
+                                }
+                            }
+                            return '';
+                        };
+
+                        let interviewerName = '';
+                        if (round.evaluatedBy && resolveUserName(round.evaluatedBy)) {
+                            interviewerName = resolveUserName(round.evaluatedBy);
+                        } else if (Array.isArray(round.assignedTo) && round.assignedTo.length > 0) {
+                            interviewerName = round.assignedTo
+                                .map(u => resolveUserName(u))
+                                .filter(Boolean)
+                                .join(', ');
+                        }
+
+                        if (!interviewerName) {
+                            interviewerName = round.interviewerName || '';
+                        }
 
                         const roundSoftSkillRatings = softSkillsHeaders.map((skillName) => {
                             const skillRating = (round.skillRatings || []).find((entry) => entry.skill === skillName)?.rating;
@@ -1388,7 +1422,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     </button>
                                 )}
 
-                                {canCreate && (
+                                 {canImport && (
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1764,14 +1798,33 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                 </select>
                                             </td>
                                             <td className="px-4 py-4 text-sm text-slate-700">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openCandidateDetails(candidate._id)}
-                                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-90 ${interviewSummary.color}`}
-                                                >
-                                                    <Calendar size={14} />
-                                                    {interviewSummary.label}
-                                                </button>
+                                                <div className="flex flex-col gap-1.5 items-start">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openCandidateDetails(candidate._id)}
+                                                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-90 ${interviewSummary.color}`}
+                                                    >
+                                                        <Calendar size={14} />
+                                                        {interviewSummary.label}
+                                                    </button>
+                                                    {(() => {
+                                                        const activeRounds = rounds.filter(r => r.scheduledDate || r.evaluatedAt);
+                                                        if (activeRounds.length > 0) {
+                                                            const scheduledRound = activeRounds.find(r => ['Pending', 'Scheduled'].includes(r.status));
+                                                            const displayRound = scheduledRound || activeRounds[activeRounds.length - 1];
+                                                            const dateVal = displayRound.scheduledDate || displayRound.evaluatedAt;
+                                                            const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
+                                                            if (formatted) {
+                                                                return (
+                                                                    <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap mt-0.5" title={`${displayRound.levelName || 'Interview'} Date`}>
+                                                                        {formatted}
+                                                                    </span>
+                                                                );
+                                                            }
+                                                        }
+                                                        return null;
+                                                    })()}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-4 align-top">
                                                 <div className="flex flex-col">

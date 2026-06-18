@@ -344,6 +344,23 @@ const UserTADashboard = ({ providedUserName }) => {
                                                                 <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
                                                                     {candidate.interviewRounds?.length || 0} rounds total
                                                                 </span>
+                                                                {(() => {
+                                                                    const activeRounds = (candidate.interviewRounds || []).filter(r => r.scheduledDate || r.evaluatedAt);
+                                                                    if (activeRounds.length > 0) {
+                                                                        const scheduledRound = activeRounds.find(r => ['Pending', 'Scheduled'].includes(r.status));
+                                                                        const displayRound = scheduledRound || activeRounds[activeRounds.length - 1];
+                                                                        const dateVal = displayRound.scheduledDate || displayRound.evaluatedAt;
+                                                                        const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
+                                                                        if (formatted) {
+                                                                            return (
+                                                                                <span className="text-[10px] text-slate-600 font-semibold mt-0.5 whitespace-nowrap bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title={`${displayRound.levelName || 'Interview'} Date`}>
+                                                                                    {formatted}
+                                                                                </span>
+                                                                            );
+                                                                        }
+                                                                    }
+                                                                    return null;
+                                                                })()}
                                                                 {avgRating && (
                                                                     <span className="text-[11px] font-bold text-amber-600 flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 self-start">
                                                                         ⭐ {avgRating}/10
