@@ -14,6 +14,7 @@ import BulkCandidateImport from '../BulkCandidateImport';
 import BulkResumeImport from '../BulkResumeImport';
 import MassMailModal from '../MassMailModal';
 import BulkTransferModal from '../BulkTransferModal';
+import MassInterviewScheduleModal from '../MassInterviewScheduleModal';
 import { canViewTACandidateDetails } from '../../../constants/accessPolicies';
 
 
@@ -261,6 +262,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [showMassMailModal, setShowMassMailModal] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const [showMassInterviewModal, setShowMassInterviewModal] = useState(false);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
@@ -1311,6 +1313,27 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     </button>
                                 )}
 
+                                {canEdit && selectedCandidateIds.length >= 2 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            setShowMassInterviewModal(true);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                                                <Calendar size={15} />
+                                            </span>
+                                            Schedule Interview
+                                        </span>
+                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    </button>
+                                )}
+
                                 {canManageTemplates && (
                                     <button
                                         type="button"
@@ -1625,6 +1648,16 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                         <div className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-600">
                             {selectedCandidateIds.length} selected
                         </div>
+                        {canEdit && selectedCandidateIds.length >= 2 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowMassInterviewModal(true)}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                            >
+                                <Calendar size={16} />
+                                Schedule Interview ({selectedCandidateIds.length})
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={handleExportExcel}
@@ -2048,6 +2081,21 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                     fromHiringRequestId={hiringRequest._id}
                     initialSelectedIds={transferPresetIds.length ? transferPresetIds : selectedCandidateIds}
                     onTransferred={() => {
+                        setSelectedCandidateIds([]);
+                        fetchCandidates();
+                    }}
+                />
+            )}
+
+            {showMassInterviewModal && (
+                <MassInterviewScheduleModal
+                    isOpen={showMassInterviewModal}
+                    onClose={() => setShowMassInterviewModal(false)}
+                    candidates={phaseCandidates}
+                    initialSelectedIds={selectedCandidateIds}
+                    hiringRequestId={hiringRequest._id}
+                    activePhase={activePhaseOrder}
+                    onScheduled={() => {
                         setSelectedCandidateIds([]);
                         fetchCandidates();
                     }}

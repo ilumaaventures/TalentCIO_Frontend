@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search, Calendar } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -15,6 +15,7 @@ import CandidateDetails from './CandidateDetails';
 import { ProfileReviewModal } from './PublicApplicationsView';
 import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
+import MassInterviewScheduleModal from './MassInterviewScheduleModal';
 import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
@@ -475,6 +476,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showMassMailModal, setShowMassMailModal] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const [showMassInterviewModal, setShowMassInterviewModal] = useState(false);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
     const [showCreatedDateSortMenu, setShowCreatedDateSortMenu] = useState(false);
     const [openMultiFilter, setOpenMultiFilter] = useState(null);
@@ -1179,6 +1181,17 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } catch (error) {
             console.error('Error preparing transfer candidates:', error);
             toast.error('Failed to load candidates for transfer');
+        }
+    }, [fetchAllMatchingCandidates]);
+
+    const openMassInterviewModal = useCallback(async () => {
+        try {
+            const matchingCandidates = await fetchAllMatchingCandidates();
+            setActionCandidates(matchingCandidates);
+            setShowMassInterviewModal(true);
+        } catch (error) {
+            console.error('Error preparing mass interview candidates:', error);
+            toast.error('Failed to load candidates for scheduling');
         }
     }, [fetchAllMatchingCandidates]);
 
@@ -2064,6 +2077,25 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             Transfer
                                         </span>
                                         <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    </button>
+                                )}
+                                {canEditCandidates && !isLegacyView && selectedCandidateIds.length >= 2 && (
+                                    <button
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            openMassInterviewModal();
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                                                <Calendar size={15} />
+                                            </span>
+                                            Schedule Interview
+                                        </span>
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">
                                             {selectedCandidateIds.length}
                                         </span>
                                     </button>
@@ -3343,6 +3375,25 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     fromHiringRequestId={hiringRequestId}
                     initialSelectedIds={transferPresetIds.length ? transferPresetIds : selectedCandidateIds}
                     onTransferred={() => {
+                        setSelectedCandidateIds([]);
+                        setActionCandidates([]);
+                        fetchCandidates();
+                    }}
+                />
+            )}
+
+            {showMassInterviewModal && (
+                <MassInterviewScheduleModal
+                    isOpen={showMassInterviewModal}
+                    onClose={() => {
+                        setShowMassInterviewModal(false);
+                        setActionCandidates([]);
+                    }}
+                    candidates={actionCandidates}
+                    initialSelectedIds={selectedCandidateIds}
+                    hiringRequestId={hiringRequestId}
+                    activePhase={activePhase}
+                    onScheduled={() => {
                         setSelectedCandidateIds([]);
                         setActionCandidates([]);
                         fetchCandidates();
