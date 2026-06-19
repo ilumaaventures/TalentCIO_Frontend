@@ -8,6 +8,7 @@ import {
     CheckCircle2,
     Clock3,
     FileText,
+    FileX,
     RefreshCw,
     Target,
     Users,
@@ -1547,7 +1548,7 @@ const TalentAcquisitionDashboard = () => {
                                                 </td>
                                                 <td className="px-4 py-3.5 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        {candidate.resumeUrl && (
+                                                        {candidate.resumeUrl ? (
                                                             <a
                                                                 href={candidate.resumeUrl}
                                                                 target="_blank"
@@ -1558,6 +1559,14 @@ const TalentAcquisitionDashboard = () => {
                                                                 <FileText size={12} className="text-slate-500" />
                                                                 <span>Resume</span>
                                                             </a>
+                                                        ) : (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-400 cursor-not-allowed line-through"
+                                                                title="Resume not available"
+                                                            >
+                                                                <FileX size={12} className="text-slate-400" />
+                                                                <span>Resume</span>
+                                                            </span>
                                                         )}
                                                         <button
                                                             type="button"
