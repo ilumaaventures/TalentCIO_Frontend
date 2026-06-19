@@ -166,6 +166,13 @@ const TAAccessSettings = () => {
         interviewPanel: []
     });
     const [userSearch, setUserSearch] = useState('');
+    const [showWarningModal, setShowWarningModal] = useState(false);
+    const [warningModalConfig, setWarningModalConfig] = useState({
+        clientName: '',
+        userNames: '',
+        userIds: [],
+        onConfirm: null
+    });
 
     const fetchOverview = async ({ preserveSelections = true } = {}) => {
         try {
@@ -448,12 +455,13 @@ const TAAccessSettings = () => {
         }
     };
 
-    const handleSaveRequestAccess = async () => {
-        if (!selectedRequest) return;
-
+    const executeSaveRequestAccess = async (unassignClientUsers = []) => {
         try {
             setSavingRequestId(selectedRequest._id);
-            const response = await api.put(`/ta/settings/access/requisitions/${selectedRequest._id}`, requestAccessDraft);
+            const response = await api.put(`/ta/settings/access/requisitions/${selectedRequest._id}`, {
+                ...requestAccessDraft,
+                unassignClientUsers
+            });
             await fetchOverview();
             toast.success(response.data?.message || 'Requisition access updated');
         } catch (error) {
@@ -462,6 +470,42 @@ const TAAccessSettings = () => {
         } finally {
             setSavingRequestId('');
         }
+    };
+
+    const handleSaveRequestAccess = async () => {
+        if (!selectedRequest) return;
+
+        // Compare selectedRequest.assignedUsers with requestAccessDraft.assignedUsers to find removed users
+        const originalAssignedIds = (selectedRequest.assignedUsers || []).map((u) => typeof u === 'string' ? u : u._id);
+        const updatedAssignedIds = requestAccessDraft.assignedUsers || [];
+        const removedUserIds = originalAssignedIds.filter((id) => !updatedAssignedIds.includes(id));
+
+        const clientName = selectedRequest.client;
+        const clientAssignedUsersRemoved = removedUserIds.filter((id) => {
+            const u = usersById.get(String(id));
+            return u && Array.isArray(u.taAssignedClients) && u.taAssignedClients.includes(clientName);
+        });
+
+        if (clientAssignedUsersRemoved.length > 0) {
+            const userNames = clientAssignedUsersRemoved.map((id) => {
+                const u = usersById.get(String(id));
+                return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : id;
+            }).join(', ');
+
+            setWarningModalConfig({
+                clientName,
+                userNames,
+                userIds: clientAssignedUsersRemoved,
+                onConfirm: async () => {
+                    setShowWarningModal(false);
+                    await executeSaveRequestAccess(clientAssignedUsersRemoved);
+                }
+            });
+            setShowWarningModal(true);
+            return;
+        }
+
+        await executeSaveRequestAccess([]);
     };
 
     const toggleClientUserAssignment = (userId) => {
@@ -1136,6 +1180,38 @@ const TAAccessSettings = () => {
                         </div>
                     ) : null}
                 </SectionCard>
+            )}
+            {showWarningModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 relative animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-slate-900">Confirm User Removal</h3>
+                        <p className="mt-3 text-sm text-slate-600">
+                            Client <span className="font-semibold text-slate-800">"{warningModalConfig.clientName}"</span> is assigned to the user(s): <span className="font-semibold text-slate-800">{warningModalConfig.userNames}</span>.
+                        </p>
+                        <p className="mt-3 text-sm text-slate-600">
+                            If you remove these user(s) from this requisition, then client <span className="font-semibold text-slate-800">"{warningModalConfig.clientName}"</span> will be automatically unassigned from them.
+                        </p>
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 font-medium">
+                            Note: To ensure they do not lose access to other requisitions under this client, they will be given direct (particular) access to all other requisitions of this client.
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowWarningModal(false)}
+                                className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={warningModalConfig.onConfirm}
+                                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-semibold text-white transition-colors"
+                            >
+                                Confirm and Proceed
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
