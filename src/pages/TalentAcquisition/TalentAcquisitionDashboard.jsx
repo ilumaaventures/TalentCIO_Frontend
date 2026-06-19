@@ -254,48 +254,129 @@ const TalentAcquisitionDashboard = () => {
     const [clients, setClients] = useState([]);
     const [interviews, setInterviews] = useState([]);
 
+    const getSavedVal = (key, defaultVal) => {
+        try {
+            const saved = sessionStorage.getItem('ta_candidate_filters');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed[key] !== undefined) return parsed[key];
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        return defaultVal;
+    };
+
     // Global Candidate Search states
-    const [candidateSearchText, setCandidateSearchText] = useState('');
+    const [candidateSearchText, setCandidateSearchText] = useState(() => getSavedVal('search', ''));
     const [searchTriggerVal, setSearchTriggerVal] = useState('');
-    const [selectedSources, setSelectedSources] = useState([]);
-    const [minExp, setMinExp] = useState('');
-    const [maxExp, setMaxExp] = useState('');
-    const [searchSkills, setSearchSkills] = useState([]);
-    const [searchClient, setSearchClient] = useState('');
-    const [searchLocation, setSearchLocation] = useState('');
-    const [maxNoticePeriod, setMaxNoticePeriod] = useState('');
-    const [minCurrentCTC, setMinCurrentCTC] = useState('');
-    const [maxCurrentCTC, setMaxCurrentCTC] = useState('');
-    const [minExpectedCTC, setMinExpectedCTC] = useState('');
-    const [maxExpectedCTC, setMaxExpectedCTC] = useState('');
-    const [searchInHandOffer, setSearchInHandOffer] = useState('');
-    const [searchDecision, setSearchDecision] = useState('');
+    const [selectedSources, setSelectedSources] = useState(() => getSavedVal('sources', []));
+    const [minExp, setMinExp] = useState(() => getSavedVal('minExp', ''));
+    const [maxExp, setMaxExp] = useState(() => getSavedVal('maxExp', ''));
+    const [searchSkills, setSearchSkills] = useState(() => getSavedVal('skills', []));
+    const [searchClient, setSearchClient] = useState(() => getSavedVal('client', ''));
+    const [searchLocation, setSearchLocation] = useState(() => getSavedVal('location', ''));
+    const [maxNoticePeriod, setMaxNoticePeriod] = useState(() => getSavedVal('maxNoticePeriod', ''));
+    const [minCurrentCTC, setMinCurrentCTC] = useState(() => getSavedVal('minCurrentCTC', ''));
+    const [maxCurrentCTC, setMaxCurrentCTC] = useState(() => getSavedVal('maxCurrentCTC', ''));
+    const [minExpectedCTC, setMinExpectedCTC] = useState(() => getSavedVal('minExpectedCTC', ''));
+    const [maxExpectedCTC, setMaxExpectedCTC] = useState(() => getSavedVal('maxExpectedCTC', ''));
+    const [searchInHandOffer, setSearchInHandOffer] = useState(() => getSavedVal('inHandOffer', ''));
+    const [searchDecision, setSearchDecision] = useState(() => getSavedVal('decision', ''));
     const [candidateResults, setCandidateResults] = useState([]);
     const [isSearchLoading, setIsSearchLoading] = useState(false);
-    const [searchPage, setSearchPage] = useState(1);
+    const [searchPage, setSearchPage] = useState(() => getSavedVal('searchPage', 1));
     const [searchPagination, setSearchPagination] = useState({ currentPage: 1, totalPages: 1, count: 0, limit: 15 });
-    const [showFilters, setShowFilters] = useState(false);
+    const [showFilters, setShowFilters] = useState(() => getSavedVal('showFilters', false));
     const [availableSources, setAvailableSources] = useState([]);
     const [availableSkills, setAvailableSkills] = useState([]);
     const [skillsFilterText, setSkillsFilterText] = useState('');
 
     // Applied states used for search execution
-    const [appliedFilters, setAppliedFilters] = useState({
-        search: '',
-        sources: [],
-        minExp: '',
-        maxExp: '',
-        skills: [],
-        client: '',
-        location: '',
-        maxNoticePeriod: '',
-        minCurrentCTC: '',
-        maxCurrentCTC: '',
-        minExpectedCTC: '',
-        maxExpectedCTC: '',
-        inHandOffer: '',
-        decision: ''
+    const [appliedFilters, setAppliedFilters] = useState(() => {
+        try {
+            const saved = sessionStorage.getItem('ta_candidate_filters');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.appliedFilters !== undefined) return parsed.appliedFilters;
+                return {
+                    search: parsed.search ?? '',
+                    sources: parsed.sources ?? [],
+                    minExp: parsed.minExp ?? '',
+                    maxExp: parsed.maxExp ?? '',
+                    skills: parsed.skills ?? [],
+                    client: parsed.client ?? '',
+                    location: parsed.location ?? '',
+                    maxNoticePeriod: parsed.maxNoticePeriod ?? '',
+                    minCurrentCTC: parsed.minCurrentCTC ?? '',
+                    maxCurrentCTC: parsed.maxCurrentCTC ?? '',
+                    minExpectedCTC: parsed.minExpectedCTC ?? '',
+                    maxExpectedCTC: parsed.maxExpectedCTC ?? '',
+                    inHandOffer: parsed.inHandOffer ?? '',
+                    decision: parsed.decision ?? ''
+                };
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        return {
+            search: '',
+            sources: [],
+            minExp: '',
+            maxExp: '',
+            skills: [],
+            client: '',
+            location: '',
+            maxNoticePeriod: '',
+            minCurrentCTC: '',
+            maxCurrentCTC: '',
+            minExpectedCTC: '',
+            maxExpectedCTC: '',
+            inHandOffer: '',
+            decision: ''
+        };
     });
+
+    useEffect(() => {
+        const stateToSave = {
+            search: candidateSearchText,
+            sources: selectedSources,
+            minExp,
+            maxExp,
+            skills: searchSkills,
+            client: searchClient,
+            location: searchLocation,
+            maxNoticePeriod,
+            minCurrentCTC,
+            maxCurrentCTC,
+            minExpectedCTC,
+            maxExpectedCTC,
+            inHandOffer: searchInHandOffer,
+            decision: searchDecision,
+            showFilters,
+            searchPage,
+            appliedFilters
+        };
+        sessionStorage.setItem('ta_candidate_filters', JSON.stringify(stateToSave));
+    }, [
+        candidateSearchText,
+        selectedSources,
+        minExp,
+        maxExp,
+        searchSkills,
+        searchClient,
+        searchLocation,
+        maxNoticePeriod,
+        minCurrentCTC,
+        maxCurrentCTC,
+        minExpectedCTC,
+        maxExpectedCTC,
+        searchInHandOffer,
+        searchDecision,
+        showFilters,
+        searchPage,
+        appliedFilters
+    ]);
 
     const canViewAnalytics = useMemo(() => (
         user?.roles?.includes('Admin') ||
@@ -1465,20 +1546,34 @@ const TalentAcquisitionDashboard = () => {
                                                     </p>
                                                 </td>
                                                 <td className="px-4 py-3.5 text-right">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const hrId = candidate.hiringRequestId?._id || candidate.hiringRequestId;
-                                                            if (hrId) {
-                                                                navigate(`/ta/hiring-request/${hrId}/candidate/${candidate._id}/view`);
-                                                            } else {
-                                                                console.error("No hiring request ID found for candidate view");
-                                                            }
-                                                        }}
-                                                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-                                                    >
-                                                        View
-                                                    </button>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {candidate.resumeUrl && (
+                                                            <a
+                                                                href={candidate.resumeUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                                title="View/Download Resume"
+                                                            >
+                                                                <FileText size={12} className="text-slate-500" />
+                                                                <span>Resume</span>
+                                                            </a>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const hrId = candidate.hiringRequestId?._id || candidate.hiringRequestId;
+                                                                if (hrId) {
+                                                                    window.open(`/ta/hiring-request/${hrId}/candidate/${candidate._id}/view`, '_blank');
+                                                                } else {
+                                                                    console.error("No hiring request ID found for candidate view");
+                                                                }
+                                                            }}
+                                                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                        >
+                                                            View
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );
