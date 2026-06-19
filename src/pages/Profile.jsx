@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
-import { Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar, ZoomIn, Move, X } from 'lucide-react';
+import { Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar, ZoomIn, Move, X, Lock, Eye, EyeOff, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EmployeeDossier from './EmployeeDossier';
 
@@ -160,6 +160,52 @@ const optimizeProfileImage = async (file) => {
     );
 };
 
+/* ─── Password validation rules ─────────────────────────────── */
+const PASSWORD_RULES = [
+    { id: 'length',    label: 'At least 8 characters',           test: (p) => p.length >= 8 },
+    { id: 'upper',     label: 'One uppercase letter (A–Z)',       test: (p) => /[A-Z]/.test(p) },
+    { id: 'number',    label: 'One number (0–9)',                 test: (p) => /[0-9]/.test(p) },
+    { id: 'special',   label: 'One special character (!@#$…)',    test: (p) => /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(p) },
+];
+
+const validatePassword = (password) => PASSWORD_RULES.every(r => r.test(password));
+
+/* ─── Password Strength Bar ─────────────────────────────────── */
+const PasswordStrength = ({ password }) => {
+    if (!password) return null;
+    const passed = PASSWORD_RULES.filter(r => r.test(password)).length;
+    const levels = [
+        { label: 'Weak',    color: 'bg-red-500' },
+        { label: 'Fair',    color: 'bg-orange-400' },
+        { label: 'Good',    color: 'bg-yellow-400' },
+        { label: 'Strong',  color: 'bg-emerald-500' },
+    ];
+    const level = levels[Math.min(passed - 1, 3)] || levels[0];
+
+    return (
+        <div className="mt-2 space-y-2">
+            <div className="flex gap-1">
+                {[0, 1, 2, 3].map(i => (
+                    <div key={i} className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${i < passed ? level.color : 'bg-slate-200'}`} />
+                ))}
+            </div>
+            <p className={`text-xs font-semibold ${passed <= 1 ? 'text-red-500' : passed === 2 ? 'text-orange-400' : passed === 3 ? 'text-yellow-500' : 'text-emerald-600'}`}>
+                {level.label}
+            </p>
+            <ul className="space-y-1">
+                {PASSWORD_RULES.map(rule => (
+                    <li key={rule.id} className={`flex items-center gap-1.5 text-xs ${rule.test(password) ? 'text-emerald-600' : 'text-slate-400'}`}>
+                        {rule.test(password)
+                            ? <CheckCircle size={12} className="shrink-0" />
+                            : <div className="w-3 h-3 rounded-full border border-slate-300 shrink-0" />}
+                        {rule.label}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
 const Profile = () => {
     const { refreshProfile } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -172,6 +218,63 @@ const Profile = () => {
     const [cropZoom, setCropZoom] = useState(1);
     const [dragState, setDragState] = useState(null);
     const requestedTab = searchParams.get('tab') || 'personal';
+
+    /* ── Password change state ── */
+    const [showPasswordSection, setShowPasswordSection] = useState(false);
+    const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    const [pwErrors, setPwErrors] = useState({});
+    const [showCurrent, setShowCurrent] = useState(false);
+    const [showNew, setShowNew] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [savingPassword, setSavingPassword] = useState(false);
+
+    /* ── Password form handlers ── */
+    const handlePwChange = (field, value) => {
+        setPwForm(prev => ({ ...prev, [field]: value }));
+        if (pwErrors[field]) setPwErrors(prev => ({ ...prev, [field]: '' }));
+    };
+
+    const validatePwForm = () => {
+        const errors = {};
+        if (!pwForm.currentPassword) errors.currentPassword = 'Current password is required.';
+        if (!pwForm.newPassword) {
+            errors.newPassword = 'New password is required.';
+        } else if (!validatePassword(pwForm.newPassword)) {
+            errors.newPassword = 'Password does not meet the requirements below.';
+        }
+        if (!pwForm.confirmPassword) {
+            errors.confirmPassword = 'Please confirm your new password.';
+        } else if (pwForm.newPassword !== pwForm.confirmPassword) {
+            errors.confirmPassword = 'Passwords do not match.';
+        }
+        return errors;
+    };
+
+    const handlePasswordSubmit = async (e) => {
+        e.preventDefault();
+        const errors = validatePwForm();
+        if (Object.keys(errors).length > 0) { setPwErrors(errors); return; }
+
+        setSavingPassword(true);
+        try {
+            await api.put('/auth/change-password', {
+                currentPassword: pwForm.currentPassword,
+                newPassword: pwForm.newPassword
+            });
+            toast.success('Password changed successfully!');
+            setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+            setPwErrors({});
+            setShowPasswordSection(false);
+        } catch (error) {
+            const message = error.response?.data?.message || 'Failed to change password.';
+            toast.error(message);
+            if (error.response?.status === 401) {
+                setPwErrors({ currentPassword: 'Current password is incorrect.' });
+            }
+        } finally {
+            setSavingPassword(false);
+        }
+    };
 
     const handleTabChange = useCallback((tabId) => {
         const nextParams = new URLSearchParams(searchParams);
@@ -412,9 +515,9 @@ const Profile = () => {
                 <div className="bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
                     <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-700"></div>
                     <div className="px-8 pb-8">
-                        <div className="relative flex justify-between items-end -mt-10 mb-6">
+                        <div className="relative flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-10 mb-6 gap-4">
                             <div className="flex items-end">
-                                <div className="h-20 w-20 rounded-full bg-white p-1 shadow-lg relative group">
+                                <div className="h-20 w-20 rounded-full bg-white p-1 shadow-lg relative group shrink-0">
                                     <div className="h-full w-full rounded-full bg-slate-200 flex items-center justify-center text-2xl font-bold text-slate-500 overflow-hidden relative">
                                         {displayProfilePicture ? (
                                             <img src={displayProfilePicture} alt="Profile" className="h-full w-full object-cover" />
@@ -442,10 +545,23 @@ const Profile = () => {
                                     </p>
                                 </div>
                             </div>
-                            <div className="hidden sm:block">
+                            <div className="flex flex-row sm:flex-col items-center sm:items-end gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
                                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${profile.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                                     {profile.isActive ? 'Active Employee' : 'Inactive'}
                                 </span>
+                                <button
+                                    type="button"
+                                    id="change-password-toggle"
+                                    onClick={() => setShowPasswordSection(v => !v)}
+                                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                                        showPasswordSection
+                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                            : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:text-blue-600'
+                                    }`}
+                                >
+                                    <KeyRound size={13} />
+                                    {showPasswordSection ? 'Cancel' : 'Change Password'}
+                                </button>
                             </div>
                         </div>
 
@@ -530,6 +646,161 @@ const Profile = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Password Change Section */}
+                {showPasswordSection && (
+                    <div className="bg-white rounded-xl shadow-md overflow-hidden border border-blue-100">
+                        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                                <Lock size={15} className="text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800">Change Password</h3>
+                                <p className="text-[11px] text-slate-500">Update your account security credentials</p>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handlePasswordSubmit} className="p-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Left: Form fields */}
+                                <div className="space-y-4">
+                                    {/* Current Password */}
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                                            Current Password
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                id="current-password"
+                                                type={showCurrent ? 'text' : 'password'}
+                                                value={pwForm.currentPassword}
+                                                onChange={e => handlePwChange('currentPassword', e.target.value)}
+                                                placeholder="Enter current password"
+                                                className={`w-full px-3 py-2 pr-10 rounded-lg border text-sm outline-none transition-all ${pwErrors.currentPassword ? 'border-red-400 bg-red-50 focus:ring-2 focus:ring-red-200' : 'border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100'}`}
+                                            />
+                                            <button type="button" onClick={() => setShowCurrent(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                                                {showCurrent ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            </button>
+                                        </div>
+                                        {pwErrors.currentPassword && (
+                                            <p className="mt-1 text-[11px] text-red-500 flex items-center gap-1">
+                                                <AlertCircle size={10} /> {pwErrors.currentPassword}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* New Password */}
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                                            New Password
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                id="new-password"
+                                                type={showNew ? 'text' : 'password'}
+                                                value={pwForm.newPassword}
+                                                onChange={e => handlePwChange('newPassword', e.target.value)}
+                                                placeholder="Create a strong password"
+                                                className={`w-full px-3 py-2 pr-10 rounded-lg border text-sm outline-none transition-all ${pwErrors.newPassword ? 'border-red-400 bg-red-50 focus:ring-2 focus:ring-red-200' : 'border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100'}`}
+                                            />
+                                            <button type="button" onClick={() => setShowNew(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                                                {showNew ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            </button>
+                                        </div>
+                                        {pwErrors.newPassword && (
+                                            <p className="mt-1 text-[11px] text-red-500 flex items-center gap-1">
+                                                <AlertCircle size={10} /> {pwErrors.newPassword}
+                                            </p>
+                                        )}
+                                        {pwForm.newPassword && <PasswordStrength password={pwForm.newPassword} />}
+                                    </div>
+
+                                    {/* Confirm Password */}
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                                            Confirm New Password
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                id="confirm-password"
+                                                type={showConfirm ? 'text' : 'password'}
+                                                value={pwForm.confirmPassword}
+                                                onChange={e => handlePwChange('confirmPassword', e.target.value)}
+                                                placeholder="Re-enter new password"
+                                                className={`w-full px-3 py-2 pr-10 rounded-lg border text-sm outline-none transition-all ${pwErrors.confirmPassword ? 'border-red-400 bg-red-50 focus:ring-2 focus:ring-red-200' : pwForm.confirmPassword && pwForm.newPassword === pwForm.confirmPassword ? 'border-emerald-400 focus:ring-2 focus:ring-emerald-100' : 'border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100'}`}
+                                            />
+                                            <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                                                {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            </button>
+                                        </div>
+                                        {pwErrors.confirmPassword && (
+                                            <p className="mt-1 text-[11px] text-red-500 flex items-center gap-1">
+                                                <AlertCircle size={10} /> {pwErrors.confirmPassword}
+                                            </p>
+                                        )}
+                                        {pwForm.confirmPassword && pwForm.newPassword === pwForm.confirmPassword && !pwErrors.confirmPassword && (
+                                            <p className="mt-1 text-[11px] text-emerald-600 flex items-center gap-1">
+                                                <CheckCircle size={10} /> Passwords match
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Right: Policy summary */}
+                                <div className="lg:pl-6 lg:border-l border-slate-100">
+                                    <div className="rounded-lg bg-slate-50 border border-slate-200 p-4">
+                                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
+                                            <Shield size={12} />
+                                            Password Requirements
+                                        </h4>
+                                        <ul className="space-y-2.5">
+                                            {PASSWORD_RULES.map(rule => {
+                                                const passed = rule.test(pwForm.newPassword);
+                                                return (
+                                                    <li key={rule.id} className={`flex items-center gap-2.5 text-xs transition-colors ${passed ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                        <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all ${passed ? 'bg-emerald-100' : 'bg-slate-200'}`}>
+                                                            {passed
+                                                                ? <CheckCircle size={10} className="text-emerald-600" />
+                                                                : <div className="w-1 h-1 rounded-full bg-slate-400" />}
+                                                        </div>
+                                                        <span className={`${passed ? 'font-medium' : ''}`}>{rule.label}</span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                    <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-[11px] text-amber-700">
+                                        <strong>Tip:</strong> Use a mix of letters, numbers, and symbols. Avoid common words or personal info.
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Submit */}
+                            <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:justify-end border-t border-slate-100 pt-5">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowPasswordSection(false); setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPwErrors({}); }}
+                                    className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                                    disabled={savingPassword}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    id="save-password-btn"
+                                    disabled={savingPassword || !validatePassword(pwForm.newPassword) || pwForm.newPassword !== pwForm.confirmPassword || !pwForm.currentPassword}
+                                    className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                >
+                                    {savingPassword ? (
+                                        <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving…</>
+                                    ) : (
+                                        <><Lock size={12} /> Update Password</>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
 
                 {/* Subordinates Section */}
                 {profile.directReports && profile.directReports.length > 0 && (
