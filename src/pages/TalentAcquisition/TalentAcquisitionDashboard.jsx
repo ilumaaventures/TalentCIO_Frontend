@@ -1548,7 +1548,7 @@ const TalentAcquisitionDashboard = () => {
                                                 </td>
                                                 <td className="px-4 py-3.5 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        {candidate.resumeUrl ? (
+                                                        {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') ? (
                                                             <a
                                                                 href={candidate.resumeUrl}
                                                                 target="_blank"
