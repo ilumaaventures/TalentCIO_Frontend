@@ -315,7 +315,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const hasAdminRole = isCurrentUserAdmin;
     const canViewRolesSettings = hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions;
     const canViewAttendanceSettings = currentUser?.company?.enabledModules?.includes('attendance') && (hasAdminRole || currentUser?.permissions?.includes('user.update') || currentUser?.hasAllPermissions);
-    const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions);
+    const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('leave.config.manage') || currentUser?.hasAllPermissions);
     const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies || canManageCompanyBranding;
     const canViewEmailHistory = hasAdminRole || currentUser?.permissions?.includes('hr_email.send') || currentUser?.hasAllPermissions;
     const isManager = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
