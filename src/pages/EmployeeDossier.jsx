@@ -804,7 +804,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             fetchDossier();
         } catch (error) {
             console.error(error);
-            toast.error('Failed to save HRIS form');
+            toast.error(error.response?.data?.message || 'Failed to save HRIS form');
         } finally {
             setSavingSection(null);
         }
@@ -899,7 +899,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             fetchDossier(); // Refresh to ensure sync
         } catch (error) {
             console.error(error);
-            toast.error('Failed to save changes');
+            toast.error(error.response?.data?.message || 'Failed to save changes');
         } finally {
             setSavingSection(null);
         }
@@ -1338,6 +1338,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" value={profile.personal?.dob} type="date" formData={formData} onChange={handleInputChange} required />
                                 <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} required />
                                 <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} required />
+                                {(formData.personal?.maritalStatus === 'Married' || (!isEditing && profile.personal?.maritalStatus === 'Married')) && (
+                                    <Field section="personal" isEditing={isEditing} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
+                                )}
                                 <Field section="personal" isEditing={isEditing} label="Nationality" field="nationality" value={profile.personal?.nationality} formData={formData} onChange={handleInputChange} required />
                                 <Field section="personal" isEditing={isEditing} label="Blood Group" field="bloodGroup" value={profile.personal?.bloodGroup} formData={formData} onChange={handleInputChange} required />
                                 <Field
@@ -1554,6 +1557,91 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 <Field section="identity" isEditing={isEditing} label="Aadhaar Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} required />
                                 <Field section="identity" isEditing={isEditing} label="PAN Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
                                 <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                            </div>
+                        </div>
+                    )}
+                </SectionCard>
+
+                {/* 4. Family Information */}
+                <SectionCard
+                    title="Family Information"
+                    sectionName="family"
+                    icon={User}
+                    editMode={editMode}
+                    setEditMode={setEditMode}
+                    onSave={handleSave}
+                    isLoading={savingSection === 'family'}
+                    canEdit={canEdit}
+                >
+                    {(isEditing) => (
+                        <div className="space-y-6">
+                            <p className="text-xs text-red-500 italic">* fields are mandatory</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                                <Field section="family" isEditing={isEditing} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} required />
+                                <Field section="family" isEditing={isEditing} label="Father's Occupation" field="fatherOccupation" value={profile.family?.fatherOccupation} formData={formData} onChange={handleInputChange} />
+                                <Field section="family" isEditing={isEditing} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} required />
+                                <Field section="family" isEditing={isEditing} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
+                                <Field section="family" isEditing={isEditing} label="Parents' Marital Status" field="parentsMaritalStatus" value={profile.family?.parentsMaritalStatus} options={['Married', 'Divorced', 'Widowed', 'Separated']} formData={formData} onChange={handleInputChange} />
+                                <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
+                                <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
+                                <Field section="family" isEditing={isEditing} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
+                            </div>
+
+                            {/* Children List */}
+                            <div className="mt-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-sm font-bold text-slate-700">Children Details</h4>
+                                    {isEditing && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, family: { ...prev.family, children: [...(prev.family?.children || []), { name: '', dob: '' }] } }))}
+                                            className="text-xs bg-emerald-50 text-emerald-600 px-2 py-1 rounded border border-emerald-200 hover:bg-emerald-100"
+                                        >
+                                            + Add Child
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="space-y-3">
+                                    {(formData.family?.children || profile.family?.children || []).map((child, idx) => (
+                                        <div key={idx} className="flex gap-4 items-end bg-white p-3 rounded border border-slate-200">
+                                            <div className="flex-1">
+                                                <Field section="family" isEditing={isEditing} label="Child's Name" field={`child_${idx}_name`}
+                                                    value={child.name} valueOverride={formData.family?.children?.[idx]?.name}
+                                                    onChangeOverride={(e) => {
+                                                        const newChildren = [...(formData.family?.children || [])];
+                                                        newChildren[idx] = { ...newChildren[idx], name: e.target.value };
+                                                        handleInputChange('family', 'children', newChildren);
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <Field section="family" isEditing={isEditing} label="Date of Birth" field={`child_${idx}_dob`}
+                                                    value={child.dob} valueOverride={formData.family?.children?.[idx]?.dob} type="date"
+                                                    onChangeOverride={(e) => {
+                                                        const newChildren = [...(formData.family?.children || [])];
+                                                        newChildren[idx] = { ...newChildren[idx], dob: e.target.value };
+                                                        handleInputChange('family', 'children', newChildren);
+                                                    }}
+                                                />
+                                            </div>
+                                            {isEditing && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newChildren = (formData.family?.children || []).filter((_, i) => i !== idx);
+                                                        handleInputChange('family', 'children', newChildren);
+                                                    }}
+                                                    className="p-2 text-red-500 hover:bg-red-50 rounded"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {(!(formData.family?.children || profile.family?.children) || (formData.family?.children || profile.family?.children || []).length === 0) && (
+                                        <p className="text-xs text-slate-400 italic">No children details added.</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1790,7 +1878,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             const allMissing = [...missingIdentityDocs, ...missingQualificationDocs];
 
             if (allMissing.length > 0) {
-                toast.error(`All fields are required.`);
+                toast.error(`Missing mandatory documents: ${allMissing.join(', ')}`);
                 return;
             }
 
@@ -1897,6 +1985,24 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             }
         };
 
+        const handleView = async (doc) => {
+            try {
+                const toastId = toast.loading('Preparing preview...');
+                const response = await api.get('/dossier/proxy-pdf', {
+                    params: { url: doc.url, download: false },
+                    responseType: 'blob'
+                });
+
+                const blob = new Blob([response.data], { type: response.headers['content-type'] || 'application/pdf' });
+                const url = window.URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                toast.dismiss(toastId);
+            } catch (error) {
+                console.error('Preview Error:', error);
+                toast.error('Failed to preview document');
+            }
+        };
+
         const handleDownload = async (doc) => {
             try {
                 const toastId = toast.loading('Preparing download...');
@@ -1998,7 +2104,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             icon={Eye}
                             label="View"
                             tone="blue"
-                            onClick={() => window.open(doc.url, '_blank')}
+                            onClick={() => handleView(doc)}
                         />
                         <DocumentActionButton
                             icon={Download}
@@ -2665,6 +2771,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                             onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
                                         />
+                                        <Field section="contact" isEditing={isEditing} label="Country" field={`${type}_country`}
+                                            value={profile.contact?.addresses?.find(a => a.type === type)?.country}
+                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.country}
+                                            onChangeOverride={(e) => handleAddressChange(type, 'country', e.target.value)}
+                                        />
                                     </div>
                                 </div>
                             ))}
@@ -2680,7 +2791,19 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
                             <Field section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing} label="Emergency Mobile (from Personal)" field="emergencyNumber" value={profile.contact?.emergencyContact?.phone} formData={formData} onChange={handleInputChange} />
+                            <Field
+                                section="contact" isEditing={isEditing}
+                                label="Emergency Mobile (from Personal)" field="EC_phone"
+                                value={profile.contact?.emergencyContact?.phone}
+                                valueOverride={formData.contact?.emergencyContact?.phone}
+                                maxLength={10}
+                                error={formData.contact?.emergencyContact?.phone?.length > 0 && formData.contact?.emergencyContact?.phone?.length < 10 ? 'Must be 10 digits' : null}
+                                onChangeOverride={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    handleEmergencyChange('phone', val);
+                                }}
+                                formData={formData} onChange={handleInputChange}
+                            />
                             <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
                         </div>
                     </div>
@@ -2743,7 +2866,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         {isEditing && (
                                             <button
                                                 onClick={() => {
-                                                    const newChildren = formData.family?.children.filter((_, i) => i !== idx);
+                                                    const newChildren = (formData.family?.children || []).filter((_, i) => i !== idx);
                                                     handleInputChange('family', 'children', newChildren);
                                                 }}
                                                 className="p-2 text-red-500 hover:bg-red-50 rounded"
