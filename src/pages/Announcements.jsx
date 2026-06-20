@@ -3,10 +3,12 @@ import { Loader2, Megaphone, PencilLine, Pin, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import socket from '../api/socket';
 import { useAuth } from '../context/AuthContext';
 import AnnouncementCommunitySidebar from '../components/announcements/AnnouncementCommunitySidebar';
 import AnnouncementComposerDrawer from '../components/announcements/AnnouncementComposerDrawer';
 import AnnouncementFeedCard from '../components/announcements/AnnouncementFeedCard';
+import AnnouncementReadStatusModal from '../components/announcements/AnnouncementReadStatusModal';
 import {
   buildAnnouncementPayload,
   createOptimisticComment,
@@ -115,6 +117,7 @@ const Announcements = () => {
   const [communityData, setCommunityData] = useState(EMPTY_COMMUNITY_DATA);
   const [composerSetup, setComposerSetup] = useState(DEFAULT_COMPOSER_SETUP);
   const [form, setForm] = useState(EMPTY_ANNOUNCEMENT_FORM);
+  const [reportAnnouncementId, setReportAnnouncementId] = useState(null);
 
   const formErrors = useMemo(() => getAnnouncementValidationErrors(form), [form]);
   const reactionTypes = composerSetup.reactionTypes?.length ? composerSetup.reactionTypes : DEFAULT_COMPOSER_SETUP.reactionTypes;
@@ -176,6 +179,25 @@ const Announcements = () => {
   useEffect(() => {
     void loadPageData();
   }, [loadPageData]);
+
+  useEffect(() => {
+    if (!user?._id) return;
+
+    const handleRealtimeAnnouncement = (notification) => {
+      if (
+        notification?.preferenceKey === 'announcement_published' ||
+        notification?.metadata?.announcementId ||
+        notification?.link === '/announcements'
+      ) {
+        void loadPageData(true);
+      }
+    };
+
+    socket.on('notification', handleRealtimeAnnouncement);
+    return () => {
+      socket.off('notification', handleRealtimeAnnouncement);
+    };
+  }, [user?._id, loadPageData]);
 
   useEffect(() => {
     const state = location.state || {};
@@ -645,6 +667,7 @@ const Announcements = () => {
                           onEdit={openComposerForEdit}
                           onDelete={handleDeleteAnnouncement}
                           onTogglePin={handleTogglePin}
+                          onViewAcknowledgements={setReportAnnouncementId}
                         />
                       ))}
                     </section>
@@ -675,6 +698,7 @@ const Announcements = () => {
                         onEdit={openComposerForEdit}
                         onDelete={handleDeleteAnnouncement}
                         onTogglePin={handleTogglePin}
+                        onViewAcknowledgements={setReportAnnouncementId}
                       />
                     ))}
                   </section>
@@ -706,6 +730,13 @@ const Announcements = () => {
         onSaveDraft={() => void submitAnnouncement('draft')}
         onPublish={() => void submitAnnouncement('published')}
       />
+
+      {reportAnnouncementId && (
+        <AnnouncementReadStatusModal
+          announcementId={reportAnnouncementId}
+          onClose={() => setReportAnnouncementId(null)}
+        />
+      )}
     </>
   );
 };

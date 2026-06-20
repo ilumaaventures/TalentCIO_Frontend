@@ -62,14 +62,26 @@ const OTPReset = () => {
         }
     };
 
-    const handleVerifyOtp = (e) => {
+    const handleVerifyOtp = async (e) => {
         e.preventDefault();
         const otpCode = otp.join('');
         if (otpCode.length < 6) {
             toast.error("Please enter the full 6-digit OTP");
             return;
         }
-        setStep(2);
+        setIsLoading(true);
+        try {
+            await api.post('/auth/verify-otp', {
+                email,
+                otp: otpCode
+            });
+            toast.success("OTP verified successfully!");
+            setStep(2);
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Invalid or expired OTP");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleResetPassword = async (e) => {
@@ -156,7 +168,7 @@ const OTPReset = () => {
                                     ))}
                                 </div>
 
-                                <Button type="submit" className="w-full group">
+                                <Button type="submit" isLoading={isLoading} className="w-full group">
                                     Verify OTP
                                     <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                                 </Button>

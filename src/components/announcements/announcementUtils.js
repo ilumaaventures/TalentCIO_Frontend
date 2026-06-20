@@ -111,6 +111,30 @@ export const isAnnouncementManager = (user) => {
   );
 };
 
+export const canReactToAnnouncement = (user) => {
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  return (
+    isAnnouncementManager(user)
+    || permissions.includes('announcement.react')
+  );
+};
+
+export const canCommentOnAnnouncement = (user) => {
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  return (
+    isAnnouncementManager(user)
+    || permissions.includes('announcement.comment')
+  );
+};
+
+export const canViewAnnouncementReactions = (user) => {
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  return (
+    isAnnouncementManager(user)
+    || permissions.includes('announcement.reactions.view')
+  );
+};
+
 export const canViewAnnouncementCommunitySection = (user, sectionKey) => {
   const permissionKey = ANNOUNCEMENT_COMMUNITY_SECTION_PERMISSIONS[sectionKey];
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];

@@ -28,7 +28,7 @@ const Topbar = ({ toggleSidebar }) => {
     const isManager = hasAdminRole || user?.directReportsCount > 0 || canApproveDossier;
     const canViewRolesSettings = hasAdminRole || user?.permissions?.includes('role.read') || user?.hasAllPermissions;
     const canViewAttendanceSettings = user?.company?.enabledModules?.includes('attendance') && (hasAdminRole || user?.permissions?.includes('user.update') || user?.hasAllPermissions);
-    const canViewLeavePolicies = user?.company?.enabledModules?.includes('leaves') && (hasAdminRole || user?.permissions?.includes('role.read') || user?.hasAllPermissions);
+    const canViewLeavePolicies = user?.company?.enabledModules?.includes('leaves') && (hasAdminRole || user?.permissions?.includes('leave.config.manage') || user?.hasAllPermissions);
     const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
     const isRolesPage = location.pathname === '/roles';
     const isAnnouncementsPage = location.pathname === '/announcements';

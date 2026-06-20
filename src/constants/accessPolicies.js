@@ -5,6 +5,7 @@ export const EMAIL_SETTINGS_PERMISSIONS = ['settings.email.view', 'settings.emai
 export const NOTIFICATION_SETTINGS_PERMISSIONS = ['settings.notification.view', 'settings.notification.manage'];
 export const USER_ACCESS_PERMISSIONS = ['user.read'];
 export const ROLE_ACCESS_PERMISSIONS = ['role.read'];
+export const LEAVE_CONFIG_PERMISSIONS = ['leave.config.manage'];
 export const BIN_VIEW_PERMISSIONS = ['bin.view'];
 export const ONBOARDING_VIEW_PERMISSIONS = [
     'onboarding.view',

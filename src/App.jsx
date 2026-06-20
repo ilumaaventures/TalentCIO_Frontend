@@ -69,6 +69,7 @@ import {
   CLIENT_UPDATE_PERMISSIONS,
   EMAIL_SETTINGS_PERMISSIONS,
   HR_EMAIL_PERMISSIONS,
+  LEAVE_CONFIG_PERMISSIONS,
   NOTIFICATION_SETTINGS_PERMISSIONS,
   ONBOARDING_VIEW_PERMISSIONS,
   OFFBOARDING_PERMISSIONS,
@@ -263,9 +264,15 @@ function App() {
                 {/* Admin & Configuration Routes */}
                 <Route element={<ProtectedRoute requiredPermissions={ROLE_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions redirectTo="/" />}>
                   <Route path="/roles" element={<Roles />} />
-                  <Route element={<ProtectedRoute moduleName="leaves" redirectTo="/" />}>
-                    <Route path="/leave-config" element={<LeaveConfig />} />
-                  </Route>
+                </Route>
+
+                {/* Leave Config - requires leave.config.manage permission */}
+                <Route element={<ProtectedRoute moduleName="leaves" redirectTo="/" />}>
+                  <Route path="/leave-config" element={(
+                    <ProtectedRoute requiredPermissions={LEAVE_CONFIG_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions redirectTo="/">
+                      <LeaveConfig />
+                    </ProtectedRoute>
+                  )} />
                 </Route>
 
                 <Route path="/bin" element={(

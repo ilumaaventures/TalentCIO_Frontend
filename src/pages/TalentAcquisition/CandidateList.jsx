@@ -441,6 +441,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [serverTotalPages, setServerTotalPages] = useState(1);
     const [serverResultCount, setServerResultCount] = useState(0);
     const [serverSummary, setServerSummary] = useState(null);
+    const [cardMetrics, setCardMetrics] = useState(null);
+    const [loadingMetrics, setLoadingMetrics] = useState(false);
     const [actionCandidates, setActionCandidates] = useState([]);
 
     // Filter States
@@ -540,7 +542,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const canViewCandidateDetails = canViewTACandidateDetails(user);
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
-    , []);
+        , []);
     const hasMovedToPhase2 = useCallback((candidate) => (
         isProfileSharedCandidate(candidate)
         || Boolean(String(candidate?.phase2Decision || '').trim() && candidate?.phase2Decision !== 'None')
@@ -612,6 +614,39 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         setPage(1);
     }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
 
+    const isFilterActive = useMemo(() => {
+        return (
+            (activePhase === 1 && filterStatus !== 'All') ||
+            (activePhase === 2 && filterDecision !== 'All') ||
+            (activePhase === 3 && filterDecision !== 'All') ||
+            (activePhase === 1 && filterDecision !== 'All') ||
+            filterInterviewStatus !== 'All' ||
+            filterPreference !== 'All' ||
+            filterRating !== 'All' ||
+            filterExperience !== '' ||
+            filterPulledBy.length > 0 ||
+            filterUploadedBy.length > 0 ||
+            filterUploadType !== 'All' ||
+            filterTransferred !== 'All' ||
+            filterProfileShared === true ||
+            candidateNameSearch.trim() !== ''
+        );
+    }, [
+        activePhase,
+        filterStatus,
+        filterDecision,
+        filterInterviewStatus,
+        filterPreference,
+        filterRating,
+        filterExperience,
+        filterPulledBy,
+        filterUploadedBy,
+        filterUploadType,
+        filterTransferred,
+        filterProfileShared,
+        candidateNameSearch
+    ]);
+
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
         if (!normalizedCandidateNameSearch) {
@@ -639,7 +674,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         if (usesBackendPagination) {
             params.paginate = paginate;
             params.page = pageOverride;
-            params.limit = limitOverride;
+            params.limit = isFilterActive ? 20 : limitOverride;
             params.activePhase = activePhase;
             params.search = debouncedCandidateNameSearch.trim();
             params.filterPreference = filterPreference;
@@ -837,8 +872,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     // Compute Metrics for Summary Boxes (Phase 1 — computed from structuralPhase1Candidates for stability)
     const metrics = useMemo(() => {
-        if (usesBackendPagination && serverSummary?.phase1Metrics) {
-            return serverSummary.phase1Metrics;
+        if (usesBackendPagination && cardMetrics?.phase1Metrics) {
+            return cardMetrics.phase1Metrics;
         }
 
         const counts = {
@@ -855,7 +890,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             transferred: structuralPhase1Candidates.filter(c => c.isTransferred).length,
         };
         return counts;
-    }, [serverSummary, structuralPhase1Candidates, isProfileSharedCandidate, usesBackendPagination]);
+    }, [cardMetrics, structuralPhase1Candidates, isProfileSharedCandidate, usesBackendPagination]);
 
     // --- Phase 2: shortlisted candidates + their metrics ---
     // Structural Phase 2 population
@@ -919,8 +954,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [activePhase, basePhase2Candidates, candidates, filterDecision, filterInterviewStatus, usesBackendPagination]);
 
     const phase2Metrics = useMemo(() => {
-        if (usesBackendPagination && serverSummary?.phase2Metrics) {
-            return serverSummary.phase2Metrics;
+        if (usesBackendPagination && cardMetrics?.phase2Metrics) {
+            return cardMetrics.phase2Metrics;
         }
 
         return {
@@ -930,7 +965,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
             interviewScheduled: structuralPhase2Candidates.filter(hasPhase2InterviewActivity).length
         };
-    }, [serverSummary, structuralPhase2Candidates, usesBackendPagination]);
+    }, [cardMetrics, structuralPhase2Candidates, usesBackendPagination]);
 
     // Structural Phase 3 population
     const structuralPhase3Candidates = useMemo(() => {
@@ -996,8 +1031,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [activePhase, basePhase3Candidates, candidates, filterDecision, filterInterviewStatus, usesBackendPagination]);
 
     const phase3Metrics = useMemo(() => {
-        if (usesBackendPagination && serverSummary?.phase3Metrics) {
-            return serverSummary.phase3Metrics;
+        if (usesBackendPagination && cardMetrics?.phase3Metrics) {
+            return cardMetrics.phase3Metrics;
         }
 
         return {
@@ -1007,7 +1042,21 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             joined: structuralPhase3Candidates.filter(c => c.phase3Decision === 'Joined').length,
             noShow: structuralPhase3Candidates.filter(c => c.phase3Decision === 'No Show' || c.phase3Decision === 'Offer Declined').length
         };
-    }, [serverSummary, structuralPhase3Candidates, usesBackendPagination]);
+    }, [cardMetrics, structuralPhase3Candidates, usesBackendPagination]);
+
+    const fetchCardMetrics = useCallback(async () => {
+        if (!hiringRequestId) return;
+        try {
+            setLoadingMetrics(true);
+            const params = buildCandidateRequestParams();
+            const response = await api.get(`/ta/candidates/${hiringRequestId}/card-filters`, { params });
+            setCardMetrics(response.data.summary || null);
+        } catch (error) {
+            console.error('Error fetching card metrics:', error);
+        } finally {
+            setLoadingMetrics(false);
+        }
+    }, [buildCandidateRequestParams, hiringRequestId]);
 
     const fetchCandidates = useCallback(async (silent = false) => {
         try {
@@ -1027,12 +1076,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 setServerTotalPages(1);
                 setServerResultCount(Array.isArray(response.data) ? response.data.length : 0);
                 setServerSummary(null);
+                setCardMetrics(null);
             } else {
                 setCandidates(response.data.candidates || []);
                 setPage(response.data.currentPage || 1);
                 setServerTotalPages(response.data.totalPages || 1);
                 setServerResultCount(response.data.count || 0);
                 setServerSummary(response.data.summary || null);
+                void fetchCardMetrics();
             }
         } catch (error) {
             console.error('Error fetching candidates:', error);
@@ -1040,7 +1091,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [buildCandidateRequestParams, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView]);
+    }, [buildCandidateRequestParams, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics]);
 
     const fetchAllMatchingCandidates = useCallback(async () => {
         const endpoint = isLegacyView
@@ -1271,7 +1322,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 requisitionData = reqRes.data || {};
                 const requirements = requisitionData.requirements || {};
                 const mustHave = requirements.mustHaveSkills || {};
-                
+
                 softSkillsFromReq = Array.isArray(mustHave.softSkills) ? mustHave.softSkills : [];
                 techSkillsFromReq = Array.isArray(mustHave.technical) ? mustHave.technical :
                     (Array.isArray(mustHave) ? mustHave : []);
@@ -1703,7 +1754,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             applyFinalDecisionValidation(3, lastCandidateRow);
 
             const buffer = await workbook.xlsx.writeBuffer();
-            
+
             // Generate dynamic filename: [Job Title] Candidate List.xlsx
             const roleTitle = requisitionData?.roleDetails?.title || positionName || 'Candidates';
             const fileName = `${roleTitle} Candidate List.xlsx`;
@@ -1886,57 +1937,57 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             <h3 className="text-[12px] font-bold uppercase tracking-[0.32em] text-slate-500">Pipeline</h3>
                         </div>
                         <div className="inline-flex w-fit rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-inner shadow-slate-200/70">
-                        <button
-                            onClick={() => {
-                                setActivePhase(1);
-                                setPage(1);
-                                setFilterStatus('All');
-                                setFilterDecision('All');
-                                setFilterInterviewStatus('All');
-                                setFilterPreference('All');
-                                setFilterRating('All');
-                            }}
-                            className={`${phaseToggleButtonClass} ${activePhase === 1
-                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
-                                : 'text-slate-600 hover:bg-white hover:text-slate-900'
-                                }`}
-                        >
-                            Phase 1
-                        </button>
-                        <button
-                            onClick={() => {
-                                setActivePhase(2);
-                                setPage(1);
-                                setFilterStatus('All');
-                                setFilterDecision('All');
-                                setFilterInterviewStatus('All');
-                                setFilterPreference('All');
-                                setFilterRating('All');
-                            }}
-                            className={`${phaseToggleButtonClass} ${activePhase === 2
-                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
-                                : 'text-slate-600 hover:bg-white hover:text-slate-900'
-                                }`}
-                        >
-                            Phase 2
-                        </button>
-                        <button
-                            onClick={() => {
-                                setActivePhase(3);
-                                setPage(1);
-                                setFilterStatus('All');
-                                setFilterDecision('All');
-                                setFilterInterviewStatus('All');
-                                setFilterPreference('All');
-                                setFilterRating('All');
-                            }}
-                            className={`${phaseToggleButtonClass} ${activePhase === 3
-                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
-                                : 'text-slate-600 hover:bg-white hover:text-slate-900'
-                                }`}
-                        >
-                            Phase 3
-                        </button>
+                            <button
+                                onClick={() => {
+                                    setActivePhase(1);
+                                    setPage(1);
+                                    setFilterStatus('All');
+                                    setFilterDecision('All');
+                                    setFilterInterviewStatus('All');
+                                    setFilterPreference('All');
+                                    setFilterRating('All');
+                                }}
+                                className={`${phaseToggleButtonClass} ${activePhase === 1
+                                    ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                                    }`}
+                            >
+                                Phase 1
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setActivePhase(2);
+                                    setPage(1);
+                                    setFilterStatus('All');
+                                    setFilterDecision('All');
+                                    setFilterInterviewStatus('All');
+                                    setFilterPreference('All');
+                                    setFilterRating('All');
+                                }}
+                                className={`${phaseToggleButtonClass} ${activePhase === 2
+                                    ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                                    }`}
+                            >
+                                Phase 2
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setActivePhase(3);
+                                    setPage(1);
+                                    setFilterStatus('All');
+                                    setFilterDecision('All');
+                                    setFilterInterviewStatus('All');
+                                    setFilterPreference('All');
+                                    setFilterRating('All');
+                                }}
+                                className={`${phaseToggleButtonClass} ${activePhase === 3
+                                    ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                                    }`}
+                            >
+                                Phase 3
+                            </button>
                         </div>
                     </div>
                     <div className="relative flex items-center gap-2">
@@ -1949,11 +2000,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     setShowToolbarMenu(false);
                                     setShowCreatedDateSortMenu((prev) => !prev);
                                 }}
-                                className={`flex w-full items-center justify-between rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500 ${
-                                    createdDatePreset
+                                className={`flex w-full items-center justify-between rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500 ${createdDatePreset
                                         ? 'border-blue-200 text-blue-700'
                                         : 'border-slate-200 text-slate-600'
-                                }`}
+                                    }`}
                             >
                                 <span className="truncate">{getCreatedDatePresetLabel(createdDatePreset)}</span>
                                 <svg className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showCreatedDateSortMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -1963,11 +2013,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             {showCreatedDateSortMenu && (
                                 <div
                                     data-created-sort-panel="true"
-                                    className={`absolute right-0 top-14 z-30 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-2 pr-3 shadow-xl shadow-slate-200/70 ${
-                                        createdDatePreset === 'custom'
+                                    className={`absolute right-0 top-14 z-30 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-2 pr-3 shadow-xl shadow-slate-200/70 ${createdDatePreset === 'custom'
                                             ? 'w-[min(18.5rem,calc(100vw-2rem))]'
                                             : 'w-48'
-                                    }`}
+                                        }`}
                                     onClick={(event) => event.stopPropagation()}
                                 >
                                     <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
@@ -1983,11 +2032,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                     setShowCreatedDateSortMenu(false);
                                                 }
                                             }}
-                                            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                                                createdDatePreset === option.value
+                                            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium transition ${createdDatePreset === option.value
                                                     ? 'bg-blue-50 text-blue-700'
                                                     : 'text-slate-600 hover:bg-slate-50'
-                                            }`}
+                                                }`}
                                         >
                                             {option.label}
                                         </button>
@@ -2263,7 +2311,17 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             const dynamicCards = [];
 
                             if (filterStatus !== 'All' && filterStatus !== 'Interested') {
-                                const statusCount = basePhase1Candidates.filter(c => c.status === filterStatus).length;
+                                let statusCount = 0;
+                                if (usesBackendPagination && metrics) {
+                                    const statusMetricKey = {
+                                        'Not Picking': 'notPicking',
+                                        'Not Relevant': 'notRelevant',
+                                        'Not Interested': 'notInterested'
+                                    }[filterStatus];
+                                    statusCount = metrics[statusMetricKey] || 0;
+                                } else {
+                                    statusCount = basePhase1Candidates.filter(c => c.status === filterStatus).length;
+                                }
                                 dynamicCards.push({
                                     label: filterStatus,
                                     value: statusCount,

@@ -20,7 +20,9 @@ const getFocusableElements = (container) => {
  * @param {boolean} props.acknowledged - Whether the checkbox is ticked for the current slide.
  * @param {(checked: boolean) => void} props.onAcknowledgedChange - Checkbox state setter.
  * @param {() => void} props.onContinue - Advance handler after acknowledgement.
- * @param {() => void} props.onSkip - Skip handler for the current login session.
+ * @param {string[]} props.reactionTypes - Available reaction types.
+ * @param {string} props.reactionLoadingKey - Active reaction loader key.
+ * @param {(id: string, type: string) => void} props.onReact - Reaction callback.
  */
 const AnnouncementUnreadModal = ({
   announcements,
@@ -28,7 +30,9 @@ const AnnouncementUnreadModal = ({
   acknowledged,
   onAcknowledgedChange,
   onContinue,
-  onSkip,
+  reactionTypes = [],
+  reactionLoadingKey = '',
+  onReact,
 }) => {
   const modalRef = useRef(null);
   const checkboxRef = useRef(null);
@@ -131,6 +135,7 @@ const AnnouncementUnreadModal = ({
               <AnnouncementAttachmentCard attachment={activeAnnouncement.attachment} className="mt-5" />
             ) : null}
           </div>
+
         </div>
 
         <div className="border-t border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
@@ -145,14 +150,7 @@ const AnnouncementUnreadModal = ({
             <span className="text-sm text-slate-700">I have read and understood this announcement.</span>
           </label>
 
-          <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={onSkip}
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-slate-800"
-            >
-              Skip for now
-            </button>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <button
               type="button"
               onClick={onContinue}
