@@ -4,7 +4,8 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     User, Briefcase, FileText, DollarSign, Calendar, Shield, Settings,
-    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search, Eye, RotateCcw, Mail
+    ArrowLeft, Save, Upload, Download, Trash2, CheckCircle, AlertCircle, X, Search, Eye, RotateCcw, Mail,
+    Clock, AlertTriangle, Info, GitCompare
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -87,6 +88,138 @@ const Field = ({ label, value, section, field, type = "text", options = null, is
             ) : (
                 <div className={`text-sm font-medium ${!value ? 'text-slate-400 italic' : 'text-slate-800'}`}>
                     {type === 'date' && value ? format(new Date(value), 'dd MMM yyyy') : value || 'Not Set'}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Helper: renders a single changed field showing old value (red) and new value (green).
+// Returns null if old and new are identical — so unchanged fields don't clutter the diff.
+const DiffField = ({ label, oldValue, newValue, type }) => {
+    const fmt = (v) => {
+        if (!v && v !== 0) return '—';
+        if (type === 'date') {
+            try { return format(new Date(v), 'dd MMM yyyy'); } catch { return String(v); }
+        }
+        return String(v);
+    };
+    const oldStr = fmt(oldValue);
+    const newStr = fmt(newValue);
+    if (oldStr === newStr) return null;
+    return (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</p>
+            <div className="flex gap-2 items-start">
+                <div className="flex-1 text-xs text-red-700 bg-red-50 border border-red-100 px-2 py-1.5 rounded line-through break-words">
+                    {oldStr}
+                </div>
+                <div className="text-slate-400 text-xs pt-1">→</div>
+                <div className="flex-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1.5 rounded break-words">
+                    {newStr}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Frontend-only helper: merges pendingUpdates into a profile object.
+// Used exclusively to pre-fill the edit form when an employee wants to correct a rejection.
+const mergePendingIntoProfile = (profileObj, pending) => {
+    if (!pending || !profileObj) return profileObj;
+    const merged = JSON.parse(JSON.stringify(profileObj));
+    const mergeObj = (t, s) => ({ ...(t || {}), ...(s || {}) });
+    if (pending.personal) merged.personal = mergeObj(merged.personal, pending.personal);
+    if (pending.identity) merged.identity = mergeObj(merged.identity, pending.identity);
+    if (pending.contact) merged.contact = mergeObj(merged.contact, pending.contact);
+    if (pending.family) merged.family = mergeObj(merged.family, pending.family);
+    if (pending.employment) merged.employment = mergeObj(merged.employment, pending.employment);
+    if (pending.compensation) {
+        merged.compensation = mergeObj(merged.compensation, pending.compensation);
+        if (pending.compensation.bankDetails)
+            merged.compensation.bankDetails = mergeObj(merged.compensation?.bankDetails, pending.compensation.bankDetails);
+    }
+    if (pending.education) merged.education = pending.education;
+    if (pending.experience) merged.experience = pending.experience;
+    if (pending.skills) merged.skills = pending.skills;
+    return merged;
+};
+
+/**
+ * PendingHighlight — wraps a Field to indicate it has a pending change awaiting approval.
+ * Only renders the highlight when:
+ *  - `show` is true (i.e. admin is viewing, not editing, and pendingUpdates exist)
+ *  - the live value and the pending new value are actually different
+ *
+ * On hover or click: shows a compact popover with old (red) → new (green) values.
+ */
+const PendingHighlight = ({ show, liveValue, pendingValue, label, type, children }) => {
+    const [open, setOpen] = React.useState(false);
+
+    const fmt = (v) => {
+        if (!v && v !== 0) return '—';
+        if (type === 'date') {
+            try { return format(new Date(v), 'dd MMM yyyy'); } catch { return String(v); }
+        }
+        return String(v);
+    };
+
+    const liveStr = fmt(liveValue);
+    const pendStr = fmt(pendingValue);
+    const hasChange = show && liveStr !== pendStr;
+
+    if (!hasChange) return <>{children}</>;
+
+    return (
+        <div
+            className="relative group"
+            onMouseEnter={() => setOpen(true)}
+            onMouseLeave={() => setOpen(false)}
+            onClick={() => setOpen(o => !o)}
+        >
+            {/* Red-tinted field container */}
+            <div className="rounded-md ring-2 ring-red-300 ring-offset-1 bg-red-50/60 p-0.5 cursor-pointer transition-all">
+                {children}
+                {/* Pulsing badge showing new value */}
+                <div className="flex items-center gap-1 mt-1 px-1">
+                    <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                    </span>
+                    <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">
+                        Pending Change
+                    </span>
+                </div>
+            </div>
+
+            {/* Popover — appears on hover/click */}
+            {open && (
+                <div
+                    className="absolute z-50 top-full left-0 mt-1.5 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                        <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">{label}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                        <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Current (Live)</p>
+                            <div className="text-xs text-red-700 bg-red-50 border border-red-100 px-2 py-1.5 rounded line-through break-words">
+                                {liveStr}
+                            </div>
+                        </div>
+                        <div className="flex justify-center text-slate-400 text-xs">↓</div>
+                        <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Proposed (New)</p>
+                            <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1.5 rounded break-words">
+                                {pendStr}
+                            </div>
+                        </div>
+                    </div>
+                    <p className="text-[9px] text-slate-400 pt-1 border-t border-slate-100">
+                        Approve or reject to apply this change.
+                    </p>
                 </div>
             )}
         </div>
@@ -273,6 +406,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const [activeTab, setActiveTab] = useState(initialTab || queryTab || 'personal');
     const [editMode, setEditMode] = useState(false);
     const [formData, setFormData] = useState({});
+    const [pendingUpdates, setPendingUpdates] = useState(null); // staged unapproved changes
     const [historyLogs, setHistoryLogs] = useState([]);
     const [emailHistory, setEmailHistory] = useState([]);
     const [loadingEmailHistory, setLoadingEmailHistory] = useState(false);
@@ -332,9 +466,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     // Avoid rehydrating on every formData change, which would wipe in-progress edits.
     useEffect(() => {
         if (editMode && profile) {
-            setFormData(JSON.parse(JSON.stringify(profile)));
+            // On Rejected status, pre-fill the last draft so the employee can correct easily.
+            if (profile.hris?.status === 'Rejected' && pendingUpdates) {
+                setFormData(mergePendingIntoProfile(profile, pendingUpdates));
+            } else {
+                setFormData(JSON.parse(JSON.stringify(profile)));
+            }
         }
-    }, [editMode, profile]);
+    }, [editMode, profile, pendingUpdates]);
 
     const syncCurrentUserProfile = useCallback(async () => {
         if (!refreshProfile) return;
@@ -592,9 +731,23 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         try {
             setLoading(true);
             const res = await api.get(`/dossier/${userId}`);
-            setProfile(res.data);
-            setFormData(res.data); // Initialize form data
+            const liveProfile = res.data;
+            const pending = res.data.pendingUpdates || null;
+
+            setProfile(liveProfile);
+            setPendingUpdates(pending);
+
+            // Form always starts from LIVE (approved) data — never from pending.
+            // Exception: if status is 'Rejected', pre-fill the form with the last rejected
+            // draft so the employee can correct their changes and re-submit without
+            // re-entering everything from scratch.
+            if (liveProfile.hris?.status === 'Rejected' && pending) {
+                setFormData(mergePendingIntoProfile(liveProfile, pending));
+            } else {
+                setFormData(JSON.parse(JSON.stringify(liveProfile)));
+            }
             setIsDocumentDeclared(false);
+
         } catch (error) {
             console.error(error);
             toast.error('Failed to load employee dossier');
@@ -800,9 +953,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             setSavingSection('hris');
             const dataToSubmit = { ...formData };
 
-            // Allow Admins to submit without explicit checkbox (forces status update)
+            // Allow Admins to submit without explicit checkbox (forces status update) only when not in edit mode
             const isAdmin = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
-            if (isAdmin) {
+            if (isAdmin && !editMode) {
                 if (!dataToSubmit.hris) dataToSubmit.hris = {};
                 dataToSubmit.hris.isDeclared = true;
             }
@@ -2611,6 +2764,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         const _isManager = profile.employment?.reportingManager?._id === currentUser?._id || profile.employment?.reportingManager === currentUser?._id;
         const hrisStatus = profile.hris?.status || 'Draft';
 
+        // showPending: highlight changed fields in red when an admin is reviewing
+        const pend = pendingUpdates || {};
+        const showPending = !!(canApprove && !isSelf && !isEditing && pendingUpdates);
+
         return (
             <div className="space-y-8 bg-white p-4 md:p-8 rounded-xl border border-slate-200 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 -m-4 md:-m-8 p-4 md:p-6 mb-12 border-b border-slate-200 rounded-t-xl gap-4">
@@ -2641,13 +2798,25 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
 
 
-                        {/* Edit Action for Self (and Admin) */}
-                        {!isEditing && (hrisStatus === 'Draft' || hrisStatus === 'Rejected' || hrisStatus === 'Approved' || isAdmin) && (
+                        {/* Edit Action: blocked when Pending Approval for non-admins */}
+                        {!isEditing && (hrisStatus === 'Draft' || hrisStatus === 'Rejected' || hrisStatus === 'Approved') && (
                             <div className="flex space-x-2">
                                 <Button onClick={() => setEditMode('hris')} className="flex items-center text-xs px-3 py-1.5 h-8">
                                     <Save size={14} className="mr-1.5" /> Edit Form
                                 </Button>
                             </div>
+                        )}
+                        {!isEditing && hrisStatus === 'Pending Approval' && isAdmin && (
+                            <div className="flex space-x-2">
+                                <Button onClick={() => setEditMode('hris')} className="flex items-center text-xs px-3 py-1.5 h-8">
+                                    <Save size={14} className="mr-1.5" /> Edit Form
+                                </Button>
+                            </div>
+                        )}
+                        {!isEditing && hrisStatus === 'Pending Approval' && !isAdmin && isSelf && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                                <Clock size={13} /> Under Review
+                            </span>
                         )}
 
                         {/* Manager/Admin Approvals */}
@@ -2670,6 +2839,134 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     </div>
                 </div>
 
+                {/* ─── OLD vs NEW DIFF PANEL ─────────────────────────────── */}
+                {pendingUpdates && (() => {
+                    const live = profile;
+                    const pend = pendingUpdates;
+
+                    // Collect all changed fields across all sections
+                    const personalFields = [
+                        { label: 'Full Name', old: live.personal?.fullName, new: pend.personal?.fullName },
+                        { label: 'First Name', old: live.personal?.firstName, new: pend.personal?.firstName },
+                        { label: 'Middle Name', old: live.personal?.middleName, new: pend.personal?.middleName },
+                        { label: 'Last Name', old: live.personal?.lastName, new: pend.personal?.lastName },
+                        { label: 'Gender', old: live.personal?.gender, new: pend.personal?.gender },
+                        { label: 'Date of Birth', old: live.personal?.dob, new: pend.personal?.dob, type: 'date' },
+                    ];
+                    const contactFields = [
+                        { label: 'Personal Email', old: live.contact?.personalEmail, new: pend.contact?.personalEmail },
+                        { label: 'Work Email', old: live.contact?.workEmail, new: pend.contact?.workEmail },
+                    ];
+                    const identityFields = [
+                        { label: 'PAN Card Number', old: live.identity?.panNumber, new: pend.identity?.panNumber },
+                        { label: 'Aadhaar Number', old: live.identity?.aadhaarNumber, new: pend.identity?.aadhaarNumber },
+                        { label: 'Passport Number', old: live.identity?.passportNumber, new: pend.identity?.passportNumber },
+                    ];
+                    const compensationFields = [
+                        { label: 'UAN Number', old: live.compensation?.uanNumber, new: pend.compensation?.uanNumber },
+                        { label: 'Bank Account Number', old: live.compensation?.bankDetails?.accountNumber, new: pend.compensation?.bankDetails?.accountNumber },
+                        { label: 'IFSC Code', old: live.compensation?.bankDetails?.ifscCode, new: pend.compensation?.bankDetails?.ifscCode },
+                        { label: 'Bank Name', old: live.compensation?.bankDetails?.bankName, new: pend.compensation?.bankDetails?.bankName },
+                        { label: 'Account Holder Name', old: live.compensation?.bankDetails?.accountHolderName, new: pend.compensation?.bankDetails?.accountHolderName },
+                        { label: 'Branch Address', old: live.compensation?.bankDetails?.branchAddress, new: pend.compensation?.bankDetails?.branchAddress },
+                    ];
+
+                    const allSections = [
+                        { name: 'Personal Details', fields: personalFields },
+                        { name: 'Contact Details', fields: contactFields },
+                        { name: 'Identity Details', fields: identityFields },
+                        { name: 'Bank & Compensation', fields: compensationFields },
+                    ];
+
+                    const sectionsWithChanges = allSections
+                        .filter(s => s.fields.some(f => {
+                            const fmt = (v) => !v && v !== 0 ? '' : String(v);
+                            return fmt(f.old) !== fmt(f.new);
+                        }))
+                        .map(s => ({
+                            ...s,
+                            fields: s.fields.filter(f => {
+                                const fmt = (v) => !v && v !== 0 ? '' : String(v);
+                                return fmt(f.old) !== fmt(f.new);
+                            })
+                        }));
+
+                    if (sectionsWithChanges.length === 0) return null;
+
+                    const isAdminViewer = canApprove && !isSelf;
+
+                    return (
+                        <div className={`rounded-xl border-2 p-5 mb-4 ${
+                            hrisStatus === 'Pending Approval'
+                                ? 'border-amber-300 bg-amber-50/50'
+                                : 'border-slate-200 bg-slate-50'
+                        }`}>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <GitCompare size={18} className="text-amber-600" />
+                                    <h3 className="font-bold text-slate-800 text-sm">
+                                        {isAdminViewer ? 'Proposed Changes — Review Required' : 'Your Pending Changes'}
+                                    </h3>
+                                </div>
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600 bg-amber-100 px-2 py-1 rounded-full border border-amber-200">
+                                    Awaiting Approval
+                                </span>
+                            </div>
+
+                            {isAdminViewer && (
+                                <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                                    The employee has submitted changes. Review each field below (🔴 old → 🟢 new) before approving or rejecting.
+                                </p>
+                            )}
+                            {!isAdminViewer && (
+                                <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                                    These changes are awaiting HR approval. Your profile currently shows your last approved values — the new values will go live once approved.
+                                </p>
+                            )}
+
+                            <div className="space-y-5">
+                                {sectionsWithChanges.map(section => (
+                                    <div key={section.name}>
+                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-200 pb-1">
+                                            {section.name}
+                                        </p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            {section.fields.map(f => (
+                                                <DiffField
+                                                    key={f.label}
+                                                    label={f.label}
+                                                    oldValue={f.old}
+                                                    newValue={f.new}
+                                                    type={f.type}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Admin Approve/Reject directly from diff panel */}
+                            {isAdminViewer && hrisStatus === 'Pending Approval' && (
+                                <div className="flex gap-3 mt-5 pt-4 border-t border-amber-200">
+                                    <Button
+                                        onClick={() => handleHRISApproveOther(userId)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center text-xs px-4 py-2"
+                                    >
+                                        <CheckCircle size={14} className="mr-1.5" /> Approve Changes
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleHRISRejectOther(userId)}
+                                        className="bg-red-600 hover:bg-red-700 text-white flex items-center text-xs px-4 py-2"
+                                    >
+                                        <X size={14} className="mr-1.5" /> Reject Changes
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
+                {/* ─────────────────────────────────────────────────────────── */}
+
                 <div className="grid grid-cols-1 gap-6 py-12">
                     <p className="text-xs text-red-500 italic px-1">* fields are mandatory</p>
                     {/* 1. Basic Details */}
@@ -2680,17 +2977,27 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
                             <Field section="user" isEditing={false} label="Employee Code" field="employeeCode" value={profile.user?.employeeCode} />
-                            <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
-                            <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
-                            <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
-                            <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
-                            <Field
-                                section="compensation" isEditing={isEditing} label="UAN (Universal Account Number)" field="uanNumber"
-                                value={profile.compensation?.uanNumber}
-                                valueOverride={formData.compensation?.uanNumber}
-                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, uanNumber: e.target.value.replace(/\D/g, '') } }))}
-                                maxLength={12}
-                            />
+                            <PendingHighlight show={showPending} label="Personal Email" liveValue={profile.contact?.personalEmail} pendingValue={pend.contact?.personalEmail}>
+                                <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Work Email" liveValue={profile.contact?.workEmail} pendingValue={pend.contact?.workEmail}>
+                                <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="PAN Card Number" liveValue={profile.identity?.panNumber} pendingValue={pend.identity?.panNumber}>
+                                <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Passport Number" liveValue={profile.identity?.passportNumber} pendingValue={pend.identity?.passportNumber}>
+                                <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="UAN Number" liveValue={profile.compensation?.uanNumber} pendingValue={pend.compensation?.uanNumber}>
+                                <Field
+                                    section="compensation" isEditing={isEditing} label="UAN (Universal Account Number)" field="uanNumber"
+                                    value={profile.compensation?.uanNumber}
+                                    valueOverride={formData.compensation?.uanNumber}
+                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, uanNumber: e.target.value.replace(/\D/g, '') } }))}
+                                    maxLength={12}
+                                />
+                            </PendingHighlight>
                         </div>
                     </div>
 
@@ -2701,10 +3008,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <h3 className="font-bold text-slate-700">2. Name Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="personal" isEditing={isEditing} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} required />
-                            <Field section="personal" isEditing={isEditing} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} required />
-                            <Field section="personal" isEditing={isEditing} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} required />
+                            <PendingHighlight show={showPending} label="Full Name" liveValue={profile.personal?.fullName} pendingValue={pend.personal?.fullName}>
+                                <Field section="personal" isEditing={isEditing} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="First Name" liveValue={profile.personal?.firstName} pendingValue={pend.personal?.firstName}>
+                                <Field section="personal" isEditing={isEditing} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Middle Name" liveValue={profile.personal?.middleName} pendingValue={pend.personal?.middleName}>
+                                <Field section="personal" isEditing={isEditing} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Last Name" liveValue={profile.personal?.lastName} pendingValue={pend.personal?.lastName}>
+                                <Field section="personal" isEditing={isEditing} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
                         </div>
                     </div>
 
@@ -2715,8 +3030,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <h3 className="font-bold text-slate-700">3. Personal Information</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
+                            <PendingHighlight show={showPending} label="Gender" liveValue={profile.personal?.gender} pendingValue={pend.personal?.gender}>
+                                <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Date of Birth" liveValue={profile.personal?.dob} pendingValue={pend.personal?.dob} type="date">
+                                <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
                             <Field section="employment" isEditing={false} label="Date of Joining" field="joiningDate" type="date" value={profile.employment?.joiningDate} />
                         </div>
                     </div>
@@ -2728,41 +3047,51 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <h3 className="font-bold text-slate-700">4. Bank Account Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field
-                                section="compensation" isEditing={isEditing} label="Account Number" field="bankAccount"
-                                value={profile.compensation?.bankDetails?.accountNumber}
-                                valueOverride={formData.compensation?.bankDetails?.accountNumber}
-                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountNumber: e.target.value } } }))}
-                                required
-                            />
-                            <Field
-                                section="compensation" isEditing={isEditing} label="IFSC Code" field="ifsc"
-                                value={profile.compensation?.bankDetails?.ifscCode}
-                                valueOverride={formData.compensation?.bankDetails?.ifscCode}
-                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, ifscCode: e.target.value } } }))}
-                                required
-                            />
-                            <Field
-                                section="compensation" isEditing={isEditing} label="Bank Name" field="bankName"
-                                value={profile.compensation?.bankDetails?.bankName}
-                                valueOverride={formData.compensation?.bankDetails?.bankName}
-                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, bankName: e.target.value } } }))}
-                                required
-                            />
-                            <Field
-                                section="compensation" isEditing={isEditing} label="Account Holder Name" field="holder"
-                                value={profile.compensation?.bankDetails?.accountHolderName}
-                                valueOverride={formData.compensation?.bankDetails?.accountHolderName}
-                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountHolderName: e.target.value } } }))}
-                                required
-                            />
-                            <Field
-                                section="compensation" isEditing={isEditing} label="Branch Address" field="branchAddress"
-                                value={profile.compensation?.bankDetails?.branchAddress}
-                                valueOverride={formData.compensation?.bankDetails?.branchAddress}
-                                onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, branchAddress: e.target.value } } }))}
-                                required
-                            />
+                            <PendingHighlight show={showPending} label="Account Number" liveValue={profile.compensation?.bankDetails?.accountNumber} pendingValue={pend.compensation?.bankDetails?.accountNumber}>
+                                <Field
+                                    section="compensation" isEditing={isEditing} label="Account Number" field="bankAccount"
+                                    value={profile.compensation?.bankDetails?.accountNumber}
+                                    valueOverride={formData.compensation?.bankDetails?.accountNumber}
+                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountNumber: e.target.value } } }))}
+                                    required
+                                />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="IFSC Code" liveValue={profile.compensation?.bankDetails?.ifscCode} pendingValue={pend.compensation?.bankDetails?.ifscCode}>
+                                <Field
+                                    section="compensation" isEditing={isEditing} label="IFSC Code" field="ifsc"
+                                    value={profile.compensation?.bankDetails?.ifscCode}
+                                    valueOverride={formData.compensation?.bankDetails?.ifscCode}
+                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, ifscCode: e.target.value } } }))}
+                                    required
+                                />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Bank Name" liveValue={profile.compensation?.bankDetails?.bankName} pendingValue={pend.compensation?.bankDetails?.bankName}>
+                                <Field
+                                    section="compensation" isEditing={isEditing} label="Bank Name" field="bankName"
+                                    value={profile.compensation?.bankDetails?.bankName}
+                                    valueOverride={formData.compensation?.bankDetails?.bankName}
+                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, bankName: e.target.value } } }))}
+                                    required
+                                />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Account Holder Name" liveValue={profile.compensation?.bankDetails?.accountHolderName} pendingValue={pend.compensation?.bankDetails?.accountHolderName}>
+                                <Field
+                                    section="compensation" isEditing={isEditing} label="Account Holder Name" field="holder"
+                                    value={profile.compensation?.bankDetails?.accountHolderName}
+                                    valueOverride={formData.compensation?.bankDetails?.accountHolderName}
+                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountHolderName: e.target.value } } }))}
+                                    required
+                                />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Branch Address" liveValue={profile.compensation?.bankDetails?.branchAddress} pendingValue={pend.compensation?.bankDetails?.branchAddress}>
+                                <Field
+                                    section="compensation" isEditing={isEditing} label="Branch Address" field="branchAddress"
+                                    value={profile.compensation?.bankDetails?.branchAddress}
+                                    valueOverride={formData.compensation?.bankDetails?.branchAddress}
+                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, branchAddress: e.target.value } } }))}
+                                    required
+                                />
+                            </PendingHighlight>
                         </div>
                     </div>
 
@@ -2815,8 +3144,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <h3 className="font-bold text-slate-700">6. Contact Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
-                            <Field section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
+                            <PendingHighlight show={showPending} label="Personal Mobile" liveValue={profile.contact?.mobileNumber} pendingValue={pend.contact?.mobileNumber}>
+                                <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Alternate Mobile" liveValue={profile.contact?.alternateNumber} pendingValue={pend.contact?.alternateNumber}>
+                                <Field section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
                             <Field
                                 section="contact" isEditing={isEditing}
                                 label="Emergency Mobile (from Personal)" field="EC_phone"
@@ -3480,6 +3813,48 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
                 {/* Content Area */}
                 <div className="min-h-[400px]">
+                    {profile && profile.hris && (
+                        <>
+                            {/* Case 1: Employee viewing their own profile which is Pending Approval */}
+                            {isSelf && profile.hris.status === 'Pending Approval' && (
+                                <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50/50 backdrop-blur-sm flex items-start space-x-3 text-amber-800 animate-in fade-in slide-in-from-top-4 duration-300">
+                                    <Clock className="text-amber-500 mt-0.5 flex-shrink-0" size={18} />
+                                    <div>
+                                        <h4 className="font-bold text-sm">Changes Pending Approval</h4>
+                                        <p className="text-xs mt-1 leading-relaxed">
+                                            You have submitted profile changes that are currently waiting for HR review and approval. Your live profile details will be updated automatically once approved.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Case 2: Employee viewing their own profile which was Rejected */}
+                            {isSelf && profile.hris.status === 'Rejected' && (
+                                <div className="mb-6 p-4 rounded-xl border border-red-200 bg-red-50/50 backdrop-blur-sm flex items-start space-x-3 text-red-800 animate-in fade-in slide-in-from-top-4 duration-300">
+                                    <AlertTriangle className="text-red-500 mt-0.5 flex-shrink-0" size={18} />
+                                    <div>
+                                        <h4 className="font-bold text-sm">Submission Rejected</h4>
+                                        <p className="text-xs mt-1 leading-relaxed">
+                                            Your profile submission was rejected by HR. {profile.hris.rejectionReason && <span>Reason: <strong className="underline">{profile.hris.rejectionReason}</strong>.</span>} Please edit the form and submit it again for approval.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Case 3: Admin viewing another employee's profile which has Pending Approval updates */}
+                            {!isSelf && profile.hris.status === 'Pending Approval' && (
+                                <div className="mb-6 p-4 rounded-xl border border-blue-200 bg-blue-50/50 backdrop-blur-sm flex items-start space-x-3 text-blue-800 animate-in fade-in slide-in-from-top-4 duration-300">
+                                    <Info className="text-blue-500 mt-0.5 flex-shrink-0" size={18} />
+                                    <div>
+                                        <h4 className="font-bold text-sm">Proposed Changes Pending Review</h4>
+                                        <p className="text-xs mt-1 leading-relaxed">
+                                            This employee has submitted profile updates. You are currently viewing their proposed changes. You can approve or reject these changes under the <button onClick={() => setActiveTab('hris')} className="font-bold underline hover:text-blue-600 transition-colors">HRIS</button> tab.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
 
                     {activeTab === 'personal' && renderPersonal()}
                     {activeTab === 'employment' && renderEmployment()}
