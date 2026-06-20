@@ -255,6 +255,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const userId = propUserId || paramUserId;
     const navigate = useNavigate();
     const { user: currentUser, refreshProfile } = useAuth();
+    const isSelf = currentUser?._id && userId && (currentUser._id.toString() === userId.toString());
     const queryTab = useMemo(() => new URLSearchParams(location.search).get('tab') || '', [location.search]);
     const isCurrentUserAdmin = currentUser?.roles?.some((role) => {
         const roleName = typeof role === 'string' ? role : role?.name;
@@ -630,7 +631,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             await api.patch(`/dossier/${id}/approve-hris`);
             toast.dismiss(toastId);
             toast.success('HRIS Approved');
-            fetchHRISRequests();
+            if (activeTab === 'requests') {
+                fetchHRISRequests();
+            } else {
+                fetchDossier();
+            }
         } catch (error) {
             console.error(error);
             toast.error('Failed to approve HRIS');
@@ -645,7 +650,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             await api.patch(`/dossier/${id}/reject-hris`, { reason });
             toast.dismiss(toastId);
             toast.success('HRIS Rejected');
-            fetchHRISRequests();
+            if (activeTab === 'requests') {
+                fetchHRISRequests();
+            } else {
+                fetchDossier();
+            }
         } catch (error) {
             console.error(error);
             toast.error('Failed to reject HRIS');
@@ -1816,7 +1825,6 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         const hasPendingDocs = profile.documents?.some((doc) => normalizeDocumentStatus(doc.verificationStatus) === 'Pending Review');
         const onboardingCustomFiles = Array.isArray(profile.onboardingCustomFiles) ? profile.onboardingCustomFiles : [];
         // Robust ID comparison
-        const isSelf = currentUser?._id && userId && (currentUser._id.toString() === userId.toString());
         const visibleDocuments = Array.isArray(profile.documents) ? profile.documents : [];
         const getDocumentStatusClasses = (status) => {
             if (status === 'Verified') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
@@ -2638,6 +2646,24 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <div className="flex space-x-2">
                                 <Button onClick={() => setEditMode('hris')} className="flex items-center text-xs px-3 py-1.5 h-8">
                                     <Save size={14} className="mr-1.5" /> Edit Form
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* Manager/Admin Approvals */}
+                        {canApprove && !isSelf && hrisStatus === 'Pending Approval' && !isEditing && (
+                            <div className="flex space-x-2">
+                                <Button
+                                    onClick={() => handleHRISApproveOther(userId)}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center text-xs px-3 py-1.5 h-8"
+                                >
+                                    <CheckCircle size={14} className="mr-1.5" /> Approve HRIS
+                                </Button>
+                                <Button
+                                    onClick={() => handleHRISRejectOther(userId)}
+                                    className="bg-red-600 hover:bg-red-700 text-white flex items-center text-xs px-3 py-1.5 h-8"
+                                >
+                                    <X size={14} className="mr-1.5" /> Reject HRIS
                                 </Button>
                             </div>
                         )}
