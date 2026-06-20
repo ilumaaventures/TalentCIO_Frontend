@@ -1,10 +1,11 @@
-import React, { Suspense, useState, useEffect, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import socket from '../api/socket';
 import AnnouncementUnreadModal from './announcements/AnnouncementUnreadModal';
 import BirthdayCelebrationModal from './BirthdayCelebrationModal';
 import {
@@ -12,7 +13,7 @@ import {
     getAnnouncementSessionGateKey,
     sortAnnouncementsByPublishedAt,
     storeAcknowledgedAnnouncementIds,
-    storeSkippedAnnouncementIds,
+    REACTION_TYPES,
 } from './announcements/announcementUtils';
 
 const Layout = () => {
@@ -24,11 +25,20 @@ const Layout = () => {
     const [announcementIndex, setAnnouncementIndex] = useState(0);
     const [announcementConfirmed, setAnnouncementConfirmed] = useState(false);
     const [announcementAckBuffer, setAnnouncementAckBuffer] = useState([]);
+    const [reactionLoadingKey, setReactionLoadingKey] = useState('');
     const [showBirthdayModal, setShowBirthdayModal] = useState(false);
     const [birthdayEmployeeName, setBirthdayEmployeeName] = useState('');
     const location = useLocation();
     const timerRef = useRef(null);
     const { user } = useAuth();
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     useEffect(() => {
         if (user?.company?.settings?.themeColor) {
@@ -108,59 +118,76 @@ const Layout = () => {
         };
     }, [location.pathname]);
 
-    useEffect(() => {
+    const loadUnreadAnnouncements = useCallback(async (ignoreSessionGate = false) => {
         if (!user?._id) {
             setAnnouncementGateLoading(false);
             return;
         }
 
         const sessionGateKey = getAnnouncementSessionGateKey(user._id);
-        if (sessionStorage.getItem(sessionGateKey) === '1') {
+        if (!ignoreSessionGate && sessionStorage.getItem(sessionGateKey) === '1') {
             setAnnouncementGateLoading(false);
             return;
         }
 
-        let isActive = true;
+        try {
+            setAnnouncementGateLoading(true);
+            const response = await api.get('/announcements?limit=5');
+            if (!isMountedRef.current) return;
 
-        const loadUnreadAnnouncements = async () => {
-            try {
-                setAnnouncementGateLoading(true);
-                const response = await api.get('/announcements?limit=5');
-                const announcements = sortAnnouncementsByPublishedAt(
-                    Array.isArray(response.data?.announcements) ? response.data.announcements : []
-                );
-                const acknowledgedIds = new Set(getAcknowledgedAnnouncementIds(user._id));
-                const unread = announcements.filter((announcement) => !acknowledgedIds.has(String(announcement._id)));
+            const announcements = sortAnnouncementsByPublishedAt(
+                Array.isArray(response.data?.announcements) ? response.data.announcements : []
+            );
+            const acknowledgedIds = new Set(getAcknowledgedAnnouncementIds(user._id));
+            const unread = announcements.filter(
+                (announcement) => !announcement.viewerAcknowledged && !acknowledgedIds.has(String(announcement._id))
+            );
 
-                if (!isActive) return;
+            setUnreadAnnouncements(unread);
+            setAnnouncementIndex(0);
+            setAnnouncementConfirmed(false);
+            setAnnouncementAckBuffer([]);
 
-                setUnreadAnnouncements(unread);
-                setAnnouncementIndex(0);
-                setAnnouncementConfirmed(false);
-                setAnnouncementAckBuffer([]);
+            if (unread.length === 0) {
+                sessionStorage.setItem(sessionGateKey, '1');
+            } else if (ignoreSessionGate) {
+                sessionStorage.removeItem(sessionGateKey);
+            }
+        } catch (error) {
+            console.error('Failed to load unread announcements:', error);
+            if (isMountedRef.current) {
+                sessionStorage.setItem(sessionGateKey, '1');
+                setUnreadAnnouncements([]);
+            }
+        } finally {
+            if (isMountedRef.current) {
+                setAnnouncementGateLoading(false);
+            }
+        }
+    }, [user?._id]);
 
-                if (unread.length === 0) {
-                    sessionStorage.setItem(sessionGateKey, '1');
-                }
-            } catch (error) {
-                console.error('Failed to load unread announcements:', error);
-                if (isActive) {
-                    sessionStorage.setItem(sessionGateKey, '1');
-                    setUnreadAnnouncements([]);
-                }
-            } finally {
-                if (isActive) {
-                    setAnnouncementGateLoading(false);
-                }
+    useEffect(() => {
+        void loadUnreadAnnouncements(false);
+    }, [loadUnreadAnnouncements]);
+
+    useEffect(() => {
+        if (!user?._id) return;
+
+        const handleRealtimeAnnouncement = (notification) => {
+            if (
+                notification?.preferenceKey === 'announcement_published' ||
+                notification?.metadata?.announcementId ||
+                notification?.link === '/announcements'
+            ) {
+                void loadUnreadAnnouncements(true);
             }
         };
 
-        loadUnreadAnnouncements();
-
+        socket.on('notification', handleRealtimeAnnouncement);
         return () => {
-            isActive = false;
+            socket.off('notification', handleRealtimeAnnouncement);
         };
-    }, [user?._id]);
+    }, [user?._id, loadUnreadAnnouncements]);
 
     const dismissAnnouncementGateForSession = () => {
         if (!user?._id) return;
@@ -171,9 +198,15 @@ const Layout = () => {
         setAnnouncementAckBuffer([]);
     };
 
-    const handleAnnouncementContinue = () => {
+    const handleAnnouncementContinue = async () => {
         const currentAnnouncement = unreadAnnouncements[announcementIndex];
         if (!currentAnnouncement || !user?._id) return;
+
+        try {
+            await api.post(`/announcements/${currentAnnouncement._id}/acknowledge`);
+        } catch (error) {
+            console.error('Failed to acknowledge announcement on server:', error);
+        }
 
         const nextAckBuffer = [...announcementAckBuffer, String(currentAnnouncement._id)];
 
@@ -188,14 +221,24 @@ const Layout = () => {
         setAnnouncementConfirmed(false);
     };
 
-    const handleAnnouncementSkip = () => {
-        if (user?._id) {
-            storeSkippedAnnouncementIds(
-                user._id,
-                unreadAnnouncements.map((announcement) => String(announcement._id))
+    const handleReaction = async (announcementId, reactionType) => {
+        try {
+            setReactionLoadingKey(`${announcementId}:${reactionType}`);
+            const response = await api.post(`/announcements/${announcementId}/react`, { type: reactionType });
+            if (!isMountedRef.current) return;
+
+            setUnreadAnnouncements((current) =>
+                current.map((announcement) =>
+                    announcement._id === announcementId ? response.data.announcement : announcement
+                )
             );
+        } catch (error) {
+            console.error('Failed to update reaction:', error);
+        } finally {
+            if (isMountedRef.current) {
+                setReactionLoadingKey('');
+            }
         }
-        dismissAnnouncementGateForSession();
     };
 
     return (
@@ -246,7 +289,9 @@ const Layout = () => {
                     acknowledged={announcementConfirmed}
                     onAcknowledgedChange={setAnnouncementConfirmed}
                     onContinue={handleAnnouncementContinue}
-                    onSkip={handleAnnouncementSkip}
+                    reactionTypes={REACTION_TYPES}
+                    reactionLoadingKey={reactionLoadingKey}
+                    onReact={handleReaction}
                 />
             ) : null}
 

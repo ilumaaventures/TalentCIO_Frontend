@@ -11,6 +11,7 @@ import {
   Trash2,
   Trophy,
   HeartHandshake,
+  CheckCheck,
 } from 'lucide-react';
 import AnnouncementAvatar from './AnnouncementAvatar';
 import AnnouncementAttachmentCard from './AnnouncementAttachmentCard';
@@ -71,6 +72,7 @@ const CountBadge = ({ count = 0, animate = false }) => (
  * @param {(announcement: object) => void} props.onEdit - Edit handler for managers.
  * @param {(announcementId: string) => Promise<void>} props.onDelete - Delete handler for managers.
  * @param {(announcement: object) => Promise<void>} props.onTogglePin - Pin toggle handler for managers.
+ * @param {(announcementId: string) => void} props.onViewAcknowledgements - Callback to open the read status report modal.
  */
 const AnnouncementFeedCard = ({
   announcement,
@@ -88,6 +90,7 @@ const AnnouncementFeedCard = ({
   onEdit,
   onDelete,
   onTogglePin,
+  onViewAcknowledgements,
 }) => {
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
@@ -196,6 +199,17 @@ const AnnouncementFeedCard = ({
 
         {announcement?.canManage ? (
           <div className="flex items-center gap-2">
+            {onViewAcknowledgements ? (
+              <button
+                type="button"
+                onClick={() => onViewAcknowledgements(announcement._id)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                aria-label="View read status report"
+                title="View read status report"
+              >
+                <CheckCheck size={16} />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => onEdit(announcement)}
@@ -276,10 +290,12 @@ const AnnouncementFeedCard = ({
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-          <BadgeCheck size={14} />
-          {getAudienceLabel(announcement)}
-        </span>
+        {announcement?.canManage ? (
+          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
+            <BadgeCheck size={14} />
+            {getAudienceLabel(announcement)}
+          </span>
+        ) : null}
         {expiryNotice ? (
           <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
             <CalendarClock size={14} />
