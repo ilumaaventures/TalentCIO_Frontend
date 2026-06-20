@@ -24,6 +24,9 @@ import {
   getDisplayName,
   getExpiryNotice,
   truncateText,
+  canReactToAnnouncement,
+  canCommentOnAnnouncement,
+  canViewAnnouncementReactions,
 } from './announcementUtils';
 
 const REACTION_META = {
@@ -92,6 +95,10 @@ const AnnouncementFeedCard = ({
   onTogglePin,
   onViewAcknowledgements,
 }) => {
+  const canReact = announcement?.canReact || canReactToAnnouncement(currentUser);
+  const canComment = announcement?.canComment || canCommentOnAnnouncement(currentUser);
+  const canViewReactions = announcement?.canViewReactions || canViewAnnouncementReactions(currentUser);
+
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
@@ -307,145 +314,153 @@ const AnnouncementFeedCard = ({
         ) : null}
       </div>
 
-      <div className="relative mt-5 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {reactionTypes.map((type) => {
-            const meta = REACTION_META[type] || REACTION_META.like;
-            const isActive = announcement?.viewerReaction === type;
-            const count = announcement?.reactionCounts?.[type] || 0;
-            const loadingKey = `${announcement._id}:${type}`;
+      {(canReact || canComment || canViewReactions) ? (
+        <>
+          <div className="relative mt-5 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {(canReact || canViewReactions) && reactionTypes.map((type) => {
+                const meta = REACTION_META[type] || REACTION_META.like;
+                const isActive = announcement?.viewerReaction === type;
+                const count = announcement?.reactionCounts?.[type] || 0;
+                const loadingKey = `${announcement._id}:${type}`;
 
-            return (
-              <button
-                key={`${announcement._id}-${type}`}
-                type="button"
-                onClick={() => onReact(announcement._id, type)}
-                disabled={reactionLoadingKey === loadingKey}
-                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                  isActive
-                    ? meta.activeClassName
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                } ${reactionLoadingKey === loadingKey ? 'opacity-60' : ''}`}
-              >
-                {reactionLoadingKey === loadingKey ? <Loader2 size={15} className="animate-spin" /> : <meta.Icon size={15} />}
-                <span>{meta.label}</span>
-                <CountBadge count={count} animate={animatedTypes.includes(type)} />
-              </button>
-            );
-          })}
+                return (
+                  <button
+                    key={`${announcement._id}-${type}`}
+                    type="button"
+                    onClick={() => canReact && onReact(announcement._id, type)}
+                    disabled={!canReact || reactionLoadingKey === loadingKey}
+                    className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                      isActive
+                        ? meta.activeClassName
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    } ${reactionLoadingKey === loadingKey ? 'opacity-60' : ''} ${!canReact ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  >
+                    {reactionLoadingKey === loadingKey ? <Loader2 size={15} className="animate-spin" /> : <meta.Icon size={15} />}
+                    <span>{meta.label}</span>
+                    <CountBadge count={count} animate={animatedTypes.includes(type)} />
+                  </button>
+                );
+              })}
 
-          <button
-            type="button"
-            onClick={() => setIsCommentsOpen((current) => !current)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            <MessageCircle size={15} />
-            <span>{announcement?.commentCount || 0} comments</span>
-          </button>
+              {canComment || canViewReactions ? (
+                <button
+                  type="button"
+                  onClick={() => setIsCommentsOpen((current) => !current)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  <MessageCircle size={15} />
+                  <span>{announcement?.commentCount || 0} comments</span>
+                </button>
+              ) : null}
 
-          {announcement?.totalReactions > 0 ? (
-            <div
-              className="relative ml-auto"
-              onMouseEnter={() => setShowReactorPopover(true)}
-              onMouseLeave={() => setShowReactorPopover(false)}
-            >
-              <button
-                type="button"
-                className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200"
-              >
-                {announcement.totalReactions} reactions
-              </button>
+              {canViewReactions && announcement?.totalReactions > 0 ? (
+                <div
+                  className="relative ml-auto"
+                  onMouseEnter={() => setShowReactorPopover(true)}
+                  onMouseLeave={() => setShowReactorPopover(false)}
+                >
+                  <button
+                    type="button"
+                    className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200"
+                  >
+                    {announcement.totalReactions} reactions
+                  </button>
 
-              {showReactorPopover && previewReactors.length > 0 ? (
-                <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Top Reactors</div>
-                  <div className="mt-3 space-y-2">
-                    {previewReactors.map((reactor) => (
-                      <div key={`${announcement._id}-${reactor._id}`} className="flex items-center gap-3">
-                        <AnnouncementAvatar person={reactor} sizeClassName="h-9 w-9" textClassName="text-[11px]" />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-slate-700">{getDisplayName(reactor)}</div>
-                          <div className="text-xs text-slate-400 capitalize">{reactor.reactionType}</div>
-                        </div>
+                  {showReactorPopover && previewReactors.length > 0 ? (
+                    <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Top Reactors</div>
+                      <div className="mt-3 space-y-2">
+                        {previewReactors.map((reactor) => (
+                          <div key={`${announcement._id}-${reactor._id}`} className="flex items-center gap-3">
+                            <AnnouncementAvatar person={reactor} sizeClassName="h-9 w-9" textClassName="text-[11px]" />
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-slate-700">{getDisplayName(reactor)}</div>
+                              <div className="text-xs text-slate-400 capitalize">{reactor.reactionType}</div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {isCommentsOpen && (canComment || canViewReactions) ? (
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white/90 p-4">
+              <div className="space-y-3">
+                {(announcement?.comments || []).length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                    Be the first to comment on this announcement.
+                  </div>
+                ) : (
+                  announcement.comments.map((comment) => (
+                    <div key={comment._id} className="flex gap-3 rounded-2xl bg-slate-50/80 px-3 py-3">
+                      <AnnouncementAvatar person={comment?.author} sizeClassName="h-10 w-10" textClassName="text-xs" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-slate-800">{getDisplayName(comment?.author)}</span>
+                          <span className="text-xs text-slate-400">{getAnnouncementRelativeTime(comment?.createdAt)}</span>
+                          {comment?.isOptimistic ? (
+                            <span className="text-xs font-medium text-blue-600">Sending...</span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{comment?.text}</p>
+                      </div>
+                      {comment?.canDelete && canComment ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteComment(announcement._id, comment._id)}
+                          disabled={commentDeletingId === comment._id || comment?.isOptimistic}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white hover:text-red-600 disabled:opacity-50"
+                          aria-label="Delete comment"
+                        >
+                          {commentDeletingId === comment._id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        </button>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {canComment ? (
+                <div className="mt-4 flex gap-3">
+                  <AnnouncementAvatar person={currentUser} sizeClassName="h-10 w-10" textClassName="text-xs" />
+                  <div className="flex-1">
+                    <textarea
+                      ref={commentInputRef}
+                      value={commentDraft}
+                      onChange={(event) => setCommentDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleCommentSubmit();
+                        }
+                      }}
+                      rows={3}
+                      placeholder="Write a comment"
+                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <p className="text-xs text-slate-400">Press Enter to send, Shift+Enter for a new line.</p>
+                      <button
+                        type="button"
+                        onClick={() => void handleCommentSubmit()}
+                        disabled={commentSubmitting || !commentDraft.trim()}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {commentSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                        {commentSubmitting ? 'Posting...' : 'Send'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : null}
             </div>
           ) : null}
-        </div>
-      </div>
-
-      {isCommentsOpen ? (
-        <div className="mt-5 rounded-2xl border border-slate-200 bg-white/90 p-4">
-          <div className="space-y-3">
-            {(announcement?.comments || []).length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                Be the first to comment on this announcement.
-              </div>
-            ) : (
-              announcement.comments.map((comment) => (
-                <div key={comment._id} className="flex gap-3 rounded-2xl bg-slate-50/80 px-3 py-3">
-                  <AnnouncementAvatar person={comment?.author} sizeClassName="h-10 w-10" textClassName="text-xs" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-800">{getDisplayName(comment?.author)}</span>
-                      <span className="text-xs text-slate-400">{getAnnouncementRelativeTime(comment?.createdAt)}</span>
-                      {comment?.isOptimistic ? (
-                        <span className="text-xs font-medium text-blue-600">Sending...</span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{comment?.text}</p>
-                  </div>
-                  {comment?.canDelete ? (
-                    <button
-                      type="button"
-                      onClick={() => onDeleteComment(announcement._id, comment._id)}
-                      disabled={commentDeletingId === comment._id || comment?.isOptimistic}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white hover:text-red-600 disabled:opacity-50"
-                      aria-label="Delete comment"
-                    >
-                      {commentDeletingId === comment._id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    </button>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="mt-4 flex gap-3">
-            <AnnouncementAvatar person={currentUser} sizeClassName="h-10 w-10" textClassName="text-xs" />
-            <div className="flex-1">
-              <textarea
-                ref={commentInputRef}
-                value={commentDraft}
-                onChange={(event) => setCommentDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleCommentSubmit();
-                  }
-                }}
-                rows={3}
-                placeholder="Write a comment"
-                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-              />
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-xs text-slate-400">Press Enter to send, Shift+Enter for a new line.</p>
-                <button
-                  type="button"
-                  onClick={() => void handleCommentSubmit()}
-                  disabled={commentSubmitting || !commentDraft.trim()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {commentSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                  {commentSubmitting ? 'Posting...' : 'Send'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        </>
       ) : null}
     </article>
   );
