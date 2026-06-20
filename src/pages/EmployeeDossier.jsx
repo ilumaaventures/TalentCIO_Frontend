@@ -166,7 +166,7 @@ const PendingHighlight = ({ show, liveValue, pendingValue, label, type, children
 
     const liveStr = fmt(liveValue);
     const pendStr = fmt(pendingValue);
-    const hasChange = show && liveStr !== pendStr;
+    const hasChange = show && pendingValue !== undefined && liveStr !== pendStr;
 
     if (!hasChange) return <>{children}</>;
 
