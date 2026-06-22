@@ -432,7 +432,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     // State
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState(initialTab || queryTab || 'personal');
+    const [activeTab, setActiveTab] = useState(queryTab || initialTab || 'personal');
     const [editMode, setEditMode] = useState(false);
     const [formData, setFormData] = useState({});
     const [pendingUpdates, setPendingUpdates] = useState(null); // staged unapproved changes
@@ -773,7 +773,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             // Exception: if status is 'Rejected', pre-fill the form with the last rejected
             // draft so the employee can correct their changes and re-submit without
             // re-entering everything from scratch.
-            if (liveProfile.hris?.status === 'Rejected' && pending) {
+            if (pending) {
                 setFormData(mergePendingIntoProfile(liveProfile, pending));
             } else {
                 setFormData(JSON.parse(JSON.stringify(liveProfile)));
@@ -795,8 +795,22 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     }, [userId, navigate]);
 
     useEffect(() => {
-        if (userId) fetchDossier();
+        if (userId) {
+            setEditMode(false);
+            fetchDossier();
+        }
     }, [userId, fetchDossier]);
+
+    // Automatically sync/reset formData to the latest profile data (live + pending) when exiting edit mode
+    useEffect(() => {
+        if (!editMode && profile) {
+            if (pendingUpdates) {
+                setFormData(mergePendingIntoProfile(profile, pendingUpdates));
+            } else {
+                setFormData(JSON.parse(JSON.stringify(profile)));
+            }
+        }
+    }, [editMode, profile, pendingUpdates]);
 
     const fetchHRISRequests = async () => {
         try {
@@ -861,8 +875,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         if (hasDossierModule) {
             nextTabs.push(
+                { id: 'hris', label: 'EIS', icon: Shield },
                 { id: 'documents', label: 'Documents', icon: FileText },
-                { id: 'hris', label: 'HRIS', icon: Shield },
                 { id: 'history', label: 'Activities', icon: Calendar }
             );
 
@@ -890,7 +904,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     }, [hasDossierModule, activeTab]);
 
     useEffect(() => {
-        const requestedTab = initialTab || queryTab;
+        const requestedTab = queryTab || initialTab;
         if (!requestedTab) return;
 
         const tabExists = tabs.some((tab) => tab.id === requestedTab);
@@ -898,6 +912,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             setActiveTab(requestedTab);
         }
     }, [initialTab, queryTab, tabs]);
+
+    const redirectToHRISEdit = () => {
+        setActiveTab('hris');
+        setEditMode('hris');
+    };
 
     const handleTabSelect = useCallback((tabId) => {
         setActiveTab(tabId);
@@ -965,26 +984,122 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         });
     };
 
-    const handleHRISSave = async (forceIsDeclared) => {
-        // HRIS Validation
+    const validateHRISForm = () => {
         const p = formData.personal || {};
         const b = formData.compensation?.bankDetails || {};
         const uan = formData.compensation?.uanNumber;
         const f = formData.family || {};
+        const iden = formData.identity || {};
 
-        if (!p.firstName || !p.lastName || !p.fullName) return toast.error('All fields are required');
+        if (!p.firstName || !p.lastName || !p.fullName) {
+            toast.error('All fields are required');
+            return false;
+        }
 
         if (p.maritalStatus === 'Married' && (!f.spouseName || !f.spouseName.trim())) {
-            return toast.error('Spouse Name is required when marital status is Married');
+            toast.error('Spouse Name is required when marital status is Married');
+            return false;
+        }
+
+        if (!iden.panNumber || !iden.panNumber.trim()) {
+            toast.error('PAN Card Number is required');
+            return false;
+        }
+        if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(iden.panNumber.trim().toUpperCase())) {
+            toast.error('PAN Card Number must be a valid 10-character alphanumeric code');
+            return false;
+        }
+
+        if (!iden.aadhaarNumber || !iden.aadhaarNumber.trim()) {
+            toast.error('Aadhaar Card Number is required');
+            return false;
+        }
+        if (!/^\d{12}$/.test(iden.aadhaarNumber.trim())) {
+            toast.error('Aadhaar Card Number must be a 12-digit number');
+            return false;
         }
 
         if (!b.accountNumber || !b.ifscCode || !b.bankName || !b.accountHolderName || !b.branchAddress) {
-            return toast.error('All fields are required');
+            toast.error('All fields are required');
+            return false;
         }
 
-        if (uan && !/^\d{12}$/.test(uan)) {
-            return toast.error('UAN must be a 12-digit number');
+        const isUanApplicable = formData.compensation?.isUanApplicable;
+        if (isUanApplicable === true) {
+            if (!uan || !uan.trim()) {
+                toast.error('UAN (Universal Account Number) is required');
+                return false;
+            }
+            if (!/^\d{12}$/.test(uan)) {
+                toast.error('UAN must be a 12-digit number');
+                return false;
+            }
         }
+
+        const contact = formData.contact || {};
+        const ec = contact.emergencyContact || {};
+
+        if (!contact.mobileNumber || !contact.mobileNumber.trim()) {
+            toast.error('Personal Mobile is required');
+            return false;
+        }
+        if (!/^\d{10}$/.test(contact.mobileNumber.trim())) {
+            toast.error('Personal Mobile must be a valid 10-digit number');
+            return false;
+        }
+
+        if (!contact.alternateNumber || !contact.alternateNumber.trim()) {
+            toast.error('Alternate Mobile Number is required');
+            return false;
+        }
+        if (!/^\d{10}$/.test(contact.alternateNumber.trim())) {
+            toast.error('Alternate Mobile Number must be a valid 10-digit number');
+            return false;
+        }
+
+        if (!p.nationality || !p.nationality.trim()) {
+            toast.error('Nationality is required');
+            return false;
+        }
+
+        if (!p.bloodGroup || !p.bloodGroup.trim()) {
+            toast.error('Blood Group is required');
+            return false;
+        }
+
+        if (p.disabilityStatus === undefined || p.disabilityStatus === null) {
+            toast.error('Disability Status is required');
+            return false;
+        }
+
+        if (p.disabilityStatus === true && (!p.disabilityDetails || !p.disabilityDetails.trim())) {
+            toast.error('Nature of disability is required if Disability Status is Yes');
+            return false;
+        }
+
+        if (!ec.name || !ec.name.trim()) {
+            toast.error('Emergency Contact Name is required');
+            return false;
+        }
+
+        if (!ec.relation || !ec.relation.trim()) {
+            toast.error('Emergency Contact Relation is required');
+            return false;
+        }
+
+        if (ec.email && ec.email.trim()) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(ec.email.trim())) {
+                toast.error('Please enter a valid emergency contact email');
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    const handleHRISSave = async (forceIsDeclared) => {
+        if (!validateHRISForm()) return;
 
         try {
             setSavingSection('hris');
@@ -1005,38 +1120,20 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             dataToSubmit.hris.isDeclared = declared;
 
             await api.patch(`/dossier/${userId}/submit-hris`, dataToSubmit);
-            toast.success(declared ? 'HRIS Form submitted for approval' : 'HRIS Form saved as draft');
+            toast.success(declared ? 'EIS Form submitted for approval' : 'EIS Form saved as draft');
             setEditMode(false);
             setShowHrisConfirmModal(false); // Close confirmation modal if open
             fetchDossier();
         } catch (error) {
             console.error(error);
-            toast.error(error.response?.data?.message || 'Failed to save HRIS form');
+            toast.error(error.response?.data?.message || 'Failed to save EIS form');
         } finally {
             setSavingSection(null);
         }
     };
 
     const handleHRISSaveClick = () => {
-        // HRIS Validation before showing modal
-        const p = formData.personal || {};
-        const b = formData.compensation?.bankDetails || {};
-        const uan = formData.compensation?.uanNumber;
-        const f = formData.family || {};
-
-        if (!p.firstName || !p.lastName || !p.fullName) return toast.error('All fields are required');
-
-        if (p.maritalStatus === 'Married' && (!f.spouseName || !f.spouseName.trim())) {
-            return toast.error('Spouse Name is required when marital status is Married');
-        }
-
-        if (!b.accountNumber || !b.ifscCode || !b.bankName || !b.accountHolderName || !b.branchAddress) {
-            return toast.error('All fields are required');
-        }
-
-        if (uan && !/^\d{12}$/.test(uan)) {
-            return toast.error('UAN must be a 12-digit number');
-        }
+        if (!validateHRISForm()) return;
 
         const isAdmin = currentUser?.roles?.some(r => r === 'Admin' || r?.name === 'Admin');
         const isDirectWrite = isAdmin && !isSelf;
@@ -1071,7 +1168,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 .replace(/\s+/g, '_')
                 .replace(/[^a-zA-Z0-9_-]/g, '')
                 || 'Employee';
-            link.setAttribute('download', `${safeBaseName}_HRIS.xlsx`);
+            link.setAttribute('download', `${safeBaseName}_EIS.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -1095,6 +1192,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             const required = ['dob', 'gender', 'maritalStatus', 'nationality', 'bloodGroup', 'disabilityStatus'];
             const missing = required.filter(f => isEmpty(data[f]));
             if (missing.length > 0) return 'All fields are required'; // Generic warning
+            if (data.disabilityStatus === true && isEmpty(data.disabilityDetails)) {
+                return 'Nature of disability is required if Disability Status is Yes';
+            }
         }
         if (section === 'contact') {
             if (isEmpty(data.personalEmail) || isEmpty(data.mobileNumber)) return 'Email and Mobile Number are required';
@@ -1187,7 +1287,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         try {
             setSavingSection('personal_all');
-            
+
             await Promise.all([
                 api.patch(`/dossier/${userId}/personal`, formData.personal),
                 api.patch(`/dossier/${userId}/contact`, formData.contact),
@@ -1633,7 +1733,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const renderPersonal = () => {
         const pend = pendingUpdates || {};
         const showPending = !!(canApprove && !isSelf && !editMode && pendingUpdates);
-        const isPersonalEditing = editMode === 'personal_all';
+        const isPersonalEditing = false;
 
         const getAddress = (type) => formData.contact?.addresses?.find(a => a.type === type) || {};
         const getProfileAddress = (type) => profile.contact?.addresses?.find(a => a.type === type) || {};
@@ -1649,11 +1749,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     editMode={editMode}
                     setEditMode={setEditMode}
                     onSave={handleSave}
-                    isLoading={savingSection === 'personal_all'}
+                    isLoading={false}
                     canEdit={canEdit}
-                    showActions={canEdit && !isPersonalEditing}
-                    isEditingOverride={isPersonalEditing}
-                    customEditAction={() => setEditMode('personal_all')}
+                    showActions={canEdit}
+                    isEditingOverride={false}
+                    customEditAction={redirectToHRISEdit}
                 >
                     {(isEditing) => (
                         <div className="space-y-4">
@@ -1703,6 +1803,20 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         required
                                     />
                                 </PendingHighlight>
+                                {(formData.personal?.disabilityStatus === true || (!isEditing && profile.personal?.disabilityStatus === true)) && (
+                                    <PendingHighlight show={showPending} label="Nature of disability" liveValue={profile.personal?.disabilityDetails} pendingValue={pend.personal?.disabilityDetails}>
+                                        <Field
+                                            section="personal"
+                                            isEditing={isEditing}
+                                            label="Nature of disability"
+                                            field="disabilityDetails"
+                                            value={profile.personal?.disabilityDetails}
+                                            formData={formData}
+                                            onChange={handleInputChange}
+                                            required
+                                        />
+                                    </PendingHighlight>
+                                )}
                             </div>
                         </div>
                     )}
@@ -2178,7 +2292,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     editMode={editMode}
                     setEditMode={setEditMode}
                     onSave={handleSave}
-                    isLoading={savingSection === 'experience'}
+                    isLoading={false}
+                    canEdit={canEdit}
+                    showActions={canEdit}
+                    isEditingOverride={false}
+                    customEditAction={redirectToHRISEdit}
                 >
                     {(isEditing) => (
                         <div className="space-y-6">
@@ -3083,7 +3201,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 -m-4 md:-m-8 p-4 md:p-6 mb-12 border-b border-slate-200 rounded-t-xl gap-4">
                     <div className="flex items-center space-x-4">
                         <div>
-                            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">HRIS Information Form</h2>
+                            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">EIS Information Form</h2>
                             <div className="mt-4 flex items-center gap-4">
                                 {getStatusBadge(hrisStatus)}
                                 {profile.hris?.submittedAt && (
@@ -3136,13 +3254,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     onClick={() => handleHRISApproveOther(userId)}
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center text-xs px-3 py-1.5 h-8"
                                 >
-                                    <CheckCircle size={14} className="mr-1.5" /> Approve HRIS
+                                    <CheckCircle size={14} className="mr-1.5" /> Approve EIS
                                 </Button>
                                 <Button
                                     onClick={() => handleHRISRejectOther(userId)}
                                     className="bg-red-600 hover:bg-red-700 text-white flex items-center text-xs px-3 py-1.5 h-8"
                                 >
-                                    <X size={14} className="mr-1.5" /> Reject HRIS
+                                    <X size={14} className="mr-1.5" /> Reject EIS
                                 </Button>
                             </div>
                         )}
@@ -3176,7 +3294,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         { label: 'Date of Marriage', old: live.personal?.dateOfMarriage, new: pend.personal?.dateOfMarriage, type: 'date' },
                         { label: 'Nationality', old: live.personal?.nationality, new: pend.personal?.nationality },
                         { label: 'Blood Group', old: live.personal?.bloodGroup, new: pend.personal?.bloodGroup },
-                        { label: 'Disability Status', old: live.personal?.disabilityStatus ? 'Yes' : 'No', new: pend.personal?.disabilityStatus === undefined ? undefined : (pend.personal?.disabilityStatus ? 'Yes' : 'No') }
+                        { label: 'Disability Status', old: live.personal?.disabilityStatus ? 'Yes' : 'No', new: pend.personal?.disabilityStatus === undefined ? undefined : (pend.personal?.disabilityStatus ? 'Yes' : 'No') },
+                        { label: 'Nature of disability', old: live.personal?.disabilityDetails, new: pend.personal?.disabilityDetails }
                     ];
                     const contactFields = [
                         { label: 'Personal Email', old: live.contact?.personalEmail, new: pend.contact?.personalEmail },
@@ -3193,7 +3312,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     ];
                     const identityFields = [
                         { label: 'PAN Card Number', old: live.identity?.panNumber, new: pend.identity?.panNumber },
-                        { label: 'Aadhaar Number', old: live.identity?.aadhaarNumber, new: pend.identity?.aadhaarNumber },
+                        { label: 'Aadhaar Card Number', old: live.identity?.aadhaarNumber, new: pend.identity?.aadhaarNumber },
                         { label: 'Passport Number', old: live.identity?.passportNumber, new: pend.identity?.passportNumber },
                     ];
                     const familyFields = [
@@ -3212,6 +3331,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         }
                     ];
                     const compensationFields = [
+                        {
+                            label: 'UAN Applicable?',
+                            old: live.compensation?.isUanApplicable === undefined ? undefined : (live.compensation?.isUanApplicable ? 'Yes' : 'No'),
+                            new: pend.compensation?.isUanApplicable === undefined ? undefined : (pend.compensation?.isUanApplicable ? 'Yes' : 'No')
+                        },
                         { label: 'UAN Number', old: live.compensation?.uanNumber, new: pend.compensation?.uanNumber },
                         { label: 'Bank Account Number', old: live.compensation?.bankDetails?.accountNumber, new: pend.compensation?.bankDetails?.accountNumber },
                         { label: 'IFSC Code', old: live.compensation?.bankDetails?.ifscCode, new: pend.compensation?.bankDetails?.ifscCode },
@@ -3220,12 +3344,30 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         { label: 'Branch Address', old: live.compensation?.bankDetails?.branchAddress, new: pend.compensation?.bankDetails?.branchAddress },
                     ];
 
+                    const safeFormatDate = (dStr) => {
+                        if (!dStr) return '';
+                        try {
+                            return format(new Date(dStr), 'dd MMM yyyy');
+                        } catch (e) {
+                            return String(dStr);
+                        }
+                    };
+
+                    const experienceFields = [
+                        {
+                            label: "Work Experience History",
+                            old: (live.experience || []).map(e => `${e.companyName || 'Unknown Company'} (${e.designation || 'No Title'}): ${safeFormatDate(e.startDate) || 'No Start'} - ${safeFormatDate(e.endDate) || 'Present'}${e.reasonForLeaving ? `, Reason for leaving: ${e.reasonForLeaving}` : ''}`).join('; ') || 'No Work Experience',
+                            new: pend.experience === undefined ? undefined : ((pend.experience || []).map(e => `${e.companyName || 'Unknown Company'} (${e.designation || 'No Title'}): ${safeFormatDate(e.startDate) || 'No Start'} - ${safeFormatDate(e.endDate) || 'Present'}${e.reasonForLeaving ? `, Reason for leaving: ${e.reasonForLeaving}` : ''}`).join('; ') || 'No Work Experience')
+                        }
+                    ];
+
                     const allSections = [
                         { name: 'Personal Details', fields: personalFields },
                         { name: 'Contact Details', fields: contactFields },
                         { name: 'Identity Details', fields: identityFields },
                         { name: 'Family Details', fields: familyFields },
                         { name: 'Bank & Compensation', fields: compensationFields },
+                        { name: 'Work Experience', fields: experienceFields },
                     ];
 
                     const sectionsWithChanges = allSections
@@ -3249,8 +3391,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
                     return (
                         <div className={`rounded-xl border-2 p-5 mb-4 ${hrisStatus === 'Pending Approval'
-                                ? 'border-amber-300 bg-amber-50/50'
-                                : 'border-slate-200 bg-slate-50'
+                            ? 'border-amber-300 bg-amber-50/50'
+                            : 'border-slate-200 bg-slate-50'
                             }`}>
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
@@ -3337,18 +3479,55 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <PendingHighlight show={showPending} label="PAN Card Number" liveValue={profile.identity?.panNumber} pendingValue={pend.identity?.panNumber}>
                                 <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
                             </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Aadhaar Card Number" liveValue={profile.identity?.aadhaarNumber} pendingValue={pend.identity?.aadhaarNumber}>
+                                <Field section="identity" isEditing={isEditing} label="Aadhaar Card Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
                             <PendingHighlight show={showPending} label="Passport Number" liveValue={profile.identity?.passportNumber} pendingValue={pend.identity?.passportNumber}>
                                 <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
                             </PendingHighlight>
-                            <PendingHighlight show={showPending} label="UAN Number" liveValue={profile.compensation?.uanNumber} pendingValue={pend.compensation?.uanNumber}>
+                            <PendingHighlight
+                                show={showPending}
+                                label="UAN Applicable?"
+                                liveValue={profile.compensation?.isUanApplicable ? 'Yes' : 'No'}
+                                pendingValue={pend.compensation?.isUanApplicable === undefined ? undefined : (pend.compensation?.isUanApplicable ? 'Yes' : 'No')}
+                            >
                                 <Field
-                                    section="compensation" isEditing={isEditing} label="UAN (Universal Account Number)" field="uanNumber"
-                                    value={profile.compensation?.uanNumber}
-                                    valueOverride={formData.compensation?.uanNumber}
-                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, uanNumber: e.target.value.replace(/\D/g, '') } }))}
-                                    maxLength={12}
+                                    section="compensation"
+                                    isEditing={isEditing}
+                                    label="UAN Applicable?"
+                                    field="isUanApplicable"
+                                    value={profile.compensation?.isUanApplicable ? 'Yes' : 'No'}
+                                    valueOverride={formData.compensation?.isUanApplicable ? 'Yes' : 'No'}
+                                    options={['No', 'Yes']}
+                                    formData={formData}
+                                    onChangeOverride={(e) => {
+                                        const applicable = e.target.value === 'Yes';
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            compensation: {
+                                                ...prev.compensation,
+                                                isUanApplicable: applicable,
+                                                uanNumber: applicable ? prev.compensation?.uanNumber : ''
+                                            },
+                                            hris: { ...prev.hris, isDeclared: false }
+                                        }));
+                                    }}
+                                    required
                                 />
                             </PendingHighlight>
+
+                            {(formData.compensation?.isUanApplicable === true || (!isEditing && profile.compensation?.isUanApplicable === true)) && (
+                                <PendingHighlight show={showPending} label="UAN Number" liveValue={profile.compensation?.uanNumber} pendingValue={pend.compensation?.uanNumber}>
+                                    <Field
+                                        section="compensation" isEditing={isEditing} label="UAN (Universal Account Number)" field="uanNumber"
+                                        value={profile.compensation?.uanNumber}
+                                        valueOverride={formData.compensation?.uanNumber}
+                                        onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, uanNumber: e.target.value.replace(/\D/g, '') } }))}
+                                        maxLength={12}
+                                        required
+                                    />
+                                </PendingHighlight>
+                            )}
                         </div>
                     </div>
 
@@ -3382,12 +3561,34 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <PendingHighlight show={showPending} label="Gender" liveValue={profile.personal?.gender} pendingValue={pend.personal?.gender}>
-                                <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} />
+                                <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} required />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Date of Birth" liveValue={profile.personal?.dob} pendingValue={pend.personal?.dob} type="date">
-                                <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} />
+                                <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} required />
                             </PendingHighlight>
                             <Field section="employment" isEditing={false} label="Date of Joining" field="joiningDate" type="date" value={profile.employment?.joiningDate} />
+                            <PendingHighlight show={showPending} label="Marital Status" liveValue={profile.personal?.maritalStatus} pendingValue={pend.personal?.maritalStatus}>
+                                <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
+                            {(formData.personal?.maritalStatus === 'Married' || (!isEditing && profile.personal?.maritalStatus === 'Married')) && (
+                                <PendingHighlight show={showPending} label="Date of Marriage" liveValue={profile.personal?.dateOfMarriage} pendingValue={pend.personal?.dateOfMarriage} type="date">
+                                    <Field section="personal" isEditing={isEditing} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
+                                </PendingHighlight>
+                            )}
+                            <PendingHighlight show={showPending} label="Nationality" liveValue={profile.personal?.nationality} pendingValue={pend.personal?.nationality}>
+                                <Field section="personal" isEditing={isEditing} label="Nationality" field="nationality" value={profile.personal?.nationality} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Blood Group" liveValue={profile.personal?.bloodGroup} pendingValue={pend.personal?.bloodGroup}>
+                                <Field section="personal" isEditing={isEditing} label="Blood Group" field="bloodGroup" value={profile.personal?.bloodGroup} formData={formData} onChange={handleInputChange} required />
+                            </PendingHighlight>
+                            <PendingHighlight show={showPending} label="Disability Status" liveValue={profile.personal?.disabilityStatus ? 'Yes' : 'No'} pendingValue={pend.personal?.disabilityStatus === undefined ? undefined : (pend.personal?.disabilityStatus ? 'Yes' : 'No')}>
+                                <Field section="personal" isEditing={isEditing} label="Disability Status" field="disabilityStatus" value={profile.personal?.disabilityStatus ? 'Yes' : 'No'} valueOverride={formData.personal?.disabilityStatus ? 'Yes' : 'No'} options={['No', 'Yes']} formData={formData} onChangeOverride={(e) => handleInputChange('personal', 'disabilityStatus', e.target.value === 'Yes')} required />
+                            </PendingHighlight>
+                            {(formData.personal?.disabilityStatus === true || (!isEditing && profile.personal?.disabilityStatus === true)) && (
+                                <PendingHighlight show={showPending} label="Nature of disability" liveValue={profile.personal?.disabilityDetails} pendingValue={pend.personal?.disabilityDetails}>
+                                    <Field section="personal" isEditing={isEditing} label="Nature of disability" field="disabilityDetails" value={profile.personal?.disabilityDetails} formData={formData} onChange={handleInputChange} required />
+                                </PendingHighlight>
+                            )}
                         </div>
                     </div>
 
@@ -3457,7 +3658,47 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 const isCurrentOrPerm = ['Current', 'Permanent'].includes(type);
                                 return (
                                     <div key={type} className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">{type} Address</h4>
+                                        <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-200/50">
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">{type} Address</h4>
+                                            {type === 'Permanent' && isEditing && (
+                                                <label className="flex items-center space-x-2 text-xs text-slate-600 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                const current = formData.contact?.addresses?.find(a => a.type === 'Current') || {};
+                                                                setFormData(prev => {
+                                                                    const currentAddresses = prev.contact?.addresses || [];
+                                                                    const permIndex = currentAddresses.findIndex(a => a.type === 'Permanent');
+                                                                    const permAddr = {
+                                                                        type: 'Permanent',
+                                                                        line1: current.line1 || current.street,
+                                                                        addressLine2: current.addressLine2,
+                                                                        city: current.city,
+                                                                        state: current.state,
+                                                                        zipCode: current.zipCode,
+                                                                        country: current.country
+                                                                    };
+                                                                    let newAddresses = [...currentAddresses];
+                                                                    if (permIndex >= 0) {
+                                                                        newAddresses[permIndex] = permAddr;
+                                                                    } else {
+                                                                        newAddresses.push(permAddr);
+                                                                    }
+                                                                    return {
+                                                                        ...prev,
+                                                                        contact: { ...prev.contact, addresses: newAddresses },
+                                                                        hris: { ...prev.hris, isDeclared: false }
+                                                                    };
+                                                                });
+                                                            }
+                                                        }}
+                                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <span className="font-semibold text-slate-600">Same as Current</span>
+                                                </label>
+                                            )}
+                                        </div>
                                         <div className="space-y-6">
                                             <Field section="contact" isEditing={isEditing} label="Line 1" field={`${type}_line1`}
                                                 value={profile.contact?.addresses?.find(a => a.type === type)?.line1 || profile.contact?.addresses?.find(a => a.type === type)?.street}
@@ -3521,42 +3762,107 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <Shield size={18} className="text-blue-500" />
                             <h3 className="font-bold text-slate-700">6. Contact Details</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <PendingHighlight show={showPending} label="Personal Mobile" liveValue={profile.contact?.mobileNumber} pendingValue={pend.contact?.mobileNumber}>
-                                <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
+                                <Field
+                                    section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber"
+                                    value={profile.contact?.mobileNumber} formData={formData}
+                                    maxLength={10}
+                                    error={formData.contact?.mobileNumber?.length > 0 && formData.contact?.mobileNumber?.length < 10 ? 'Must be 10 digits' : null}
+                                    onChangeOverride={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        handleInputChange('contact', 'mobileNumber', val);
+                                    }}
+                                    required
+                                />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Alternate Mobile" liveValue={profile.contact?.alternateNumber} pendingValue={pend.contact?.alternateNumber}>
-                                <Field section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber" value={profile.contact?.alternateNumber} formData={formData} onChange={handleInputChange} />
+                                <Field
+                                    section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber"
+                                    value={profile.contact?.alternateNumber} formData={formData}
+                                    maxLength={10}
+                                    error={formData.contact?.alternateNumber?.length > 0 && formData.contact?.alternateNumber?.length < 10 ? 'Must be 10 digits' : null}
+                                    onChangeOverride={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        handleInputChange('contact', 'alternateNumber', val);
+                                    }}
+                                    required
+                                />
                             </PendingHighlight>
-                            <Field
-                                section="contact" isEditing={isEditing}
-                                label="Emergency Mobile" field="EC_phone"
-                                value={profile.contact?.emergencyContact?.phone}
-                                valueOverride={formData.contact?.emergencyContact?.phone}
-                                maxLength={10}
-                                error={formData.contact?.emergencyContact?.phone?.length > 0 && formData.contact?.emergencyContact?.phone?.length < 10 ? 'Must be 10 digits' : null}
-                                onChangeOverride={(e) => {
-                                    const val = e.target.value.replace(/\D/g, '');
-                                    handleEmergencyChange('phone', val);
-                                }}
-                                formData={formData} onChange={handleInputChange}
-                                required
-                            />
-                            <Field
-                                section="contact" isEditing={isEditing}
-                                label="Emergency Alternate Phone" field="EC_alternatePhone"
-                                value={profile.contact?.emergencyContact?.alternatePhone}
-                                valueOverride={formData.contact?.emergencyContact?.alternatePhone}
-                                maxLength={10}
-                                error={formData.contact?.emergencyContact?.alternatePhone?.length > 0 && formData.contact?.emergencyContact?.alternatePhone?.length < 10 ? 'Must be 10 digits' : null}
-                                onChangeOverride={(e) => {
-                                    const val = e.target.value.replace(/\D/g, '');
-                                    handleEmergencyChange('alternatePhone', val);
-                                }}
-                                formData={formData} onChange={handleInputChange}
-                                required
-                            />
-                            <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
+                            <PendingHighlight show={showPending} label="Landline Number" liveValue={profile.contact?.landlineNumber} pendingValue={pend.contact?.landlineNumber}>
+                                <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
+                            </PendingHighlight>
+                        </div>
+
+                        {/* Emergency Contact Sub-section */}
+                        <div className="pt-4 border-t border-slate-100">
+                            <h4 className="text-sm font-bold text-slate-700 mb-4">Emergency Contact</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                <PendingHighlight show={showPending} label="Emergency Contact Name" liveValue={profile.contact?.emergencyContact?.name} pendingValue={pend.contact?.emergencyContact?.name}>
+                                    <Field
+                                        section="contact" isEditing={isEditing}
+                                        label="Name" field="EC_name"
+                                        value={profile.contact?.emergencyContact?.name}
+                                        valueOverride={formData.contact?.emergencyContact?.name}
+                                        onChangeOverride={(e) => handleEmergencyChange('name', e.target.value)}
+                                        formData={formData} onChange={handleInputChange}
+                                        required
+                                    />
+                                </PendingHighlight>
+                                <PendingHighlight show={showPending} label="Emergency Contact Relation" liveValue={profile.contact?.emergencyContact?.relation} pendingValue={pend.contact?.emergencyContact?.relation}>
+                                    <Field
+                                        section="contact" isEditing={isEditing}
+                                        label="Relation" field="EC_relation"
+                                        value={profile.contact?.emergencyContact?.relation}
+                                        valueOverride={formData.contact?.emergencyContact?.relation}
+                                        onChangeOverride={(e) => handleEmergencyChange('relation', e.target.value)}
+                                        formData={formData} onChange={handleInputChange}
+                                        required
+                                    />
+                                </PendingHighlight>
+                                <PendingHighlight show={showPending} label="Emergency Contact Phone" liveValue={profile.contact?.emergencyContact?.phone} pendingValue={pend.contact?.emergencyContact?.phone}>
+                                    <Field
+                                        section="contact" isEditing={isEditing}
+                                        label="Phone" field="EC_phone"
+                                        value={profile.contact?.emergencyContact?.phone}
+                                        valueOverride={formData.contact?.emergencyContact?.phone}
+                                        maxLength={10}
+                                        error={formData.contact?.emergencyContact?.phone?.length > 0 && formData.contact?.emergencyContact?.phone?.length < 10 ? 'Must be 10 digits' : null}
+                                        onChangeOverride={(e) => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            handleEmergencyChange('phone', val);
+                                        }}
+                                        formData={formData} onChange={handleInputChange}
+                                        required
+                                    />
+                                </PendingHighlight>
+                                <PendingHighlight show={showPending} label="Emergency Contact Alternate Phone" liveValue={profile.contact?.emergencyContact?.alternatePhone} pendingValue={pend.contact?.emergencyContact?.alternatePhone}>
+                                    <Field
+                                        section="contact" isEditing={isEditing}
+                                        label="Alternate Phone" field="EC_alternatePhone"
+                                        value={profile.contact?.emergencyContact?.alternatePhone}
+                                        valueOverride={formData.contact?.emergencyContact?.alternatePhone}
+                                        maxLength={10}
+                                        error={formData.contact?.emergencyContact?.alternatePhone?.length > 0 && formData.contact?.emergencyContact?.alternatePhone?.length < 10 ? 'Must be 10 digits' : null}
+                                        onChangeOverride={(e) => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            handleEmergencyChange('alternatePhone', val);
+                                        }}
+                                        formData={formData} onChange={handleInputChange}
+                                        required
+                                    />
+                                </PendingHighlight>
+                                <PendingHighlight show={showPending} label="Emergency Contact Email" liveValue={profile.contact?.emergencyContact?.email} pendingValue={pend.contact?.emergencyContact?.email}>
+                                    <Field
+                                        section="contact" isEditing={isEditing}
+                                        label="Email" field="EC_email"
+                                        value={profile.contact?.emergencyContact?.email}
+                                        valueOverride={formData.contact?.emergencyContact?.email}
+                                        onChangeOverride={(e) => handleEmergencyChange('email', e.target.value)}
+                                        formData={formData} onChange={handleInputChange}
+                                    />
+                                </PendingHighlight>
+                            </div>
                         </div>
                     </div>
 
@@ -3573,8 +3879,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <Field section="family" isEditing={isEditing} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
                             <Field section="family" isEditing={isEditing} label="Marital Status" field="parentsMaritalStatus" value={profile.family?.parentsMaritalStatus} options={['Married', 'Divorced', 'Widowed', 'Separated']} formData={formData} onChange={handleInputChange} />
                             <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
-                            <Field section="personal" isEditing={isEditing} label="Date of Marriage" field="dateOfMarriage" type="date" value={profile.personal?.dateOfMarriage} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
+                            <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} required={formData.personal?.maritalStatus === 'Married' || (!isEditing && profile.personal?.maritalStatus === 'Married')} />
                             <Field section="family" isEditing={isEditing} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
 
                         </div>
@@ -3702,7 +4007,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             </div>
                             {isEditing && (
                                 <button
-                                    onClick={() => addArrayItem('experience', { companyName: '', designation: '', startDate: '', endDate: '' })}
+                                    onClick={() => addArrayItem('experience', { companyName: '', designation: '', startDate: '', endDate: '', reasonForLeaving: '', totalExperience: '' })}
                                     className="text-xs bg-emerald-50 text-emerald-600 px-2 py-1 rounded border border-emerald-200"
                                 >
                                     + Add Work History
@@ -3712,15 +4017,19 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         <div className="space-y-6">
                             {(formData.experience || profile.experience || []).map((exp, idx) => (
                                 <div key={idx} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex gap-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
-                                        <Field section="experience" isEditing={isEditing} label="Company Name" field={`comp_${idx}`}
-                                            value={exp.companyName} valueOverride={formData.experience?.[idx]?.companyName ?? exp.companyName}
-                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'companyName', e.target.value)}
-                                        />
-                                        <Field section="experience" isEditing={isEditing} label="Designation" field={`desig_${idx}`}
-                                            value={exp.designation} valueOverride={formData.experience?.[idx]?.designation ?? exp.designation}
-                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'designation', e.target.value)}
-                                        />
+                                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4 flex-1">
+                                        <div className="md:col-span-2">
+                                            <Field section="experience" isEditing={isEditing} label="Company Name" field={`comp_${idx}`}
+                                                value={exp.companyName} valueOverride={formData.experience?.[idx]?.companyName ?? exp.companyName}
+                                                onChangeOverride={(e) => handleArrayChange('experience', idx, 'companyName', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <Field section="experience" isEditing={isEditing} label="Designation" field={`desig_${idx}`}
+                                                value={exp.designation} valueOverride={formData.experience?.[idx]?.designation ?? exp.designation}
+                                                onChangeOverride={(e) => handleArrayChange('experience', idx, 'designation', e.target.value)}
+                                            />
+                                        </div>
                                         <Field section="experience" isEditing={isEditing} label="Start Date" field={`start_${idx}`} type="date"
                                             value={exp.startDate} valueOverride={formData.experience?.[idx]?.startDate ?? exp.startDate}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'startDate', e.target.value)}
@@ -3729,10 +4038,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             value={exp.endDate} valueOverride={formData.experience?.[idx]?.endDate ?? exp.endDate}
                                             onChangeOverride={(e) => handleArrayChange('experience', idx, 'endDate', e.target.value)}
                                         />
-                                        <Field section="experience" isEditing={isEditing} label="Total Work Experience" field={`total_${idx}`}
-                                            value={exp.totalExperience} valueOverride={formData.experience?.[idx]?.totalExperience ?? exp.totalExperience}
-                                            onChangeOverride={(e) => handleArrayChange('experience', idx, 'totalExperience', e.target.value)}
-                                        />
+                                        <div className="md:col-span-2">
+                                            <Field section="experience" isEditing={isEditing} label="Total Work Experience" field={`total_${idx}`}
+                                                value={exp.totalExperience} valueOverride={formData.experience?.[idx]?.totalExperience ?? exp.totalExperience}
+                                                onChangeOverride={(e) => handleArrayChange('experience', idx, 'totalExperience', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-4">
+                                            <Field section="experience" isEditing={isEditing} label="Reason for Leaving" field={`leaving_${idx}`}
+                                                value={exp.reasonForLeaving} valueOverride={formData.experience?.[idx]?.reasonForLeaving ?? exp.reasonForLeaving}
+                                                onChangeOverride={(e) => handleArrayChange('experience', idx, 'reasonForLeaving', e.target.value)}
+                                            />
+                                        </div>
                                     </div>
                                     {isEditing && (
                                         <button onClick={() => removeArrayItem('experience', idx)} className="self-center p-2 text-red-500"><Trash2 size={18} /></button>
@@ -3813,6 +4130,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <p className="text-sm text-slate-600 max-w-2xl mb-6">
                                 I hereby declare that all the information provided above is true and accurate to the best of my knowledge.
                                 I understand that any false information may lead to disciplinary action or termination of employment.
+                                In case of any future changes to the information provided, I will update the Company accordingly. The Company will not be responsible for any delay in providing such updates.
                             </p>
                             {isEditing ? (
                                 <div className="space-y-4 flex flex-col items-center">
@@ -3839,7 +4157,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     </div>
                                     {profile.hris?.isDeclared && (hrisStatus === 'Draft' || hrisStatus === 'Rejected') && (
                                         <Button onClick={handleHRISSaveClick} className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center">
-                                            <Shield size={18} className="mr-2" /> Submit HRIS for Approval
+                                            <Shield size={18} className="mr-2" /> Submit EIS for Approval
                                         </Button>
                                     )}
                                 </div>
@@ -4049,8 +4367,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                         <div>
-                            <h3 className="text-lg font-bold text-slate-800">HRIS Requests Management</h3>
-                            <p className="text-sm text-slate-500">View and manage HRIS submissions history</p>
+                            <h3 className="text-lg font-bold text-slate-800">EIS Requests Management</h3>
+                            <p className="text-sm text-slate-500">View and manage EIS submissions history</p>
                         </div>
                         <div className="relative">
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -4086,7 +4404,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 ) : filtered.length === 0 ? (
                                     <tr>
                                         <td colSpan="5" className="px-4 py-10 text-center text-slate-500 italic">
-                                            No HRIS requests found
+                                            No EIS requests found
                                         </td>
                                     </tr>
                                 ) : (
@@ -4127,13 +4445,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                     )}
                                                     <button
                                                         onClick={() => {
-                                                            navigate(`/dossier/${req._id}`);
-                                                            setActiveTab('hris');
+                                                            navigate(`/dossier/${req._id}?tab=hris`);
                                                         }}
                                                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                                         title="View Form"
                                                     >
-                                                        <FileText size={18} />
+                                                        <FileText size={18} className="pointer-events-none" />
                                                     </button>
                                                     <button
                                                         onClick={() => handleExcelExport(req)}
@@ -4257,7 +4574,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     <div>
                                         <h4 className="font-bold text-sm">Proposed Changes Pending Review</h4>
                                         <p className="text-xs mt-1 leading-relaxed">
-                                            This employee has submitted profile updates. You are currently viewing their proposed changes. You can approve or reject these changes under the <button onClick={() => setActiveTab('hris')} className="font-bold underline hover:text-blue-600 transition-colors">HRIS</button> tab.
+                                            This employee has submitted profile updates. You are currently viewing their proposed changes. You can approve or reject these changes under the <button onClick={() => setActiveTab('hris')} className="font-bold underline hover:text-blue-600 transition-colors">EIS</button> tab.
                                         </p>
                                     </div>
                                 </div>
@@ -4308,7 +4625,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     }}
                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
                                 >
-                                    <span>Go to HRIS Form</span>
+                                    <span>Go to EIS Form</span>
                                     <ArrowLeft size={16} className="rotate-180" />
                                 </Button>
                                 <Button
@@ -4336,7 +4653,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <div className="flex items-center justify-center h-12 w-12 rounded-full bg-blue-50 text-blue-600 mx-auto mb-4 border border-blue-100 shadow-sm">
                                 <Shield size={24} />
                             </div>
-                            <h3 className="text-lg font-extrabold text-slate-800 text-center tracking-tight">Save HRIS Information</h3>
+                            <h3 className="text-lg font-extrabold text-slate-800 text-center tracking-tight">Save EIS Information</h3>
                             <p className="mt-2 text-sm text-slate-500 text-center leading-relaxed">
                                 Please select whether you want to save these updates as a draft or submit them to HR for approval.
                             </p>
@@ -4386,6 +4703,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     <p className="font-bold uppercase tracking-wider text-[10px]">Declaration Disclaimer</p>
                                     <p className="mt-1 leading-relaxed font-medium">
                                         By selecting <strong>Submit for Approval</strong>, I hereby declare that all the information provided above is true, accurate, and complete to the best of my knowledge.
+                                        In case of any future changes to the information provided, I will update the Company accordingly. The Company will not be responsible for any delay in providing such updates.
                                     </p>
                                 </div>
                             </div>
