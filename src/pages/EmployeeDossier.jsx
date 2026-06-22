@@ -462,6 +462,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const [showHrisRedirectModal, setShowHrisRedirectModal] = useState(false);
     const [showHrisConfirmModal, setShowHrisConfirmModal] = useState(false);
     const [submittingDirectly, setSubmittingDirectly] = useState(false);
+    const [validationErrors, setValidationErrors] = useState({});
+
+    useEffect(() => {
+        setValidationErrors({});
+    }, [editMode]);
 
     // HRIS Requests State
     const [hrisRequests, setHrisRequests] = useState([]);
@@ -945,6 +950,17 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
             return newState;
         });
+
+        // Clear validation error for this field
+        const errorKey = `${section}.${field}`;
+        setValidationErrors(prev => {
+            if (prev[errorKey]) {
+                const next = { ...prev };
+                delete next[errorKey];
+                return next;
+            }
+            return prev;
+        });
     };
 
     const handleEmergencyChange = (field, value) => {
@@ -959,6 +975,17 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             },
             hris: { ...prev.hris, isDeclared: false }
         }));
+
+        // Clear validation error
+        const errorKey = `contact.emergencyContact.${field}`;
+        setValidationErrors(prev => {
+            if (prev[errorKey]) {
+                const next = { ...prev };
+                delete next[errorKey];
+                return next;
+            }
+            return prev;
+        });
     };
 
     const handleAddressChange = (type, field, value) => {
@@ -982,6 +1009,17 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 hris: { ...prev.hris, isDeclared: false }
             };
         });
+
+        // Clear validation error
+        const errorKey = `contact.addresses.${type}.${field}`;
+        setValidationErrors(prev => {
+            if (prev[errorKey]) {
+                const next = { ...prev };
+                delete next[errorKey];
+                return next;
+            }
+            return prev;
+        });
     };
 
     const validateHRISForm = () => {
@@ -990,112 +1028,220 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         const uan = formData.compensation?.uanNumber;
         const f = formData.family || {};
         const iden = formData.identity || {};
+        const contact = formData.contact || {};
+        const ec = contact.emergencyContact || {};
+        const addresses = contact.addresses || [];
+        const currentAddr = addresses.find(a => a.type === 'Current') || {};
+        const permanentAddr = addresses.find(a => a.type === 'Permanent') || {};
 
-        if (!p.firstName || !p.lastName || !p.fullName) {
-            toast.error('All fields are required');
-            return false;
-        }
+        const errors = {};
+        let isValid = true;
 
-        if (p.maritalStatus === 'Married' && (!f.spouseName || !f.spouseName.trim())) {
-            toast.error('Spouse Name is required when marital status is Married');
-            return false;
+        // 1. Basic Details & Identity
+        if (!contact.personalEmail || !contact.personalEmail.trim()) {
+            errors['contact.personalEmail'] = 'Required';
+            isValid = false;
+        } else {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(contact.personalEmail.trim())) {
+                errors['contact.personalEmail'] = 'Please enter a valid email address';
+                isValid = false;
+            }
         }
 
         if (!iden.panNumber || !iden.panNumber.trim()) {
-            toast.error('PAN Card Number is required');
-            return false;
-        }
-        if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(iden.panNumber.trim().toUpperCase())) {
-            toast.error('PAN Card Number must be a valid 10-character alphanumeric code');
-            return false;
+            errors['identity.panNumber'] = 'Required';
+            isValid = false;
+        } else if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(iden.panNumber.trim().toUpperCase())) {
+            errors['identity.panNumber'] = 'PAN Card Number must be a valid 10-character alphanumeric code';
+            isValid = false;
         }
 
         if (!iden.aadhaarNumber || !iden.aadhaarNumber.trim()) {
-            toast.error('Aadhaar Card Number is required');
-            return false;
-        }
-        if (!/^\d{12}$/.test(iden.aadhaarNumber.trim())) {
-            toast.error('Aadhaar Card Number must be a 12-digit number');
-            return false;
-        }
-
-        if (!b.accountNumber || !b.ifscCode || !b.bankName || !b.accountHolderName || !b.branchAddress) {
-            toast.error('All fields are required');
-            return false;
+            errors['identity.aadhaarNumber'] = 'Required';
+            isValid = false;
+        } else if (!/^\d{12}$/.test(iden.aadhaarNumber.trim())) {
+            errors['identity.aadhaarNumber'] = 'Aadhaar Card Number must be a 12-digit number';
+            isValid = false;
         }
 
-        const isUanApplicable = formData.compensation?.isUanApplicable;
-        if (isUanApplicable === true) {
+        if (formData.compensation?.isUanApplicable === true) {
             if (!uan || !uan.trim()) {
-                toast.error('UAN (Universal Account Number) is required');
-                return false;
+                errors['compensation.uanNumber'] = 'Required';
+                isValid = false;
+            } else if (!/^\d{12}$/.test(uan)) {
+                errors['compensation.uanNumber'] = 'UAN must be a 12-digit number';
+                isValid = false;
             }
-            if (!/^\d{12}$/.test(uan)) {
-                toast.error('UAN must be a 12-digit number');
-                return false;
-            }
         }
 
-        const contact = formData.contact || {};
-        const ec = contact.emergencyContact || {};
-
-        if (!contact.mobileNumber || !contact.mobileNumber.trim()) {
-            toast.error('Personal Mobile is required');
-            return false;
+        // 2. Name Details
+        if (!p.fullName || !p.fullName.trim()) {
+            errors['personal.fullName'] = 'Required';
+            isValid = false;
         }
-        if (!/^\d{10}$/.test(contact.mobileNumber.trim())) {
-            toast.error('Personal Mobile must be a valid 10-digit number');
-            return false;
+        if (!p.firstName || !p.firstName.trim()) {
+            errors['personal.firstName'] = 'Required';
+            isValid = false;
         }
-
-        if (!contact.alternateNumber || !contact.alternateNumber.trim()) {
-            toast.error('Alternate Mobile Number is required');
-            return false;
-        }
-        if (!/^\d{10}$/.test(contact.alternateNumber.trim())) {
-            toast.error('Alternate Mobile Number must be a valid 10-digit number');
-            return false;
+        if (!p.lastName || !p.lastName.trim()) {
+            errors['personal.lastName'] = 'Required';
+            isValid = false;
         }
 
+        // 3. Personal Information
+        if (!p.gender || !p.gender.trim()) {
+            errors['personal.gender'] = 'Required';
+            isValid = false;
+        }
+        if (!p.dob || !p.dob.trim()) {
+            errors['personal.dob'] = 'Required';
+            isValid = false;
+        }
+        if (!p.maritalStatus || !p.maritalStatus.trim()) {
+            errors['personal.maritalStatus'] = 'Required';
+            isValid = false;
+        }
         if (!p.nationality || !p.nationality.trim()) {
-            toast.error('Nationality is required');
-            return false;
+            errors['personal.nationality'] = 'Required';
+            isValid = false;
         }
-
         if (!p.bloodGroup || !p.bloodGroup.trim()) {
-            toast.error('Blood Group is required');
-            return false;
+            errors['personal.bloodGroup'] = 'Required';
+            isValid = false;
+        }
+        if (p.disabilityStatus === undefined || p.disabilityStatus === null || p.disabilityStatus === '') {
+            errors['personal.disabilityStatus'] = 'Required';
+            isValid = false;
+        } else if (p.disabilityStatus === true) {
+            if (!p.disabilityDetails || !p.disabilityDetails.trim()) {
+                errors['personal.disabilityDetails'] = 'Required';
+                isValid = false;
+            }
         }
 
-        if (p.disabilityStatus === undefined || p.disabilityStatus === null) {
-            toast.error('Disability Status is required');
-            return false;
+        // 4. Bank details
+        if (!b.accountNumber || !b.accountNumber.trim()) {
+            errors['compensation.bankDetails.accountNumber'] = 'Required';
+            isValid = false;
+        }
+        if (!b.ifscCode || !b.ifscCode.trim()) {
+            errors['compensation.bankDetails.ifscCode'] = 'Required';
+            isValid = false;
+        }
+        if (!b.bankName || !b.bankName.trim()) {
+            errors['compensation.bankDetails.bankName'] = 'Required';
+            isValid = false;
+        }
+        if (!b.accountHolderName || !b.accountHolderName.trim()) {
+            errors['compensation.bankDetails.accountHolderName'] = 'Required';
+            isValid = false;
+        }
+        if (!b.branchAddress || !b.branchAddress.trim()) {
+            errors['compensation.bankDetails.branchAddress'] = 'Required';
+            isValid = false;
         }
 
-        if (p.disabilityStatus === true && (!p.disabilityDetails || !p.disabilityDetails.trim())) {
-            toast.error('Nature of disability is required if Disability Status is Yes');
-            return false;
+        // 5. Address Details
+        const addressFields = ['line1', 'addressLine2', 'city', 'state', 'zipCode', 'country'];
+        addressFields.forEach(fld => {
+            const currentVal = currentAddr[fld] || currentAddr[fld === 'line1' ? 'street' : ''];
+            if (!currentVal || !String(currentVal).trim()) {
+                errors[`contact.addresses.Current.${fld}`] = 'Required';
+                isValid = false;
+            }
+            const permVal = permanentAddr[fld] || permanentAddr[fld === 'line1' ? 'street' : ''];
+            if (!permVal || !String(permVal).trim()) {
+                errors[`contact.addresses.Permanent.${fld}`] = 'Required';
+                isValid = false;
+            }
+        });
+        if (!currentAddr.phone || !currentAddr.phone.trim()) {
+            errors['contact.addresses.Current.phone'] = 'Required';
+            isValid = false;
+        } else if (!/^\d{10}$/.test(currentAddr.phone.trim())) {
+            errors['contact.addresses.Current.phone'] = 'Current Address Phone must be a 10-digit number';
+            isValid = false;
         }
 
+        // 6. Contact Details
+        if (!contact.mobileNumber || !contact.mobileNumber.trim()) {
+            errors['contact.mobileNumber'] = 'Required';
+            isValid = false;
+        } else if (!/^\d{10}$/.test(contact.mobileNumber.trim())) {
+            errors['contact.mobileNumber'] = 'Personal Mobile must be a valid 10-digit number';
+            isValid = false;
+        }
+        if (!contact.alternateNumber || !contact.alternateNumber.trim()) {
+            errors['contact.alternateNumber'] = 'Required';
+            isValid = false;
+        } else if (!/^\d{10}$/.test(contact.alternateNumber.trim())) {
+            errors['contact.alternateNumber'] = 'Alternate Mobile Number must be a valid 10-digit number';
+            isValid = false;
+        }
+
+        // Emergency contact
         if (!ec.name || !ec.name.trim()) {
-            toast.error('Emergency Contact Name is required');
-            return false;
+            errors['contact.emergencyContact.name'] = 'Required';
+            isValid = false;
         }
-
         if (!ec.relation || !ec.relation.trim()) {
-            toast.error('Emergency Contact Relation is required');
-            return false;
+            errors['contact.emergencyContact.relation'] = 'Required';
+            isValid = false;
         }
-
+        if (!ec.phone || !ec.phone.trim()) {
+            errors['contact.emergencyContact.phone'] = 'Required';
+            isValid = false;
+        } else if (!/^\d{10}$/.test(ec.phone.trim())) {
+            errors['contact.emergencyContact.phone'] = 'Must be a 10-digit number';
+            isValid = false;
+        }
+        if (!ec.alternatePhone || !ec.alternatePhone.trim()) {
+            errors['contact.emergencyContact.alternatePhone'] = 'Required';
+            isValid = false;
+        } else if (!/^\d{10}$/.test(ec.alternatePhone.trim())) {
+            errors['contact.emergencyContact.alternatePhone'] = 'Must be a 10-digit number';
+            isValid = false;
+        }
         if (ec.email && ec.email.trim()) {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(ec.email.trim())) {
-                toast.error('Please enter a valid emergency contact email');
-                return false;
+                errors['contact.emergencyContact.email'] = 'Please enter a valid emergency contact email';
+                isValid = false;
             }
         }
 
-        return true;
+        // 7. Family Details
+        if (!f.fatherName || !f.fatherName.trim()) {
+            errors['family.fatherName'] = 'Required';
+            isValid = false;
+        }
+        if (!f.motherName || !f.motherName.trim()) {
+            errors['family.motherName'] = 'Required';
+            isValid = false;
+        }
+        if (p.maritalStatus === 'Married') {
+            if (!f.spouseName || !f.spouseName.trim()) {
+                errors['family.spouseName'] = 'Required';
+                isValid = false;
+            }
+        }
+
+        setValidationErrors(errors);
+
+        if (!isValid) {
+            const hasEmptyMandatory = Object.values(errors).some(v => v === 'Required');
+            if (hasEmptyMandatory) {
+                toast.error('Mandatory fields are missing');
+            } else {
+                const firstError = Object.values(errors)[0];
+                if (firstError) {
+                    toast.error(firstError);
+                }
+            }
+        }
+
+        return isValid;
     };
 
     const handleHRISSave = async (forceIsDeclared) => {
@@ -3471,16 +3617,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
                             <Field section="user" isEditing={false} label="Employee Code" field="employeeCode" value={profile.user?.employeeCode} />
                             <PendingHighlight show={showPending} label="Personal Email" liveValue={profile.contact?.personalEmail} pendingValue={pend.contact?.personalEmail}>
-                                <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required />
+                                <Field section="contact" isEditing={isEditing} label="Personal Email" field="personalEmail" value={profile.contact?.personalEmail} formData={formData} onChange={handleInputChange} required error={validationErrors['contact.personalEmail']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Work Email" liveValue={profile.contact?.workEmail} pendingValue={pend.contact?.workEmail}>
                                 <Field section="contact" isEditing={isEditing} label="Work Email" field="workEmail" value={profile.contact?.workEmail || profile.user?.email} formData={formData} onChange={handleInputChange} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="PAN Card Number" liveValue={profile.identity?.panNumber} pendingValue={pend.identity?.panNumber}>
-                                <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required />
+                                <Field section="identity" isEditing={isEditing} label="PAN Card Number" field="panNumber" value={profile.identity?.panNumber} formData={formData} onChange={handleInputChange} required error={validationErrors['identity.panNumber']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Aadhaar Card Number" liveValue={profile.identity?.aadhaarNumber} pendingValue={pend.identity?.aadhaarNumber}>
-                                <Field section="identity" isEditing={isEditing} label="Aadhaar Card Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} required />
+                                <Field section="identity" isEditing={isEditing} label="Aadhaar Card Number" field="aadhaarNumber" value={profile.identity?.aadhaarNumber} formData={formData} onChange={handleInputChange} required error={validationErrors['identity.aadhaarNumber']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Passport Number" liveValue={profile.identity?.passportNumber} pendingValue={pend.identity?.passportNumber}>
                                 <Field section="identity" isEditing={isEditing} label="Passport Number" field="passportNumber" value={profile.identity?.passportNumber} formData={formData} onChange={handleInputChange} />
@@ -3511,8 +3657,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             },
                                             hris: { ...prev.hris, isDeclared: false }
                                         }));
+                                        setValidationErrors(prev => {
+                                            const next = { ...prev };
+                                            delete next['compensation.isUanApplicable'];
+                                            delete next['compensation.uanNumber'];
+                                            return next;
+                                        });
                                     }}
                                     required
+                                    error={validationErrors['compensation.isUanApplicable']}
                                 />
                             </PendingHighlight>
 
@@ -3522,9 +3675,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         section="compensation" isEditing={isEditing} label="UAN (Universal Account Number)" field="uanNumber"
                                         value={profile.compensation?.uanNumber}
                                         valueOverride={formData.compensation?.uanNumber}
-                                        onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, uanNumber: e.target.value.replace(/\D/g, '') } }))}
+                                        onChangeOverride={(e) => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, uanNumber: val } }));
+                                            setValidationErrors(prev => {
+                                                const next = { ...prev };
+                                                delete next['compensation.uanNumber'];
+                                                return next;
+                                            });
+                                        }}
                                         maxLength={12}
                                         required
+                                        error={validationErrors['compensation.uanNumber']}
                                     />
                                 </PendingHighlight>
                             )}
@@ -3539,16 +3701,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <PendingHighlight show={showPending} label="Full Name" liveValue={profile.personal?.fullName} pendingValue={pend.personal?.fullName}>
-                                <Field section="personal" isEditing={isEditing} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Full Name" field="fullName" value={profile.personal?.fullName} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.fullName']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="First Name" liveValue={profile.personal?.firstName} pendingValue={pend.personal?.firstName}>
-                                <Field section="personal" isEditing={isEditing} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="First Name" field="firstName" value={profile.personal?.firstName} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.firstName']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Middle Name" liveValue={profile.personal?.middleName} pendingValue={pend.personal?.middleName}>
                                 <Field section="personal" isEditing={isEditing} label="Middle Name" field="middleName" value={profile.personal?.middleName} formData={formData} onChange={handleInputChange} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Last Name" liveValue={profile.personal?.lastName} pendingValue={pend.personal?.lastName}>
-                                <Field section="personal" isEditing={isEditing} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Last Name" field="lastName" value={profile.personal?.lastName} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.lastName']} />
                             </PendingHighlight>
                         </div>
                     </div>
@@ -3561,14 +3723,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <PendingHighlight show={showPending} label="Gender" liveValue={profile.personal?.gender} pendingValue={pend.personal?.gender}>
-                                <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.gender']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Date of Birth" liveValue={profile.personal?.dob} pendingValue={pend.personal?.dob} type="date">
-                                <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" type="date" value={profile.personal?.dob} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.dob']} />
                             </PendingHighlight>
                             <Field section="employment" isEditing={false} label="Date of Joining" field="joiningDate" type="date" value={profile.employment?.joiningDate} />
                             <PendingHighlight show={showPending} label="Marital Status" liveValue={profile.personal?.maritalStatus} pendingValue={pend.personal?.maritalStatus}>
-                                <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Marital Status" field="maritalStatus" value={profile.personal?.maritalStatus} options={['Single', 'Married', 'Divorced', 'Widowed']} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.maritalStatus']} />
                             </PendingHighlight>
                             {(formData.personal?.maritalStatus === 'Married' || (!isEditing && profile.personal?.maritalStatus === 'Married')) && (
                                 <PendingHighlight show={showPending} label="Date of Marriage" liveValue={profile.personal?.dateOfMarriage} pendingValue={pend.personal?.dateOfMarriage} type="date">
@@ -3576,17 +3738,34 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 </PendingHighlight>
                             )}
                             <PendingHighlight show={showPending} label="Nationality" liveValue={profile.personal?.nationality} pendingValue={pend.personal?.nationality}>
-                                <Field section="personal" isEditing={isEditing} label="Nationality" field="nationality" value={profile.personal?.nationality} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Nationality" field="nationality" value={profile.personal?.nationality} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.nationality']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Blood Group" liveValue={profile.personal?.bloodGroup} pendingValue={pend.personal?.bloodGroup}>
-                                <Field section="personal" isEditing={isEditing} label="Blood Group" field="bloodGroup" value={profile.personal?.bloodGroup} formData={formData} onChange={handleInputChange} required />
+                                <Field section="personal" isEditing={isEditing} label="Blood Group" field="bloodGroup" value={profile.personal?.bloodGroup} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.bloodGroup']} />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Disability Status" liveValue={profile.personal?.disabilityStatus ? 'Yes' : 'No'} pendingValue={pend.personal?.disabilityStatus === undefined ? undefined : (pend.personal?.disabilityStatus ? 'Yes' : 'No')}>
-                                <Field section="personal" isEditing={isEditing} label="Disability Status" field="disabilityStatus" value={profile.personal?.disabilityStatus ? 'Yes' : 'No'} valueOverride={formData.personal?.disabilityStatus ? 'Yes' : 'No'} options={['No', 'Yes']} formData={formData} onChangeOverride={(e) => handleInputChange('personal', 'disabilityStatus', e.target.value === 'Yes')} required />
+                                <Field
+                                    section="personal" isEditing={isEditing} label="Disability Status" field="disabilityStatus"
+                                    value={profile.personal?.disabilityStatus ? 'Yes' : 'No'}
+                                    valueOverride={formData.personal?.disabilityStatus ? 'Yes' : 'No'}
+                                    options={['No', 'Yes']} formData={formData}
+                                    onChangeOverride={(e) => {
+                                        const value = e.target.value === 'Yes';
+                                        handleInputChange('personal', 'disabilityStatus', value);
+                                        setValidationErrors(prev => {
+                                            const next = { ...prev };
+                                            delete next['personal.disabilityStatus'];
+                                            if (!value) delete next['personal.disabilityDetails'];
+                                            return next;
+                                        });
+                                    }}
+                                    required
+                                    error={validationErrors['personal.disabilityStatus']}
+                                />
                             </PendingHighlight>
                             {(formData.personal?.disabilityStatus === true || (!isEditing && profile.personal?.disabilityStatus === true)) && (
                                 <PendingHighlight show={showPending} label="Nature of disability" liveValue={profile.personal?.disabilityDetails} pendingValue={pend.personal?.disabilityDetails}>
-                                    <Field section="personal" isEditing={isEditing} label="Nature of disability" field="disabilityDetails" value={profile.personal?.disabilityDetails} formData={formData} onChange={handleInputChange} required />
+                                    <Field section="personal" isEditing={isEditing} label="Nature of disability" field="disabilityDetails" value={profile.personal?.disabilityDetails} formData={formData} onChange={handleInputChange} required error={validationErrors['personal.disabilityDetails']} />
                                 </PendingHighlight>
                             )}
                         </div>
@@ -3604,8 +3783,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     section="compensation" isEditing={isEditing} label="Account Number" field="bankAccount"
                                     value={profile.compensation?.bankDetails?.accountNumber}
                                     valueOverride={formData.compensation?.bankDetails?.accountNumber}
-                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountNumber: e.target.value } } }))}
+                                    onChangeOverride={(e) => {
+                                        setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountNumber: e.target.value } } }));
+                                        setValidationErrors(prev => {
+                                            const next = { ...prev };
+                                            delete next['compensation.bankDetails.accountNumber'];
+                                            return next;
+                                        });
+                                    }}
                                     required
+                                    error={validationErrors['compensation.bankDetails.accountNumber']}
                                 />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="IFSC Code" liveValue={profile.compensation?.bankDetails?.ifscCode} pendingValue={pend.compensation?.bankDetails?.ifscCode}>
@@ -3613,8 +3800,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     section="compensation" isEditing={isEditing} label="IFSC Code" field="ifsc"
                                     value={profile.compensation?.bankDetails?.ifscCode}
                                     valueOverride={formData.compensation?.bankDetails?.ifscCode}
-                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, ifscCode: e.target.value } } }))}
+                                    onChangeOverride={(e) => {
+                                        setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, ifscCode: e.target.value } } }));
+                                        setValidationErrors(prev => {
+                                            const next = { ...prev };
+                                            delete next['compensation.bankDetails.ifscCode'];
+                                            return next;
+                                        });
+                                    }}
                                     required
+                                    error={validationErrors['compensation.bankDetails.ifscCode']}
                                 />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Bank Name" liveValue={profile.compensation?.bankDetails?.bankName} pendingValue={pend.compensation?.bankDetails?.bankName}>
@@ -3622,8 +3817,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     section="compensation" isEditing={isEditing} label="Bank Name" field="bankName"
                                     value={profile.compensation?.bankDetails?.bankName}
                                     valueOverride={formData.compensation?.bankDetails?.bankName}
-                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, bankName: e.target.value } } }))}
+                                    onChangeOverride={(e) => {
+                                        setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, bankName: e.target.value } } }));
+                                        setValidationErrors(prev => {
+                                            const next = { ...prev };
+                                            delete next['compensation.bankDetails.bankName'];
+                                            return next;
+                                        });
+                                    }}
                                     required
+                                    error={validationErrors['compensation.bankDetails.bankName']}
                                 />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Account Holder Name" liveValue={profile.compensation?.bankDetails?.accountHolderName} pendingValue={pend.compensation?.bankDetails?.accountHolderName}>
@@ -3631,8 +3834,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     section="compensation" isEditing={isEditing} label="Account Holder Name" field="holder"
                                     value={profile.compensation?.bankDetails?.accountHolderName}
                                     valueOverride={formData.compensation?.bankDetails?.accountHolderName}
-                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountHolderName: e.target.value } } }))}
+                                    onChangeOverride={(e) => {
+                                        setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, accountHolderName: e.target.value } } }));
+                                        setValidationErrors(prev => {
+                                            const next = { ...prev };
+                                            delete next['compensation.bankDetails.accountHolderName'];
+                                            return next;
+                                        });
+                                    }}
                                     required
+                                    error={validationErrors['compensation.bankDetails.accountHolderName']}
                                 />
                             </PendingHighlight>
                             <PendingHighlight show={showPending} label="Branch Address" liveValue={profile.compensation?.bankDetails?.branchAddress} pendingValue={pend.compensation?.bankDetails?.branchAddress}>
@@ -3640,8 +3851,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     section="compensation" isEditing={isEditing} label="Branch Address" field="branchAddress"
                                     value={profile.compensation?.bankDetails?.branchAddress}
                                     valueOverride={formData.compensation?.bankDetails?.branchAddress}
-                                    onChangeOverride={(e) => setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, branchAddress: e.target.value } } }))}
+                                    onChangeOverride={(e) => {
+                                        setFormData(prev => ({ ...prev, compensation: { ...prev.compensation, bankDetails: { ...prev.compensation?.bankDetails, branchAddress: e.target.value } } }));
+                                        setValidationErrors(prev => {
+                                            const next = { ...prev };
+                                            delete next['compensation.bankDetails.branchAddress'];
+                                            return next;
+                                        });
+                                    }}
                                     required
+                                    error={validationErrors['compensation.bankDetails.branchAddress']}
                                 />
                             </PendingHighlight>
                         </div>
@@ -3691,6 +3910,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                                         hris: { ...prev.hris, isDeclared: false }
                                                                     };
                                                                 });
+                                                                setValidationErrors(prev => {
+                                                                    const next = { ...prev };
+                                                                    delete next['contact.addresses.Permanent.line1'];
+                                                                    delete next['contact.addresses.Permanent.addressLine2'];
+                                                                    delete next['contact.addresses.Permanent.city'];
+                                                                    delete next['contact.addresses.Permanent.state'];
+                                                                    delete next['contact.addresses.Permanent.zipCode'];
+                                                                    delete next['contact.addresses.Permanent.country'];
+                                                                    return next;
+                                                                });
                                                             }
                                                         }}
                                                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -3705,43 +3934,49 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                 valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.line1 ?? formData.contact?.addresses?.find(a => a.type === type)?.street}
                                                 onChangeOverride={(e) => handleAddressChange(type, 'line1', e.target.value)}
                                                 required={isCurrentOrPerm}
+                                                error={validationErrors[`contact.addresses.${type}.line1`]}
                                             />
                                             <Field section="contact" isEditing={isEditing} label="Line 2" field={`${type}_line2`}
                                                 value={profile.contact?.addresses?.find(a => a.type === type)?.addressLine2}
                                                 valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.addressLine2}
                                                 onChangeOverride={(e) => handleAddressChange(type, 'addressLine2', e.target.value)}
                                                 required={isCurrentOrPerm}
+                                                error={validationErrors[`contact.addresses.${type}.addressLine2`]}
                                             />
                                             <Field section="contact" isEditing={isEditing} label="City" field={`${type}_city`}
                                                 value={profile.contact?.addresses?.find(a => a.type === type)?.city}
                                                 valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.city}
                                                 onChangeOverride={(e) => handleAddressChange(type, 'city', e.target.value)}
                                                 required={isCurrentOrPerm}
+                                                error={validationErrors[`contact.addresses.${type}.city`]}
                                             />
                                             <Field section="contact" isEditing={isEditing} label="State" field={`${type}_state`}
                                                 value={profile.contact?.addresses?.find(a => a.type === type)?.state}
                                                 valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.state}
                                                 onChangeOverride={(e) => handleAddressChange(type, 'state', e.target.value)}
                                                 required={isCurrentOrPerm}
+                                                error={validationErrors[`contact.addresses.${type}.state`]}
                                             />
                                             <Field section="contact" isEditing={isEditing} label="Zip Code" field={`${type}_zip`}
                                                 value={profile.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                                 valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
                                                 onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
                                                 required={isCurrentOrPerm}
+                                                error={validationErrors[`contact.addresses.${type}.zipCode`]}
                                             />
                                             <Field section="contact" isEditing={isEditing} label="Country" field={`${type}_country`}
                                                 value={profile.contact?.addresses?.find(a => a.type === type)?.country}
                                                 valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.country}
                                                 onChangeOverride={(e) => handleAddressChange(type, 'country', e.target.value)}
                                                 required={isCurrentOrPerm}
+                                                error={validationErrors[`contact.addresses.${type}.country`]}
                                             />
                                             {type === 'Current' && (
                                                 <Field section="contact" isEditing={isEditing} label="Phone" field="Current_phone"
                                                     value={profile.contact?.addresses?.find(a => a.type === 'Current')?.phone}
                                                     valueOverride={formData.contact?.addresses?.find(a => a.type === 'Current')?.phone}
                                                     maxLength={10}
-                                                    error={formData.contact?.addresses?.find(a => a.type === 'Current')?.phone?.length > 0 && formData.contact?.addresses?.find(a => a.type === 'Current')?.phone?.length < 10 ? 'Must be 10 digits' : null}
+                                                    error={validationErrors['contact.addresses.Current.phone'] || (formData.contact?.addresses?.find(a => a.type === 'Current')?.phone?.length > 0 && formData.contact?.addresses?.find(a => a.type === 'Current')?.phone?.length < 10 ? 'Must be 10 digits' : null)}
                                                     onChangeOverride={(e) => {
                                                         const val = e.target.value.replace(/\D/g, '');
                                                         handleAddressChange('Current', 'phone', val);
@@ -3768,7 +4003,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber"
                                     value={profile.contact?.mobileNumber} formData={formData}
                                     maxLength={10}
-                                    error={formData.contact?.mobileNumber?.length > 0 && formData.contact?.mobileNumber?.length < 10 ? 'Must be 10 digits' : null}
+                                    error={validationErrors['contact.mobileNumber'] || (formData.contact?.mobileNumber?.length > 0 && formData.contact?.mobileNumber?.length < 10 ? 'Must be 10 digits' : null)}
                                     onChangeOverride={(e) => {
                                         const val = e.target.value.replace(/\D/g, '');
                                         handleInputChange('contact', 'mobileNumber', val);
@@ -3781,7 +4016,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     section="contact" isEditing={isEditing} label="Alternate Mobile Number" field="alternateNumber"
                                     value={profile.contact?.alternateNumber} formData={formData}
                                     maxLength={10}
-                                    error={formData.contact?.alternateNumber?.length > 0 && formData.contact?.alternateNumber?.length < 10 ? 'Must be 10 digits' : null}
+                                    error={validationErrors['contact.alternateNumber'] || (formData.contact?.alternateNumber?.length > 0 && formData.contact?.alternateNumber?.length < 10 ? 'Must be 10 digits' : null)}
                                     onChangeOverride={(e) => {
                                         const val = e.target.value.replace(/\D/g, '');
                                         handleInputChange('contact', 'alternateNumber', val);
@@ -3807,6 +4042,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         onChangeOverride={(e) => handleEmergencyChange('name', e.target.value)}
                                         formData={formData} onChange={handleInputChange}
                                         required
+                                        error={validationErrors['contact.emergencyContact.name']}
                                     />
                                 </PendingHighlight>
                                 <PendingHighlight show={showPending} label="Emergency Contact Relation" liveValue={profile.contact?.emergencyContact?.relation} pendingValue={pend.contact?.emergencyContact?.relation}>
@@ -3818,6 +4054,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         onChangeOverride={(e) => handleEmergencyChange('relation', e.target.value)}
                                         formData={formData} onChange={handleInputChange}
                                         required
+                                        error={validationErrors['contact.emergencyContact.relation']}
                                     />
                                 </PendingHighlight>
                                 <PendingHighlight show={showPending} label="Emergency Contact Phone" liveValue={profile.contact?.emergencyContact?.phone} pendingValue={pend.contact?.emergencyContact?.phone}>
@@ -3827,7 +4064,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         value={profile.contact?.emergencyContact?.phone}
                                         valueOverride={formData.contact?.emergencyContact?.phone}
                                         maxLength={10}
-                                        error={formData.contact?.emergencyContact?.phone?.length > 0 && formData.contact?.emergencyContact?.phone?.length < 10 ? 'Must be 10 digits' : null}
+                                        error={validationErrors['contact.emergencyContact.phone'] || (formData.contact?.emergencyContact?.phone?.length > 0 && formData.contact?.emergencyContact?.phone?.length < 10 ? 'Must be 10 digits' : null)}
                                         onChangeOverride={(e) => {
                                             const val = e.target.value.replace(/\D/g, '');
                                             handleEmergencyChange('phone', val);
@@ -3843,7 +4080,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         value={profile.contact?.emergencyContact?.alternatePhone}
                                         valueOverride={formData.contact?.emergencyContact?.alternatePhone}
                                         maxLength={10}
-                                        error={formData.contact?.emergencyContact?.alternatePhone?.length > 0 && formData.contact?.emergencyContact?.alternatePhone?.length < 10 ? 'Must be 10 digits' : null}
+                                        error={validationErrors['contact.emergencyContact.alternatePhone'] || (formData.contact?.emergencyContact?.alternatePhone?.length > 0 && formData.contact?.emergencyContact?.alternatePhone?.length < 10 ? 'Must be 10 digits' : null)}
                                         onChangeOverride={(e) => {
                                             const val = e.target.value.replace(/\D/g, '');
                                             handleEmergencyChange('alternatePhone', val);
@@ -3873,13 +4110,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <h3 className="font-bold text-slate-700">7. Medical Insurance / Family Information</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <Field section="family" isEditing={isEditing} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="family" isEditing={isEditing} label="Father's Name" field="fatherName" value={profile.family?.fatherName} formData={formData} onChange={handleInputChange} required error={validationErrors['family.fatherName']} />
                             <Field section="family" isEditing={isEditing} label="Father's Occupation" field="fatherOccupation" value={profile.family?.fatherOccupation} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} required />
+                            <Field section="family" isEditing={isEditing} label="Mother's Name" field="motherName" value={profile.family?.motherName} formData={formData} onChange={handleInputChange} required error={validationErrors['family.motherName']} />
                             <Field section="family" isEditing={isEditing} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
                             <Field section="family" isEditing={isEditing} label="Marital Status" field="parentsMaritalStatus" value={profile.family?.parentsMaritalStatus} options={['Married', 'Divorced', 'Widowed', 'Separated']} formData={formData} onChange={handleInputChange} />
                             <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
-                            <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} required={formData.personal?.maritalStatus === 'Married' || (!isEditing && profile.personal?.maritalStatus === 'Married')} />
+                            <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} required={formData.personal?.maritalStatus === 'Married' || (!isEditing && profile.personal?.maritalStatus === 'Married')} error={validationErrors['family.spouseName']} />
                             <Field section="family" isEditing={isEditing} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
 
                         </div>
