@@ -253,8 +253,8 @@ const EditDisclaimer = ({ isDirectWrite }) => {
     );
 };
 
-const SectionCard = ({ title, sectionName, icon: Icon, children, editMode, setEditMode, onSave, isLoading, canEdit = true }) => {
-    const isEditing = editMode === sectionName;
+const SectionCard = ({ title, sectionName, icon: Icon, children, editMode, setEditMode, onSave, isLoading, canEdit = true, showActions = true, isEditingOverride, customEditAction }) => {
+    const isEditing = isEditingOverride !== undefined ? isEditingOverride : editMode === sectionName;
     return (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
@@ -262,16 +262,18 @@ const SectionCard = ({ title, sectionName, icon: Icon, children, editMode, setEd
                     {Icon && <Icon size={20} className="text-slate-400" />}
                     <h3 className="text-lg font-bold text-slate-800">{title}</h3>
                 </div>
-                {canEdit && !isEditing ? (
-                    <button onClick={() => setEditMode(sectionName)} className="text-sm bg-slate-50 hover:bg-slate-100 text-slate-600 px-3 py-1.5 rounded-md font-medium transition flex items-center border border-slate-200">
-                        <Save size={14} className="mr-1.5" /> Edit
-                    </button>
-                ) : isEditing ? (
-                    <div className="flex space-x-2">
-                        <Button variants="ghost" onClick={() => setEditMode(false)} disabled={isLoading} className="text-slate-500 hover:text-slate-700 px-3 py-1.5">Cancel</Button>
-                        <Button onClick={() => onSave(sectionName)} isLoading={isLoading} className="px-3 py-1.5 shadow-sm">Save</Button>
-                    </div>
-                ) : null}
+                {showActions && (
+                    canEdit && !isEditing ? (
+                        <button onClick={customEditAction || (() => setEditMode(sectionName))} className="text-sm bg-slate-50 hover:bg-slate-100 text-slate-600 px-3 py-1.5 rounded-md font-medium transition flex items-center border border-slate-200">
+                            <Save size={14} className="mr-1.5" /> Edit
+                        </button>
+                    ) : isEditing ? (
+                        <div className="flex space-x-2">
+                            <Button variants="ghost" onClick={() => setEditMode(false)} disabled={isLoading} className="text-slate-500 hover:text-slate-700 px-3 py-1.5">Cancel</Button>
+                            <Button onClick={() => onSave(sectionName)} isLoading={isLoading} className="px-3 py-1.5 shadow-sm">Save</Button>
+                        </div>
+                    ) : null
+                )}
             </div>
             {children(isEditing)}
         </div>
@@ -968,8 +970,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         const p = formData.personal || {};
         const b = formData.compensation?.bankDetails || {};
         const uan = formData.compensation?.uanNumber;
+        const f = formData.family || {};
 
         if (!p.firstName || !p.lastName || !p.fullName) return toast.error('All fields are required');
+
+        if (p.maritalStatus === 'Married' && (!f.spouseName || !f.spouseName.trim())) {
+            return toast.error('Spouse Name is required when marital status is Married');
+        }
 
         if (!b.accountNumber || !b.ifscCode || !b.bankName || !b.accountHolderName || !b.branchAddress) {
             return toast.error('All fields are required');
@@ -1015,8 +1022,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         const p = formData.personal || {};
         const b = formData.compensation?.bankDetails || {};
         const uan = formData.compensation?.uanNumber;
+        const f = formData.family || {};
 
         if (!p.firstName || !p.lastName || !p.fullName) return toast.error('All fields are required');
+
+        if (p.maritalStatus === 'Married' && (!f.spouseName || !f.spouseName.trim())) {
+            return toast.error('Spouse Name is required when marital status is Married');
+        }
 
         if (!b.accountNumber || !b.ifscCode || !b.bankName || !b.accountHolderName || !b.branchAddress) {
             return toast.error('All fields are required');
@@ -1089,20 +1101,35 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
             // Check Emergency Contact
             const ec = data.emergencyContact || {};
-            if (isEmpty(ec.name) || isEmpty(ec.relation) || isEmpty(ec.phone)) return 'Name, relation, and phone for emergency contact are required';
+            if (isEmpty(ec.name) || isEmpty(ec.relation) || isEmpty(ec.phone) || isEmpty(ec.alternatePhone)) return 'Name, relation, phone, and alternate phone for emergency contact are required';
 
             // Validate Addresses
             const addresses = data.addresses || [];
-            const hasCurrent = addresses.some(a => a.type === 'Current' && !isEmpty(a.street) && !isEmpty(a.city) && !isEmpty(a.state) && !isEmpty(a.zipCode) && !isEmpty(a.country));
-            const hasPermanent = addresses.some(a => a.type === 'Permanent' && !isEmpty(a.street) && !isEmpty(a.city) && !isEmpty(a.state) && !isEmpty(a.zipCode) && !isEmpty(a.country));
+            const currentAddr = addresses.find(a => a.type === 'Current') || {};
+            const permanentAddr = addresses.find(a => a.type === 'Permanent') || {};
 
-            if (!hasCurrent || !hasPermanent) return 'All fields are required';
+            const requiredCurrent = ['line1', 'addressLine2', 'city', 'state', 'zipCode', 'country', 'phone'];
+            const requiredPermanent = ['line1', 'addressLine2', 'city', 'state', 'zipCode', 'country'];
+
+            const hasCurrent = requiredCurrent.every(f => !isEmpty(currentAddr[f]));
+            const hasPermanent = requiredPermanent.every(f => !isEmpty(permanentAddr[f]));
+
+            if (!hasCurrent || !hasPermanent) {
+                return 'All current and permanent address fields (including Line 2, and Phone for Current Address) are required';
+            }
+            if (currentAddr.phone && currentAddr.phone.length !== 10) {
+                return 'Current Address Phone must be a 10-digit number';
+            }
         }
         if (section === 'identity') {
             if (isEmpty(data.aadhaarNumber) || isEmpty(data.panNumber)) return 'All fields are required';
         }
         if (section === 'family') {
             if (isEmpty(data.fatherName) || isEmpty(data.motherName)) return 'All fields are required';
+            const currentMaritalStatus = formData.personal?.maritalStatus || profile?.personal?.maritalStatus;
+            if (currentMaritalStatus === 'Married' && isEmpty(data.spouseName)) {
+                return 'Spouse Name is required when marital status is Married';
+            }
         }
         if (section === 'experience') {
             return null; // Optional fields, no strict validation required
@@ -1131,6 +1158,52 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Failed to save changes');
+        } finally {
+            setSavingSection(null);
+        }
+    };
+
+    const handlePersonalSaveAll = async () => {
+        const personalError = validateSectionData('personal');
+        if (personalError) {
+            toast.error(`Basic Info: ${personalError}`);
+            return;
+        }
+        const contactError = validateSectionData('contact');
+        if (contactError) {
+            toast.error(`Contact Info: ${contactError}`);
+            return;
+        }
+        const identityError = validateSectionData('identity');
+        if (identityError) {
+            toast.error(`Identity Info: ${identityError}`);
+            return;
+        }
+        const familyError = validateSectionData('family');
+        if (familyError) {
+            toast.error(`Family Info: ${familyError}`);
+            return;
+        }
+
+        try {
+            setSavingSection('personal_all');
+            
+            await Promise.all([
+                api.patch(`/dossier/${userId}/personal`, formData.personal),
+                api.patch(`/dossier/${userId}/contact`, formData.contact),
+                api.patch(`/dossier/${userId}/identity`, formData.identity),
+                api.patch(`/dossier/${userId}/family`, formData.family)
+            ]);
+
+            toast.success('All personal details saved successfully');
+            setEditMode(false);
+            fetchDossier();
+            if (isSelf) {
+                setShowHrisRedirectModal(true);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to save all changes');
         } finally {
             setSavingSection(null);
         }
@@ -1560,6 +1633,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const renderPersonal = () => {
         const pend = pendingUpdates || {};
         const showPending = !!(canApprove && !isSelf && !editMode && pendingUpdates);
+        const isPersonalEditing = editMode === 'personal_all';
 
         const getAddress = (type) => formData.contact?.addresses?.find(a => a.type === type) || {};
         const getProfileAddress = (type) => profile.contact?.addresses?.find(a => a.type === type) || {};
@@ -1575,8 +1649,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     editMode={editMode}
                     setEditMode={setEditMode}
                     onSave={handleSave}
-                    isLoading={savingSection === 'personal'}
+                    isLoading={savingSection === 'personal_all'}
                     canEdit={canEdit}
+                    showActions={canEdit && !isPersonalEditing}
+                    isEditingOverride={isPersonalEditing}
+                    customEditAction={() => setEditMode('personal_all')}
                 >
                     {(isEditing) => (
                         <div className="space-y-4">
@@ -1639,8 +1716,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     editMode={editMode}
                     setEditMode={setEditMode}
                     onSave={handleSave}
-                    isLoading={savingSection === 'contact'}
+                    isLoading={savingSection === 'personal_all'}
                     canEdit={canEdit}
+                    showActions={false}
+                    isEditingOverride={isPersonalEditing}
                 >
                     {(isEditing) => (
                         <div className="space-y-6">
@@ -1683,7 +1762,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             {/* Emergency Contact Sub-section */}
                             <div className="pt-4 border-t border-slate-100">
                                 <h4 className="text-sm font-bold text-slate-700 mb-4">Emergency Contact</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
                                     <PendingHighlight show={showPending} label="Emergency Contact Name" liveValue={profile.contact?.emergencyContact?.name} pendingValue={pend.contact?.emergencyContact?.name}>
                                         <Field
                                             section="contact" isEditing={isEditing}
@@ -1722,6 +1801,22 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             required
                                         />
                                     </PendingHighlight>
+                                    <PendingHighlight show={showPending} label="Emergency Contact Alternate Phone" liveValue={profile.contact?.emergencyContact?.alternatePhone} pendingValue={pend.contact?.emergencyContact?.alternatePhone}>
+                                        <Field
+                                            section="contact" isEditing={isEditing}
+                                            label="Alternate Phone" field="EC_alternatePhone"
+                                            value={profile.contact?.emergencyContact?.alternatePhone}
+                                            valueOverride={formData.contact?.emergencyContact?.alternatePhone}
+                                            maxLength={10}
+                                            error={formData.contact?.emergencyContact?.alternatePhone?.length > 0 && formData.contact?.emergencyContact?.alternatePhone?.length < 10 ? 'Must be 10 digits' : null}
+                                            onChangeOverride={(e) => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                handleEmergencyChange('alternatePhone', val);
+                                            }}
+                                            formData={formData} onChange={handleInputChange}
+                                            required
+                                        />
+                                    </PendingHighlight>
                                     <PendingHighlight show={showPending} label="Emergency Contact Email" liveValue={profile.contact?.emergencyContact?.email} pendingValue={pend.contact?.emergencyContact?.email}>
                                         <Field
                                             section="contact" isEditing={isEditing}
@@ -1742,40 +1837,51 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                                         <h4 className="text-sm font-bold text-slate-700 mb-4">Current Address <span className="text-red-500">*</span></h4>
                                         <div className="space-y-3">
-                                            <PendingHighlight show={showPending} label="Current Address Street" liveValue={getProfileAddress('Current').street} pendingValue={getPendingAddress('Current').street}>
-                                                <Field section="contact" isEditing={isEditing} label="Street" field="C_street" value={getProfileAddress('Current').street}
-                                                    valueOverride={getAddress('Current').street} onChangeOverride={(e) => handleAddressChange('Current', 'street', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                            <PendingHighlight show={showPending} label="Current Address Line 1" liveValue={getProfileAddress('Current').line1 || getProfileAddress('Current').street} pendingValue={getPendingAddress('Current').line1}>
+                                                <Field section="contact" isEditing={isEditing} label="Line 1" field="C_line1" value={getProfileAddress('Current').line1 || getProfileAddress('Current').street}
+                                                    valueOverride={getAddress('Current').line1 ?? getAddress('Current').street} onChangeOverride={(e) => handleAddressChange('Current', 'line1', e.target.value)}
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </PendingHighlight>
                                             <PendingHighlight show={showPending} label="Current Address Line 2" liveValue={getProfileAddress('Current').addressLine2} pendingValue={getPendingAddress('Current').addressLine2}>
                                                 <Field section="contact" isEditing={isEditing} label="Line 2" field="C_line2" value={getProfileAddress('Current').addressLine2}
                                                     valueOverride={getAddress('Current').addressLine2} onChangeOverride={(e) => handleAddressChange('Current', 'addressLine2', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </PendingHighlight>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <PendingHighlight show={showPending} label="Current Address City" liveValue={getProfileAddress('Current').city} pendingValue={getPendingAddress('Current').city}>
                                                     <Field section="contact" isEditing={isEditing} label="City" field="C_city" value={getProfileAddress('Current').city}
                                                         valueOverride={getAddress('Current').city} onChangeOverride={(e) => handleAddressChange('Current', 'city', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                                 <PendingHighlight show={showPending} label="Current Address State" liveValue={getProfileAddress('Current').state} pendingValue={getPendingAddress('Current').state}>
                                                     <Field section="contact" isEditing={isEditing} label="State" field="C_state" value={getProfileAddress('Current').state}
                                                         valueOverride={getAddress('Current').state} onChangeOverride={(e) => handleAddressChange('Current', 'state', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <PendingHighlight show={showPending} label="Current Address Pincode" liveValue={getProfileAddress('Current').zipCode} pendingValue={getPendingAddress('Current').zipCode}>
                                                     <Field section="contact" isEditing={isEditing} label="Pincode" field="C_zip" value={getProfileAddress('Current').zipCode}
                                                         valueOverride={getAddress('Current').zipCode} onChangeOverride={(e) => handleAddressChange('Current', 'zipCode', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                                 <PendingHighlight show={showPending} label="Current Address Country" liveValue={getProfileAddress('Current').country} pendingValue={getPendingAddress('Current').country}>
                                                     <Field section="contact" isEditing={isEditing} label="Country" field="C_country" value={getProfileAddress('Current').country}
                                                         valueOverride={getAddress('Current').country} onChangeOverride={(e) => handleAddressChange('Current', 'country', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                             </div>
+                                            <PendingHighlight show={showPending} label="Current Address Phone" liveValue={getProfileAddress('Current').phone} pendingValue={getPendingAddress('Current').phone}>
+                                                <Field section="contact" isEditing={isEditing} label="Phone" field="C_phone" value={getProfileAddress('Current').phone}
+                                                    valueOverride={getAddress('Current').phone}
+                                                    maxLength={10}
+                                                    error={getAddress('Current').phone?.length > 0 && getAddress('Current').phone?.length < 10 ? 'Must be 10 digits' : null}
+                                                    onChangeOverride={(e) => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        handleAddressChange('Current', 'phone', val);
+                                                    }}
+                                                    formData={formData} onChange={handleInputChange} required />
+                                            </PendingHighlight>
                                         </div>
                                     </div>
 
@@ -1794,7 +1900,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                                 setFormData(prev => {
                                                                     const currentAddresses = prev.contact?.addresses || [];
                                                                     const permIndex = currentAddresses.findIndex(a => a.type === 'Permanent');
-                                                                    const permAddr = { type: 'Permanent', street: current.street, addressLine2: current.addressLine2, city: current.city, state: current.state, zipCode: current.zipCode, country: current.country };
+                                                                    const permAddr = { type: 'Permanent', line1: current.line1 || current.street, addressLine2: current.addressLine2, city: current.city, state: current.state, zipCode: current.zipCode, country: current.country };
                                                                     let newAddresses = [...currentAddresses];
                                                                     if (permIndex >= 0) { newAddresses[permIndex] = permAddr; } else { newAddresses.push(permAddr); }
                                                                     return { ...prev, contact: { ...prev.contact, addresses: newAddresses }, hris: { ...prev.hris, isDeclared: false } };
@@ -1808,38 +1914,38 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             )}
                                         </div>
                                         <div className="space-y-3">
-                                            <PendingHighlight show={showPending} label="Permanent Address Street" liveValue={getProfileAddress('Permanent').street} pendingValue={getPendingAddress('Permanent').street}>
-                                                <Field section="contact" isEditing={isEditing} label="Street" field="P_street" value={getProfileAddress('Permanent').street}
-                                                    valueOverride={getAddress('Permanent').street} onChangeOverride={(e) => handleAddressChange('Permanent', 'street', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                            <PendingHighlight show={showPending} label="Permanent Address Line 1" liveValue={getProfileAddress('Permanent').line1 || getProfileAddress('Permanent').street} pendingValue={getPendingAddress('Permanent').line1}>
+                                                <Field section="contact" isEditing={isEditing} label="Line 1" field="P_line1" value={getProfileAddress('Permanent').line1 || getProfileAddress('Permanent').street}
+                                                    valueOverride={getAddress('Permanent').line1 ?? getAddress('Permanent').street} onChangeOverride={(e) => handleAddressChange('Permanent', 'line1', e.target.value)}
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </PendingHighlight>
                                             <PendingHighlight show={showPending} label="Permanent Address Line 2" liveValue={getProfileAddress('Permanent').addressLine2} pendingValue={getPendingAddress('Permanent').addressLine2}>
                                                 <Field section="contact" isEditing={isEditing} label="Line 2" field="P_line2" value={getProfileAddress('Permanent').addressLine2}
                                                     valueOverride={getAddress('Permanent').addressLine2} onChangeOverride={(e) => handleAddressChange('Permanent', 'addressLine2', e.target.value)}
-                                                    formData={formData} onChange={handleInputChange} />
+                                                    formData={formData} onChange={handleInputChange} required />
                                             </PendingHighlight>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <PendingHighlight show={showPending} label="Permanent Address City" liveValue={getProfileAddress('Permanent').city} pendingValue={getPendingAddress('Permanent').city}>
                                                     <Field section="contact" isEditing={isEditing} label="City" field="P_city" value={getProfileAddress('Permanent').city}
                                                         valueOverride={getAddress('Permanent').city} onChangeOverride={(e) => handleAddressChange('Permanent', 'city', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                                 <PendingHighlight show={showPending} label="Permanent Address State" liveValue={getProfileAddress('Permanent').state} pendingValue={getPendingAddress('Permanent').state}>
                                                     <Field section="contact" isEditing={isEditing} label="State" field="P_state" value={getProfileAddress('Permanent').state}
                                                         valueOverride={getAddress('Permanent').state} onChangeOverride={(e) => handleAddressChange('Permanent', 'state', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <PendingHighlight show={showPending} label="Permanent Address Pincode" liveValue={getProfileAddress('Permanent').zipCode} pendingValue={getPendingAddress('Permanent').zipCode}>
                                                     <Field section="contact" isEditing={isEditing} label="Pincode" field="P_zip" value={getProfileAddress('Permanent').zipCode}
                                                         valueOverride={getAddress('Permanent').zipCode} onChangeOverride={(e) => handleAddressChange('Permanent', 'zipCode', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                                 <PendingHighlight show={showPending} label="Permanent Address Country" liveValue={getProfileAddress('Permanent').country} pendingValue={getPendingAddress('Permanent').country}>
                                                     <Field section="contact" isEditing={isEditing} label="Country" field="P_country" value={getProfileAddress('Permanent').country}
                                                         valueOverride={getAddress('Permanent').country} onChangeOverride={(e) => handleAddressChange('Permanent', 'country', e.target.value)}
-                                                        formData={formData} onChange={handleInputChange} />
+                                                        formData={formData} onChange={handleInputChange} required />
                                                 </PendingHighlight>
                                             </div>
                                         </div>
@@ -1858,8 +1964,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     editMode={editMode}
                     setEditMode={setEditMode}
                     onSave={handleSave}
-                    isLoading={savingSection === 'identity'}
+                    isLoading={savingSection === 'personal_all'}
                     canEdit={canEdit}
+                    showActions={false}
+                    isEditingOverride={isPersonalEditing}
                 >
                     {(isEditing) => (
                         <div className="space-y-4">
@@ -1888,8 +1996,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     editMode={editMode}
                     setEditMode={setEditMode}
                     onSave={handleSave}
-                    isLoading={savingSection === 'family'}
+                    isLoading={savingSection === 'personal_all'}
                     canEdit={canEdit}
+                    showActions={false}
+                    isEditingOverride={isPersonalEditing}
                 >
                     {(isEditing) => (
                         <div className="space-y-6">
@@ -1915,7 +2025,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
                                 </PendingHighlight>
                                 <PendingHighlight show={showPending} label="Spouse Name" liveValue={profile.family?.spouseName} pendingValue={pend.family?.spouseName}>
-                                    <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} />
+                                    <Field section="family" isEditing={isEditing} label="Spouse Name" field="spouseName" value={profile.family?.spouseName} formData={formData} onChange={handleInputChange} required={formData.personal?.maritalStatus === 'Married' || profile.personal?.maritalStatus === 'Married'} />
                                 </PendingHighlight>
                                 <PendingHighlight show={showPending} label="Spouse DOB" liveValue={profile.family?.spouseDob} pendingValue={pend.family?.spouseDob} type="date">
                                     <Field section="family" isEditing={isEditing} label="Spouse DOB" field="spouseDob" type="date" value={profile.family?.spouseDob} formData={formData} onChange={handleInputChange} />
@@ -1988,6 +2098,26 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         </div>
                     )}
                 </SectionCard>
+
+                {isPersonalEditing && (
+                    <div className="flex justify-end gap-3 bg-white rounded-lg shadow-sm border border-slate-200 p-4 mt-6">
+                        <Button
+                            variant="ghost"
+                            onClick={() => setEditMode(false)}
+                            disabled={savingSection === 'personal_all'}
+                            className="text-slate-500 hover:text-slate-700 px-4 py-2"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handlePersonalSaveAll}
+                            isLoading={savingSection === 'personal_all'}
+                            className="px-5 py-2"
+                        >
+                            Save All Changes
+                        </Button>
+                    </div>
+                )}
             </div>
         );
     };
@@ -3026,7 +3156,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
                     const fmtAddr = (addr) => {
                         if (!addr) return '';
-                        return [addr.street, addr.addressLine2, addr.city, addr.state, addr.zipCode, addr.country].filter(Boolean).join(', ');
+                        const l1 = addr.line1 || addr.street;
+                        const parts = [l1, addr.addressLine2, addr.city, addr.state, addr.zipCode, addr.country];
+                        if (addr.type === 'Current' && addr.phone) {
+                            parts.push(`Phone: ${addr.phone}`);
+                        }
+                        return parts.filter(Boolean).join(', ');
                     };
 
                     // Collect all changed fields across all sections
@@ -3051,6 +3186,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         { label: 'Emergency Contact Name', old: live.contact?.emergencyContact?.name, new: pend.contact?.emergencyContact?.name },
                         { label: 'Emergency Contact Relation', old: live.contact?.emergencyContact?.relation, new: pend.contact?.emergencyContact?.relation },
                         { label: 'Emergency Contact Phone', old: live.contact?.emergencyContact?.phone, new: pend.contact?.emergencyContact?.phone },
+                        { label: 'Emergency Contact Alternate Phone', old: live.contact?.emergencyContact?.alternatePhone, new: pend.contact?.emergencyContact?.alternatePhone },
                         { label: 'Emergency Contact Email', old: live.contact?.emergencyContact?.email, new: pend.contact?.emergencyContact?.email },
                         { label: 'Current Address', old: fmtAddr(live.contact?.addresses?.find(a => a.type === 'Current')), new: pend.contact?.addresses ? fmtAddr(pend.contact.addresses.find(a => a.type === 'Current')) : undefined },
                         { label: 'Permanent Address', old: fmtAddr(live.contact?.addresses?.find(a => a.type === 'Permanent')), new: pend.contact?.addresses ? fmtAddr(pend.contact.addresses.find(a => a.type === 'Permanent')) : undefined }
@@ -3094,12 +3230,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
                     const sectionsWithChanges = allSections
                         .filter(s => s.fields.some(f => {
+                            if (f.new === undefined) return false;
                             const fmt = (v) => !v && v !== 0 ? '' : String(v);
                             return fmt(f.old) !== fmt(f.new);
                         }))
                         .map(s => ({
                             ...s,
                             fields: s.fields.filter(f => {
+                                if (f.new === undefined) return false;
                                 const fmt = (v) => !v && v !== 0 ? '' : String(v);
                                 return fmt(f.old) !== fmt(f.new);
                             })
@@ -3315,38 +3453,65 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <h3 className="font-bold text-slate-700">5. Address Details</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            {['Current', 'Permanent', 'Mailing'].map(type => (
-                                <div key={type} className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">{type} Address</h4>
-                                    <div className="space-y-6">
-                                        <Field section="contact" isEditing={isEditing} label="Street" field={`${type}_street`}
-                                            value={profile.contact?.addresses?.find(a => a.type === type)?.street}
-                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.street}
-                                            onChangeOverride={(e) => handleAddressChange(type, 'street', e.target.value)}
-                                        />
-                                        <Field section="contact" isEditing={isEditing} label="City" field={`${type}_city`}
-                                            value={profile.contact?.addresses?.find(a => a.type === type)?.city}
-                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.city}
-                                            onChangeOverride={(e) => handleAddressChange(type, 'city', e.target.value)}
-                                        />
-                                        <Field section="contact" isEditing={isEditing} label="State" field={`${type}_state`}
-                                            value={profile.contact?.addresses?.find(a => a.type === type)?.state}
-                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.state}
-                                            onChangeOverride={(e) => handleAddressChange(type, 'state', e.target.value)}
-                                        />
-                                        <Field section="contact" isEditing={isEditing} label="Zip Code" field={`${type}_zip`}
-                                            value={profile.contact?.addresses?.find(a => a.type === type)?.zipCode}
-                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
-                                            onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
-                                        />
-                                        <Field section="contact" isEditing={isEditing} label="Country" field={`${type}_country`}
-                                            value={profile.contact?.addresses?.find(a => a.type === type)?.country}
-                                            valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.country}
-                                            onChangeOverride={(e) => handleAddressChange(type, 'country', e.target.value)}
-                                        />
+                            {['Current', 'Permanent', 'Mailing'].map(type => {
+                                const isCurrentOrPerm = ['Current', 'Permanent'].includes(type);
+                                return (
+                                    <div key={type} className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">{type} Address</h4>
+                                        <div className="space-y-6">
+                                            <Field section="contact" isEditing={isEditing} label="Line 1" field={`${type}_line1`}
+                                                value={profile.contact?.addresses?.find(a => a.type === type)?.line1 || profile.contact?.addresses?.find(a => a.type === type)?.street}
+                                                valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.line1 ?? formData.contact?.addresses?.find(a => a.type === type)?.street}
+                                                onChangeOverride={(e) => handleAddressChange(type, 'line1', e.target.value)}
+                                                required={isCurrentOrPerm}
+                                            />
+                                            <Field section="contact" isEditing={isEditing} label="Line 2" field={`${type}_line2`}
+                                                value={profile.contact?.addresses?.find(a => a.type === type)?.addressLine2}
+                                                valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.addressLine2}
+                                                onChangeOverride={(e) => handleAddressChange(type, 'addressLine2', e.target.value)}
+                                                required={isCurrentOrPerm}
+                                            />
+                                            <Field section="contact" isEditing={isEditing} label="City" field={`${type}_city`}
+                                                value={profile.contact?.addresses?.find(a => a.type === type)?.city}
+                                                valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.city}
+                                                onChangeOverride={(e) => handleAddressChange(type, 'city', e.target.value)}
+                                                required={isCurrentOrPerm}
+                                            />
+                                            <Field section="contact" isEditing={isEditing} label="State" field={`${type}_state`}
+                                                value={profile.contact?.addresses?.find(a => a.type === type)?.state}
+                                                valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.state}
+                                                onChangeOverride={(e) => handleAddressChange(type, 'state', e.target.value)}
+                                                required={isCurrentOrPerm}
+                                            />
+                                            <Field section="contact" isEditing={isEditing} label="Zip Code" field={`${type}_zip`}
+                                                value={profile.contact?.addresses?.find(a => a.type === type)?.zipCode}
+                                                valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.zipCode}
+                                                onChangeOverride={(e) => handleAddressChange(type, 'zipCode', e.target.value)}
+                                                required={isCurrentOrPerm}
+                                            />
+                                            <Field section="contact" isEditing={isEditing} label="Country" field={`${type}_country`}
+                                                value={profile.contact?.addresses?.find(a => a.type === type)?.country}
+                                                valueOverride={formData.contact?.addresses?.find(a => a.type === type)?.country}
+                                                onChangeOverride={(e) => handleAddressChange(type, 'country', e.target.value)}
+                                                required={isCurrentOrPerm}
+                                            />
+                                            {type === 'Current' && (
+                                                <Field section="contact" isEditing={isEditing} label="Phone" field="Current_phone"
+                                                    value={profile.contact?.addresses?.find(a => a.type === 'Current')?.phone}
+                                                    valueOverride={formData.contact?.addresses?.find(a => a.type === 'Current')?.phone}
+                                                    maxLength={10}
+                                                    error={formData.contact?.addresses?.find(a => a.type === 'Current')?.phone?.length > 0 && formData.contact?.addresses?.find(a => a.type === 'Current')?.phone?.length < 10 ? 'Must be 10 digits' : null}
+                                                    onChangeOverride={(e) => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        handleAddressChange('Current', 'phone', val);
+                                                    }}
+                                                    required
+                                                />
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -3356,7 +3521,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             <Shield size={18} className="text-blue-500" />
                             <h3 className="font-bold text-slate-700">6. Contact Details</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                             <PendingHighlight show={showPending} label="Personal Mobile" liveValue={profile.contact?.mobileNumber} pendingValue={pend.contact?.mobileNumber}>
                                 <Field section="contact" isEditing={isEditing} label="Personal Mobile" field="mobileNumber" value={profile.contact?.mobileNumber} formData={formData} onChange={handleInputChange} />
                             </PendingHighlight>
@@ -3365,7 +3530,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             </PendingHighlight>
                             <Field
                                 section="contact" isEditing={isEditing}
-                                label="Emergency Mobile (from Personal)" field="EC_phone"
+                                label="Emergency Mobile" field="EC_phone"
                                 value={profile.contact?.emergencyContact?.phone}
                                 valueOverride={formData.contact?.emergencyContact?.phone}
                                 maxLength={10}
@@ -3375,6 +3540,21 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     handleEmergencyChange('phone', val);
                                 }}
                                 formData={formData} onChange={handleInputChange}
+                                required
+                            />
+                            <Field
+                                section="contact" isEditing={isEditing}
+                                label="Emergency Alternate Phone" field="EC_alternatePhone"
+                                value={profile.contact?.emergencyContact?.alternatePhone}
+                                valueOverride={formData.contact?.emergencyContact?.alternatePhone}
+                                maxLength={10}
+                                error={formData.contact?.emergencyContact?.alternatePhone?.length > 0 && formData.contact?.emergencyContact?.alternatePhone?.length < 10 ? 'Must be 10 digits' : null}
+                                onChangeOverride={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    handleEmergencyChange('alternatePhone', val);
+                                }}
+                                formData={formData} onChange={handleInputChange}
+                                required
                             />
                             <Field section="contact" isEditing={isEditing} label="Landline Number" field="landlineNumber" value={profile.contact?.landlineNumber} formData={formData} onChange={handleInputChange} />
                         </div>
