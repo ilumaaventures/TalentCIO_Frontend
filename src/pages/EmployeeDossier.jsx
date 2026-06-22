@@ -50,7 +50,7 @@ const DOSSIER_ALLOWED_FILE_TYPES = new Set([
 ]);
 
 // Helper Components defined outside to prevent re-renders
-const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required }) => {
+const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required, dateFormat = "dd MMM yyyy" }) => {
     if (!isEditing && !value && hideIfEmpty) return null;
 
     const rawCurrentValue = valueOverride !== undefined ? valueOverride : formData?.[section]?.[field];
@@ -87,7 +87,7 @@ const Field = ({ label, value, section, field, type = "text", options = null, is
                 </>
             ) : (
                 <div className={`text-sm font-medium ${!value ? 'text-slate-400 italic' : 'text-slate-800'}`}>
-                    {type === 'date' && value ? format(new Date(value), 'dd MMM yyyy') : value || 'Not Set'}
+                    {type === 'date' && value ? format(new Date(value), dateFormat) : value || 'Not Set'}
                 </div>
             )}
         </div>
@@ -153,13 +153,13 @@ const mergePendingIntoProfile = (profileObj, pending) => {
  *
  * On hover or click: shows a compact popover with old (red) → new (green) values.
  */
-const PendingHighlight = ({ show, liveValue, pendingValue, label, type, children }) => {
+const PendingHighlight = ({ show, liveValue, pendingValue, label, type, children, dateFormat = "dd MMM yyyy" }) => {
     const [open, setOpen] = React.useState(false);
 
     const fmt = (v) => {
         if (!v && v !== 0) return '—';
         if (type === 'date') {
-            try { return format(new Date(v), 'dd MMM yyyy'); } catch { return String(v); }
+            try { return format(new Date(v), dateFormat); } catch { return String(v); }
         }
         return String(v);
     };
@@ -1586,6 +1586,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 <PendingHighlight show={showPending} label="Date of Birth" liveValue={profile.personal?.dob} pendingValue={pend.personal?.dob} type="date">
                                     <Field section="personal" isEditing={isEditing} label="Date of Birth" field="dob" value={profile.personal?.dob} type="date" formData={formData} onChange={handleInputChange} required />
                                 </PendingHighlight>
+                                <PendingHighlight show={showPending} label="Joining Date" liveValue={profile.personal?.joiningDate || profile.employment?.joiningDate || profile.user?.joiningDate} pendingValue={pend.personal?.joiningDate} type="date" dateFormat="dd/MM/yyyy">
+                                    <Field section="personal" isEditing={isEditing && isCurrentUserAdmin} label="Joining Date" field="joiningDate" value={profile.personal?.joiningDate || profile.employment?.joiningDate || profile.user?.joiningDate} type="date" formData={formData} onChange={handleInputChange} required dateFormat="dd/MM/yyyy" />
+                                </PendingHighlight>
                                 <PendingHighlight show={showPending} label="Gender" liveValue={profile.personal?.gender} pendingValue={pend.personal?.gender}>
                                     <Field section="personal" isEditing={isEditing} label="Gender" field="gender" value={profile.personal?.gender} options={['Male', 'Female', 'Other']} formData={formData} onChange={handleInputChange} required />
                                 </PendingHighlight>
@@ -2013,7 +2016,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                         {/* Joining Date */}
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Joining Date</label>
-                            <div className="text-slate-800 font-medium text-sm">{(profile.employment?.joiningDate || profile.user?.joiningDate) ? format(new Date(profile.employment?.joiningDate || profile.user?.joiningDate), 'dd MMM yyyy') : '-'}</div>
+                            <div className="text-slate-800 font-medium text-sm">{(profile.employment?.joiningDate || profile.user?.joiningDate) ? format(new Date(profile.employment?.joiningDate || profile.user?.joiningDate), 'dd/MM/yyyy') : '-'}</div>
                         </div>
 
                         {/* Status */}
