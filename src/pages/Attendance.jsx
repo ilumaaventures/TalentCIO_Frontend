@@ -96,6 +96,11 @@ const Attendance = () => {
     const isManager = user?.roles?.some(r => (typeof r === 'string' ? r : r?.name) === 'Manager')
         || (user?.directReports && user.directReports.length > 0)
         || user?.role === 'Manager';
+
+    const canViewAllUsers = isAdmin
+        || user?.permissions?.includes('user.read')
+        || user?.permissions?.includes('attendance.view_all')
+        || user?.permissions?.includes('attendance.view_others');
     const showDocumentsTab = Boolean(user?.company?.settings?.timesheet?.requireAttachment);
     const showRGDocumentTrackerTab = showDocumentsTab && isRGWorkspace(user) && canViewRGDocumentTracker(user);
     const attendanceSettings = user?.company?.settings?.attendance || {};
@@ -184,7 +189,7 @@ const Attendance = () => {
         if (usersLoaded || loadingUsers) return;
         setLoadingUsers(true);
         try {
-            if (isAdmin) {
+            if (canViewAllUsers) {
                 const res = await api.get('/admin/users');
                 setUsersList(res.data);
                 setUsersLoaded(true);
@@ -203,7 +208,7 @@ const Attendance = () => {
         } finally {
             setLoadingUsers(false);
         }
-    }, [isAdmin, isManager, loadingUsers, user?.directReports, usersLoaded]);
+    }, [canViewAllUsers, isManager, loadingUsers, user?.directReports, usersLoaded]);
 
     // ONLY fetch if some condition is met (e.g. from a click)
     // We removed the automatic useEffect for fetchUsers
@@ -457,12 +462,12 @@ const Attendance = () => {
     };
 
     useEffect(() => {
-        if (!debouncedTeamMemberSearch || usersLoaded || loadingUsers || (!isAdmin && !isManager)) {
+        if (!debouncedTeamMemberSearch || usersLoaded || loadingUsers || (!canViewAllUsers && !isManager)) {
             return;
         }
 
         fetchUsers();
-    }, [debouncedTeamMemberSearch, fetchUsers, isAdmin, isManager, loadingUsers, usersLoaded]);
+    }, [debouncedTeamMemberSearch, fetchUsers, canViewAllUsers, isManager, loadingUsers, usersLoaded]);
 
     const filteredTeamMembers = useMemo(() => {
         const searchableUsers = usersList.filter((u) => u?._id !== user?._id);
@@ -1708,7 +1713,7 @@ const Attendance = () => {
                         </div>
 
                         {/* Export Button - Permission Check */
-                            (user?.roles?.includes('Admin') || user?.roles?.includes('Manager') || user?.role === 'Admin' || usersList.length > 0 || user?.permissions?.includes('attendance.export')) && (
+                            (canViewAllUsers || isManager || user?.permissions?.includes('attendance.export')) && (
                                 <div className="flex items-center space-x-2">
                                     {(user?.company?.settings?.attendance?.exportFormat === 'Monthly Timesheet') ? (
                                         <Button
@@ -1906,7 +1911,7 @@ const Attendance = () => {
                         )}
 
                         {/* Team Members Selection (Admins/Managers) */}
-                        {(isAdmin || isManager) && (
+                        {(canViewAllUsers || isManager) && (
                             <div className="zoho-card p-5">
                                 <div className="flex justify-between items-center mb-4">
                                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Team Members</h4>
