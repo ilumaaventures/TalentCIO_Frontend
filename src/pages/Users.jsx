@@ -10,6 +10,7 @@ import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { createCachePayload, readSessionCache } from '../utils/cache';
+import { exportCandidateHRIS } from '../utils/hrisExporter';
 
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
@@ -51,7 +52,8 @@ const Users = () => {
         checkInOut: true,
         duration: true,
         leaves: true,
-        documents: false
+        documents: false,
+        hrisProfiles: false
     });
     const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
     const [searchTerm, setSearchTerm] = useState('');
@@ -312,8 +314,9 @@ const Users = () => {
             || exportOptions.duration
             || exportOptions.leaves;
         const shouldDownloadDocuments = hasAttendanceDocumentFeature && exportOptions.documents;
+        const shouldDownloadHRIS = canExportHRIS && exportOptions.hrisProfiles;
 
-        if (!hasAttendanceSelection && !shouldDownloadDocuments) {
+        if (!hasAttendanceSelection && !shouldDownloadDocuments && !shouldDownloadHRIS) {
             toast.error('Select at least one export option before downloading.');
             return;
         }
@@ -325,6 +328,12 @@ const Users = () => {
         if (shouldDownloadDocuments) {
             await handleDownloadAttendanceZip();
         }
+
+        if (shouldDownloadHRIS) {
+            await exportCandidateHRIS(selectedEmployeeIds);
+        }
+
+        setShowExportModal(false);
     };
 
     const handleExportTeamAttendance = async () => {
@@ -840,6 +849,12 @@ const Users = () => {
     }, [users]);
 
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
+    const userRoles = user?.roles?.map(r => typeof r === 'string' ? r : r?.name) || [];
+    const hasAdminOrHR = userRoles.some(r => ['Admin', 'Super Admin', 'System Admin', 'HR Admin', 'HR'].includes(r));
+    const canExportHRIS = hasAdminOrHR
+        || user?.permissions?.includes('dossier.export')
+        || user?.permissions?.includes('*')
+        || user?.hasAllPermissions;
     const attendanceShiftOptions = user?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
     const hasAttendanceDocumentFeature = user?.company?.enabledModules?.includes('attendance')
         && Boolean(user?.company?.settings?.timesheet?.requireAttachment);
@@ -991,7 +1006,7 @@ const Users = () => {
                             className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow transition-all"
                         >
                             <Download size={18} />
-                            <span>Export Attendance</span>
+                            <span>Export</span>
                         </button>
 
                         {/* Export Options Popover */}
@@ -1070,6 +1085,21 @@ const Users = () => {
                                                     className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
                                                 />
                                                 <span className="text-sm font-medium text-slate-700">Uploaded Support Documents</span>
+                                            </label>
+                                        </>
+                                    )}
+                                    {canExportHRIS && (
+                                        <>
+                                            <div className="h-px bg-slate-100 my-2"></div>
+                                            <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Profiles & HRIS:</p>
+                                            <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={exportOptions.hrisProfiles}
+                                                    onChange={e => setExportOptions({ ...exportOptions, hrisProfiles: e.target.checked })}
+                                                    className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                                />
+                                                <span className="text-sm font-medium text-slate-700">Candidate / HRIS Profiles</span>
                                             </label>
                                         </>
                                     )}
