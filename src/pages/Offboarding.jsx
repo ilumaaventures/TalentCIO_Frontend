@@ -206,7 +206,7 @@ const ModalShell = ({ title, subtitle, onClose, children }) => (
 const Offboarding = () => {
   const { user } = useAuth();
   const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
-  const isAdmin = user?.roles?.includes('Admin') || permissions.includes('*');
+  const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role)) || permissions.includes('*');
   const canRead = isAdmin || permissions.includes('offboarding.read');
   const canCreate = isAdmin || permissions.includes('offboarding.create');
   const canUpdate = isAdmin || permissions.includes('offboarding.update');

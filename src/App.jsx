@@ -185,7 +185,11 @@ function App() {
                 </Route>
                 
                 <Route path="/profile" element={<Profile />} />
-                <Route path="/announcements" element={<Announcements />} />
+                <Route path="/announcements" element={(
+                  <ProtectedRoute moduleName="announcements" redirectTo="/">
+                    <Announcements />
+                  </ProtectedRoute>
+                )} />
                 <Route path="/holidays" element={(
                   <ProtectedRoute moduleName="holidays" redirectTo="/">
                     <Holidays />
@@ -211,17 +215,17 @@ function App() {
 
                 {/* Onboarding */}
                 <Route path="/onboarding" element={(
-                  <ProtectedRoute requiredPermissions={ONBOARDING_VIEW_PERMISSIONS}>
+                  <ProtectedRoute moduleName="onboarding" requiredPermissions={ONBOARDING_VIEW_PERMISSIONS}>
                     <Onboarding />
                   </ProtectedRoute>
                 )} />
                 <Route path="/offboarding" element={(
-                  <ProtectedRoute requiredPermissions={OFFBOARDING_PERMISSIONS} redirectTo="/">
+                  <ProtectedRoute moduleName="offboarding" requiredPermissions={OFFBOARDING_PERMISSIONS} redirectTo="/">
                     <Offboarding />
                   </ProtectedRoute>
                 )} />
                 <Route path="/hr-email/send" element={(
-                  <ProtectedRoute requiredPermissions={HR_EMAIL_PERMISSIONS} redirectTo="/">
+                  <ProtectedRoute moduleName="hrEmail" requiredPermissions={HR_EMAIL_PERMISSIONS} redirectTo="/">
                     <HREmailSend />
                   </ProtectedRoute>
                 )} />
