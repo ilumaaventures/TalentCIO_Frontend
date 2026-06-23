@@ -163,6 +163,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [timesheet, setTimesheet] = useState(null);
     const [attendanceLogs, setAttendanceLogs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [, setProjects] = useState([]);
     const [viewUser, setViewUser] = useState(user);
     const [holidays, setHolidays] = useState([]);
@@ -868,8 +870,31 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
     };
 
+    // Capture browser geolocation. Resolves to { lat, lng, accuracy } or null when denied/unavailable.
+    const getCurrentLocation = () => new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+            () => resolve(null),
+            { timeout: 5000, maximumAge: 60000 }
+        );
+    });
+
+    // Smart wrapper: if requireLocationTimesheet is enabled for this company and location is unavailable,
+    // throws an error so the submission is blocked with a user-facing message.
+    const getLocationForTimesheet = async () => {
+        const location = await getCurrentLocation();
+        const requireLocation = user?.company?.settings?.attendance?.requireLocationTimesheet;
+        if (requireLocation && !location) {
+            throw new Error('Location access is required to mark attendance from the timesheet. Please enable location permissions in your browser and try again.');
+        }
+        return location;
+    };
+
+
     const submitEdit = async () => {
         try {
+            setIsSaving(true);
             if (!isEditableTimesheetStatus) {
                 toast.error('Submitted timesheets cannot be edited');
                 return;
@@ -886,9 +911,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             let updatedEntry = null;
 
             if (entryToEdit.type === 'ATTENDANCE_CREATE_PRESENT_ONLY') {
+                const location = await getLocationForTimesheet();
                 updatedAttendance = (await api.post('/attendance', {
                     date: entryToEdit.date,
-                    userId: targetUserId || undefined
+                    userId: targetUserId || undefined,
+                    source: 'timesheet',
+                    ...(location ? { location } : {})
                 })).data;
                 toast.success('Attendance marked as present');
 
@@ -909,16 +937,23 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     return;
                 }
 
+                const location = await getLocationForTimesheet();
                 updatedAttendance = (await api.post('/attendance', {
                     date: entryToEdit.date,
                     clockIn: inTime, // Axios will serialize to ISO string
                     clockOut: outTime,
-                    userId: targetUserId || undefined
+                    userId: targetUserId || undefined,
+                    source: 'timesheet',
+                    ...(location ? { location } : {})
                 })).data;
                 toast.success('Attendance created');
 
             } else if (entryToEdit.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit)) {
-                updatedAttendance = (await api.put(`/attendance/${entryToEdit._id}`, {})).data;
+                const location = await getLocationForTimesheet();
+                updatedAttendance = (await api.put(`/attendance/${entryToEdit._id}`, {
+                    source: 'timesheet',
+                    ...(location ? { location } : {})
+                })).data;
                 toast.success('Attendance marked as present');
             } else if (entryToEdit.type === 'ATTENDANCE') {
                 // Update Existing
@@ -933,9 +968,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     return;
                 }
 
+                const location = await getLocationForTimesheet();
                 updatedAttendance = (await api.put(`/attendance/${entryToEdit._id}`, {
                     clockIn: inTime,
-                    clockOut: outTime
+                    clockOut: outTime,
+                    source: 'timesheet',
+                    ...(location ? { location } : {})
                 })).data;
                 toast.success('Attendance updated');
             } else {
@@ -967,7 +1005,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             await refreshTimesheetData(true); // Silent Refresh
         } catch (error) {
             console.error(error);
-            toast.error(error.response?.data?.message || 'Failed to update entry');
+            toast.error(error.response?.data?.message || error.message || 'Failed to update entry');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -976,6 +1016,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         if (!window.confirm('Remove this attendance mark for the selected day?')) return;
 
         try {
+            setIsDeleting(true);
             await api.delete(`/attendance/${entryToEdit._id}`);
             setAttendanceLogs(prev => prev.filter(log => log._id !== entryToEdit._id));
             setEntryToEdit(null);
@@ -984,6 +1025,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || 'Failed to delete attendance');
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -1247,6 +1290,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
 
         try {
+            setIsSaving(true);
             const normalizedEntryDate = getLocalDateInputValue(newEntry.date);
             const createdEntry = (await api.post('/timesheet/entry', {
                 date: normalizedEntryDate,
@@ -1273,6 +1317,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         } catch (error) {
             console.error(error);
             toast.error(error.response?.data?.message || "Failed to add entry");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -2301,7 +2347,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         <h3 className="font-bold text-slate-800 text-lg">{format(selectedCell.date, 'EEEE, d MMM yyyy')}</h3>
                                         <p className="text-xs text-slate-500 uppercase tracking-wide mt-1">{selectedCell.project.name}</p>
                                     </div>
-                                    <button onClick={() => setSelectedCell(null)} className="text-slate-400 hover:text-slate-600">&times;</button>
+                                    <button onClick={() => setSelectedCell(null)} disabled={isSaving || isDeleting} className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">&times;</button>
                                 </div>
                                 <div className="divide-y divide-slate-100">
                                     {/* Attendance Section */}
@@ -2318,7 +2364,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             setEditStartTime(fmtTime(log.clockIn));
                                                             setEditEndTime(fmtTime(log.clockOut));
                                                         }}
-                                                        className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                                                        disabled={isSaving || isDeleting}
+                                                        className="text-[10px] text-blue-600 hover:underline cursor-pointer disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed"
                                                     >
                                                         {isPresentOnlyAttendance(
                                                             attendanceLogs.find(a => isSameDay(new Date(a.date), new Date(selectedCell.date)))
@@ -2336,7 +2383,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             setEditStartTime(isPresentOnlyUser ? '' : '09:00');
                                                             setEditEndTime(isPresentOnlyUser ? '' : '18:00');
                                                         }}
-                                                        className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                                                        disabled={isSaving || isDeleting}
+                                                        className="text-[10px] text-blue-600 hover:underline cursor-pointer disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed"
                                                     >
                                                         {isPresentOnlyUser ? 'Mark as Present' : 'Add Attendance'}
                                                     </button>
@@ -2366,7 +2414,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     type="time"
                                                                     value={editStartTime}
                                                                     onChange={e => setEditStartTime(e.target.value)}
-                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                                                                    disabled={isSaving || isDeleting}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                                                                 />
                                                             </div>
                                                             <div>
@@ -2375,7 +2424,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     type="time"
                                                                     value={editEndTime}
                                                                     onChange={e => setEditEndTime(e.target.value)}
-                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                                                                    disabled={isSaving || isDeleting}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                                                                 />
                                                             </div>
                                                         </div>
@@ -2390,22 +2440,37 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             {entryToEdit.type === 'ATTENDANCE' && isPresentOnlyAttendance(entryToEdit) && (
                                                                 <button
                                                                     onClick={deleteAttendanceEntry}
-                                                                    className="px-3 py-1.5 text-red-600 hover:text-red-700 font-medium text-xs bg-white border border-red-200 rounded"
+                                                                    disabled={isSaving || isDeleting}
+                                                                    className="px-3 py-1.5 text-red-600 hover:text-red-700 font-medium text-xs bg-white border border-red-200 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                                                                 >
+                                                                    {isDeleting && (
+                                                                        <svg className="animate-spin h-3 w-3 mr-1 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                        </svg>
+                                                                    )}
                                                                     Delete
                                                                 </button>
                                                             )}
                                                             <button
                                                                 onClick={() => setEntryToEdit(null)}
-                                                                className="px-3 py-1.5 text-slate-600 hover:text-slate-800 font-medium text-xs bg-white border border-slate-200 rounded"
+                                                                disabled={isSaving || isDeleting}
+                                                                className="px-3 py-1.5 text-slate-600 hover:text-slate-800 font-medium text-xs bg-white border border-slate-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                                                             >
                                                                 Cancel
                                                             </button>
                                                             <button
                                                                 onClick={submitEdit}
-                                                                className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold text-xs shadow-sm"
+                                                                disabled={isSaving || isDeleting}
+                                                                className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold text-xs shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
                                                             >
-                                                                {isPresentOnlyAttendanceEditor ? 'Mark as Present' : 'Save Attendance'}
+                                                                {isSaving && (
+                                                                    <svg className="animate-spin h-3 w-3 text-white mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                    </svg>
+                                                                )}
+                                                                <span>{isPresentOnlyAttendanceEditor ? 'Mark as Present' : 'Save Attendance'}</span>
                                                             </button>
                                                         </div>
                                                     </div>
@@ -2456,6 +2521,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     setEditStartTime(isPresentOnlyUser ? '' : '09:00');
                                                                     setEditEndTime(isPresentOnlyUser ? '' : '18:00');
                                                                 }}
+                                                                disabled={isSaving || isDeleting}
                                                                 variant="secondary"
                                                                 className="text-xs w-full justify-center"
                                                             >
@@ -2489,7 +2555,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 <div className="bg-slate-50 border border-blue-100 rounded-lg p-4 animate-in fade-in zoom-in-95 duration-200 relative">
                                                     <button
                                                         onClick={() => setIsAddingEntry(false)}
-                                                        className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
+                                                        disabled={isSaving || isDeleting}
+                                                        className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     >
                                                         &times;
                                                     </button>
@@ -2502,7 +2569,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={newEntry.projectId}
                                                                     onChange={(e) => handleProjectChange(e.target.value)}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                    disabled={isSaving || isDeleting}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Project</option>
                                                                     {availableProjects.map(p => (
@@ -2515,8 +2583,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={newEntry.moduleId}
                                                                     onChange={(e) => handleModuleChange(e.target.value)}
-                                                                    disabled={!newEntry.projectId}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                    disabled={isSaving || isDeleting || !newEntry.projectId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Module</option>
                                                                     {filteredModules.map(m => (
@@ -2532,8 +2600,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={newEntry.taskId}
                                                                     onChange={(e) => setNewEntry(prev => ({ ...prev, taskId: e.target.value }))}
-                                                                    disabled={!newEntry.moduleId}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                    disabled={isSaving || isDeleting || !newEntry.moduleId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Task</option>
                                                                     {filteredTasks.map(t => (
@@ -2549,7 +2617,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                         placeholder="0"
                                                                         value={newEntry.hours}
                                                                         onChange={(e) => setNewEntry(prev => ({ ...prev, hours: e.target.value }))}
-                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                        disabled={isSaving || isDeleting}
+                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                         min="0"
                                                                     />
                                                                 </div>
@@ -2560,7 +2629,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                         placeholder="0"
                                                                         value={newEntry.minutes}
                                                                         onChange={(e) => setNewEntry(prev => ({ ...prev, minutes: e.target.value }))}
-                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                        disabled={isSaving || isDeleting}
+                                                                        className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                         min="0" max="59"
                                                                     />
                                                                 </div>
@@ -2572,7 +2642,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             <textarea
                                                                 value={newEntry.description}
                                                                 onChange={(e) => setNewEntry(prev => ({ ...prev, description: e.target.value }))}
-                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white h-16 resize-none"
+                                                                disabled={isSaving || isDeleting}
+                                                                className="w-full p-2 border border-slate-300 rounded text-sm bg-white h-16 resize-none disabled:bg-slate-100 disabled:text-slate-400"
                                                                 placeholder="What did you work on?"
                                                             />
                                                         </div>
@@ -2580,9 +2651,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         <div className="flex justify-end pt-2">
                                                             <Button
                                                                 onClick={submitNewEntry}
-                                                                className="px-4 py-2 font-bold text-sm shadow-sm"
+                                                                disabled={isSaving || isDeleting}
+                                                                className="px-4 py-2 font-bold text-sm shadow-sm flex items-center justify-center space-x-1"
                                                             >
-                                                                Add Log
+                                                                {isSaving && (
+                                                                    <svg className="animate-spin h-3.5 w-3.5 text-white mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                    </svg>
+                                                                )}
+                                                                <span>Add Log</span>
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -2626,7 +2704,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={editProjectId}
                                                                     onChange={(e) => handleEditProjectChange(e.target.value)}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
+                                                                    disabled={isSaving || isDeleting}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Project</option>
                                                                     {availableProjects.map(p => (
@@ -2639,8 +2718,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={editModuleId}
                                                                     onChange={(e) => handleEditModuleChange(e.target.value)}
-                                                                    disabled={!editProjectId}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                    disabled={isSaving || isDeleting || !editProjectId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Module</option>
                                                                     {editFilteredModules.map(m => (
@@ -2653,8 +2732,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={editTaskId}
                                                                     onChange={(e) => setEditTaskId(e.target.value)}
-                                                                    disabled={!editModuleId}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100"
+                                                                    disabled={isSaving || isDeleting || !editModuleId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Task</option>
                                                                     {editFilteredTasks.map(t => (
@@ -2670,7 +2749,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     type="number"
                                                                     value={editHours}
                                                                     onChange={e => setEditHours(e.target.value)}
-                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm"
+                                                                    disabled={isSaving || isDeleting}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm disabled:bg-slate-100 disabled:text-slate-400"
                                                                     min="0"
                                                                 />
                                                             </div>
@@ -2680,7 +2760,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     type="number"
                                                                     value={editMinutes}
                                                                     onChange={e => setEditMinutes(e.target.value)}
-                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm"
+                                                                    disabled={isSaving || isDeleting}
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm disabled:bg-slate-100 disabled:text-slate-400"
                                                                     min="0" max="59"
                                                                 />
                                                             </div>
@@ -2690,13 +2771,15 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             <textarea
                                                                 value={editDescription}
                                                                 onChange={e => setEditDescription(e.target.value)}
-                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none h-9.5 min-h-9.5 resize-none text-sm leading-tight"
+                                                                disabled={isSaving || isDeleting}
+                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none h-9.5 min-h-9.5 resize-none text-sm leading-tight disabled:bg-slate-100 disabled:text-slate-400"
                                                             />
                                                         </div>
                                                     </div>
                                                     <div className="flex justify-end space-x-2">
                                                         <Button
                                                             onClick={() => setEntryToEdit(null)}
+                                                            disabled={isSaving || isDeleting}
                                                             variant="secondary"
                                                             className="px-3 py-1 text-xs font-medium"
                                                         >
@@ -2704,9 +2787,16 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         </Button>
                                                         <Button
                                                             onClick={submitEdit}
-                                                            className="px-3 py-1 text-xs font-bold"
+                                                            disabled={isSaving || isDeleting}
+                                                            className="px-3 py-1 text-xs font-bold flex items-center justify-center space-x-1"
                                                         >
-                                                            Save
+                                                            {isSaving && (
+                                                                <svg className="animate-spin h-3 w-3 text-white mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                </svg>
+                                                            )}
+                                                            <span>Save</span>
                                                         </Button>
                                                     </div>
                                                 </div>
