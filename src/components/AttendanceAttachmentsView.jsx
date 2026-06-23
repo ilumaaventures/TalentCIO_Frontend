@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Download, Trash2, Info, Loader2, Calendar, Send, CheckCircle, XCircle, Edit2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const AttendanceAttachmentsView = ({
     attachments,
@@ -19,9 +20,24 @@ const AttendanceAttachmentsView = ({
 }) => {
     const fileInputRef = useRef(null);
 
+    const isValidWordFile = (file) => {
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        const allowedExtensions = ['doc', 'docx'];
+        const allowedMimeTypes = [
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+        return allowedExtensions.includes(fileExtension) || allowedMimeTypes.includes(file.type);
+    };
+
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (file) {
+            if (!isValidWordFile(file)) {
+                toast.error('Only Word files (.doc, .docx) are allowed.');
+                e.target.value = '';
+                return;
+            }
             onUpload(file);
         }
     };
@@ -62,6 +78,7 @@ const AttendanceAttachmentsView = ({
                                 type="file"
                                 className="hidden"
                                 ref={fileInputRef}
+                                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                 onChange={handleFileChange}
                             />
                             <button
@@ -156,9 +173,17 @@ const AttendanceAttachmentsView = ({
                                                 type="file"
                                                 className="hidden"
                                                 id={`replace-file-${file._id}`}
+                                                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                                 onChange={(e) => {
                                                     const newFile = e.target.files[0];
-                                                    if (newFile) onReplace(file._id, newFile);
+                                                    if (newFile) {
+                                                        if (!isValidWordFile(newFile)) {
+                                                            toast.error('Only Word files (.doc, .docx) are allowed.');
+                                                            e.target.value = '';
+                                                            return;
+                                                        }
+                                                        onReplace(file._id, newFile);
+                                                    }
                                                     e.target.value = '';
                                                 }}
                                             />

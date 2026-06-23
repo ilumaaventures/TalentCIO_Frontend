@@ -36,8 +36,8 @@ const Topbar = ({ toggleSidebar }) => {
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
         ...(hasDossierModule ? [
+            { id: 'hris', label: 'EIS', icon: Shield },
             { id: 'documents', label: 'Documents', icon: FileText },
-            { id: 'hris', label: 'HRIS', icon: Shield },
             { id: 'history', label: 'Activities', icon: Calendar }
         ] : []),
         ...(hasDossierModule && isManager ? [
