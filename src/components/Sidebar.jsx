@@ -102,7 +102,10 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('ta.config.view')
     || user?.permissions?.includes('ta.config.edit')
     || user?.permissions?.includes('*');
-  const showDashboard = user?.roles?.includes('Admin') || user?.hasAllPermissions;
+  const showDashboard = user?.roles?.includes('Admin')
+    || user?.hasAllPermissions
+    || user?.permissions?.includes('dashboard.view')
+    || user?.permissions?.includes('*');
   const showAttendance = user?.company?.enabledModules?.includes('attendance');
   const showLeaves = user?.company?.enabledModules?.includes('leaves');
   const showHolidays = hasModule('holidays');

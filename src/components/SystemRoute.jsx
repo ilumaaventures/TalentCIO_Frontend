@@ -8,7 +8,8 @@ const SystemRoute = ({ children }) => {
     // Check for System Roles (Admin) or All Permissions (Wildcards like *, all, admin)
     const hasAdminPermission = user?.permissions?.some(p => p === '*' || p === 'all' || p === 'admin');
     const hasSystemRole = user?.roles?.some(r => r === 'Admin' || r === 'admin' || r?.name === 'Admin' || r?.isSystem === true);
-    const hasAllAccess = hasSystemRole || hasAdminPermission || user?.hasAllPermissions;
+    const hasDashboardPermission = user?.permissions?.includes('dashboard.view');
+    const hasAllAccess = hasSystemRole || hasAdminPermission || user?.hasAllPermissions || hasDashboardPermission;
 
     if (!hasAllAccess) {
         return <Navigate to="/attendance" replace />;
