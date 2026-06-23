@@ -314,7 +314,7 @@ const Users = () => {
             || exportOptions.duration
             || exportOptions.leaves;
         const shouldDownloadDocuments = hasAttendanceDocumentFeature && exportOptions.documents;
-        const shouldDownloadHRIS = exportOptions.hrisProfiles;
+        const shouldDownloadHRIS = canExportHRIS && exportOptions.hrisProfiles;
 
         if (!hasAttendanceSelection && !shouldDownloadDocuments && !shouldDownloadHRIS) {
             toast.error('Select at least one export option before downloading.');
@@ -849,6 +849,12 @@ const Users = () => {
     }, [users]);
 
     const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
+    const userRoles = user?.roles?.map(r => typeof r === 'string' ? r : r?.name) || [];
+    const hasAdminOrHR = userRoles.some(r => ['Admin', 'Super Admin', 'System Admin', 'HR Admin', 'HR'].includes(r));
+    const canExportHRIS = hasAdminOrHR
+        || user?.permissions?.includes('dossier.export')
+        || user?.permissions?.includes('*')
+        || user?.hasAllPermissions;
     const attendanceShiftOptions = user?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
     const hasAttendanceDocumentFeature = user?.company?.enabledModules?.includes('attendance')
         && Boolean(user?.company?.settings?.timesheet?.requireAttachment);
@@ -1082,17 +1088,21 @@ const Users = () => {
                                             </label>
                                         </>
                                     )}
-                                    <div className="h-px bg-slate-100 my-2"></div>
-                                    <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Profiles & HRIS:</p>
-                                    <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
-                                        <input
-                                            type="checkbox"
-                                            checked={exportOptions.hrisProfiles}
-                                            onChange={e => setExportOptions({ ...exportOptions, hrisProfiles: e.target.checked })}
-                                            className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
-                                        />
-                                        <span className="text-sm font-medium text-slate-700">Candidate / HRIS Profiles</span>
-                                    </label>
+                                    {canExportHRIS && (
+                                        <>
+                                            <div className="h-px bg-slate-100 my-2"></div>
+                                            <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Profiles & HRIS:</p>
+                                            <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={exportOptions.hrisProfiles}
+                                                    onChange={e => setExportOptions({ ...exportOptions, hrisProfiles: e.target.checked })}
+                                                    className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                                />
+                                                <span className="text-sm font-medium text-slate-700">Candidate / HRIS Profiles</span>
+                                            </label>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end space-x-2 rounded-b-lg">
                                     <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800">Close</button>

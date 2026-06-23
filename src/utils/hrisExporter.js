@@ -51,7 +51,8 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             { title: 'Updated Resume', category: 'Resume' },
             { title: 'Previous Employer Relieving Letter', category: 'Relieving Letter' },
             { title: 'Previous Experience Certificate', category: 'Employment' },
-            { title: 'Salary Slip', category: 'Payslips' }
+            { title: 'Salary Slip', category: 'Payslips' },
+            { title: 'Previous Offer Letter', category: 'Offer Letter' }
         ];
 
         // Populate summary and individual worksheets
