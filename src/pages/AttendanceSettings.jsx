@@ -20,6 +20,7 @@ const DEFAULT_ATTENDANCE_SETTINGS = {
     halfDayAllowed: true,
     requireLocationCheckIn: false,
     requireLocationCheckOut: false,
+    requireLocationTimesheet: false,
     locationCheck: false,
     ipCheck: false,
     allowedRadius: 200,
@@ -408,6 +409,15 @@ const AttendanceSettings = () => {
                                     onChange={(e) => updateAttendance({ requireLocationCheckOut: e.target.checked })}
                                 />
                                 <span className="text-sm text-slate-700">Require location for check-out</span>
+                            </label>
+                            <label className="flex items-center gap-3">
+                                <input
+                                    type="checkbox"
+                                    disabled={!canEditLocationRules}
+                                    checked={attendance.requireLocationTimesheet}
+                                    onChange={(e) => updateAttendance({ requireLocationTimesheet: e.target.checked })}
+                                />
+                                <span className="text-sm text-slate-700">Require location when submitting attendance from timesheet</span>
                             </label>
                             <label className="flex items-center gap-3">
                                 <input
