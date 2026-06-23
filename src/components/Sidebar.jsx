@@ -40,6 +40,8 @@ const TA_DASHBOARD_VIEWS = [
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout, hasModule } = useAuth();
+  const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role))
+    || user?.permissions?.includes('*');
   const location = useLocation();
   const [recycleBinCount, setRecycleBinCount] = useState(0);
   const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
@@ -68,7 +70,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const sidebarLogoAlt = workspaceLogoMode === 'company'
     ? `${user?.company?.name || 'Company'} logo`
     : 'TalentCIO';
-  const canViewTAAnalytics = user?.roles?.includes('Admin')
+  const canViewTAAnalytics = isAdmin
     || user?.permissions?.includes('ta.manage')
     || user?.permissions?.includes('ta.analytics.global')
     || user?.permissions?.includes('ta.analytics.assigned')
@@ -82,7 +84,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
   const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (
-    user?.roles?.includes('Admin')
+    isAdmin
     || user?.permissions?.includes('ta.view')
     || user?.permissions?.includes('ta.candidate.manage.assigned')
     || user?.permissions?.includes('ta.candidate.manage.all')
@@ -97,12 +99,12 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.isTAParticipant
     || canViewTAAnalytics
   );
-  const canViewTAConfig = user?.roles?.includes('Admin')
+  const canViewTAConfig = isAdmin
     || user?.permissions?.includes('ta.manage')
     || user?.permissions?.includes('ta.config.view')
     || user?.permissions?.includes('ta.config.edit')
     || user?.permissions?.includes('*');
-  const showDashboard = user?.roles?.includes('Admin')
+  const showDashboard = isAdmin
     || user?.hasAllPermissions
     || user?.permissions?.includes('dashboard.view')
     || user?.permissions?.includes('*');
@@ -112,33 +114,39 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showTimesheet = user?.company?.enabledModules?.includes('timesheet');
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
-  const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (user?.roles?.includes('Admin') || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
-  const showOnboarding = user?.roles?.includes('Admin')
+  const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (isAdmin || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
+  const showOnboarding = user?.company?.enabledModules?.includes('onboarding') && (
+    isAdmin
     || user?.permissions?.includes('onboarding.view')
     || user?.permissions?.includes('onboarding.document.review')
     || user?.permissions?.includes('onboarding.document.request')
     || user?.permissions?.includes('onboarding.credential.manage')
     || user?.permissions?.includes('onboarding.complete')
     || user?.permissions?.includes('onboarding.manage')
-    || user?.permissions?.includes('*');
-  const showOffboarding = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('*')
+  );
+  const showOffboarding = user?.company?.enabledModules?.includes('offboarding') && (
+    isAdmin
     || user?.permissions?.includes('offboarding.read')
     || user?.permissions?.includes('offboarding.create')
     || user?.permissions?.includes('offboarding.update')
-    || user?.permissions?.includes('*');
-  const showHREmail = user?.roles?.includes('Admin')
+    || user?.permissions?.includes('*')
+  );
+  const showHREmail = user?.company?.enabledModules?.includes('hrEmail') && (
+    isAdmin
     || user?.permissions?.includes('hr_email.send')
-    || user?.permissions?.includes('*');
-  const showRecycleBin = user?.roles?.includes('Admin') || user?.permissions?.includes('bin.view');
+    || user?.permissions?.includes('*')
+  );
+  const showRecycleBin = isAdmin || user?.permissions?.includes('bin.view');
   const showBusinessUnits = hasModule('businessUnits') && (
-    user?.roles?.includes('Admin')
+    isAdmin
     || user?.permissions?.includes('business_unit.read')
     || user?.permissions?.includes('business_unit.create')
     || user?.permissions?.includes('business_unit.update')
     || user?.permissions?.includes('*')
   );
   const showClients = hasModule('clients') && (
-    user?.roles?.includes('Admin')
+    isAdmin
     || user?.permissions?.includes('client.read')
     || user?.permissions?.includes('client.create')
     || user?.permissions?.includes('client.update')
@@ -148,11 +156,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
-  const showEmailSettings = user?.roles?.includes('Admin')
+  const showEmailSettings = isAdmin
     || user?.permissions?.includes('settings.email.view')
     || user?.permissions?.includes('settings.email.manage')
     || user?.permissions?.includes('*');
-  const showNotificationSettings = user?.roles?.includes('Admin')
+  const showNotificationSettings = isAdmin
     || user?.permissions?.includes('settings.notification.view')
     || user?.permissions?.includes('settings.notification.manage')
     || user?.permissions?.includes('*');
@@ -206,7 +214,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       label: 'Access Settings',
       to: '/ta/settings/access',
       icon: ShieldCheck,
-      visible: user?.roles?.includes('Admin') || canViewTAConfig,
+      visible: isAdmin || canViewTAConfig,
       isActive: location.pathname === '/ta/settings/access'
     },
     {
@@ -234,7 +242,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       label: 'Email Templates',
       to: '/ta/email-templates',
       icon: Mail,
-      visible: user?.roles?.includes('Admin') || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('*'),
+      visible: isAdmin || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('*'),
       isActive: location.pathname === '/ta/email-templates'
     }
   ].filter((item) => item.visible);
@@ -354,10 +362,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Attendance</span>
                 </Link>
               )}
-              <Link to="/announcements" className={getSidebarLinkClass(location.pathname === '/announcements')} onClick={onClose}>
-                <Megaphone size={18} />
-                <span>Announcements</span>
-              </Link>
+              {user?.company?.enabledModules?.includes('announcements') && (
+                <Link to="/announcements" className={getSidebarLinkClass(location.pathname === '/announcements')} onClick={onClose}>
+                  <Megaphone size={18} />
+                  <span>Announcements</span>
+                </Link>
+              )}
               {showLeaves && (
                 <Link to="/leaves" className={getSidebarLinkClass(location.pathname === '/leaves')} onClick={onClose}>
                   <FileText size={18} />
@@ -378,7 +388,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               )}
               {showMeetings && (
                 <Link
-                  to={(user?.roles?.includes('Admin') || user?.permissions?.includes('discussion.read')) ? "/discussions" : "/meetings"}
+                  to={(isAdmin || user?.permissions?.includes('discussion.read')) ? "/discussions" : "/meetings"}
                   className={getSidebarLinkClass(location.pathname === '/meetings' || location.pathname.startsWith('/discussions'))}
                   onClick={onClose}
                 >

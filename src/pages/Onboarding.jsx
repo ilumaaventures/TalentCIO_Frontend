@@ -109,7 +109,7 @@ const isAllowedCustomFile = (file) => file?.type?.startsWith('image/') || CUSTOM
 const Onboarding = () => {
   const { user } = useAuth();
   const permissions = user?.permissions || [];
-  const isOnboardingAdmin = user?.roles?.includes('Admin') || permissions.includes('*');
+  const isOnboardingAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role)) || permissions.includes('*');
   const canViewOnboarding = isOnboardingAdmin
     || permissions.includes('onboarding.view')
     || permissions.includes('onboarding.document.review')

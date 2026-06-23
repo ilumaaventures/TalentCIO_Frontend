@@ -1,4 +1,4 @@
-export const ADMIN_ROLES = ['Admin'];
+export const ADMIN_ROLES = ['Admin', 'Super Admin', 'System Admin'];
 
 export const ATTENDANCE_SETTINGS_PERMISSIONS = ['user.update'];
 export const EMAIL_SETTINGS_PERMISSIONS = ['settings.email.view', 'settings.email.manage'];
