@@ -866,11 +866,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     };
 
     useEffect(() => {
-        const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
-        if (isManager && activeTab === 'requests') {
+        if (canApprove && activeTab === 'requests') {
             fetchHRISRequests();
         }
-    }, [activeTab, canApprove, currentUser]);
+    }, [activeTab, canApprove]);
 
     const tabs = useMemo(() => {
         const nextTabs = [
@@ -890,7 +889,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             }
         }
 
-        if (isManager && hasDossierModule) {
+        if (canApprove && hasDossierModule) {
             nextTabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
         }
 
@@ -899,7 +898,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
 
         return nextTabs;
-    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, isManager]);
+    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, canApprove]);
 
     // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
     useEffect(() => {
