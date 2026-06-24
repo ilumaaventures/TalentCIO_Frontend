@@ -170,6 +170,14 @@ const PendingHighlight = ({ show, liveValue, pendingValue, label, type, children
 
     if (!hasChange) return <>{children}</>;
 
+    // Clone children to inject pendingValue so it displays in the Field
+    const updatedChildren = React.Children.map(children, child => {
+        if (React.isValidElement(child)) {
+            return React.cloneElement(child, { value: pendingValue });
+        }
+        return child;
+    });
+
     return (
         <div
             className="relative group"
@@ -177,17 +185,17 @@ const PendingHighlight = ({ show, liveValue, pendingValue, label, type, children
             onMouseLeave={() => setOpen(false)}
             onClick={() => setOpen(o => !o)}
         >
-            {/* Red-tinted field container */}
-            <div className="rounded-md ring-2 ring-red-300 ring-offset-1 bg-red-50/60 p-0.5 cursor-pointer transition-all">
-                {children}
-                {/* Pulsing badge showing new value */}
+            {/* Green-tinted field container showing the updated value */}
+            <div className="rounded-md ring-2 ring-emerald-300 ring-offset-1 bg-emerald-50/50 p-0.5 cursor-pointer transition-all hover:bg-emerald-50/70">
+                {updatedChildren}
+                {/* Pulsing badge showing updated value status */}
                 <div className="flex items-center gap-1 mt-1 px-1">
                     <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
                     </span>
-                    <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">
-                        Pending Change
+                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">
+                        Updated (Pending)
                     </span>
                 </div>
             </div>
@@ -866,11 +874,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     };
 
     useEffect(() => {
-        const isManager = currentUser?.roles?.some(r => r.name === 'Admin') || currentUser?.directReportsCount > 0 || canApprove;
-        if (isManager && activeTab === 'requests') {
+        if (canApprove && activeTab === 'requests') {
             fetchHRISRequests();
         }
-    }, [activeTab, canApprove, currentUser]);
+    }, [activeTab, canApprove]);
 
     const tabs = useMemo(() => {
         const nextTabs = [
@@ -890,7 +897,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             }
         }
 
-        if (isManager && hasDossierModule) {
+        if (canApprove && hasDossierModule) {
             nextTabs.push({ id: 'requests', label: 'Requests', icon: AlertCircle });
         }
 
@@ -899,7 +906,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
 
         return nextTabs;
-    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, isManager]);
+    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, canApprove]);
 
     // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
     useEffect(() => {

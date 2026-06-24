@@ -40,7 +40,7 @@ const Topbar = ({ toggleSidebar }) => {
             { id: 'documents', label: 'Documents', icon: FileText },
             { id: 'history', label: 'Activities', icon: Calendar }
         ] : []),
-        ...(hasDossierModule && isManager ? [
+        ...(hasDossierModule && canApproveDossier ? [
             { id: 'requests', label: 'Requests', icon: AlertCircle }
         ] : []),
         ...(canViewProfileSettings ? [
