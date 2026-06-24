@@ -45,7 +45,8 @@ const buildPreviewData = (candidate, requestMeta, customNote = '') => {
         currentStatus: candidate?.status || '',
         interviewDate: '',
         interviewLink: '',
-        customNote
+        customNote,
+        JD: requestMeta?.jobDescription || ''
     };
 };
 
