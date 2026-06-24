@@ -76,6 +76,12 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('ta.analytics.assigned')
     || user?.permissions?.includes('*')
     || user?.isTAAnalyticsViewer;
+  const canViewCandidates = isAdmin
+    || user?.permissions?.includes('ta.candidate.view')
+    || user?.permissions?.includes('ta.candidate.manage.assigned')
+    || user?.permissions?.includes('ta.candidate.manage.all')
+    || user?.permissions?.includes('ta.view')
+    || user?.permissions?.includes('ta.manage');
   const requestedTATab = new URLSearchParams(location.search).get('tab');
   const currentTATab = requestedTATab === 'analytics'
     ? (canViewTAAnalytics ? 'overview' : 'requisitions')
@@ -308,6 +314,9 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="mb-6 space-y-1">
                 {TA_DASHBOARD_VIEWS.filter((item) => {
                   if (!canViewTAAnalytics && item.id === 'overview') {
+                    return false;
+                  }
+                  if (!canViewCandidates && item.id === 'candidates') {
                     return false;
                   }
 

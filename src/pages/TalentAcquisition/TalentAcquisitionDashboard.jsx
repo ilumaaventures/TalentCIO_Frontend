@@ -380,18 +380,30 @@ const TalentAcquisitionDashboard = () => {
     ]);
 
     const canViewAnalytics = useMemo(() => (
-        user?.roles?.includes('Admin') ||
+        user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role)) ||
         user?.permissions?.includes('ta.analytics.global') ||
         user?.permissions?.includes('ta.analytics.assigned') ||
         user?.permissions?.includes('*') ||
         user?.isTAAnalyticsViewer
     ), [user]);
 
-    const availableTabs = useMemo(() => (
-        canViewAnalytics
-            ? ['overview', 'requisitions', 'clients', 'interviews', 'candidates']
-            : ['requisitions', 'clients', 'interviews', 'candidates']
-    ), [canViewAnalytics]);
+    const canViewCandidates = useMemo(() => (
+        user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role)) ||
+        user?.permissions?.includes('ta.candidate.view') ||
+        user?.permissions?.includes('ta.candidate.manage.assigned') ||
+        user?.permissions?.includes('ta.candidate.manage.all') ||
+        user?.permissions?.includes('ta.view') ||
+        user?.permissions?.includes('ta.manage') ||
+        user?.permissions?.includes('*')
+    ), [user]);
+
+    const availableTabs = useMemo(() => {
+        const tabs = [];
+        if (canViewAnalytics) tabs.push('overview');
+        tabs.push('requisitions', 'clients', 'interviews');
+        if (canViewCandidates) tabs.push('candidates');
+        return tabs;
+    }, [canViewAnalytics, canViewCandidates]);
 
     const activeTab = useMemo(() => {
         const currentTab = searchParams.get('tab');
