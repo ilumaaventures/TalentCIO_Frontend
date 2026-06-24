@@ -34,7 +34,8 @@ const SAMPLE_DATA = {
     currentStatus: 'Interested',
     interviewDate: '10 May 2026, 04:00 PM',
     interviewLink: 'https://meet.example.com/interview',
-    customNote: 'Please join 10 minutes early.'
+    customNote: 'Please join 10 minutes early.',
+    JD: 'We are looking for a skilled Frontend Engineer with experience in React and modern CSS frameworks.'
 };
 
 const DEFAULT_FORM = {
