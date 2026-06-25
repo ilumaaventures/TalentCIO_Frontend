@@ -38,6 +38,19 @@ const TA_DASHBOARD_VIEWS = [
   { id: 'candidates', label: 'Candidates', icon: Users }
 ];
 
+// Returns true for users who are ONLY interviewers — they have ta.interview.evaluate
+// but none of the broader TA permissions that would give them full access.
+const isInterviewerOnlyUser = (user) => (
+  Boolean(user?.permissions?.includes('ta.interview.evaluate'))
+  && !user?.roles?.some((role) => ['Admin', 'Super Admin', 'System Admin'].includes(role))
+  && !user?.permissions?.includes('ta.candidate.manage.assigned')
+  && !user?.permissions?.includes('ta.candidate.manage.all')
+  && !user?.permissions?.includes('ta.view')
+  && !user?.permissions?.includes('ta.manage')
+  && !user?.permissions?.includes('ta.edit')
+  && !user?.permissions?.includes('*')
+);
+
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout, hasModule } = useAuth();
   const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role))
@@ -313,6 +326,13 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className={sectionLabelClass}>Main</div>
               <div className="mb-6 space-y-1">
                 {TA_DASHBOARD_VIEWS.filter((item) => {
+                  const interviewerOnly = isInterviewerOnlyUser(user);
+
+                  // Pure interviewers can only see Requisitions and Interviews tabs.
+                  if (interviewerOnly && !['requisitions', 'interviews'].includes(item.id)) {
+                    return false;
+                  }
+
                   if (!canViewTAAnalytics && item.id === 'overview') {
                     return false;
                   }

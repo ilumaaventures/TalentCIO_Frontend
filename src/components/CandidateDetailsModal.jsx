@@ -250,6 +250,10 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                                                             u.firstName ? `${u.firstName} ${u.lastName}` : (u.email || 'Assigned User')
                                                                         ).join(', ')}
                                                                     </p>
+                                                                ) : round.evaluatedBy ? (
+                                                                    <p className="text-sm font-medium text-slate-800">
+                                                                        {round.evaluatedBy.firstName ? `${round.evaluatedBy.firstName} ${round.evaluatedBy.lastName}` : (round.evaluatedBy.email || 'Evaluator')}
+                                                                    </p>
                                                                 ) : (
                                                                     <p className="text-sm text-slate-400 italic">Unassigned</p>
                                                                 )}
