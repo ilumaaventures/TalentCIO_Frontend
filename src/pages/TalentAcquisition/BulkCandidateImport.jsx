@@ -994,6 +994,27 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 : request?.requirements?.mustHaveSkills?.technical) || [];
 
             const softSkills = ['Communication Skills', 'Behavioral Skills'];
+            // Build unique list of round names from existing candidates or default template
+            const templateRounds = Array.isArray(request?.interviewWorkflowId?.rounds)
+                ? request.interviewWorkflowId.rounds.map(r => r.levelName)
+                : [];
+            const candidateRounds = existingCandidates.flatMap(c => (c.interviewRounds || []).map(r => r.levelName));
+            const uniqueRoundNames = [...new Set([...templateRounds, ...candidateRounds])].filter(Boolean);
+
+            const roundSectionsList = uniqueRoundNames.length > 0 ? uniqueRoundNames : ['Round 1'];
+
+            const roundSectionsMapped = roundSectionsList.map((roundName, index) => {
+                const roundNum = index + 1;
+                const title = roundName.toLowerCase().startsWith('round')
+                    ? roundName
+                    : `Round ${roundNum} – ${roundName}`;
+
+                return {
+                    title,
+                    subHeaders: ['Interviewer Feedback', 'Interview date', 'Interviewer Name', ...softSkills, ...techSkills, 'Performance Rating', 'Interview Status'],
+                    width: 5 + softSkills.length + techSkills.length
+                };
+            });
 
             // Define Sections (Matches Export)
             const sections = [
@@ -1007,11 +1028,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 { title: 'Contact Details', subHeaders: ['Email', 'Mobile No.'], width: 2 },
                 { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
                 { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
-                {
-                    title: 'Round 1',
-                    subHeaders: ['Interviewer Feedback', 'Interview date', 'Interviewer Name', ...softSkills, ...techSkills, 'Performance Rating', 'Interview Status'],
-                    width: 5 + softSkills.length + techSkills.length
-                },
+                ...roundSectionsMapped,
                 { title: 'Final Status & Decision', subHeaders: [PROFILE_SHORTLISTED_HEADER, 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
             ].filter(s => s.width > 0);
 

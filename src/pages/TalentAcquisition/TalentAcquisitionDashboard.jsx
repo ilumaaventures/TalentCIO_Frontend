@@ -52,7 +52,9 @@ const interviewStatusClasses = {
     Pending: 'bg-amber-50 text-amber-700',
     Completed: 'bg-emerald-50 text-emerald-700',
     Cancelled: 'bg-rose-50 text-rose-700',
-    Rescheduled: 'bg-violet-50 text-violet-700'
+    Rescheduled: 'bg-violet-50 text-violet-700',
+    Passed: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    Failed: 'bg-rose-50 text-rose-700 border border-rose-200'
 };
 
 const formatCompact = (value) => {
@@ -397,13 +399,29 @@ const TalentAcquisitionDashboard = () => {
         user?.permissions?.includes('*')
     ), [user]);
 
+    const isInterviewerOnlyUser = useMemo(() => (
+        Boolean(user?.permissions?.includes('ta.interview.evaluate'))
+        && !user?.roles?.some((role) => ['Admin', 'Super Admin', 'System Admin'].includes(role))
+        && !user?.permissions?.includes('ta.candidate.manage.assigned')
+        && !user?.permissions?.includes('ta.candidate.manage.all')
+        && !user?.permissions?.includes('ta.view')
+        && !user?.permissions?.includes('ta.manage')
+        && !user?.permissions?.includes('ta.edit')
+        && !user?.permissions?.includes('*')
+    ), [user]);
+
     const availableTabs = useMemo(() => {
+        // Pure interviewers only access Requisitions and Interviews.
+        if (isInterviewerOnlyUser) {
+            return ['requisitions', 'interviews'];
+        }
         const tabs = [];
         if (canViewAnalytics) tabs.push('overview');
         tabs.push('requisitions', 'clients', 'interviews');
         if (canViewCandidates) tabs.push('candidates');
         return tabs;
-    }, [canViewAnalytics, canViewCandidates]);
+    }, [canViewAnalytics, canViewCandidates, isInterviewerOnlyUser]);
+
 
     const activeTab = useMemo(() => {
         const currentTab = searchParams.get('tab');

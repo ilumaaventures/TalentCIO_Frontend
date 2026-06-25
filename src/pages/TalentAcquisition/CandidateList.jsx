@@ -520,7 +520,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit')
-        || user?.permissions?.includes('ta.candidate.make_decision');
+        || user?.permissions?.includes('ta.candidate.make_decision')
+        || user?.permissions?.includes('ta.interview.evaluate');
     const canManagePhase3Decisions = canMakeDecisions;
     const canTransferCandidates = isAdmin
         || user?.permissions?.includes('ta.edit')
