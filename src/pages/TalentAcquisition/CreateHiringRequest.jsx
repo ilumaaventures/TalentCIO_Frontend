@@ -283,7 +283,7 @@ const CreateHiringRequest = () => {
                 } catch (error) {
                     console.error(error);
                     toast.error('Failed to load request details');
-                    navigate('/ta');
+                    navigate('/ta?tab=requisitions');
                 } finally {
                     setLoading(false);
                 }
@@ -450,7 +450,7 @@ const CreateHiringRequest = () => {
                 console.error('Failed to refresh TA client cache after save:', cacheError);
             }
 
-            navigate('/ta');
+            navigate('/ta?tab=requisitions');
 
         } catch (error) {
             console.error(error);
