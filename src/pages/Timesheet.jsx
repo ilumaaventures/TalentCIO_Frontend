@@ -229,6 +229,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         user?.permissions?.includes('*') ||
         user?.permissions?.includes('timesheet.view') ||
         user?.permissions?.includes('timesheet.update_others');
+    const canSubmitTimesheet = user?.roles?.some(r => r === 'Admin' || r.name === 'Admin') ||
+        user?.permissions?.includes('*') ||
+        user?.permissions?.includes('timesheet.submit');
     const canUseProjectWorkLogs = hasModule('projects');
 
     const isEditableTimesheetStatus = !timesheet || timesheet.status === 'DRAFT' || timesheet.status === 'REJECTED';
@@ -1941,7 +1944,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             >
                                                 <span>Next</span> <ChevronRight size={16} />
                                             </Button>
-                                            {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && (
+                                            {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canSubmitTimesheet && (
                                                 <Button
                                                     onClick={handleSubmit}
                                                     className="flex items-center space-x-2"
