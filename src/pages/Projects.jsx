@@ -37,7 +37,16 @@ const Projects = () => {
                 if (!force && isCacheFresh(cachedData, PROJECT_CACHE_TTL_MS)) return;
             }
 
-            const bootstrapRes = await api.get('/projects/bootstrap');
+            const config = force ? {
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                params: {
+                    _t: Date.now()
+                }
+            } : undefined;
+            const bootstrapRes = await api.get('/projects/bootstrap', config);
             const projData = bootstrapRes.data?.projects || [];
             const clientsData = bootstrapRes.data?.clients || [];
             const employeesData = bootstrapRes.data?.employees || [];
@@ -217,132 +226,135 @@ const Projects = () => {
                                         </tr>
                                     ))
                                 ) : projects.length > 0 ? (
-                                    projects.map((project, index) => (
-                                        <tr key={project._id} className="hover:bg-slate-50/50">
-                                            <td className="px-6 py-3 font-medium text-slate-800">
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="p-1.5 bg-blue-100 text-blue-600 rounded">
-                                                        <Briefcase size={16} />
+                                    projects.map((project, index) => {
+                                        const displayStatus = project.status || (project.isActive ? 'Active' : 'Completed');
+                                        return (
+                                            <tr key={project._id} className="hover:bg-slate-50/50">
+                                                <td className="px-6 py-3 font-medium text-slate-800">
+                                                    <div className="flex items-center space-x-2">
+                                                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded">
+                                                            <Briefcase size={16} />
+                                                        </div>
+                                                        <span>{project.name}</span>
                                                     </div>
-                                                    <span>{project.name}</span>
-                                                </div>
-                                            </td>
+                                                </td>
 
 
 
-                                            <td className="px-6 py-3">
-                                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${project.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                    project.status === 'On Hold' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                                        'bg-slate-100 text-slate-500 border-slate-200'
-                                                    }`}>
-                                                    {project.status || (project.isActive ? 'Active' : 'Completed')}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-3">
-                                                <div className="flex items-center justify-end gap-3 action-menu-container relative">
-                                                    <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium whitespace-nowrap">View Modules</a>
+                                                <td className="px-6 py-3">
+                                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${displayStatus === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                        displayStatus === 'On Hold' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                                                            'bg-slate-100 text-slate-500 border-slate-200'
+                                                        }`}>
+                                                        {displayStatus}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-3">
+                                                    <div className="flex items-center justify-end gap-3 action-menu-container relative">
+                                                        <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium whitespace-nowrap">View Modules</a>
 
-                                                    {canUpdate && (
-                                                        <div className="relative">
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenMenuId(openMenuId === project._id ? null : project._id);
-                                                                }}
-                                                                disabled={actionLoading === project._id}
-                                                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50"
-                                                            >
-                                                                {actionLoading === project._id ? (
-                                                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
-                                                                ) : (
-                                                                    <MoreVertical size={16} />
-                                                                )}
-                                                            </button>
-
-                                                            {openMenuId === project._id && (
-                                                                <div className={`absolute right-0 ${index >= projects.length - 2 ? 'bottom-full mb-1' : 'top-full mt-1'} w-40 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-50`}>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            handleEdit(project);
-                                                                            setOpenMenuId(null);
-                                                                        }}
-                                                                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
-                                                                    >
-                                                                        <Edit2 size={13} />
-                                                                        Edit
-                                                                    </button>
-
-                                                                    {project.status !== 'Completed' && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleStatusChange(project, 'Completed');
-                                                                                setOpenMenuId(null);
-                                                                            }}
-                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-emerald-600 flex items-center gap-2"
-                                                                        >
-                                                                            <XCircle size={13} />
-                                                                            Close
-                                                                        </button>
+                                                        {canUpdate && (
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setOpenMenuId(openMenuId === project._id ? null : project._id);
+                                                                    }}
+                                                                    disabled={actionLoading === project._id}
+                                                                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50"
+                                                                >
+                                                                    {actionLoading === project._id ? (
+                                                                        <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                                                                    ) : (
+                                                                        <MoreVertical size={16} />
                                                                     )}
+                                                                </button>
 
-                                                                    {project.status === 'Active' && (
+                                                                {openMenuId === project._id && (
+                                                                    <div className={`absolute right-0 ${index >= projects.length - 2 ? 'bottom-full mb-1' : 'top-full mt-1'} w-40 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-50`}>
                                                                         <button
                                                                             onClick={() => {
-                                                                                handleStatusChange(project, 'On Hold');
-                                                                                setOpenMenuId(null);
-                                                                            }}
-                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-orange-600 flex items-center gap-2"
-                                                                        >
-                                                                            <PauseCircle size={13} />
-                                                                            On Hold
-                                                                        </button>
-                                                                    )}
-
-                                                                    {(project.status === 'On Hold' || project.status === 'Completed' || project.status === 'Inactive') && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleStatusChange(project, 'Active');
+                                                                                handleEdit(project);
                                                                                 setOpenMenuId(null);
                                                                             }}
                                                                             className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
                                                                         >
-                                                                            <Briefcase size={13} />
-                                                                            Mark as Active
+                                                                            <Edit2 size={13} />
+                                                                            Edit
                                                                         </button>
-                                                                    )}
 
-                                                                    {user?.permissions?.includes('project.delete') && (
-                                                                        <button
-                                                                            onClick={async () => {
-                                                                                if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
-                                                                                    setActionLoading(project._id);
-                                                                                     try {
-                                                                                         await api.delete(`/projects/${project._id}`);
-                                                                                         toast.success('Project deleted');
-                                                                                         sessionStorage.removeItem(`project_data_${user?._id}`);
-                                                                                         await fetchData();
-                                                                                     } catch {
-                                                                                         toast.error('Failed to delete project');
-                                                                                     } finally {
-                                                                                         setActionLoading(null);
-                                                                                     }
-                                                                                }
-                                                                                setOpenMenuId(null);
-                                                                            }}
-                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-red-600 flex items-center gap-2 border-t border-slate-50 mt-1 pt-2"
-                                                                        >
-                                                                            <Trash2 size={13} />
-                                                                            Delete
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                                                        {displayStatus !== 'Completed' && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    handleStatusChange(project, 'Completed');
+                                                                                    setOpenMenuId(null);
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-emerald-600 flex items-center gap-2"
+                                                                            >
+                                                                                <XCircle size={13} />
+                                                                                Close
+                                                                            </button>
+                                                                        )}
+
+                                                                        {displayStatus === 'Active' && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    handleStatusChange(project, 'On Hold');
+                                                                                    setOpenMenuId(null);
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-orange-600 flex items-center gap-2"
+                                                                            >
+                                                                                <PauseCircle size={13} />
+                                                                                On Hold
+                                                                            </button>
+                                                                        )}
+
+                                                                        {(displayStatus === 'On Hold' || displayStatus === 'Completed' || displayStatus === 'Inactive') && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    handleStatusChange(project, 'Active');
+                                                                                    setOpenMenuId(null);
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                                                                            >
+                                                                                <Briefcase size={13} />
+                                                                                Mark as Active
+                                                                            </button>
+                                                                        )}
+
+                                                                        {user?.permissions?.includes('project.delete') && (
+                                                                            <button
+                                                                                onClick={async () => {
+                                                                                    if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
+                                                                                        setActionLoading(project._id);
+                                                                                         try {
+                                                                                             await api.delete(`/projects/${project._id}`);
+                                                                                             toast.success('Project deleted');
+                                                                                             sessionStorage.removeItem(`project_data_${user?._id}`);
+                                                                                             await fetchData({ force: true });
+                                                                                         } catch {
+                                                                                             toast.error('Failed to delete project');
+                                                                                         } finally {
+                                                                                             setActionLoading(null);
+                                                                                         }
+                                                                                    }
+                                                                                    setOpenMenuId(null);
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-red-600 flex items-center gap-2 border-t border-slate-50 mt-1 pt-2"
+                                                                            >
+                                                                                <Trash2 size={13} />
+                                                                                Delete
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 ) : (
                                     <tr>
                                         <td colSpan="5" className="p-8 text-center text-slate-500">
