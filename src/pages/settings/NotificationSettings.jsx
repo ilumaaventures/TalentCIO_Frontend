@@ -90,6 +90,7 @@ const NotificationSettings = () => {
         accounts: []
     });
     const [emailDefaultAccountId, setEmailDefaultAccountId] = useState('');
+    const [overrides, setOverrides] = useState({});
 
     useEffect(() => {
         const loadSettings = async () => {
@@ -112,8 +113,23 @@ const NotificationSettings = () => {
                     eventEmailSenderAccountIds: {}
                 };
 
+                const availableSenderIds = new Set(
+                    [nextSenderData.platformOption, ...nextSenderData.accounts]
+                        .filter(Boolean)
+                        .map((s) => String(s._id || ''))
+                );
+                const currentDefaultId = nextSettings.emailSenderAccountId || senderResponse.data?.defaultAccountId || senderResponse.data?.platformOption?._id || '';
+                const initialOverrides = {};
+                nextDefinitions.forEach((def) => {
+                    const explicitSenderId = String(nextSettings?.eventEmailSenderAccountIds?.[def.key] || '').trim();
+                    if (explicitSenderId && availableSenderIds.has(explicitSenderId) && explicitSenderId !== currentDefaultId) {
+                        initialOverrides[def.key] = true;
+                    }
+                });
+
                 setDefinitions(nextDefinitions);
                 setSenderData(nextSenderData);
+                setOverrides(initialOverrides);
                 setSettings({
                     ...nextSettings,
                     eventEmailSenderAccountIds: resolveEventSenderAccountIds({
@@ -230,8 +246,28 @@ const NotificationSettings = () => {
                 defaultSenderSaved = true;
             }
 
-            const { data } = await api.put('/company/notification-settings', settings);
-            setSettings(data?.settings || settings);
+            // Construct the settings payload with override fields
+            const eventEmailSenderAccountIds = {};
+            const eventEmailSenderSources = {};
+
+            definitions.forEach((def) => {
+                if (overrides[def.key]) {
+                    eventEmailSenderAccountIds[def.key] = settings.eventEmailSenderAccountIds?.[def.key] || '';
+                    eventEmailSenderSources[def.key] = 'notification';
+                } else {
+                    eventEmailSenderAccountIds[def.key] = '';
+                    eventEmailSenderSources[def.key] = 'notification'; // Follow the top Notification Sender
+                }
+            });
+
+            const settingsToSave = {
+                ...settings,
+                eventEmailSenderAccountIds,
+                eventEmailSenderSources
+            };
+
+            const { data } = await api.put('/company/notification-settings', settingsToSave);
+            setSettings(data?.settings || settingsToSave);
             toast.success(
                 defaultSenderSaved
                     ? 'Notification settings and default sender saved'
@@ -407,8 +443,18 @@ const NotificationSettings = () => {
                                         </td>
                                         <td className="border-b border-slate-200 px-4 py-3">
                                             <select
-                                                value={settings.eventEmailSenderAccountIds?.[definition.key] || ''}
-                                                onChange={(event) => updateEventEmailSenderAccountId(definition.key, event.target.value)}
+                                                value={overrides[definition.key] ? (settings.eventEmailSenderAccountIds?.[definition.key] || '') : (settings.emailSenderAccountId || emailDefaultAccountId)}
+                                                onChange={(event) => {
+                                                    const val = event.target.value;
+                                                    const defaultId = settings.emailSenderAccountId || emailDefaultAccountId;
+                                                    if (val === defaultId) {
+                                                        setOverrides((curr) => ({ ...curr, [definition.key]: false }));
+                                                        updateEventEmailSenderAccountId(definition.key, '');
+                                                    } else {
+                                                        setOverrides((curr) => ({ ...curr, [definition.key]: true }));
+                                                        updateEventEmailSenderAccountId(definition.key, val);
+                                                    }
+                                                }}
                                                 disabled={!canManage || !eventUsesEmail(definition.key, definition.defaultChannel)}
                                                 className="w-full min-w-[240px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
                                             >

@@ -12,6 +12,7 @@ const PreOnboardingLogin = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showRegenModal, setShowRegenModal] = useState(false);
   const [regenReason, setRegenReason] = useState('');
   const [resolvedWorkspace, setResolvedWorkspace] = useState('');
@@ -224,14 +225,17 @@ const PreOnboardingLogin = () => {
                   <Lock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
                   <input
                     required
-                    type="password"
+                    type={showConfirmPassword ? 'text' : 'password'}
                     placeholder="Re-enter password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    style={{ width: '100%', padding: '14px 14px 14px 44px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '12px', color: '#f1f5f9', fontSize: '15px', outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '14px 44px 14px 44px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '12px', color: '#f1f5f9', fontSize: '15px', outline: 'none', boxSizing: 'border-box' }}
                     onFocus={(e) => e.target.style.borderColor = '#6366f1'}
                     onBlur={(e) => e.target.style.borderColor = 'rgba(148,163,184,0.2)'}
                   />
+                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '2px' }}>
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </div>
 

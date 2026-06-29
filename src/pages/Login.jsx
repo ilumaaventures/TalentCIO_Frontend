@@ -24,6 +24,8 @@ const Login = () => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [timer, setTimer] = useState(60);
   const [isResending, setIsResending] = useState(false);
 
@@ -581,13 +583,20 @@ const Login = () => {
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input
-                        type="password"
+                        type={showNewPassword ? "text" : "password"}
                         required
                         value={newPassword}
                         onChange={e => setNewPassword(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-blue-600 focus:bg-white focus:outline-none transition-all text-slate-900 text-sm"
+                        className="w-full pl-11 pr-12 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-blue-600 focus:bg-white focus:outline-none transition-all text-slate-900 text-sm"
                         placeholder="••••••••"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-blue-600 transition-colors focus:outline-none"
+                      >
+                        {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
                     </div>
                   </div>
 
@@ -596,13 +605,20 @@ const Login = () => {
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input
-                        type="password"
+                        type={showConfirmPassword ? "text" : "password"}
                         required
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-blue-600 focus:bg-white focus:outline-none transition-all text-slate-900 text-sm"
+                        className="w-full pl-11 pr-12 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-blue-600 focus:bg-white focus:outline-none transition-all text-slate-900 text-sm"
                         placeholder="••••••••"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-blue-600 transition-colors focus:outline-none"
+                      >
+                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
                     </div>
                   </div>
 

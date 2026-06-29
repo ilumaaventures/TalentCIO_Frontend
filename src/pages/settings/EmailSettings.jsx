@@ -374,26 +374,35 @@ const SendersTab = ({ canManage }) => {
         const { data } = await api.get('/company/email-settings');
         const nextAccounts = Array.isArray(data?.accounts) ? data.accounts.map(normalizeAccount) : [];
         setAccounts(nextAccounts);
-        setDefaultAccountId(data?.defaultAccountId || PLATFORM_ID);
+        const serverDefaultId = data?.defaultAccountId || PLATFORM_ID;
+        setDefaultAccountId(serverDefaultId);
 
-        if (String(preferredAccount?._id || '') === PLATFORM_ID) {
+        if (preferredAccount) {
+            if (String(preferredAccount?._id || '') === PLATFORM_ID) {
+                setSelectedAccountId(PLATFORM_ID);
+                return;
+            }
+
+            const matchingAccount = findMatchingSender(nextAccounts, preferredAccount);
+            if (matchingAccount) {
+                setSelectedAccountId(matchingAccount._id);
+                setForm(normalizeAccount(matchingAccount));
+                return;
+            }
+        }
+
+        // Keep selection in sync with default sender on initial load
+        if (serverDefaultId === PLATFORM_ID) {
             setSelectedAccountId(PLATFORM_ID);
-            return;
-        }
-
-        const matchingAccount = findMatchingSender(nextAccounts, preferredAccount);
-        if (matchingAccount) {
-            setSelectedAccountId(matchingAccount._id);
-            setForm(normalizeAccount(matchingAccount));
-            return;
-        }
-
-        if (nextAccounts.length > 0) {
-            setSelectedAccountId(nextAccounts[0]._id);
-            setForm(normalizeAccount(nextAccounts[0]));
         } else {
-            setSelectedAccountId('new');
-            setForm(createEmptyAccount());
+            const matchingDefaultAccount = nextAccounts.find((acc) => acc._id === serverDefaultId);
+            if (matchingDefaultAccount) {
+                setSelectedAccountId(serverDefaultId);
+                setForm(normalizeAccount(matchingDefaultAccount));
+            } else {
+                setSelectedAccountId(PLATFORM_ID);
+                setDefaultAccountId(PLATFORM_ID);
+            }
         }
     };
 
@@ -449,17 +458,19 @@ const SendersTab = ({ canManage }) => {
 
         const remainingAccounts = accounts.filter((account) => account._id !== selectedSavedAccount._id);
         setAccounts(remainingAccounts);
-        if (defaultAccountId === selectedSavedAccount._id) {
-            setDefaultAccountId(PLATFORM_ID);
-        }
 
         if (remainingAccounts.length > 0) {
-            const nextSelectedAccount = remainingAccounts.find((account) => account._id !== selectedSavedAccount._id) || remainingAccounts[0];
+            const nextSelectedAccount = remainingAccounts[0];
             setSelectedAccountId(nextSelectedAccount._id);
             setForm(normalizeAccount(nextSelectedAccount));
+            if (canManage) {
+                setDefaultAccountId(nextSelectedAccount._id);
+            }
         } else {
-            setSelectedAccountId('new');
-            setForm(createEmptyAccount());
+            setSelectedAccountId(PLATFORM_ID);
+            if (canManage) {
+                setDefaultAccountId(PLATFORM_ID);
+            }
         }
 
         toast.success('Sender removed');
@@ -469,9 +480,11 @@ const SendersTab = ({ canManage }) => {
         if (!canManage) return;
 
         let accountsToSave = [...accounts];
-        const preferredAccountAfterSave = selectedAccountId === 'new'
+        let preferredAccountAfterSave = selectedAccountId === 'new'
             ? (formHasContent ? form : null)
             : (selectedSavedAccount || form);
+
+        let activeDefaultId = defaultAccountId;
 
         if (selectedAccountId === 'new' && formHasContent) {
             const validationMessage = validateForm();
@@ -480,7 +493,11 @@ const SendersTab = ({ canManage }) => {
                 return;
             }
 
-            accountsToSave = [...accountsToSave, normalizeAccount({ ...form, _id: createDraftId() })];
+            const newDraftId = createDraftId();
+            const newAccount = normalizeAccount({ ...form, _id: newDraftId });
+            accountsToSave = [...accountsToSave, newAccount];
+            preferredAccountAfterSave = newAccount;
+            activeDefaultId = newDraftId; // Newly created sender becomes the default
         } else if (selectedSavedAccount) {
             const validationMessage = validateForm();
             if (!validationMessage) {
@@ -495,7 +512,7 @@ const SendersTab = ({ canManage }) => {
         setSaving(true);
         try {
             await api.put('/company/email-settings', {
-                defaultAccountId,
+                defaultAccountId: activeDefaultId,
                 accounts: accountsToSave
             });
             await refreshProfile();
@@ -609,7 +626,11 @@ const SendersTab = ({ canManage }) => {
                             <button
                                 type="button"
                                 onClick={() => selectAccount('new')}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
+                                    selectedAccountId === 'new'
+                                        ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                                }`}
                             >
                                 <Plus size={14} />
                                 New
@@ -617,63 +638,132 @@ const SendersTab = ({ canManage }) => {
                         )}
                     </div>
 
-                    <div className="space-y-2 p-5">
-                        <label
-                            className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition ${selectedAccountId === PLATFORM_ID ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                    <div className="space-y-2.5 p-5">
+                        {/* Platform Sender Card */}
+                        <div
+                            role="button"
+                            tabIndex={0}
                             onClick={() => activateSenderRow(PLATFORM_ID)}
+                            onKeyDown={(event) => handleSenderRowKeyDown(event, PLATFORM_ID)}
+                            className={`group relative flex cursor-pointer items-center gap-4 rounded-xl border p-4 sm:p-5 transition-all duration-300 ease-in-out select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 hover:-translate-y-[1px] ${
+                                selectedAccountId === PLATFORM_ID
+                                    ? 'border-blue-500 bg-gradient-to-r from-blue-50/70 to-indigo-50/20 shadow-sm'
+                                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-sm'
+                            }`}
                         >
-                            <input
-                                type="radio"
-                                name="default-sender"
-                                checked={defaultAccountId === PLATFORM_ID}
-                                onChange={() => canManage && setDefaultAccountId(PLATFORM_ID)}
-                                disabled={!canManage}
-                                className="mt-0.5"
+                            {/* Left selection bar */}
+                            <div
+                                className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-md bg-blue-600 transition-all duration-300 ${
+                                    selectedAccountId === PLATFORM_ID ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'
+                                }`}
                             />
+
+                            {/* Custom Radio Button */}
+                            <div className="flex items-center justify-center shrink-0">
+                                <input
+                                    type="radio"
+                                    name="default-sender"
+                                    checked={selectedAccountId === PLATFORM_ID}
+                                    onChange={() => activateSenderRow(PLATFORM_ID)}
+                                    onClick={(event) => event.stopPropagation()}
+                                    disabled={!canManage}
+                                    className="sr-only"
+                                />
+                                <div
+                                    className={`flex h-5 w-5 items-center justify-center rounded-full border transition-all duration-300 ${
+                                        selectedAccountId === PLATFORM_ID
+                                            ? 'border-blue-600 bg-blue-600 shadow-sm'
+                                            : 'border-slate-300 bg-white group-hover:border-slate-400'
+                                    }`}
+                                >
+                                    <div
+                                        className={`h-2.5 w-2.5 rounded-full bg-white transition-all duration-300 ${
+                                            selectedAccountId === PLATFORM_ID ? 'scale-100 opacity-100' : 'scale-0 opacity-0'
+                                        }`}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Content */}
                             <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between gap-2">
                                     <span className="text-sm font-semibold text-slate-800">{platformOption.name}</span>
-                                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600">
+                                    <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
                                         Platform
                                     </span>
                                 </div>
-                                <p className="mt-0.5 text-xs text-slate-500">{platformOption.fromAddress}</p>
+                                <p className="mt-1 text-xs text-slate-500">{platformOption.fromAddress}</p>
                             </div>
-                        </label>
+                        </div>
 
-                        {accounts.map((account) => (
-                            <div
-                                key={account._id}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => activateSenderRow(account._id)}
-                                onKeyDown={(event) => handleSenderRowKeyDown(event, account._id)}
-                                className={`cursor-pointer rounded-xl border p-4 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedAccountId === account._id ? 'border-blue-200 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        type="radio"
-                                        name="default-sender"
-                                        checked={defaultAccountId === account._id}
-                                        onChange={() => canManage && setDefaultAccountId(account._id)}
-                                        onClick={(event) => event.stopPropagation()}
-                                        disabled={!canManage}
-                                        className="mt-0.5"
+                        {/* Custom Senders Cards */}
+                        {accounts.map((account) => {
+                            const isSelected = selectedAccountId === account._id;
+                            return (
+                                <div
+                                    key={account._id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => activateSenderRow(account._id)}
+                                    onKeyDown={(event) => handleSenderRowKeyDown(event, account._id)}
+                                    className={`group relative flex cursor-pointer items-center gap-4 rounded-xl border p-4 sm:p-5 transition-all duration-300 ease-in-out select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 hover:-translate-y-[1px] ${
+                                        isSelected
+                                            ? 'border-blue-500 bg-gradient-to-r from-blue-50/70 to-indigo-50/20 shadow-sm'
+                                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-sm'
+                                    }`}
+                                >
+                                    {/* Left selection bar */}
+                                    <div
+                                        className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-md bg-blue-600 transition-all duration-300 ${
+                                            isSelected ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'
+                                        }`}
                                     />
+
+                                    {/* Custom Radio Button */}
+                                    <div className="flex items-center justify-center shrink-0">
+                                        <input
+                                            type="radio"
+                                            name="default-sender"
+                                            checked={isSelected}
+                                            onChange={() => activateSenderRow(account._id)}
+                                            onClick={(event) => event.stopPropagation()}
+                                            disabled={!canManage}
+                                            className="sr-only"
+                                        />
+                                        <div
+                                            className={`flex h-5 w-5 items-center justify-center rounded-full border transition-all duration-300 ${
+                                                isSelected
+                                                    ? 'border-blue-600 bg-blue-600 shadow-sm'
+                                                    : 'border-slate-300 bg-white group-hover:border-slate-400'
+                                            }`}
+                                        >
+                                            <div
+                                                className={`h-2.5 w-2.5 rounded-full bg-white transition-all duration-300 ${
+                                                    isSelected ? 'scale-100 opacity-100' : 'scale-0 opacity-0'
+                                                }`}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Content */}
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="truncate text-sm font-semibold text-slate-800">{account.name}</span>
-                                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${account.ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                            <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${
+                                                account.ready 
+                                                    ? 'bg-emerald-50 border-emerald-100/50 text-emerald-700' 
+                                                    : 'bg-amber-50 border-amber-100/50 text-amber-700'
+                                            }`}>
                                                 {account.ready ? 'Ready' : 'Needs setup'}
                                             </span>
                                         </div>
-                                        <p className="mt-0.5 text-xs text-slate-500">
-                                            {account.fromAddress} - {account.provider.toUpperCase()}
+                                        <p className="mt-1 text-xs text-slate-500">
+                                            {account.fromAddress} - <span className="font-semibold text-slate-600">{account.provider.toUpperCase()}</span>
                                         </p>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
 
                         {accounts.length === 0 && (
                             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
