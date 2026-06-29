@@ -47,33 +47,40 @@ export const AuthProvider = ({ children }) => {
     return authLoadIdRef.current;
   }, []);
 
+  // LOW-6 Fix: Workspace verification runs ONCE on mount — not on every token change.
   useEffect(() => {
-    const authLoadId = invalidatePendingAuthLoads();
     let active = true;
-
-    const loadUserAndVerifyWorkspace = async () => {
-      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-
-      // 1. Verify workspace first
+    const verifyWorkspace = async () => {
       try {
         const response = await api.get('/auth/verify-workspace');
-        if (!active || authLoadIdRef.current !== authLoadId) return;
+        if (!active) return;
         if (response.data.type === 'tenant') {
           setWorkspace(response.data);
-          // If we have a subdomain, ensure it's in localStorage so axios can pick it up
           if (response.data.subdomain) {
             localStorage.setItem('tenant', response.data.subdomain);
           }
         }
       } catch (err) {
+        if (!active) return;
         if (err.response?.status === 404 || err.response?.status === 403) {
           setInvalidWorkspace(true);
           setLoading(false);
-          return;
         }
       }
+    };
+    verifyWorkspace();
+    return () => { active = false; };
+  }, []); // ← empty deps: workspace is static per page load
 
-      // 2. Try localStorage for initial state (avoids flicker)
+  // LOW-6 Fix: Profile fetch runs when token hint changes (login/logout/refresh).
+  useEffect(() => {
+    const authLoadId = invalidatePendingAuthLoads();
+    let active = true;
+
+    const loadUser = async () => {
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+
+      // Try localStorage for initial state (avoids flicker)
       const storedUser = readStoredUser();
       if (storedUser) {
         if (!active || authLoadIdRef.current !== authLoadId) return;
@@ -121,12 +128,12 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    loadUserAndVerifyWorkspace();
+    loadUser();
 
     return () => {
       active = false;
     };
-  }, [invalidatePendingAuthLoads, token]);
+  }, [invalidatePendingAuthLoads, token]); // ← token dependency: re-fetch profile on auth state changes
 
   const login = async (email, password, companyId = null) => {
     invalidatePendingAuthLoads();
