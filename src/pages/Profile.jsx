@@ -65,7 +65,35 @@ const clampCropPosition = (crop, imageMeta, zoom) => {
     };
 };
 
-const createCroppedProfileImage = async (file, imageMeta, crop, zoom) => {
+const getCurrentLocation = () => {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Geolocation is not supported by your browser.'));
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (position) => resolve(position),
+            (error) => {
+                let msg = 'Failed to get your current location.';
+                if (error.code === error.PERMISSION_DENIED) {
+                    msg = 'Location permission is required to upload a profile picture. Please enable location services.';
+                } else if (error.code === error.POSITION_UNAVAILABLE) {
+                    msg = 'Location information is unavailable.';
+                } else if (error.code === error.TIMEOUT) {
+                    msg = 'Location request timed out.';
+                }
+                reject(new Error(msg));
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    });
+};
+
+const createCroppedProfileImage = async (file, imageMeta, crop, zoom, latitude, longitude, timestamp) => {
     const image = await loadImageFromFile(file);
     const scale = imageMeta.baseScale * zoom;
     const cropWidth = PROFILE_IMAGE_VISIBLE_CROP_SIZE / scale;
@@ -103,6 +131,30 @@ const createCroppedProfileImage = async (file, imageMeta, crop, zoom) => {
         canvas.width,
         canvas.height
     );
+
+    // Draw Location and Timestamp watermark/stamp
+    if (latitude !== undefined && longitude !== undefined && timestamp !== undefined) {
+        const barHeight = 55;
+        context.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        context.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+
+        context.fillStyle = '#ffffff';
+        context.font = 'bold 12px sans-serif';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+
+        const date = new Date(timestamp);
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const hh = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+        const ss = String(date.getSeconds()).padStart(2, '0');
+        const formattedDate = `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+
+        context.fillText(`Location: Lat ${parseFloat(latitude).toFixed(6)}, Lng ${parseFloat(longitude).toFixed(6)}`, canvas.width / 2, canvas.height - 35);
+        context.fillText(`Timestamp: ${formattedDate}`, canvas.width / 2, canvas.height - 15);
+    }
 
     const blob = await canvasToBlob(canvas, 'image/jpeg', 0.92);
 
@@ -407,18 +459,30 @@ const Profile = () => {
         if (!cropUpload?.file || !cropUpload?.imageMeta) return;
 
         setUploading(true);
-        const loadingToast = toast.loading('Processing profile picture...');
+        const loadingToast = toast.loading('Getting current location...');
 
         try {
+            const position = await getCurrentLocation();
+            const { latitude, longitude } = position.coords;
+            const timestamp = new Date().toISOString();
+
+            toast.loading('Processing profile picture...', { id: loadingToast });
+
             const croppedFile = await createCroppedProfileImage(
                 cropUpload.file,
                 cropUpload.imageMeta,
                 cropPosition,
-                cropZoom
+                cropZoom,
+                latitude,
+                longitude,
+                timestamp
             );
             const optimizedFile = await optimizeProfileImage(croppedFile);
             const formData = new FormData();
             formData.append('image', optimizedFile);
+            formData.append('latitude', latitude.toString());
+            formData.append('longitude', longitude.toString());
+            formData.append('timestamp', timestamp);
 
             const res = await api.post('/auth/upload-profile-picture', formData, {
                 headers: {
@@ -427,7 +491,11 @@ const Profile = () => {
             });
 
             updateLocalProfilePictureUrl(URL.createObjectURL(optimizedFile));
-            setProfile(prev => ({ ...prev, profilePicture: res.data.profilePicture }));
+            setProfile(prev => ({ 
+                ...prev, 
+                profilePicture: res.data.profilePicture,
+                profilePictureMetadata: res.data.profilePictureMetadata 
+            }));
             if (refreshProfile) {
                 refreshProfile().catch(() => {});
             }
@@ -543,6 +611,14 @@ const Profile = () => {
                                     <p className="text-slate-500 flex items-center text-sm">
                                         <Mail size={14} className="mr-1" /> {profile.email}
                                     </p>
+                                    {profile.profilePictureMetadata && (profile.profilePictureMetadata.latitude !== null && profile.profilePictureMetadata.latitude !== undefined) && (
+                                        <div className="flex items-center gap-1.5 mt-2 text-slate-500 text-xs bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg shadow-sm w-fit">
+                                            <MapPin size={13} className="text-slate-400 shrink-0" />
+                                            <span>
+                                                Photo Stamp: {parseFloat(profile.profilePictureMetadata.latitude).toFixed(5)}°, {parseFloat(profile.profilePictureMetadata.longitude).toFixed(5)}° at {new Date(profile.profilePictureMetadata.timestamp).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-row sm:flex-col items-center sm:items-end gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
