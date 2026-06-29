@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
-import { Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar, ZoomIn, Move, X, Lock, Eye, EyeOff, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
+import { Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar, ZoomIn, Move, X, Lock, Eye, EyeOff, CheckCircle, AlertCircle, KeyRound, Camera, RotateCcw, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EmployeeDossier from './EmployeeDossier';
 
@@ -258,18 +258,169 @@ const PasswordStrength = ({ password }) => {
     );
 };
 
+const isMobileDevice = () => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+    return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+           ('ontouchstart' in window) || 
+           (navigator.maxTouchPoints > 0);
+};
+
+const dataURLtoFile = (dataurl, filename) => {
+    const arr = dataurl.split(',');
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+};
+
 const Profile = () => {
-    const { refreshProfile } = useAuth();
+    const { user: currentUser, refreshProfile } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [localProfilePictureUrl, setLocalProfilePictureUrl] = useState('');
+    const [showViewModal, setShowViewModal] = useState(false);
     const [cropUpload, setCropUpload] = useState(null);
     const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 });
     const [cropZoom, setCropZoom] = useState(1);
     const [dragState, setDragState] = useState(null);
+    const hasPhotoUploadPermission = currentUser?.roles?.some(role => {
+        const roleName = typeof role === 'string' ? role : role?.name;
+        return ['Admin', 'Super Admin', 'System Admin'].includes(roleName);
+    }) || currentUser?.hasAllPermissions || currentUser?.permissions?.includes('*') || currentUser?.permissions?.includes('dossier.profile_photo.upload');
+
+    const forceCameraCapture = currentUser?.company?.settings?.profile?.requireCameraCapture || !hasPhotoUploadPermission;
+
     const requestedTab = searchParams.get('tab') || 'personal';
+
+    /* ── Webcam Capture State & Logic ── */
+    const [showCameraModal, setShowCameraModal] = useState(false);
+    const [capturedImage, setCapturedImage] = useState('');
+    const [cameraError, setCameraError] = useState('');
+    const videoRef = React.useRef(null);
+    const streamRef = React.useRef(null);
+
+    const stopCamera = useCallback(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+    }, []);
+
+    const startCamera = async () => {
+        try {
+            setCameraError('');
+            setCapturedImage('');
+            
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { 
+                    width: { ideal: 640 }, 
+                    height: { ideal: 640 }, 
+                    aspectRatio: 1,
+                    facingMode: 'user' 
+                },
+                audio: false
+            });
+            
+            streamRef.current = stream;
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+                videoRef.current.onloadedmetadata = () => {
+                    videoRef.current.play().catch(err => console.error('Video play error:', err));
+                };
+            }
+        } catch (err) {
+            console.error('Error accessing camera:', err);
+            setCameraError('Could not access camera. Please make sure camera permissions are granted.');
+        }
+    };
+
+    const handleOpenWebcam = () => {
+        setShowCameraModal(true);
+        setTimeout(() => {
+            startCamera();
+        }, 100);
+    };
+
+    const handleCloseWebcam = () => {
+        stopCamera();
+        setShowCameraModal(false);
+        setCapturedImage('');
+        setCameraError('');
+    };
+
+    const capturePhoto = () => {
+        if (!videoRef.current) return;
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        const size = Math.min(video.videoWidth, video.videoHeight);
+        canvas.width = size;
+        canvas.height = size;
+        
+        const context = canvas.getContext('2d');
+        if (!context) return;
+        
+        const sx = (video.videoWidth - size) / 2;
+        const sy = (video.videoHeight - size) / 2;
+        
+        context.drawImage(video, sx, sy, size, size, 0, 0, size, size);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        setCapturedImage(dataUrl);
+        stopCamera();
+    };
+
+    const flipCapturedImage = () => {
+        if (!capturedImage) return;
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const context = canvas.getContext('2d');
+            if (context) {
+                context.translate(canvas.width, 0);
+                context.scale(-1, 1);
+                context.drawImage(img, 0, 0);
+                setCapturedImage(canvas.toDataURL('image/jpeg', 0.9));
+            }
+        };
+        img.src = capturedImage;
+    };
+
+    const handleUseCapturedPhoto = () => {
+        if (!capturedImage) return;
+        const file = dataURLtoFile(capturedImage, `camera_capture_${Date.now()}.jpg`);
+        const fakeEvent = {
+            target: {
+                files: [file],
+                value: ''
+            }
+        };
+        handleImageSelection(fakeEvent, true);
+        handleCloseWebcam();
+    };
+
+    useEffect(() => {
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, []);
 
     /* ── Password change state ── */
     const [showPasswordSection, setShowPasswordSection] = useState(false);
@@ -420,7 +571,7 @@ const Profile = () => {
         setDragState(null);
     }, [cropUpload]);
 
-    const handleImageSelection = async (e) => {
+    const handleImageSelection = async (e, isWebcam = false) => {
         const file = e.target.files[0];
         e.target.value = '';
         if (!file) return;
@@ -428,6 +579,16 @@ const Profile = () => {
         try {
             if (!file.type?.startsWith('image/')) {
                 throw new Error('Please select an image file.');
+            }
+
+            if (forceCameraCapture && !isWebcam) {
+                if (!isMobileDevice()) {
+                    throw new Error('Direct camera capture is required. Please update your profile photo using a mobile or tablet device with a camera.');
+                }
+                const fileAgeMs = Date.now() - file.lastModified;
+                if (fileAgeMs > 25000) {
+                    throw new Error('Direct camera capture is required. Please capture the photo directly using your device camera instead of choosing a pre-saved file.');
+                }
             }
 
             const image = await loadImageFromFile(file);
@@ -466,6 +627,18 @@ const Profile = () => {
             const { latitude, longitude } = position.coords;
             const timestamp = new Date().toISOString();
 
+            toast.loading('Resolving location address...', { id: loadingToast });
+            let address = '';
+            try {
+                const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`, {
+                    headers: { 'Accept-Language': 'en' }
+                });
+                const geoData = await geoRes.json();
+                address = geoData.display_name || '';
+            } catch (err) {
+                console.warn('Failed to reverse-geocode coordinates:', err);
+            }
+
             toast.loading('Processing profile picture...', { id: loadingToast });
 
             const croppedFile = await createCroppedProfileImage(
@@ -483,6 +656,7 @@ const Profile = () => {
             formData.append('latitude', latitude.toString());
             formData.append('longitude', longitude.toString());
             formData.append('timestamp', timestamp);
+            formData.append('address', address);
 
             const res = await api.post('/auth/upload-profile-picture', formData, {
                 headers: {
@@ -586,24 +760,32 @@ const Profile = () => {
                         <div className="relative flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-10 mb-6 gap-4">
                             <div className="flex items-end">
                                 <div className="h-20 w-20 rounded-full bg-white p-1 shadow-lg relative group shrink-0">
-                                    <div className="h-full w-full rounded-full bg-slate-200 flex items-center justify-center text-2xl font-bold text-slate-500 overflow-hidden relative">
+                                    <div 
+                                        onClick={() => {
+                                            setShowViewModal(true);
+                                        }}
+                                        className="h-full w-full rounded-full bg-slate-200 flex items-center justify-center text-2xl font-bold text-slate-500 overflow-hidden relative cursor-pointer"
+                                    >
                                         {displayProfilePicture ? (
-                                            <img src={displayProfilePicture} alt="Profile" className="h-full w-full object-cover" />
+                                            <img src={displayProfilePicture} alt="Profile" className="h-full w-full object-cover hover:brightness-95 transition-all" />
                                         ) : (
-                                            profile.firstName?.charAt(0)
+                                            <>
+                                                {profile.firstName?.charAt(0)}
+                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    Upload
+                                                </div>
+                                            </>
                                         )}
-
-                                        {/* Overlay for Upload */}
-                                        <label htmlFor="profile-upload" className="absolute inset-0 bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                            <div className="text-xs text-center font-medium">Change<br />Photo</div>
-                                            <input
-                                                type="file"
-                                                id="profile-upload"
-                                                className="hidden"
-                                                accept="image/*"
-                                                onChange={handleImageSelection}
-                                            />
-                                        </label>
+ 
+                                        <input
+                                            type="file"
+                                            id="profile-upload"
+                                            className="hidden"
+                                            accept="image/*"
+                                            capture={forceCameraCapture ? "user" : undefined}
+                                            onChange={handleImageSelection}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
                                     </div>
                                 </div>
                                 <div className="ml-4">
@@ -612,11 +794,19 @@ const Profile = () => {
                                         <Mail size={14} className="mr-1" /> {profile.email}
                                     </p>
                                     {profile.profilePictureMetadata && (profile.profilePictureMetadata.latitude !== null && profile.profilePictureMetadata.latitude !== undefined) && (
-                                        <div className="flex items-center gap-1.5 mt-2 text-slate-500 text-xs bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg shadow-sm w-fit">
-                                            <MapPin size={13} className="text-slate-400 shrink-0" />
-                                            <span>
-                                                Photo Stamp: {parseFloat(profile.profilePictureMetadata.latitude).toFixed(5)}°, {parseFloat(profile.profilePictureMetadata.longitude).toFixed(5)}° at {new Date(profile.profilePictureMetadata.timestamp).toLocaleString()}
-                                            </span>
+                                        <div className="flex flex-col gap-1 mt-2 text-slate-500 text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-lg shadow-sm w-fit">
+                                            <div className="flex items-center gap-1.5">
+                                                <MapPin size={13} className="text-blue-500 shrink-0" />
+                                                <span className="font-semibold">
+                                                    Photo Stamp: {parseFloat(profile.profilePictureMetadata.latitude).toFixed(5)}°, {parseFloat(profile.profilePictureMetadata.longitude).toFixed(5)}° at {new Date(profile.profilePictureMetadata.timestamp).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            {profile.profilePictureMetadata.address && (
+                                                <div className="flex items-start gap-1 mt-1 border-t border-slate-200/60 pt-1 text-[11px] text-slate-500">
+                                                    <span className="font-bold text-slate-700 shrink-0">Address: </span>
+                                                    <span className="leading-relaxed" title={profile.profilePictureMetadata.address}>{profile.profilePictureMetadata.address}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1065,6 +1255,185 @@ const Profile = () => {
                             >
                                 {uploading ? 'Processing...' : 'Save Photo'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showViewModal && (
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md"
+                    onClick={() => setShowViewModal(false)}
+                >
+                    <div 
+                        className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl flex flex-col items-center gap-5"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Close button */}
+                        <button
+                            type="button"
+                            onClick={() => setShowViewModal(false)}
+                            className="absolute top-4 right-4 rounded-full bg-slate-100 p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors"
+                            aria-label="Close preview"
+                        >
+                            <X size={18} />
+                        </button>
+
+                        <h3 className="text-base font-bold text-slate-800 self-start">Profile Photo</h3>
+
+                        {/* Image or fallback initials */}
+                        <div className="h-64 w-64 rounded-full overflow-hidden border-4 border-slate-100 shadow-inner flex items-center justify-center bg-slate-200 text-7xl font-bold text-slate-500 relative">
+                            {displayProfilePicture ? (
+                                <img 
+                                    src={displayProfilePicture} 
+                                    alt="Profile Full View" 
+                                    className="h-full w-full object-cover"
+                                />
+                            ) : (
+                                profile.firstName?.charAt(0)
+                            )}
+                        </div>
+
+                        {/* Photo Stamp Info */}
+                        {profile.profilePictureMetadata && (profile.profilePictureMetadata.latitude !== null && profile.profilePictureMetadata.latitude !== undefined) && (
+                            <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                                <div className="flex items-start gap-2 text-xs text-slate-600">
+                                    <MapPin size={15} className="text-blue-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <span className="font-bold block text-slate-700">Photo Location Stamp:</span>
+                                        <span>Latitude: {parseFloat(profile.profilePictureMetadata.latitude).toFixed(5)}°</span>
+                                        <span className="ml-3">Longitude: {parseFloat(profile.profilePictureMetadata.longitude).toFixed(5)}°</span>
+                                    </div>
+                                </div>
+                                {profile.profilePictureMetadata.address && (
+                                    <div className="flex items-start gap-2 text-xs text-slate-600">
+                                        <MapPin size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                                        <div>
+                                            <span className="font-bold block text-slate-700">Resolved Address:</span>
+                                            <span className="leading-relaxed">{profile.profilePictureMetadata.address}</span>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex items-start gap-2 text-xs text-slate-600">
+                                    <Calendar size={15} className="text-indigo-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <span className="font-bold block text-slate-700">Timestamp:</span>
+                                        <span>{new Date(profile.profilePictureMetadata.timestamp).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="flex w-full gap-3 mt-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (forceCameraCapture) {
+                                        handleOpenWebcam();
+                                    } else {
+                                        document.getElementById('profile-upload')?.click();
+                                    }
+                                    setShowViewModal(false);
+                                }}
+                                className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 flex items-center justify-center gap-1.5 shadow-sm"
+                            >
+                                <Camera size={14} /> Change Photo
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowViewModal(false)}
+                                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showCameraModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+                    <div className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl flex flex-col items-center gap-5">
+                        <button
+                            type="button"
+                            onClick={handleCloseWebcam}
+                            className="absolute top-4 right-4 rounded-full bg-slate-100 p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors"
+                            aria-label="Close camera"
+                        >
+                            <X size={18} />
+                        </button>
+
+                        <h3 className="text-base font-bold text-slate-800 self-start">Capture Profile Photo</h3>
+
+                        <div className="relative h-72 w-72 rounded-2xl overflow-hidden bg-slate-950 border-4 border-slate-100 shadow-inner flex items-center justify-center">
+                            {cameraError ? (
+                                <div className="text-center p-6 text-sm text-slate-400">
+                                    <AlertCircle className="mx-auto mb-2 text-red-500" size={32} />
+                                    {cameraError}
+                                </div>
+                            ) : capturedImage ? (
+                                <img 
+                                    src={capturedImage} 
+                                    alt="Captured snapshot" 
+                                    className="h-full w-full object-cover"
+                                />
+                            ) : (
+                                <video 
+                                    ref={videoRef} 
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="h-full w-full object-cover scale-x-[-1]"
+                                />
+                            )}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex w-full gap-3 mt-2">
+                            {capturedImage ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={startCamera}
+                                        className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 flex items-center justify-center gap-1.5"
+                                    >
+                                        <RotateCcw size={14} /> Recapture
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={flipCapturedImage}
+                                        className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 flex items-center justify-center gap-1.5"
+                                    >
+                                        <RefreshCw size={14} /> Flip Photo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleUseCapturedPhoto}
+                                        className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 flex items-center justify-center gap-1.5 shadow-sm"
+                                    >
+                                        <CheckCircle size={14} /> Use Photo
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleCloseWebcam}
+                                        className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={capturePhoto}
+                                        disabled={!!cameraError}
+                                        className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 flex items-center justify-center gap-1.5 shadow-sm disabled:bg-blue-300 disabled:cursor-not-allowed"
+                                    >
+                                        <Camera size={14} /> Snap Photo
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -3,6 +3,7 @@ export const ADMIN_ROLES = ['Admin', 'Super Admin', 'System Admin'];
 export const ATTENDANCE_SETTINGS_PERMISSIONS = ['user.update'];
 export const EMAIL_SETTINGS_PERMISSIONS = ['settings.email.view', 'settings.email.manage'];
 export const NOTIFICATION_SETTINGS_PERMISSIONS = ['settings.notification.view', 'settings.notification.manage'];
+export const COMPANY_SETTINGS_PERMISSIONS = ['settings.company.view', 'settings.company.manage'];
 export const USER_ACCESS_PERMISSIONS = ['user.read'];
 export const ROLE_ACCESS_PERMISSIONS = ['role.read'];
 export const LEAVE_CONFIG_PERMISSIONS = ['leave.config.manage'];

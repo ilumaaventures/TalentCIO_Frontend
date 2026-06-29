@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
     User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar,
-    ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck, Eye, EyeOff
+    ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck, Eye, EyeOff, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '../components/Skeleton';
@@ -30,6 +30,7 @@ const EmployeeProfile = () => {
     const [roles, setRoles] = useState([]);
     const [allUsers, setAllUsers] = useState([]); // for reporting managers/direct reports
     const [showPassword, setShowPassword] = useState(false);
+    const [showViewModal, setShowViewModal] = useState(false);
 
     // Form State for Editing
     const [formData, setFormData] = useState({
@@ -255,8 +256,15 @@ const EmployeeProfile = () => {
                     <div className="px-6 sm:px-8 pb-6 bg-white relative">
                         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between -mt-10 sm:-mt-12 gap-4">
                             <div className="flex items-end gap-4">
-                                <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-4 border-white bg-slate-100 flex items-center justify-center text-3xl font-bold text-slate-400 shadow-sm shrink-0">
-                                    {profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}
+                                <div 
+                                    onClick={() => profile.profilePicture && setShowViewModal(true)}
+                                    className={`h-20 w-20 sm:h-24 sm:w-24 rounded-full border-4 border-white bg-slate-100 flex items-center justify-center text-3xl font-bold text-slate-400 shadow-sm shrink-0 overflow-hidden relative group ${profile.profilePicture ? 'cursor-pointer hover:brightness-95 transition-all' : ''}`}
+                                >
+                                    {profile.profilePicture ? (
+                                        <img src={profile.profilePicture} alt="Profile" className="h-full w-full object-cover" />
+                                    ) : (
+                                        `${profile.firstName?.charAt(0)}${profile.lastName?.charAt(0)}`
+                                    )}
                                 </div>
                                 <div className="pb-1 sm:pb-2">
                                     <h2 className="text-xl sm:text-2xl font-bold text-slate-800 whitespace-nowrap">
@@ -265,6 +273,22 @@ const EmployeeProfile = () => {
                                     <p className="text-sm text-slate-500 flex items-center gap-1.5 mt-0.5">
                                         <Mail size={14} /> {profile.email}
                                     </p>
+                                    {profile.profilePictureMetadata && (profile.profilePictureMetadata.latitude !== null && profile.profilePictureMetadata.latitude !== undefined) && (
+                                        <div className="flex flex-col gap-1 mt-2 text-slate-500 text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-lg shadow-sm w-fit">
+                                            <div className="flex items-center gap-1.5">
+                                                <MapPin size={13} className="text-blue-500 shrink-0" />
+                                                <span className="font-semibold">
+                                                    Photo Stamp: {parseFloat(profile.profilePictureMetadata.latitude).toFixed(5)}°, {parseFloat(profile.profilePictureMetadata.longitude).toFixed(5)}° at {new Date(profile.profilePictureMetadata.timestamp).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            {profile.profilePictureMetadata.address && (
+                                                <div className="flex items-start gap-1 mt-1 border-t border-slate-200/60 pt-1 text-[11px] text-slate-500">
+                                                    <span className="font-bold text-slate-700 shrink-0">Address: </span>
+                                                    <span className="leading-relaxed" title={profile.profilePictureMetadata.address}>{profile.profilePictureMetadata.address}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -685,6 +709,80 @@ const EmployeeProfile = () => {
 
                 </div>
             </div>
+
+            {showViewModal && profile?.profilePicture && (
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md"
+                    onClick={() => setShowViewModal(false)}
+                >
+                    <div 
+                        className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl flex flex-col items-center gap-5"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Close button */}
+                        <button
+                            type="button"
+                            onClick={() => setShowViewModal(false)}
+                            className="absolute top-4 right-4 rounded-full bg-slate-100 p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors"
+                            aria-label="Close preview"
+                        >
+                            <X size={18} />
+                        </button>
+
+                        <h3 className="text-base font-bold text-slate-800 self-start">Profile Photo</h3>
+
+                        {/* Image */}
+                        <div className="h-64 w-64 rounded-full overflow-hidden border-4 border-slate-100 shadow-inner">
+                            <img 
+                                src={profile.profilePicture} 
+                                alt="Profile Full View" 
+                                className="h-full w-full object-cover"
+                            />
+                        </div>
+
+                        {/* Photo Stamp Info */}
+                        {profile.profilePictureMetadata && (profile.profilePictureMetadata.latitude !== null && profile.profilePictureMetadata.latitude !== undefined) && (
+                            <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                                <div className="flex items-start gap-2 text-xs text-slate-600">
+                                    <MapPin size={15} className="text-blue-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <span className="font-bold block text-slate-700">Photo Location Stamp:</span>
+                                        <span>Latitude: {parseFloat(profile.profilePictureMetadata.latitude).toFixed(5)}°</span>
+                                        <span className="ml-3">Longitude: {parseFloat(profile.profilePictureMetadata.longitude).toFixed(5)}°</span>
+                                    </div>
+                                </div>
+                                {profile.profilePictureMetadata.address && (
+                                    <div className="flex items-start gap-2 text-xs text-slate-600">
+                                        <MapPin size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                                        <div>
+                                            <span className="font-bold block text-slate-700">Resolved Address:</span>
+                                            <span className="leading-relaxed">{profile.profilePictureMetadata.address}</span>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex items-start gap-2 text-xs text-slate-600">
+                                    <Calendar size={15} className="text-indigo-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <span className="font-bold block text-slate-700">Timestamp:</span>
+                                        <span>{new Date(profile.profilePictureMetadata.timestamp).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="flex w-full gap-3 mt-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowViewModal(false)}
+                                className="flex-1 rounded-xl bg-slate-800 py-2.5 text-xs font-bold text-white transition-colors hover:bg-slate-900 shadow-sm"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
