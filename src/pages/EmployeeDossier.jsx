@@ -435,7 +435,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     // Permissions
     const canEdit = isCurrentUserAdmin || currentUser?.permissions?.includes('dossier.edit');
     const canApprove = isCurrentUserAdmin || currentUser?.permissions?.includes('dossier.approve');
-    const canManageCompanyBranding = isCurrentUserAdmin || currentUser?.hasAllPermissions || currentUser?.permissions?.includes('*') || currentUser?.permissions?.includes('admin');
+    const canManageCompanyBranding = isCurrentUserAdmin || currentUser?.hasAllPermissions || currentUser?.permissions?.includes('*') || currentUser?.permissions?.includes('admin') || currentUser?.permissions?.includes('settings.company.manage');
 
     // State
     const [profile, setProfile] = useState(null);
@@ -542,7 +542,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 displayMode: data?.displayMode || 'talentcio',
                 companyLogoUrl: data?.companyLogoUrl || '',
                 logoAlignment: data?.logoAlignment || DEFAULT_COMPANY_LOGO_ALIGNMENT,
-                logoSize: Number(data?.logoSize) || DEFAULT_COMPANY_LOGO_SIZE
+                logoSize: Number(data?.logoSize) || DEFAULT_COMPANY_LOGO_SIZE,
+                requireCameraCapture: Boolean(data?.requireCameraCapture)
             });
         } catch (error) {
             console.error(error);
@@ -1490,14 +1491,16 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             const { data } = await api.put('/admin/company-settings/branding', {
                 displayMode: companyBranding.displayMode,
                 logoAlignment: companyBranding.logoAlignment,
-                logoSize: companyBranding.logoSize
+                logoSize: companyBranding.logoSize,
+                requireCameraCapture: companyBranding.requireCameraCapture
             });
 
             setCompanyBranding((current) => ({
                 ...current,
                 displayMode: data?.displayMode || current.displayMode,
                 logoAlignment: data?.logoAlignment || current.logoAlignment,
-                logoSize: Number(data?.logoSize) || current.logoSize
+                logoSize: Number(data?.logoSize) || current.logoSize,
+                requireCameraCapture: Boolean(data?.requireCameraCapture)
             }));
             await syncCurrentUserProfile();
             toast.success('Company settings saved');
@@ -1880,6 +1883,30 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                             : 'No logo will be shown in the sidebar when this option is active.'}
                                     </p>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Profile Photo Settings */}
+                        {isCompanySettingsOpen && (
+                            <div className="mt-6 border-t border-slate-100 pt-6">
+                                <h4 className="text-sm font-bold text-slate-800 mb-3">Profile Photo Settings</h4>
+                                <label className="flex items-start space-x-3 cursor-pointer group">
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(companyBranding.requireCameraCapture)}
+                                        onChange={(e) => setCompanyBranding((current) => ({
+                                            ...current,
+                                            requireCameraCapture: e.target.checked
+                                        }))}
+                                        className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 group-hover:border-blue-400 transition mt-0.5"
+                                    />
+                                    <div>
+                                        <span className="text-sm font-semibold text-slate-800 select-none">Require Camera Capture</span>
+                                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                                            Force employees to take their profile picture directly using their device camera instead of choosing a pre-saved file from their local storage.
+                                        </p>
+                                    </div>
+                                </label>
                             </div>
                         )}
                     </div>
