@@ -14,6 +14,7 @@ import Button from '../components/Button';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import { RGDocumentTracker, canViewRGDocumentTracker, isRGWorkspace } from '../features/rg-attendance';
+import DossierIncompleteModal from '../components/DossierIncompleteModal';
 
 const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
 const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
@@ -38,13 +39,14 @@ const DEFAULT_ATTENDANCE_SHIFTS = [
 ];
 
 const Attendance = () => {
-    const { user, hasModule } = useAuth();
+    const { user, hasModule, isDossierComplete, dossierMissingSections, dossierMissingFields } = useAuth();
     const location = useLocation();
     const [status, setStatus] = useState(null);
     const [timesheetSummary, setTimesheetSummary] = useState(null);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [showDossierModal, setShowDossierModal] = useState(false);
 
     const [holidays, setHolidays] = useState([]);
     const [approvedLeaves, setApprovedLeaves] = useState([]);
@@ -867,6 +869,10 @@ const Attendance = () => {
     }, [activeTab, user?._id]);
 
     const handleClockIn = async () => {
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
         const attSettings = user?.company?.settings?.attendance || {};
         const isLocationRequired = attSettings.requireLocationCheckIn || attSettings.locationCheck;
 
@@ -942,6 +948,10 @@ const Attendance = () => {
     };
 
     const handleClockOut = async () => {
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
         const attSettings = user?.company?.settings?.attendance || {};
         const isLocationRequired = attSettings.requireLocationCheckOut || attSettings.locationCheck;
 
@@ -1692,6 +1702,7 @@ const Attendance = () => {
         </div>
     );
     return (
+        <>
         <div className="h-[calc(100vh-64px)] w-full bg-slate-100 font-sans flex flex-col overflow-hidden">
             {/* Header - Fixed */}
             <div className="flex-none px-4 pt-4 md:px-6 md:pt-6">
@@ -2231,6 +2242,13 @@ const Attendance = () => {
                 </div>
             )}
         </div>
+        <DossierIncompleteModal
+            open={showDossierModal}
+            onClose={() => setShowDossierModal(false)}
+            missingSections={dossierMissingSections}
+            missingFields={dossierMissingFields}
+        />
+        </>
     );
 };
 

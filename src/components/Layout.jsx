@@ -8,6 +8,7 @@ import api from '../api/axios';
 import socket from '../api/socket';
 import AnnouncementUnreadModal from './announcements/AnnouncementUnreadModal';
 import BirthdayCelebrationModal from './BirthdayCelebrationModal';
+import DossierGateBanner from './DossierGateBanner';
 import {
     getAcknowledgedAnnouncementIds,
     getAnnouncementSessionGateKey,
@@ -264,6 +265,7 @@ const Layout = () => {
 
             <main className="flex-1 flex flex-col md:pl-64 transition-all duration-300 min-h-screen overflow-x-hidden min-w-0">
                 <Topbar toggleSidebar={() => setIsSidebarOpen(true)} />
+                <DossierGateBanner />
 
                 <div className="flex-1 overflow-x-hidden">
                     <Suspense fallback={

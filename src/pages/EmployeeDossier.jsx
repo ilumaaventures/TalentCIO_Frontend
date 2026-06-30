@@ -2828,8 +2828,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         // Render a single document card
         const DocumentCard = ({ doc, isSharedOnboardingFile = false }) => {
             const docStatus = isSharedOnboardingFile ? 'Shared' : normalizeDocumentStatus(doc.verificationStatus);
+            const isDocsSubmitted = ['Submitted', 'Approved'].includes(profile?.documentSubmissionStatus);
             const canDeleteDocument = !isSharedOnboardingFile
                 && docStatus !== 'Verified'
+                && (!isDocsSubmitted || !isSelf)
                 && (isSelf || canVerify || canEdit);
             const canCorrectRejectedDocument = !isSharedOnboardingFile && isSelf && docStatus === 'Rejected';
             const canApprovePendingDocument = canVerify && !isSharedOnboardingFile && docStatus === 'Pending Review';
