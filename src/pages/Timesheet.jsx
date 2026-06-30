@@ -11,6 +11,7 @@ import AttendanceAttachmentsView from '../components/AttendanceAttachmentsView';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import Button from '../components/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import DossierIncompleteModal from '../components/DossierIncompleteModal';
 
 const TIMESHEET_CACHE_TTL_MS = 20 * 1000;
 const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
@@ -156,7 +157,8 @@ const isFullyRejectedTimesheet = (timesheet) =>
     timesheet.entries.every(entry => entry.status === 'REJECTED');
 
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
-    const { user, hasModule } = useAuth();
+    const { user, hasModule, isDossierComplete, dossierMissingSections, dossierMissingFields } = useAuth();
+    const [showDossierModal, setShowDossierModal] = useState(false);
     const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
     const [routeState, setRouteState] = useState(() => readRouteState());
     const [viewDate, setViewDate] = useState(() => getDateForTimesheetPeriod(readRouteState().month, cycle));
@@ -896,6 +898,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
 
     const submitEdit = async () => {
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
         try {
             setIsSaving(true);
             if (!isEditableTimesheetStatus) {
@@ -1015,6 +1021,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     const deleteAttendanceEntry = async () => {
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
         if (!entryToEdit?._id) return;
         if (!window.confirm('Remove this attendance mark for the selected day?')) return;
 
@@ -1276,6 +1286,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     const submitNewEntry = async () => {
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
         if (!isEditableTimesheetStatus) {
             toast.error('Submitted timesheets cannot be edited');
             return;
@@ -1527,6 +1541,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     const handleSubmit = async () => {
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
 
         if (!window.confirm('Are you sure you want to submit this timesheet for approval? You cannot edit it afterwards.')) {
             return;
@@ -1803,6 +1821,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     };
 
     return (
+        <>
         <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-6 md:p-10'} font-sans overflow-x-hidden`}>
             <div className={`w-full ${isEmbedded ? '' : 'max-w-7xl mx-auto space-y-6'} overflow-x-hidden rounded-xl`}>
 
@@ -3149,6 +3168,13 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
             </div>
         </div >
+        <DossierIncompleteModal
+            open={showDossierModal}
+            onClose={() => setShowDossierModal(false)}
+            missingSections={dossierMissingSections}
+            missingFields={dossierMissingFields}
+        />
+        </>
     );
 };
 

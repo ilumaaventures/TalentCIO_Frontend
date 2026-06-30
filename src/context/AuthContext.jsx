@@ -26,10 +26,14 @@ const normalizeUserPayload = (rawUser = null) => {
       }
     : safeUser.company;
 
+  // Carry through dossierStatus as-is (set by getMyself endpoint)
+  const dossierStatus = safeUser.dossierStatus || { isComplete: true, missingSections: [], missingFields: [] };
+
   return {
     ...safeUser,
     roles: normalizedRoles,
-    company: normalizedCompany
+    company: normalizedCompany,
+    dossierStatus
   };
 };
 
@@ -269,8 +273,12 @@ export const AuthProvider = ({ children }) => {
     return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
   };
 
+  const isDossierComplete = user?.dossierStatus?.isComplete !== false;
+  const dossierMissingSections = user?.dossierStatus?.missingSections || [];
+  const dossierMissingFields = user?.dossierStatus?.missingFields || [];
+
   return (
-    <AuthContext.Provider value={{ user, token, login, loginWithToken, register, logout, refreshProfile, hasModule, loading, workspace }}>
+    <AuthContext.Provider value={{ user, token, login, loginWithToken, register, logout, refreshProfile, hasModule, loading, workspace, isDossierComplete, dossierMissingSections, dossierMissingFields }}>
       {children}
     </AuthContext.Provider>
   );

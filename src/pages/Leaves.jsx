@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '../components/Button';
+import DossierIncompleteModal from '../components/DossierIncompleteModal';
 import { format } from 'date-fns';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import UserMultiSelect from '../components/UserMultiSelect';
@@ -63,7 +64,8 @@ const StatusBadge = ({ status }) => {
 
 // ─── Leaves Page ──────────────────────────────────────────────────────────────
 const Leaves = () => {
-    const { user } = useAuth();
+    const { user, isDossierComplete, dossierMissingSections, dossierMissingFields } = useAuth();
+    const [showDossierModal, setShowDossierModal] = useState(false);
     const initialFetchDoneRef = useRef(false);
     const [activeTab, setActiveTab] = useState('my-leaves');
 
@@ -286,6 +288,10 @@ const Leaves = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
         setProcessingId('apply');
         try {
             const submitData = new FormData();
@@ -387,6 +393,7 @@ const Leaves = () => {
     }
 
     return (
+        <>
         <div className="min-h-screen bg-[#f4f5f8] font-sans">
             {/* ── Top Bar ── */}
             <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -951,6 +958,13 @@ const Leaves = () => {
             )}
 
         </div>
+        <DossierIncompleteModal
+            open={showDossierModal}
+            onClose={() => setShowDossierModal(false)}
+            missingSections={dossierMissingSections}
+            missingFields={dossierMissingFields}
+        />
+        </>
     );
 };
 
