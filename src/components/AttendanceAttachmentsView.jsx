@@ -33,6 +33,17 @@ const AttendanceAttachmentsView = ({
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (file) {
+            // Verify if file has content and is readable (prevents 0-byte virtual/cloud file errors)
+            if (file.size === 0) {
+                toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+                e.target.value = '';
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                toast.error('File size must be under 5MB');
+                e.target.value = '';
+                return;
+            }
             if (!isValidWordFile(file)) {
                 toast.error('Only Word files (.doc, .docx) are allowed.');
                 e.target.value = '';
@@ -175,17 +186,27 @@ const AttendanceAttachmentsView = ({
                                                 id={`replace-file-${file._id}`}
                                                 accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                                 onChange={(e) => {
-                                                    const newFile = e.target.files[0];
-                                                    if (newFile) {
-                                                        if (!isValidWordFile(newFile)) {
-                                                            toast.error('Only Word files (.doc, .docx) are allowed.');
-                                                            e.target.value = '';
-                                                            return;
-                                                        }
-                                                        onReplace(file._id, newFile);
-                                                    }
-                                                    e.target.value = '';
-                                                }}
+                                                     const newFile = e.target.files[0];
+                                                     if (newFile) {
+                                                         if (newFile.size === 0) {
+                                                             toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+                                                             e.target.value = '';
+                                                             return;
+                                                         }
+                                                         if (newFile.size > 5 * 1024 * 1024) {
+                                                             toast.error('File size must be under 5MB');
+                                                             e.target.value = '';
+                                                             return;
+                                                         }
+                                                         if (!isValidWordFile(newFile)) {
+                                                             toast.error('Only Word files (.doc, .docx) are allowed.');
+                                                             e.target.value = '';
+                                                             return;
+                                                         }
+                                                         onReplace(file._id, newFile);
+                                                     }
+                                                     e.target.value = '';
+                                                 }}
                                             />
                                             <button
                                                 type="button"

@@ -1213,8 +1213,14 @@ const Onboarding = () => {
   const handleDynamicTemplateUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size === 0) {
+      toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+      e.target.value = '';
+      return;
+    }
     if (!file.name.endsWith('.docx')) {
       toast.error('Please upload a .docx file for dynamic templates');
+      e.target.value = '';
       return;
     }
     const name = prompt('Enter a name for this dynamic template (e.g. Appointment Letter):');
@@ -1278,6 +1284,11 @@ const Onboarding = () => {
   const handlePolicyUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size === 0) {
+      toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+      e.target.value = '';
+      return;
+    }
     const name = prompt('Enter policy name (e.g. Employee Handbook):');
     if (!name) return;
 
