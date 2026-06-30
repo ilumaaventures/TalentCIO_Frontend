@@ -106,16 +106,17 @@ const normalizeSerializableValue = (value) => {
 };
 
 const serializeRequestPart = (value) => {
-  if (value instanceof FormData) {
-    return JSON.stringify(
-      Array.from(value.entries()).map(([key, entryValue]) => ([
-        key,
-        normalizeSerializableValue(entryValue),
-      ]))
-    );
+  try {
+    if (value instanceof FormData) {
+      // Avoid serializing binary files/FormData which crashes on mobile Chrome/Android sandbox.
+      // Returning a unique key bypasses deduplication for file uploads.
+      return `FormData-${Math.random()}-${Date.now()}`;
+    }
+    return JSON.stringify(normalizeSerializableValue(value));
+  } catch (e) {
+    console.warn('Request serialization failed, using fallback key:', e);
+    return `Fallback-${Math.random()}-${Date.now()}`;
   }
-
-  return JSON.stringify(normalizeSerializableValue(value));
 };
 
 const getRequestKey = (config) => [
@@ -157,12 +158,14 @@ api.interceptors.request.use(
       pendingRequests.set(requestKey, sharedRecord);
       config.__requestKey = requestKey;
     }
-
-    // Automatically remove Content-Type for FormData so Axios can infer the correct boundary
-    if (config.data instanceof FormData) {
-      delete config.headers['Content-Type'];
+    // Automatically remove any Content-Type header for FormData so Axios/browser can infer the correct boundary with the boundary token.
+    if (config.data instanceof FormData && config.headers) {
+      Object.keys(config.headers).forEach((key) => {
+        if (key.toLowerCase() === 'content-type') {
+          delete config.headers[key];
+        }
+      });
     }
-
     const accessToken = getStoredAccessToken();
     if (accessToken && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${accessToken}`;

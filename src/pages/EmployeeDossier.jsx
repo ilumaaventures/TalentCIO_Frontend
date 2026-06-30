@@ -572,7 +572,24 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         const file = e.target.files[0];
         if (!file) return;
 
-        if (!DOSSIER_ALLOWED_FILE_TYPES.has(file.type)) {
+        // Verify if file has content and is readable (prevents 0-byte virtual/cloud file errors)
+        if (file.size === 0) {
+            toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+            e.target.value = '';
+            return;
+        }
+
+        // Support empty mime-type fallback via file extension for robust mobile selection
+        let fileType = file.type;
+        if (!fileType && file.name) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext === 'pdf') fileType = 'application/pdf';
+            else if (ext === 'jpg' || ext === 'jpeg') fileType = 'image/jpeg';
+            else if (ext === 'png') fileType = 'image/png';
+            else if (ext === 'webp') fileType = 'image/webp';
+        }
+
+        if (!DOSSIER_ALLOWED_FILE_TYPES.has(fileType)) {
             toast.error('Only PDF and image files are allowed.');
             e.target.value = '';
             return;

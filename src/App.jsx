@@ -58,6 +58,8 @@ const HREmailSend              = lazy(() => import('./pages/HREmailSend'));
 const RecycleBin               = lazy(() => import('./pages/RecycleBin'));
 const PreOnboardingLogin       = lazy(() => import('./pages/PreOnboardingLogin'));
 const PreOnboardingPortal      = lazy(() => import('./pages/PreOnboardingPortal'));
+const SalaryCalculator         = lazy(() => import('./pages/SalaryCalculator'));
+
 
 import ProtectedRoute from './components/ProtectedRoute';
 import SystemRoute from './components/SystemRoute';
@@ -148,7 +150,9 @@ function App() {
                       <NotificationSettings />
                     </ProtectedRoute>
                   )} />
+                  <Route path="/salary-calculator" element={<SalaryCalculator />} />
                   <Route path="/timesheet" element={(
+
                     <ProtectedRoute moduleName="timesheet" redirectTo="/">
                       <Timesheet />
                     </ProtectedRoute>

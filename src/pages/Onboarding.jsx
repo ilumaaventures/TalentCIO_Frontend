@@ -8,6 +8,7 @@ import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import useDebouncedValue from '../hooks/useDebouncedValue';
+import { buildMasterSalaryStructure, buildPayrollSnapshot } from '../utils/payroll';
 import {
   ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
   getSupportedPlaceholderTokens,
@@ -172,6 +173,7 @@ const Onboarding = () => {
   const customFileInputRef = useRef(null);
   const initialEmployeesFetchDoneRef = useRef(false);
   const initialSettingsFetchDoneRef = useRef(false);
+  const [payrollConfig, setPayrollConfig] = useState(null);
 
   // Close menu when clicking outside or scrolling
   useEffect(() => {
@@ -740,6 +742,474 @@ const Onboarding = () => {
     }
   }, [user?._id]);
 
+  const fetchPayrollConfig = useCallback(async () => {
+    try {
+      const res = await api.get('/payroll/config');
+      setPayrollConfig(res.data);
+    } catch (e) {
+      console.error('Failed to load payroll config in onboarding settings:', e);
+    }
+  }, []);
+
+  const calculateSalaryBreakdown = (updatedSalaryFields) => {
+    setFormData(prev => {
+      const mergedSalary = { ...prev.salary, ...updatedSalaryFields };
+      const payType = mergedSalary.payType || 'salaried';
+      
+      let annualCTC = parseFloat(String(mergedSalary.annualCTC).replace(/[^0-9.]/g, '')) || 0;
+      let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+      
+      if (updatedSalaryFields.annualCTC !== undefined) {
+        monthlyCTC = Math.round(annualCTC / 12);
+      } else if (updatedSalaryFields.monthlyCTC !== undefined) {
+        annualCTC = monthlyCTC * 12;
+      }
+
+      let basicVal = '';
+      let hraVal = '';
+      let specialVal = '';
+      let grossVal = '';
+
+      if (payType === 'hourly') {
+        const hourlyRate = parseFloat(String(mergedSalary.hourlyRate).replace(/[^0-9.]/g, '')) || 0;
+        const hoursWorked = parseFloat(String(mergedSalary.hoursWorked || 160).replace(/[^0-9.]/g, '')) || 160;
+        monthlyCTC = Math.round(hourlyRate * hoursWorked);
+        annualCTC = monthlyCTC * 12;
+        basicVal = String(monthlyCTC);
+        hraVal = '0';
+        specialVal = '0';
+        grossVal = String(monthlyCTC);
+      } else if (payType === 'flat') {
+        const flatSalary = parseFloat(String(mergedSalary.flatSalary || monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+        monthlyCTC = flatSalary;
+        annualCTC = flatSalary * 12;
+        basicVal = String(flatSalary);
+        hraVal = '0';
+        specialVal = '0';
+        grossVal = String(flatSalary);
+      } else {
+        if (payrollConfig) {
+          const source = {
+            monthlyCTC,
+            payType,
+            pfEnabled: mergedSalary.pfEnabled !== undefined ? !!mergedSalary.pfEnabled : true,
+            esiEnabled: mergedSalary.esiEnabled !== undefined ? !!mergedSalary.esiEnabled : true,
+            ptEnabled: mergedSalary.ptEnabled !== undefined ? !!mergedSalary.ptEnabled : true,
+            lwfEnabled: mergedSalary.lwfEnabled !== undefined ? !!mergedSalary.lwfEnabled : true,
+            gratuityEnabled: mergedSalary.gratuityEnabled !== undefined ? !!mergedSalary.gratuityEnabled : true,
+            includePfInCTC: !!mergedSalary.includePfInCTC,
+            includeGratuityInCTC: mergedSalary.includeGratuityInCTC !== undefined ? !!mergedSalary.includeGratuityInCTC : true,
+            insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
+            employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
+            deductions: {
+              professionalTax: mergedSalary.ptEnabled !== false ? (parseFloat(mergedSalary.professionalTax) || 200) : 0,
+            }
+          };
+          if (payrollConfig.salaryComponents) {
+            payrollConfig.salaryComponents.forEach(c => {
+              if (c.linkedTo === 'fixed') {
+                const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
+                source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+              }
+            });
+          }
+          const master = buildMasterSalaryStructure(source, payrollConfig);
+          if (master) {
+            basicVal = String(master.basicMaster);
+            hraVal = String(master.hraMaster);
+            specialVal = String(master.specialAllowance);
+            grossVal = String(master.grossSalary || master.totalEarnings);
+            
+            mergedSalary.pfEmployer = String(master.pfEmployer || 0);
+            mergedSalary.pfEmployee = String(master.pfEmployee || 0);
+            mergedSalary.gratuity = String(master.gratuity || 0);
+            mergedSalary.lwfEmployer = String(master.lwfEmployer || 0);
+            mergedSalary.lwfEmployee = String(master.lwfEmployee || 0);
+            mergedSalary.esiEmployer = String(master.esiEmployer || 0);
+            mergedSalary.esiEmployee = String(master.esiEmployee || 0);
+            mergedSalary.professionalTax = String(master.professionalTax || 0);
+            mergedSalary.tds = String(master.tds || 0);
+            mergedSalary.netTakeHome = String(master.netTakeHome || 0);
+            mergedSalary.monthlyGross = String(master.grossSalary || master.totalEarnings);
+            
+            if (master.earningsMap) {
+              Object.entries(master.earningsMap).forEach(([id, val]) => {
+                mergedSalary[id] = String(val);
+              });
+            }
+          }
+        } else {
+          const basic = Math.round(monthlyCTC * 0.5);
+          const hra = Math.round(basic * 0.5);
+          const special = monthlyCTC - basic - hra;
+          basicVal = String(basic);
+          hraVal = String(hra);
+          specialVal = String(special);
+          grossVal = String(monthlyCTC);
+        }
+      }
+
+      return {
+        ...prev,
+        salary: {
+          ...mergedSalary,
+          annualCTC: String(annualCTC),
+          monthlyCTC: String(monthlyCTC),
+          basic: basicVal,
+          hra: hraVal,
+          specialAllowance: specialVal,
+          monthlyGross: grossVal
+        }
+      };
+    });
+  };
+
+  const renderSalaryFormFields = () => {
+    const isFlat = formData.salary.payType === 'flat';
+    const isHourly = formData.salary.payType === 'hourly';
+    
+    // Parse values safely for display
+    const pfEmp = parseFloat(formData.salary.pfEmployer) || 0;
+    const pfEe = parseFloat(formData.salary.pfEmployee) || 0;
+    const grat = parseFloat(formData.salary.gratuity) || 0;
+    const lwf = parseFloat(formData.salary.lwfEmployer) || 0;
+    const esi = parseFloat(formData.salary.esiEmployer) || 0;
+    const pt = parseFloat(formData.salary.professionalTax) || 0;
+    const tdsVal = parseFloat(formData.salary.tds) || 0;
+    const grossVal = parseFloat(formData.salary.monthlyGross) || 0;
+    const takeHomeVal = parseFloat(formData.salary.netTakeHome) || 0;
+    const annualCTCVal = parseFloat(formData.salary.annualCTC) || 0;
+
+    return (
+      <>
+        <div style={{ gridColumn: '1 / -1', marginTop: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+          <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a' }}>Salary Details</h3>
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Pay Type</label>
+          <select 
+            value={formData.salary.payType || 'salaried'} 
+            onChange={(e) => calculateSalaryBreakdown({ payType: e.target.value })} 
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#fff' }}
+          >
+            <option value="salaried">Salaried (Monthly Base)</option>
+            <option value="hourly">Hourly Contractor</option>
+            <option value="flat">Flat Salary — No Component Breakdown</option>
+          </select>
+        </div>
+
+        {isHourly ? (
+          <>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Hourly Rate (INR)</label>
+              <input 
+                required
+                value={formData.salary.hourlyRate || ''} 
+                onChange={(e) => calculateSalaryBreakdown({ hourlyRate: e.target.value })} 
+                placeholder="e.g. 500" 
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Estimated Monthly Hours</label>
+              <input 
+                required
+                value={formData.salary.hoursWorked || '160'} 
+                onChange={(e) => calculateSalaryBreakdown({ hoursWorked: e.target.value })} 
+                placeholder="e.g. 160" 
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Calculated Monthly CTC</label>
+              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 12px', background: '#f3f4f6', height: '40px', boxSizing: 'border-box', fontSize: '14px', fontWeight: '600', color: '#374151' }}>
+                ₹{parseFloat(formData.salary.monthlyCTC || '0').toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Calculated Annual CTC</label>
+              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 12px', background: '#f3f4f6', height: '40px', boxSizing: 'border-box', fontSize: '14px', fontWeight: '600', color: '#374151' }}>
+                ₹{parseFloat(formData.salary.annualCTC || '0').toLocaleString('en-IN')}
+              </div>
+            </div>
+          </>
+        ) : isFlat ? (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Flat Monthly Salary</label>
+            <input 
+              required
+              value={formData.salary.flatSalary || formData.salary.monthlyCTC || ''} 
+              onChange={(e) => calculateSalaryBreakdown({ flatSalary: e.target.value, monthlyCTC: e.target.value })} 
+              placeholder="e.g. 50,000" 
+              style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+            />
+          </div>
+        ) : (
+          <>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Annual CTC</label>
+              <input 
+                value={formData.salary.annualCTC} 
+                onChange={(e) => calculateSalaryBreakdown({ annualCTC: e.target.value })} 
+                placeholder="e.g. 5,00,000" 
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Monthly CTC</label>
+              <input 
+                value={formData.salary.monthlyCTC} 
+                onChange={(e) => calculateSalaryBreakdown({ monthlyCTC: e.target.value })} 
+                placeholder="e.g. 41,667" 
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+              />
+            </div>
+
+            {/* Statutory contribution toggles */}
+            <div style={{ gridColumn: '1 / -1', marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', trackingWidth: '0.05em', color: '#475569', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                Statutory Toggles
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>Provident Fund (PF)</span>
+                    <input 
+                      type="checkbox" 
+                      checked={formData.salary.pfEnabled !== false} 
+                      onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })} 
+                    />
+                  </div>
+                  {formData.salary.pfEnabled !== false && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '6px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>Include Employer PF in CTC</span>
+                      <input 
+                        type="checkbox" 
+                        checked={!!formData.salary.includePfInCTC} 
+                        onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })} 
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>Gratuity Accrual</span>
+                    <input 
+                      type="checkbox" 
+                      checked={formData.salary.gratuityEnabled !== false} 
+                      onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })} 
+                    />
+                  </div>
+                  {formData.salary.gratuityEnabled !== false && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '6px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>Include Gratuity in CTC</span>
+                      <input 
+                        type="checkbox" 
+                        checked={formData.salary.includeGratuityInCTC !== false} 
+                        onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })} 
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>ESI Applicable</span>
+                  <input 
+                    type="checkbox" 
+                    checked={formData.salary.esiEnabled !== false} 
+                    onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })} 
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>LWF Applicable</span>
+                  <input 
+                    type="checkbox" 
+                    checked={formData.salary.lwfEnabled !== false} 
+                    onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })} 
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '12px', marginTop: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>Professional Tax (PT)</span>
+                  <input 
+                    type="checkbox" 
+                    checked={formData.salary.ptEnabled !== false} 
+                    onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })} 
+                  />
+                </div>
+                {formData.salary.ptEnabled !== false && (
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                      <select
+                        value={formData.salary.ptState || 'MH'}
+                        onChange={(e) => {
+                          const state = e.target.value;
+                          let amount = 0;
+                          if (['MH', 'KA', 'TN', 'WB'].includes(state)) amount = 200;
+                          calculateSalaryBreakdown({ ptState: state, professionalTax: String(amount) });
+                        }}
+                        style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', outline: 'none', background: '#fff' }}
+                      >
+                        <option value="MH">Maharashtra (₹200/mo)</option>
+                        <option value="KA">Karnataka (₹200/mo)</option>
+                        <option value="TN">Tamil Nadu (₹200/mo)</option>
+                        <option value="WB">West Bengal (₹200/mo)</option>
+                        <option value="none">Other / Exempt (₹0)</option>
+                        <option value="custom">Custom Override</option>
+                      </select>
+                    </div>
+                    {formData.salary.ptState === 'custom' && (
+                      <div style={{ width: '80px' }}>
+                        <input
+                          value={formData.salary.professionalTax || '0'}
+                          onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
+                          style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Dynamic salary components from active config (mirrors calculator) */}
+            {payrollConfig?.salaryComponents && payrollConfig.salaryComponents.length > 0 ? (
+              <>
+                <div style={{ gridColumn: '1 / -1', paddingTop: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', trackingWidth: '0.05em', color: '#64748b' }}>Salary Components Breakup</span>
+                </div>
+                {payrollConfig.salaryComponents
+                  .filter(c => c.type === 'earning')
+                  .map(c => {
+                    const isFixed = c.linkedTo === 'fixed';
+                    const isRemainder = c.linkedTo === 'remainder';
+
+                    if (isFixed) {
+                      const val = formData.salary[c.id] !== undefined ? formData.salary[c.id] : (c.linkValue || '0');
+                      return (
+                        <div key={c.id}>
+                          <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>{c.name}</label>
+                          <input 
+                            value={val} 
+                            onChange={(e) => calculateSalaryBreakdown({ [c.id]: e.target.value })} 
+                            style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+                          />
+                        </div>
+                      );
+                    }
+
+                    // Auto calculated fields
+                    const badge = isRemainder ? 'Remainder'
+                      : c.linkedTo === 'ctc_percent' ? `${Math.round((c.linkValue || 0) * 100)}% of CTC`
+                      : c.linkedTo === 'basic_percent' ? `${Math.round((c.linkValue || 0) * 100)}% of Basic`
+                      : '';
+                    const val = formData.salary[c.id] || '0';
+
+                    return (
+                      <div key={c.id}>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>{c.name}</label>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 12px', background: '#f3f4f6', height: '40px', boxSizing: 'border-box' }}>
+                          <span style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>₹{parseFloat(val).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#2563eb', background: '#dbeafe', borderRadius: '9999px', padding: '2px 8px' }}>{badge}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                }
+              </>
+            ) : (
+              // Standard fallback
+              <>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Basic Salary (Monthly)</label>
+                  <input readOnly disabled value={formData.salary.basic} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>HRA (Monthly)</label>
+                  <input readOnly disabled value={formData.salary.hra} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Special Allowance (Monthly)</label>
+                  <input readOnly disabled value={formData.salary.specialAllowance} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Medical Insurance (Monthly)</label>
+              <input 
+                value={formData.salary.insuranceAmount || '0'} 
+                onChange={(e) => calculateSalaryBreakdown({ insuranceAmount: e.target.value })} 
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Employer NPS (Monthly)</label>
+              <input 
+                value={formData.salary.employerNPS || '0'} 
+                onChange={(e) => calculateSalaryBreakdown({ employerNPS: e.target.value })} 
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} 
+              />
+            </div>
+
+            {/* CTC Components & Results Summary Table */}
+            <div style={{ gridColumn: '1 / -1', marginTop: '16px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '16px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', trackingWidth: '0.05em', color: '#475569', borderBottom: '1px solid #cbd5e1', paddingBottom: '6px', marginBottom: '10px' }}>
+                CTC Components & Estimates (Monthly)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>PF Employer</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{pfEmp.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Gratuity Provision</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{grat.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>LWF Employer</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{lwf.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>ESI Employer</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{esi.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Professional Tax (PT)</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{pt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Income Tax (TDS)</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{tdsVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Employee PF contribution</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{pfEe.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', background: '#fff' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Annual CTC</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>₹{annualCTCVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #dcfce7', borderRadius: '8px', padding: '8px 10px', background: '#f0fdf4' }}>
+                  <span style={{ fontSize: '11px', color: '#15803d', display: 'block', fontWeight: '600' }}>Monthly Gross Salary</span>
+                  <span style={{ fontSize: '15px', fontWeight: '800', color: '#166534' }}>₹{grossVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div style={{ border: '1px solid #dbeafe', borderRadius: '8px', padding: '8px 10px', background: '#eff6ff' }}>
+                  <span style={{ fontSize: '11px', color: '#1d4ed8', display: 'block', fontWeight: '600' }}>Net Take-Home Estimate</span>
+                  <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e40af' }}>₹{takeHomeVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </>
+    );
+  };
+
   const handleDynamicTemplateUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -796,11 +1266,14 @@ const Onboarding = () => {
       initialEmployeesFetchDoneRef.current = true;
       fetchEmployees();
     }
-    if (activeTab === 'settings') {
-      initialSettingsFetchDoneRef.current = true;
-      fetchSettings();
+    if (activeTab === 'settings' || showAddModal || showEditModal) {
+      if (activeTab === 'settings') {
+        initialSettingsFetchDoneRef.current = true;
+        fetchSettings();
+      }
+      fetchPayrollConfig();
     }
-  }, [activeTab, fetchEmployees, fetchSettings, page, debouncedSearchTerm, statusFilter]);
+  }, [activeTab, fetchEmployees, fetchSettings, fetchPayrollConfig, page, debouncedSearchTerm, statusFilter, showAddModal, showEditModal]);
 
   const handlePolicyUpload = async (e) => {
     const file = e.target.files[0];
@@ -922,10 +1395,31 @@ const Onboarding = () => {
   };
 
   const handleOpenAddModal = () => {
+    const salaryData = {
+      payType: 'salaried',
+      annualCTC: '',
+      monthlyCTC: '',
+      basic: '',
+      hra: '',
+      specialAllowance: '',
+      monthlyGross: '',
+      flatSalary: '',
+      hourlyRate: '',
+      hoursWorked: '160',
+      insuranceAmount: '0',
+      employerNPS: '0'
+    };
+    if (payrollConfig?.salaryComponents) {
+      payrollConfig.salaryComponents.forEach(c => {
+        if (c.linkedTo === 'fixed') {
+          salaryData[c.id] = String(c.linkValue || 0);
+        }
+      });
+    }
     setFormData({
       ...INITIAL_FORM_DATA,
       offerDate: new Date().toISOString().split('T')[0], // Default to today
-      salary: { ...INITIAL_FORM_DATA.salary }
+      salary: salaryData
     });
     setShowAddModal(true);
   };
@@ -1066,6 +1560,27 @@ const Onboarding = () => {
   };
 
   const handleEditEmployee = (emp) => {
+    const salaryData = {
+      payType: emp.salary?.payType || 'salaried',
+      annualCTC: emp.salary?.annualCTC || '',
+      monthlyCTC: emp.salary?.monthlyCTC || '',
+      basic: emp.salary?.basic || '',
+      hra: emp.salary?.hra || '',
+      specialAllowance: emp.salary?.specialAllowance || '',
+      monthlyGross: emp.salary?.monthlyGross || '',
+      flatSalary: emp.salary?.flatSalary || emp.salary?.monthlyCTC || '',
+      hourlyRate: emp.salary?.hourlyRate || '',
+      hoursWorked: emp.salary?.hoursWorked || '160',
+      insuranceAmount: emp.salary?.insuranceAmount || '0',
+      employerNPS: emp.salary?.employerNPS || '0'
+    };
+    if (payrollConfig?.salaryComponents) {
+      payrollConfig.salaryComponents.forEach(c => {
+        if (c.linkedTo === 'fixed') {
+          salaryData[c.id] = emp.salary?.[c.id] !== undefined ? String(emp.salary[c.id]) : String(c.linkValue || 0);
+        }
+      });
+    }
     setFormData({
       firstName: emp.firstName || '',
       lastName: emp.lastName || '',
@@ -1079,14 +1594,7 @@ const Onboarding = () => {
       workLocation: emp.workLocation || '',
       address: emp.address || emp.personalDetails?.currentAddress?.line1 || '',
       probationPeriod: emp.probationPeriod || '',
-      salary: {
-        annualCTC: emp.salary?.annualCTC || '',
-        basic: emp.salary?.basic || '',
-        hra: emp.salary?.hra || '',
-        specialAllowance: emp.salary?.specialAllowance || '',
-        monthlyGross: emp.salary?.monthlyGross || '',
-        monthlyCTC: emp.salary?.monthlyCTC || ''
-      }
+      salary: salaryData
     });
     setSelectedEmployee(emp);
     setShowEditModal(true);
@@ -1599,20 +2107,53 @@ const Onboarding = () => {
                 <AlertTriangle size={18} style={{ color: '#f59e0b' }} /> Available Placeholders Reference
               </h3>
               <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Copy and paste these exact tags into your Word document. The system will automatically replace them with real data.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+              
+              <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>Single Values</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', marginBottom: '24px' }}>
+                {(() => {
+                  const basePlaceholders = [
+                    { tag: '{employee_full_name}', desc: 'Full Name' }, { tag: '{employee_first_name}', desc: 'First Name' },
+                    { tag: '{employee_last_name}', desc: 'Last Name' }, { tag: '{designation}', desc: 'Designation' },
+                    { tag: '{joining_date}', desc: 'Joining Date' }, { tag: '{annual_ctc}', desc: 'Annual CTC' },
+                    { tag: '{employee_address}', desc: 'Full Address' }, { tag: '{work_location}', desc: 'Work Location' },
+                    { tag: '{probation_period}', desc: 'Probation Period' }, { tag: '{basic_salary}', desc: 'Basic Salary' },
+                    { tag: '{hra}', desc: 'House Rent Allowance' }, { tag: '{special_allowance}', desc: 'Special Allowance' },
+                    { tag: '{monthly_gross}', desc: 'Monthly Gross' }, { tag: '{monthly_ctc}', desc: 'Monthly CTC' },
+                    { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' }
+                  ];
+
+                  const dynamicPlaceholders = [];
+                  if (payrollConfig?.salaryComponents) {
+                    payrollConfig.salaryComponents.forEach(c => {
+                      if (['basic', 'hra', 'special'].includes(c.id)) return;
+                      const cleanId = c.id.replace(/([A-Z])/g, '_$1').toLowerCase();
+                      dynamicPlaceholders.push({ tag: `{${cleanId}}`, desc: `${c.name} (Monthly)` });
+                      dynamicPlaceholders.push({ tag: `{${cleanId}_annual}`, desc: `${c.name} (Annual)` });
+                    });
+                  }
+
+                  return [...basePlaceholders, ...dynamicPlaceholders].map(p => (
+                    <div key={p.tag} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                      <span style={{ fontFamily: 'Calibri, "Segoe UI", sans-serif', fontSize: '12pt', fontWeight: '600', color: '#0f172a' }}>{p.tag}</span>
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>{p.desc}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+
+              <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>Table Format Loops (Automatic Table Breakups)</h4>
+              <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>Create a table in Word with the headers. In the data row, start with the loop opener and end with the loop closer. The row will automatically duplicate for each item in the breakdown.</p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
                 {[
-                  { tag: '{employee_full_name}', desc: 'Full Name' }, { tag: '{employee_first_name}', desc: 'First Name' },
-                  { tag: '{employee_last_name}', desc: 'Last Name' }, { tag: '{designation}', desc: 'Designation' },
-                  { tag: '{joining_date}', desc: 'Joining Date' }, { tag: '{annual_ctc}', desc: 'Annual CTC' },
-                  { tag: '{employee_address}', desc: 'Full Address' }, { tag: '{work_location}', desc: 'Work Location' },
-                  { tag: '{probation_period}', desc: 'Probation Period' }, { tag: '{basic_salary}', desc: 'Basic Salary' },
-                  { tag: '{hra}', desc: 'House Rent Allowance' }, { tag: '{special_allowance}', desc: 'Special Allowance' },
-                  { tag: '{monthly_gross}', desc: 'Monthly Gross' }, { tag: '{monthly_ctc}', desc: 'Monthly CTC' },
-                  { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' }
+                  { tag: '{#earnings_breakdown}...{/earnings_breakdown}', desc: 'Earnings List. Fields: {name}, {monthly}, {annual}' },
+                  { tag: '{#contributions_breakdown}...{/contributions_breakdown}', desc: 'Employer Contribution List. Fields: {name}, {monthly}, {annual}' },
+                  { tag: '{#deductions_breakdown}...{/deductions_breakdown}', desc: 'Employee Deductions List. Fields: {name}, {monthly}, {annual}' },
+                  { tag: '{#all_components}...{/all_components}', desc: 'Full Salary Structure List. Fields: {category}, {name}, {monthly}, {annual}' }
                 ].map(p => (
-                  <div key={p.tag} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                    <span style={{ fontFamily: 'Calibri, "Segoe UI", sans-serif', fontSize: '12pt', fontWeight: '600', color: '#0f172a' }}>{p.tag}</span>
-                    <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>{p.desc}</span>
+                  <div key={p.tag} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '14px', background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                    <span style={{ fontFamily: 'Consolas, monospace', fontSize: '13px', fontWeight: '700', color: '#2563eb' }}>{p.tag}</span>
+                    <span style={{ fontSize: '11px', color: '#475569', fontStyle: 'normal' }}>{p.desc}</span>
                   </div>
                 ))}
               </div>
@@ -1681,33 +2222,7 @@ const Onboarding = () => {
                   <input value={formData.probationPeriod} onChange={(e) => setFormData({ ...formData, probationPeriod: e.target.value })} placeholder="e.g. 6 months" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
 
-                <div style={{ gridColumn: '1 / -1', marginTop: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
-                  <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a' }}>Salary Details</h3>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Annual CTC</label>
-                  <input value={formData.salary.annualCTC} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, annualCTC: e.target.value } })} placeholder="e.g. 5,00,000" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Basic Salary (Monthly)</label>
-                  <input value={formData.salary.basic} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, basic: e.target.value } })} placeholder="e.g. 25,000" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>HRA (Monthly)</label>
-                  <input value={formData.salary.hra} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, hra: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Special Allowance (Monthly)</label>
-                  <input value={formData.salary.specialAllowance} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, specialAllowance: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Monthly Gross</label>
-                  <input value={formData.salary.monthlyGross} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, monthlyGross: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Monthly CTC</label>
-                  <input value={formData.salary.monthlyCTC} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, monthlyCTC: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
+                {renderSalaryFormFields()}
               </div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
                 <button type="button" onClick={() => setShowAddModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>Cancel</button>
@@ -1783,33 +2298,7 @@ const Onboarding = () => {
                   <input value={formData.probationPeriod} onChange={(e) => setFormData({ ...formData, probationPeriod: e.target.value })} placeholder="e.g. 6 months" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
 
-                <div style={{ gridColumn: '1 / -1', marginTop: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
-                  <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a' }}>Salary Details</h3>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Annual CTC</label>
-                  <input value={formData.salary.annualCTC} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, annualCTC: e.target.value } })} placeholder="e.g. 5,00,000" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Basic Salary (Monthly)</label>
-                  <input value={formData.salary.basic} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, basic: e.target.value } })} placeholder="e.g. 25,000" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>HRA (Monthly)</label>
-                  <input value={formData.salary.hra} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, hra: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Special Allowance (Monthly)</label>
-                  <input value={formData.salary.specialAllowance} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, specialAllowance: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Monthly Gross</label>
-                  <input value={formData.salary.monthlyGross} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, monthlyGross: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Monthly CTC</label>
-                  <input value={formData.salary.monthlyCTC} onChange={(e) => setFormData({ ...formData, salary: { ...formData.salary, monthlyCTC: e.target.value } })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
+                {renderSalaryFormFields()}
               </div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
                 <button type="button" onClick={() => setShowEditModal(false)} style={{ padding: '10px 20px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>Cancel</button>
