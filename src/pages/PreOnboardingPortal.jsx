@@ -286,7 +286,22 @@ const PreOnboardingPortal = () => {
   };
 
   const handleUploadCheque = async (file) => {
+    if (!file) return;
+    if (file.size === 0) {
+      toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+      return;
+    }
     if (file.size > 5 * 1024 * 1024) { toast.error('File size must be under 5MB'); return; }
+    let fileType = file.type;
+    if ((!fileType || fileType === 'application/octet-stream') && file.name) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'pdf') fileType = 'application/pdf';
+      else if (ext === 'jpg' || ext === 'jpeg') fileType = 'image/jpeg';
+      else if (ext === 'png') fileType = 'image/png';
+    }
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowed.includes(fileType)) { toast.error('Only PDF, JPG, PNG files are allowed'); return; }
+
     const fd = new FormData();
     fd.append('document', file);
     try {
@@ -973,11 +988,23 @@ const PreOnboardingPortal = () => {
                                     <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => {
                                       const file = e.target.files[0];
                                       if (!file) return;
-                                      if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); return; }
+                                      if (file.size === 0) {
+                                        toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+                                        e.target.value = '';
+                                        return;
+                                      }
+                                      if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); e.target.value = ''; return; }
+                                      let fileType = file.type;
+                                      if ((!fileType || fileType === 'application/octet-stream') && file.name) {
+                                        const ext = file.name.split('.').pop().toLowerCase();
+                                        if (ext === 'pdf') fileType = 'application/pdf';
+                                        else if (ext === 'jpg' || ext === 'jpeg') fileType = 'image/jpeg';
+                                        else if (ext === 'png') fileType = 'image/png';
+                                      }
                                       const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
-                                      if (!allowed.includes(file.type)) { toast.error('Only PDF, JPG, PNG'); return; }
+                                      if (!allowed.includes(fileType)) { toast.error('Only PDF, JPG, PNG'); e.target.value = ''; return; }
                                       const previewUrl = URL.createObjectURL(file);
-                                      setDocPreview(prev => ({ ...prev, [doc._id]: { file, previewUrl, fileName: file.name, fileType: file.type } }));
+                                      setDocPreview(prev => ({ ...prev, [doc._id]: { file, previewUrl, fileName: file.name, fileType } }));
                                     }} />
                                   </label>
                                 )}

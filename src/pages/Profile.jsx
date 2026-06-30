@@ -577,7 +577,21 @@ const Profile = () => {
         if (!file) return;
 
         try {
-            if (!file.type?.startsWith('image/')) {
+            // Verify if file has content and is readable (prevents 0-byte virtual/cloud file errors)
+            if (file.size === 0) {
+                throw new Error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+            }
+
+            // Support empty mime-type fallback via file extension for robust mobile selection
+            let fileType = file.type;
+            if ((!fileType || fileType === 'application/octet-stream') && file.name) {
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(ext)) {
+                    fileType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+                }
+            }
+
+            if (!fileType?.startsWith('image/')) {
                 throw new Error('Please select an image file.');
             }
 

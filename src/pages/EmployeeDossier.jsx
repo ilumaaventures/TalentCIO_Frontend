@@ -581,7 +581,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         // Support empty mime-type fallback via file extension for robust mobile selection
         let fileType = file.type;
-        if (!fileType && file.name) {
+        if ((!fileType || fileType === 'application/octet-stream') && file.name) {
             const ext = file.name.split('.').pop().toLowerCase();
             if (ext === 'pdf') fileType = 'application/pdf';
             else if (ext === 'jpg' || ext === 'jpeg') fileType = 'image/jpeg';
@@ -1534,6 +1534,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         event.target.value = '';
 
         if (!file) return;
+
+        if (file.size === 0) {
+            toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+            return;
+        }
 
         try {
             setUploadingCompanyLogo(true);

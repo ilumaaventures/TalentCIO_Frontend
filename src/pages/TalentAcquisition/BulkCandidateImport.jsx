@@ -340,6 +340,14 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
 
     const processFile = async (file) => {
+        if (!file) return;
+
+        // Verify if file has content and is readable (prevents 0-byte virtual/cloud file errors)
+        if (file.size === 0) {
+            toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+            return;
+        }
+
         setIsParsing(true);
         setFile(file);
         try {

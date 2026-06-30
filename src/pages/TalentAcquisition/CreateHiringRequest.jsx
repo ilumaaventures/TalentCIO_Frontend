@@ -302,6 +302,28 @@ const CreateHiringRequest = () => {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Verify if file has content and is readable (prevents 0-byte virtual/cloud file errors)
+        if (file.size === 0) {
+            toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+            e.target.value = '';
+            return;
+        }
+
+        // Validate file size (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('File size must be less than 5MB');
+            e.target.value = '';
+            return;
+        }
+
+        // Validate file extension
+        const ext = file.name ? file.name.split('.').pop().toLowerCase() : '';
+        if (!['pdf', 'doc', 'docx'].includes(ext)) {
+            toast.error('Only PDF, DOC, and DOCX files are allowed');
+            e.target.value = '';
+            return;
+        }
+
         const uploadFormData = new FormData();
         uploadFormData.append('jdFile', file);
 

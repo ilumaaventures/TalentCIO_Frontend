@@ -359,15 +359,31 @@ const CandidateForm = () => {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Verify if file has content and is readable (prevents 0-byte virtual/cloud file errors)
+        if (file.size === 0) {
+            toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+            e.target.value = '';
+            return;
+        }
+
+        // Support empty mime-type fallback via file extension for robust mobile selection
+        let fileType = file.type;
+        if ((!fileType || fileType === 'application/octet-stream') && file.name) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext === 'pdf') fileType = 'application/pdf';
+        }
+
         // Validate file type
-        if (file.type !== 'application/pdf') {
+        if (fileType !== 'application/pdf') {
             toast.error('Only PDF files are allowed');
+            e.target.value = '';
             return;
         }
 
         // Validate file size (5MB)
         if (file.size > 5 * 1024 * 1024) {
             toast.error('File size must be less than 5MB');
+            e.target.value = '';
             return;
         }
 
