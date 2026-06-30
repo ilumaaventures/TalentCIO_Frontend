@@ -10,6 +10,7 @@ import {
   Building,
   Building2,
   Calendar,
+  Calculator,
   CalendarClock,
   CalendarDays,
   ClipboardList,
@@ -432,6 +433,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </Link>
               )}
 
+
+
               {canAccessTA && (
                 <Link
                   to="/ta"
@@ -518,6 +521,14 @@ const Sidebar = ({ isOpen, onClose }) => {
                   </Link>
                 </>
               )}
+
+              {/* Breakup Section */}
+              <div className="mt-8"><div className={sectionLabelClass}>Breakup</div></div>
+              <Link to="/salary-calculator" className={getSidebarLinkClass(location.pathname === '/salary-calculator')} onClick={onClose}>
+                <Calculator size={18} />
+                <span>Salary Calculator</span>
+              </Link>
+
             </>
           )}
         </div>
