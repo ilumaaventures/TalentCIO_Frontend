@@ -94,6 +94,7 @@ const SalaryCalculator = () => {
     payType: 'salaried',
     hourlyRate: 0,
     hoursWorked: 160,
+    flatSalary: 0,
     annualCTC: 0,
     monthlyCTC: 0,
     flexiAmount: 0,
@@ -204,6 +205,7 @@ const SalaryCalculator = () => {
       payType: form.payType || 'salaried',
       hourlyRate: Number(form.hourlyRate) || 0,
       hoursWorked: Number(form.hoursWorked) || 160,
+      flatSalary: Number(form.flatSalary) || 0,
       insuranceAmount: Number(form.insuranceAmount) || 0,
       employerNPS: Number(form.employerNPS) || 0,
       taxRegime: form.taxRegime,
@@ -313,11 +315,17 @@ const SalaryCalculator = () => {
         if (form.payType === 'hourly' && c.id === 'basic') {
           name = 'Contract Wages (Hourly)';
         }
+        if (form.payType === 'flat' && c.id === 'basic') {
+          name = 'Flat Salary';
+        }
         return { id: c.id, name, val };
       })
       .filter(r => {
         if (form.payType === 'hourly') {
           return r.val > 0;
+        }
+        if (form.payType === 'flat') {
+          return r.id === 'basic';
         }
         return r.id === 'basic' || r.id === 'hra' || r.val > 0;
       })
@@ -407,6 +415,7 @@ const SalaryCalculator = () => {
         payType: form.payType || 'salaried',
         hourlyRate: Number(form.hourlyRate) || 0,
         hoursWorked: Number(form.hoursWorked) || 160,
+        flatSalary: Number(form.flatSalary) || 0,
         monthlyCTC: Number(form.monthlyCTC) || 0,
         annualCTC: Number(form.annualCTC) || 0,
         insuranceAmount: Number(form.insuranceAmount) || 0,
@@ -518,8 +527,18 @@ const SalaryCalculator = () => {
 
     comps.filter(c => c.type === 'earning').forEach(c => {
       const val = getEarningValue(c.id);
-      if (c.id === 'basic' || c.id === 'hra' || val > 0) {
-        data.push([c.name || c.id, val, toAnnual(val)]);
+      if (form.payType === 'flat') {
+        if (c.id === 'basic') {
+          data.push(['Flat Salary', val, toAnnual(val)]);
+        }
+      } else {
+        if (c.id === 'basic' || c.id === 'hra' || val > 0) {
+          let name = c.name || c.id;
+          if (form.payType === 'hourly' && c.id === 'basic') {
+            name = 'Contract Wages (Hourly)';
+          }
+          data.push([name, val, toAnnual(val)]);
+        }
       }
     });
 
@@ -700,6 +719,22 @@ const SalaryCalculator = () => {
                               employerNPS: 0,
                               monthlyCTC: (prev.hourlyRate || 0) * (prev.hoursWorked || 160),
                               annualCTC: (prev.hourlyRate || 0) * (prev.hoursWorked || 160) * 12
+                            } : type === 'flat' ? {
+                              pfEnabled: false,
+                              esiEnabled: false,
+                              ptEnabled: false,
+                              lwfEnabled: false,
+                              gratuityEnabled: false,
+                              includePfInCTC: false,
+                              includeGratuityInCTC: false,
+                              flexiAmount: 0,
+                              broadband: 0,
+                              petrol: 0,
+                              lta: 0,
+                              insuranceAmount: 0,
+                              employerNPS: 0,
+                              monthlyCTC: Number(prev.flatSalary) || 0,
+                              annualCTC: (Number(prev.flatSalary) || 0) * 12
                             } : {
                               pfEnabled: true,
                               esiEnabled: true,
@@ -715,6 +750,7 @@ const SalaryCalculator = () => {
                       >
                         <option value="salaried">Salaried (Monthly Base)</option>
                         <option value="hourly">Hourly Contractor</option>
+                        <option value="flat">Flat Salary — No Component Breakdown</option>
                       </select>
                     </div>
                   </div>
@@ -746,6 +782,22 @@ const SalaryCalculator = () => {
                           }));
                         }}
                         suffix="hours"
+                      />
+                    </div>
+                  ) : form.payType === 'flat' ? (
+                    <div className="grid grid-cols-1 gap-4">
+                      <InputField
+                        label="Flat Monthly Salary"
+                        value={form.flatSalary || 0}
+                        onChange={(value) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            flatSalary: value,
+                            monthlyCTC: value,
+                            annualCTC: value * 12
+                          }));
+                        }}
+                        suffix="INR"
                       />
                     </div>
                   ) : (
@@ -1095,7 +1147,7 @@ const SalaryCalculator = () => {
             {monthlyCTC > 0 ? (
               <>
                 {/* Side-by-Side Regime Comparison */}
-                {comparison && (
+                {comparison && form.payType === 'salaried' && (
                   <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                       <h2 className="text-lg font-bold text-slate-800">Regime Comparison (FY 2024-25)</h2>
