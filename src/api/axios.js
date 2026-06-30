@@ -106,16 +106,17 @@ const normalizeSerializableValue = (value) => {
 };
 
 const serializeRequestPart = (value) => {
-  if (value instanceof FormData) {
-    return JSON.stringify(
-      Array.from(value.entries()).map(([key, entryValue]) => ([
-        key,
-        normalizeSerializableValue(entryValue),
-      ]))
-    );
+  try {
+    if (value instanceof FormData) {
+      // Avoid serializing binary files/FormData which crashes on mobile Chrome/Android sandbox.
+      // Returning a unique key bypasses deduplication for file uploads.
+      return `FormData-${Math.random()}-${Date.now()}`;
+    }
+    return JSON.stringify(normalizeSerializableValue(value));
+  } catch (e) {
+    console.warn('Request serialization failed, using fallback key:', e);
+    return `Fallback-${Math.random()}-${Date.now()}`;
   }
-
-  return JSON.stringify(normalizeSerializableValue(value));
 };
 
 const getRequestKey = (config) => [
