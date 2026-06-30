@@ -119,10 +119,10 @@ export const AuthProvider = ({ children }) => {
       } catch (err) {
         if (!active || authLoadIdRef.current !== authLoadId) return;
         console.error('Profile Load Error:', err);
+        disconnectSocket();
+        setToken(false);
+        setUser(null);
         if (err.response?.status === 401 || err.response?.status === 403 || err.response?.status === 404) {
-          disconnectSocket();
-          setToken(false);
-          setUser(null);
           clearAuthSession({ userId: storedUser?._id || '' });
         }
       } finally {
