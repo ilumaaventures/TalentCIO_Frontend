@@ -184,6 +184,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('settings.notification.view')
     || user?.permissions?.includes('settings.notification.manage')
     || user?.permissions?.includes('*');
+  const showSalaryCalculator = isAdmin
+    || user?.permissions?.includes('payroll.calculator.view')
+    || user?.permissions?.includes('*');
   const homeRoute = showDashboard ? '/' : (showAttendance ? '/attendance' : '/');
   const sectionLabelClass = isTalentAcquisitionRoute
     ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-100/55'
@@ -523,11 +526,15 @@ const Sidebar = ({ isOpen, onClose }) => {
               )}
 
               {/* Breakup Section */}
-              <div className="mt-8"><div className={sectionLabelClass}>Breakup</div></div>
-              <Link to="/salary-calculator" className={getSidebarLinkClass(location.pathname === '/salary-calculator')} onClick={onClose}>
-                <Calculator size={18} />
-                <span>Salary Calculator</span>
-              </Link>
+              {showSalaryCalculator && (
+                <>
+                  <div className="mt-8"><div className={sectionLabelClass}>Breakup</div></div>
+                  <Link to="/salary-calculator" className={getSidebarLinkClass(location.pathname === '/salary-calculator')} onClick={onClose}>
+                    <Calculator size={18} />
+                    <span>Salary Calculator</span>
+                  </Link>
+                </>
+              )}
 
             </>
           )}

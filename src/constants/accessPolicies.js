@@ -9,6 +9,7 @@ export const ROLE_ACCESS_PERMISSIONS = ['role.read'];
 export const LEAVE_CONFIG_PERMISSIONS = ['leave.config.manage'];
 export const BIN_VIEW_PERMISSIONS = ['bin.view'];
 export const DASHBOARD_VIEW_PERMISSIONS = ['dashboard.view'];
+export const SALARY_CALCULATOR_PERMISSIONS = ['payroll.calculator.view'];
 export const ONBOARDING_VIEW_PERMISSIONS = [
     'onboarding.view',
     'onboarding.document.review',
