@@ -8,7 +8,7 @@ import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import useDebouncedValue from '../hooks/useDebouncedValue';
-import { buildMasterSalaryStructure, buildPayrollSnapshot } from '../utils/payroll';
+import { buildMasterSalaryStructure, buildPayrollSnapshot, PT_STATE_LIST } from '../utils/payroll';
 import {
   ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
   getSupportedPlaceholderTokens,
@@ -615,7 +615,28 @@ const Onboarding = () => {
     firstName: '', lastName: '', email: '', phone: '',
     designation: '', department: '', joiningDate: '', offerDate: '', documentDeadline: '',
     workLocation: '', address: '', probationPeriod: '',
-    salary: { annualCTC: '', basic: '', hra: '', specialAllowance: '', monthlyGross: '', monthlyCTC: '' }
+    salary: {
+      payType: 'salaried',
+      annualCTC: '',
+      monthlyCTC: '',
+      basic: '',
+      hra: '',
+      specialAllowance: '',
+      monthlyGross: '',
+      pfEnabled: true,
+      esiEnabled: true,
+      ptEnabled: true,
+      lwfEnabled: true,
+      gratuityEnabled: true,
+      includePfInCTC: false,
+      includeGratuityInCTC: true,
+      ptState: 'MH',
+      professionalTax: '200',
+      basicPercent: 50,
+      hraPercent: 50,
+      insuranceAmount: 0,
+      employerNPS: 0
+    }
   };
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
@@ -799,10 +820,13 @@ const Onboarding = () => {
             gratuityEnabled: mergedSalary.gratuityEnabled !== undefined ? !!mergedSalary.gratuityEnabled : true,
             includePfInCTC: !!mergedSalary.includePfInCTC,
             includeGratuityInCTC: mergedSalary.includeGratuityInCTC !== undefined ? !!mergedSalary.includeGratuityInCTC : true,
+            basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
+            hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
             insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
             employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
+            ptState: mergedSalary.ptState || '',
             deductions: {
-              professionalTax: mergedSalary.ptEnabled !== false ? (parseFloat(mergedSalary.professionalTax) || 200) : 0,
+              professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
             }
           };
           if (payrollConfig.salaryComponents) {
@@ -1047,19 +1071,24 @@ const Onboarding = () => {
                       <select
                         value={formData.salary.ptState || 'MH'}
                         onChange={(e) => {
-                          const state = e.target.value;
-                          let amount = 0;
-                          if (['MH', 'KA', 'TN', 'WB'].includes(state)) amount = 200;
-                          calculateSalaryBreakdown({ ptState: state, professionalTax: String(amount) });
+                          calculateSalaryBreakdown({ ptState: e.target.value });
                         }}
                         style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', outline: 'none', background: '#fff' }}
                       >
-                        <option value="MH">Maharashtra (₹200/mo)</option>
-                        <option value="KA">Karnataka (₹200/mo)</option>
-                        <option value="TN">Tamil Nadu (₹200/mo)</option>
-                        <option value="WB">West Bengal (₹200/mo)</option>
-                        <option value="none">Other / Exempt (₹0)</option>
-                        <option value="custom">Custom Override</option>
+                        <optgroup label="── No PT / Manual">
+                          <option value="">None — use manual override below</option>
+                          <option value="custom">Custom Override</option>
+                        </optgroup>
+                        <optgroup label="── States that levy PT">
+                          {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
+                            <option key={s.code} value={s.code}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="── States with no PT">
+                          {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
+                            <option key={s.code} value={s.code}>{s.name}</option>
+                          ))}
+                        </optgroup>
                       </select>
                     </div>
                     {formData.salary.ptState === 'custom' && (
@@ -1073,6 +1102,37 @@ const Onboarding = () => {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Ratio overrides */}
+            <div style={{ gridColumn: '1 / -1', marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', trackingWidth: '0.05em', color: '#475569', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                Ratio Overrides
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Basic Salary Override (%)</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={formData.salary.basicPercent !== undefined ? formData.salary.basicPercent : '50'} 
+                    onChange={(e) => calculateSalaryBreakdown({ basicPercent: e.target.value })} 
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#fff' }} 
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>HRA Override (% of Basic)</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={formData.salary.hraPercent !== undefined ? formData.salary.hraPercent : '50'} 
+                    onChange={(e) => calculateSalaryBreakdown({ hraPercent: e.target.value })} 
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#fff' }} 
+                  />
+                </div>
               </div>
             </div>
 
@@ -1583,7 +1643,18 @@ const Onboarding = () => {
       hourlyRate: emp.salary?.hourlyRate || '',
       hoursWorked: emp.salary?.hoursWorked || '160',
       insuranceAmount: emp.salary?.insuranceAmount || '0',
-      employerNPS: emp.salary?.employerNPS || '0'
+      employerNPS: emp.salary?.employerNPS || '0',
+      pfEnabled: emp.salary?.pfEnabled !== undefined ? emp.salary.pfEnabled : true,
+      esiEnabled: emp.salary?.esiEnabled !== undefined ? emp.salary.esiEnabled : true,
+      ptEnabled: emp.salary?.ptEnabled !== undefined ? emp.salary.ptEnabled : true,
+      lwfEnabled: emp.salary?.lwfEnabled !== undefined ? emp.salary.lwfEnabled : true,
+      gratuityEnabled: emp.salary?.gratuityEnabled !== undefined ? emp.salary.gratuityEnabled : true,
+      includePfInCTC: emp.salary?.includePfInCTC !== undefined ? emp.salary.includePfInCTC : false,
+      includeGratuityInCTC: emp.salary?.includeGratuityInCTC !== undefined ? emp.salary.includeGratuityInCTC : true,
+      ptState: emp.salary?.ptState || 'MH',
+      professionalTax: emp.salary?.professionalTax || '200',
+      basicPercent: emp.salary?.basicPercent !== undefined ? emp.salary.basicPercent : 50,
+      hraPercent: emp.salary?.hraPercent !== undefined ? emp.salary.hraPercent : 50
     };
     if (payrollConfig?.salaryComponents) {
       payrollConfig.salaryComponents.forEach(c => {
@@ -2176,7 +2247,7 @@ const Onboarding = () => {
       {/* Add Employee Modal */}
       {showAddModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '850px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <div style={{ padding: '24px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Add New Employee</h2>
               <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
@@ -2249,7 +2320,7 @@ const Onboarding = () => {
       {/* Edit Employee Modal */}
       {showEditModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '850px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <div style={{ padding: '24px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Edit Employee Details</h2>
