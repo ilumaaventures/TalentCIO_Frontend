@@ -290,29 +290,11 @@ const Onboarding = () => {
           url: template.url
         };
       }),
-      ...(onboardingSettings.offerLetterTemplateUrl ? [{
-        label: 'Offer Letter',
-        status: 'Template',
-        itemType: 'template',
-        _id: 'offer-letter-default',
-        isAccepted: employee.offerDeclaration?.hasReadOfferLetter,
-        emailSentAt: getRequestedDoc('Offer Letter')?.emailSentAt,
-        url: onboardingSettings.offerLetterTemplateUrl
-      }] : []),
-      ...(onboardingSettings.declarationTemplateUrl ? [{
-        label: 'Declaration',
-        status: 'Template',
-        itemType: 'template',
-        _id: 'declaration-default',
-        isAccepted: employee.offerDeclaration?.isComplete,
-        emailSentAt: getRequestedDoc('Declaration')?.emailSentAt,
-        url: onboardingSettings.declarationTemplateUrl
-      }] : []),
       ...(employee.documents || [])
         .filter((d) => d.type === 'custom_file')
         .map((d) => ({ ...d, itemType: 'document', isCustomSentFile: true }))
     ];
-  }, [getRequestedLabel, onboardingSettings.declarationTemplateUrl, onboardingSettings.dynamicTemplates, onboardingSettings.offerLetterTemplateUrl, onboardingSettings.policies]);
+  }, [getRequestedLabel, onboardingSettings.dynamicTemplates, onboardingSettings.policies]);
 
   const detailSections = getDetailSections(selectedEmployee);
   const detailDocuments = getDetailDocuments(selectedEmployee);
@@ -1192,10 +1174,12 @@ const Onboarding = () => {
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>HRA (Monthly)</label>
                   <input readOnly disabled value={formData.salary.hra} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Special Allowance (Monthly)</label>
-                  <input readOnly disabled value={formData.salary.specialAllowance} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
-                </div>
+                {payrollConfig?.salaryComponents?.some(c => c.id === 'special') && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Special Allowance (Monthly)</label>
+                    <input readOnly disabled value={formData.salary.specialAllowance} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
+                  </div>
+                )}
               </>
             )}
 
@@ -1320,6 +1304,7 @@ const Onboarding = () => {
       fetchSettings({ force: true });
     }
   };
+
 
   useEffect(() => {
     if (activeTab === 'settings' && !canManageOnboardingSettings) {
@@ -2123,8 +2108,7 @@ const Onboarding = () => {
                 </label>
               </div>
 
-              <div style={{ padding: '16px' }}>
-                {(onboardingSettings.dynamicTemplates?.length === 0 && !onboardingSettings.offerLetterTemplateUrl) ? (
+                {!onboardingSettings.dynamicTemplates || onboardingSettings.dynamicTemplates.length === 0 ? (
                   <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '14px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>No dynamic templates uploaded yet.</div>
                 ) : (
                   <div style={{ display: 'grid', gap: '8px' }}>
@@ -2143,7 +2127,6 @@ const Onboarding = () => {
                     ))}
                   </div>
                 )}
-              </div>
             </div>
 
             {/* Portion 2: Static Policies */}

@@ -2091,10 +2091,12 @@ const Users = () => {
                                                         <span className="text-slate-500">HRA</span>
                                                         <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.hra || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                                     </div>
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                        <span className="text-slate-500">Special Allowance</span>
-                                                        <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
+                                                    {payrollConfig?.salaryComponents?.some(c => c.id === 'special') && (
+                                                        <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                            <span className="text-slate-500">Special Allowance</span>
+                                                            <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                        </div>
+                                                    )}
                                                     <div className="flex justify-between items-center py-1 border-b border-slate-50">
                                                         <span className="text-slate-500">PF Employer Cost</span>
                                                         <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.pfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>

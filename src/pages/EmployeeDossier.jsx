@@ -2611,8 +2611,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             insuranceAmount: data.compensation?.insuranceAmount || 0,
             employerNPS: data.compensation?.employerNPS || 0,
             employmentType: data.employment?.employmentType || 'Full Time',
-            payType: data.compensation?.payType || 'fixed',
-            hourlyRate: data.compensation?.hourlyRate || 0,
+            payType: data.compensation?.payType || breakup.payType || 'salaried',
+            hourlyRate: data.compensation?.hourlyRate || breakup.hourlyRate || 0,
+            hoursWorked: data.compensation?.hoursWorked || breakup.hoursWorked || 160,
             useSalaryComponents: breakup.useSalaryComponents !== false
         };
 
@@ -2670,6 +2671,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         const draft = {
             role: '',
+            payType: getBreakupField('payType', 'salaried'),
+            hourlyRate: comp.hourlyRate || getBreakupField('hourlyRate', 0),
+            hoursWorked: getBreakupField('hoursWorked', 160),
             employmentType: profile.employment?.employmentType === 'Full Time' ? 'full-time' : 'contract',
             newAnnualCTC: currentMonthly * 12,
             newCTC: currentMonthly,
@@ -2708,6 +2712,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             joiningBonus: 0
         };
 
+        if (payrollConfig?.salaryComponents) {
+            payrollConfig.salaryComponents.forEach(c => {
+                if (c.type === 'earning' && c.linkedTo === 'fixed' && !['basic', 'hra'].includes(c.id)) {
+                    draft[c.id] = getBreakupField(c.id, 0);
+                }
+            });
+        }
+
         setRevisionDraft(draft);
         setShowRevisionModal(true);
         calculateDraftSalary(draft);
@@ -2722,9 +2734,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
         try {
             setCalculating(true);
-            const res = await api.post('/payroll/calculate-salary', {
+            const payload = {
                 monthlyCTC,
                 employmentType: merged.employmentType,
+                payType: merged.payType || 'salaried',
+                hourlyRate: Number(merged.hourlyRate) || 0,
+                hoursWorked: Number(merged.hoursWorked) || 0,
                 basicPercent: merged.basicPercent === null || merged.basicPercent === '' ? null : Number(merged.basicPercent),
                 hraPercent: merged.hraPercent === null || merged.hraPercent === '' ? null : Number(merged.hraPercent),
                 basic: Number(merged.salaryStructure?.basic) || undefined,
@@ -2732,9 +2747,6 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 specialAllowance: Number(merged.salaryStructure?.specialAllowance) || undefined,
                 useSalaryComponents: merged.useSalaryComponents !== false,
                 flexiAmount: Number(merged.flexiAmount) || 0,
-                broadband: Number(merged.broadband) || 0,
-                petrol: Number(merged.petrol) || 0,
-                lta: Number(merged.lta) || 0,
                 insuranceAmount: Number(merged.insuranceAmount) || 0,
                 employerNPS: Number(merged.employerNPS) || 0,
                 ptState: merged.ptState || '',
@@ -2744,8 +2756,6 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     name: d.name,
                     amount: Number(d.amount) || 0,
                 })),
-                conveyance: Number(merged.salaryStructure?.conveyance) || 0,
-                medicalAllowance: Number(merged.salaryStructure?.medicalAllowance) || 0,
                 otherAllowances: (merged.salaryStructure?.otherAllowances || []).map((allowance) => ({
                     name: allowance.name,
                     amount: Number(allowance.amount) || 0,
@@ -2757,7 +2767,17 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 gratuityEnabled: merged.gratuityEnabled !== false,
                 includePfInCTC: merged.includePfInCTC === true,
                 includeGratuityInCTC: merged.includeGratuityInCTC !== false,
-            });
+            };
+
+            if (payrollConfig?.salaryComponents) {
+                payrollConfig.salaryComponents.forEach(c => {
+                    if (c.type === 'earning' && c.linkedTo === 'fixed' && !['basic', 'hra'].includes(c.id)) {
+                        payload[c.id] = (merged[c.id] !== undefined && merged[c.id] !== '') ? Number(merged[c.id]) : (Number(merged.salaryStructure?.[c.id]) || 0);
+                    }
+                });
+            }
+
+            const res = await api.post('/payroll/calculate-salary', payload);
             
             const master = res.data.master;
             setDraftSalaryPreview(master);
@@ -2801,15 +2821,33 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const getComparisonRows = () => {
         const current = getBreakupData() || {};
         const revised = draftSalaryPreview || {};
+        const isSalaried = revisionDraft?.payType !== 'hourly' && revisionDraft?.payType !== 'flat';
 
-        return [
-            { name: 'Total Monthly CTC', current: current.monthlyCTC || 0, revised: revised.monthlyCTC || 0, isHeader: true },
-            { name: 'Basic Salary', current: current.basicMaster || 0, revised: revised.basicMaster || 0 },
-            { name: 'HRA', current: current.hraMaster || 0, revised: revised.hraMaster || 0 },
-            { name: 'Flexi Allowance', current: current.flexi || 0, revised: revised.flexi || 0 },
+        const rows = [
+            { name: 'Total Monthly CTC', current: current.monthlyCTC || 0, revised: revised.monthlyCTC || 0, isHeader: true }
+        ];
+
+        if (isSalaried) {
+            rows.push(
+                { name: 'Basic Salary', current: current.basicMaster || 0, revised: revised.basicMaster || 0 },
+                { name: 'HRA', current: current.hraMaster || 0, revised: revised.hraMaster || 0 }
+            );
+            if (payrollConfig?.salaryComponents?.some(c => c.id === 'special')) {
+                rows.push(
+                    { name: 'Special Allowance', current: current.specialAllowance || current.special || 0, revised: revised.specialAllowance || revised.special || 0 }
+                );
+            }
+            rows.push(
+                { name: 'Flexi Allowance', current: current.flexi || 0, revised: revised.flexi || 0 }
+            );
+        }
+
+        rows.push(
             { name: 'Gross Earnings (Total)', current: current.totalEarnings || current.grossSalary || 0, revised: revised.totalEarnings || revised.grossSalary || 0, isHeader: true },
             { name: 'Est. Net Take-Home Pay', current: current.netTakeHome || 0, revised: revised.netTakeHome || 0, isHeader: true }
-        ];
+        );
+
+        return rows;
     };
 
     const handleRevisionSubmit = async () => {
@@ -2826,6 +2864,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         };
 
         const salaryBreakupUpdates = {
+            payType: revisionDraft.payType || 'salaried',
+            hourlyRate: Number(revisionDraft.hourlyRate) || 0,
+            hoursWorked: Number(revisionDraft.hoursWorked) || 0,
             pfEnabled: revisionDraft.pfEnabled !== false,
             esiEnabled: revisionDraft.esiEnabled !== false,
             ptEnabled: revisionDraft.ptEnabled !== false,
@@ -2840,12 +2881,17 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             hraPercent: revisionDraft.hraPercent === null || revisionDraft.hraPercent === '' ? undefined : Number(revisionDraft.hraPercent),
             
             flexiAmount: Number(revisionDraft.flexiAmount) || 0,
-            broadband: Number(revisionDraft.broadband) || 0,
-            petrol: Number(revisionDraft.petrol) || 0,
-            lta: Number(revisionDraft.lta) || 0,
             otherAllowances: revisionDraft.salaryStructure?.otherAllowances || [],
             otherDeductions: revisionDraft.deductions?.otherDeductions || []
         };
+
+        if (payrollConfig?.salaryComponents) {
+            payrollConfig.salaryComponents.forEach(c => {
+                if (c.type === 'earning' && c.linkedTo === 'fixed' && !['basic', 'hra'].includes(c.id)) {
+                    salaryBreakupUpdates[c.id] = (revisionDraft[c.id] !== undefined && revisionDraft[c.id] !== '') ? Number(revisionDraft[c.id]) : (Number(revisionDraft.salaryStructure?.[c.id]) || 0);
+                }
+            });
+        }
 
         const existingRevisions = profile.compensation?.salaryRevisions || [];
         const updatedRevisions = [...existingRevisions, newRevision].sort((a, b) => new Date(a.effectiveDate) - new Date(b.effectiveDate));
@@ -2854,6 +2900,9 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             const updates = {
                 ...profile.compensation,
                 ctc: newRevision.newCTC,
+                payType: revisionDraft.payType || 'salaried',
+                hourlyRate: Number(revisionDraft.hourlyRate) || 0,
+                hoursWorked: Number(revisionDraft.hoursWorked) || 0,
                 insuranceAmount: Number(revisionDraft.insuranceAmount) || 0,
                 employerNPS: Number(revisionDraft.employerNPS) || 0,
                 salaryBreakup: {
@@ -3584,13 +3633,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                 {/* Row 1: Template & Employment Type */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">Job Role Template</label>
+                                        <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">Pay Type</label>
                                         <select
-                                            value=""
-                                            disabled
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-500 rounded p-2 focus:outline-none cursor-not-allowed text-xs font-medium"
+                                            value={revisionDraft.payType || 'salaried'}
+                                            onChange={(e) => handleDraftChange('payType', e.target.value)}
+                                            className="w-full border border-slate-200 rounded p-2 focus:outline-none focus:border-blue-500 text-xs font-medium bg-white"
                                         >
-                                            <option value="">No Role (Custom Salary Components)</option>
+                                            <option value="salaried">Salaried (Monthly Base)</option>
+                                            <option value="hourly">Hourly Contractor</option>
+                                            <option value="flat">Flat Salary — No Component Breakdown</option>
                                         </select>
                                     </div>
                                     <div>
@@ -3608,37 +3659,106 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     </div>
                                 </div>
 
-                                {/* Row 2: Annual & Monthly CTC */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">New Annual CTC</label>
-                                        <div className="relative rounded shadow-sm">
-                                            <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400 font-medium">₹</span>
-                                            <input
+                                {/* Row 2: Annual & Monthly CTC / Hourly Contractor / Flat Salary */}
+                                {revisionDraft.payType === 'hourly' ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">Hourly Rate (INR)</label>
+                                            <input 
                                                 type="number"
-                                                step="any"
-                                                min="0"
-                                                value={revisionDraft.newAnnualCTC}
-                                                onChange={(e) => handleDraftChange('newAnnualCTC', e.target.value === '' ? '' : Number(e.target.value))}
-                                                className="w-full border border-slate-200 rounded p-2 pl-7 focus:outline-none focus:border-blue-500 font-semibold text-xs"
+                                                required
+                                                value={revisionDraft.hourlyRate || ''} 
+                                                onChange={(e) => {
+                                                    const rate = e.target.value === '' ? '' : Number(e.target.value);
+                                                    const hours = Number(revisionDraft.hoursWorked) || 160;
+                                                    const monthly = rate === '' ? '' : Math.round(rate * hours * 100) / 100;
+                                                    setRevisionDraft(prev => {
+                                                        const copy = { ...prev, hourlyRate: rate, newCTC: monthly, newAnnualCTC: monthly === '' ? '' : monthly * 12 };
+                                                        setTimeout(() => calculateDraftSalary(copy), 0);
+                                                        return copy;
+                                                    });
+                                                }}
+                                                placeholder="e.g. 500" 
+                                                className="w-full border border-slate-200 rounded p-2 focus:outline-none focus:border-blue-500 text-xs font-semibold" 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">Estimated Monthly Hours</label>
+                                            <input 
+                                                type="number"
+                                                required
+                                                value={revisionDraft.hoursWorked || '160'} 
+                                                onChange={(e) => {
+                                                    const hours = e.target.value === '' ? '' : Number(e.target.value);
+                                                    const rate = Number(revisionDraft.hourlyRate) || 0;
+                                                    const monthly = hours === '' ? '' : Math.round(rate * hours * 100) / 100;
+                                                    setRevisionDraft(prev => {
+                                                        const copy = { ...prev, hoursWorked: hours, newCTC: monthly, newAnnualCTC: monthly === '' ? '' : monthly * 12 };
+                                                        setTimeout(() => calculateDraftSalary(copy), 0);
+                                                        return copy;
+                                                    });
+                                                }}
+                                                placeholder="e.g. 160" 
+                                                className="w-full border border-slate-200 rounded p-2 focus:outline-none focus:border-blue-500 text-xs font-semibold" 
                                             />
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">New Monthly CTC</label>
-                                        <div className="relative rounded shadow-sm">
-                                            <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400 font-medium">₹</span>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                min="0"
-                                                value={revisionDraft.newCTC}
-                                                onChange={(e) => handleDraftChange('newCTC', e.target.value === '' ? '' : Number(e.target.value))}
-                                                className="w-full border border-slate-200 rounded p-2 pl-7 focus:outline-none focus:border-blue-500 font-semibold text-xs"
-                                            />
+                                ) : revisionDraft.payType === 'flat' ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">Flat Monthly Salary</label>
+                                            <div className="relative rounded shadow-sm">
+                                                <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400 font-medium">₹</span>
+                                                <input 
+                                                    type="number"
+                                                    required
+                                                    value={revisionDraft.newCTC || ''} 
+                                                    onChange={(e) => {
+                                                        const val = e.target.value === '' ? '' : Number(e.target.value);
+                                                        setRevisionDraft(prev => {
+                                                            const copy = { ...prev, newCTC: val, newAnnualCTC: val === '' ? '' : val * 12 };
+                                                            setTimeout(() => calculateDraftSalary(copy), 0);
+                                                            return copy;
+                                                        });
+                                                    }} 
+                                                    placeholder="e.g. 50,000" 
+                                                    className="w-full border border-slate-200 rounded p-2 pl-7 focus:outline-none focus:border-blue-500 text-xs font-semibold" 
+                                                />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">New Annual CTC</label>
+                                            <div className="relative rounded shadow-sm">
+                                                <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400 font-medium">₹</span>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    min="0"
+                                                    value={revisionDraft.newAnnualCTC}
+                                                    onChange={(e) => handleDraftChange('newAnnualCTC', e.target.value === '' ? '' : Number(e.target.value))}
+                                                    className="w-full border border-slate-200 rounded p-2 pl-7 focus:outline-none focus:border-blue-500 font-semibold text-xs"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 font-semibold uppercase tracking-wider mb-1.5 text-[10px]">New Monthly CTC</label>
+                                            <div className="relative rounded shadow-sm">
+                                                <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400 font-medium">₹</span>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    min="0"
+                                                    value={revisionDraft.newCTC}
+                                                    onChange={(e) => handleDraftChange('newCTC', e.target.value === '' ? '' : Number(e.target.value))}
+                                                    className="w-full border border-slate-200 rounded p-2 pl-7 focus:outline-none focus:border-blue-500 font-semibold text-xs"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Row 3: Effective Date & Reason */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3663,8 +3783,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                     </div>
                                 </div>
 
-                                {/* CTC Components Summary box */}
-                                {(() => {
+                                {revisionDraft.payType !== 'hourly' && revisionDraft.payType !== 'flat' && (
+                                    <>
+                                        {/* CTC Components Summary box */}
+                                        {(() => {
                                     const preview = draftSalaryPreview || {};
                                     return (
                                         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
@@ -3685,6 +3807,12 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                     <span className="text-[10px] text-slate-500 uppercase font-semibold">LWF Employer</span>
                                                     <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.lwfEmployer || 0)}</strong>
                                                 </div>
+                                                {preview.esiEmployer > 0 && (
+                                                    <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
+                                                        <span className="text-[10px] text-slate-500 uppercase font-semibold">ESI Employer</span>
+                                                        <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney(preview.esiEmployer || 0)}</strong>
+                                                    </div>
+                                                )}
                                                 <div className="bg-slate-50 p-3 rounded border border-slate-100 text-center">
                                                     <span className="text-[10px] text-slate-500 uppercase font-semibold">Annual CTC</span>
                                                     <strong className="text-xs text-slate-700 mt-1 block font-bold">{fmtMoney((Number(revisionDraft.newCTC) || 0) * 12)}</strong>
@@ -3939,6 +4067,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-500 rounded p-2 font-semibold cursor-not-allowed text-xs"
                                             />
                                         </div>
+                                        {/* Special Allowance */}
+                                        {payrollConfig?.salaryComponents?.some(c => c.id === 'special') && (
+                                            <div>
+                                                <label className="block text-slate-500 font-semibold mb-1 text-[10px]">Special Allowance</label>
+                                                <input
+                                                    type="number"
+                                                    disabled
+                                                    value={draftSalaryPreview?.specialAllowance || draftSalaryPreview?.special || 0}
+                                                    className="w-full bg-slate-50 border border-slate-200 text-slate-500 rounded p-2 font-semibold cursor-not-allowed text-xs"
+                                                />
+                                            </div>
+                                        )}
                                         {/* Flexi */}
                                         <div>
                                             <label className="block text-slate-500 font-semibold mb-1 text-[10px]">Flexi Allowance</label>
@@ -3949,56 +4089,22 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-500 rounded p-2 font-semibold cursor-not-allowed text-xs"
                                             />
                                         </div>
-                                        {/* Broadband */}
-                                        <div>
-                                            <label className="block text-slate-500 font-semibold mb-1 text-[10px]">Broadband</label>
-                                            <input
-                                                type="number"
-                                                value={revisionDraft.broadband || ''}
-                                                onChange={(e) => handleDraftChange('broadband', e.target.value === '' ? '' : Number(e.target.value))}
-                                                className="w-full border border-slate-200 rounded p-2 text-xs font-semibold"
-                                            />
-                                        </div>
-                                        {/* Petrol */}
-                                        <div>
-                                            <label className="block text-slate-500 font-semibold mb-1 text-[10px]">Petrol</label>
-                                            <input
-                                                type="number"
-                                                value={revisionDraft.petrol || ''}
-                                                onChange={(e) => handleDraftChange('petrol', e.target.value === '' ? '' : Number(e.target.value))}
-                                                className="w-full border border-slate-200 rounded p-2 text-xs font-semibold"
-                                            />
-                                        </div>
-                                        {/* LTA */}
-                                        <div>
-                                            <label className="block text-slate-500 font-semibold mb-1 text-[10px]">LTA</label>
-                                            <input
-                                                type="number"
-                                                value={revisionDraft.lta || ''}
-                                                onChange={(e) => handleDraftChange('lta', e.target.value === '' ? '' : Number(e.target.value))}
-                                                className="w-full border border-slate-200 rounded p-2 text-xs font-semibold"
-                                            />
-                                        </div>
-                                        {/* Conveyance */}
-                                        <div>
-                                            <label className="block text-slate-500 font-semibold mb-1 text-[10px]">Conveyance</label>
-                                            <input
-                                                type="number"
-                                                value={revisionDraft.salaryStructure.conveyance || ''}
-                                                onChange={(e) => handleDraftChange('salaryStructure.conveyance', e.target.value === '' ? '' : Number(e.target.value))}
-                                                className="w-full border border-slate-200 rounded p-2 text-xs font-semibold"
-                                            />
-                                        </div>
-                                        {/* Medical Allowance */}
-                                        <div>
-                                            <label className="block text-slate-500 font-semibold mb-1 text-[10px]">Medical Allowance</label>
-                                            <input
-                                                type="number"
-                                                value={revisionDraft.salaryStructure.medicalAllowance || ''}
-                                                onChange={(e) => handleDraftChange('salaryStructure.medicalAllowance', e.target.value === '' ? '' : Number(e.target.value))}
-                                                className="w-full border border-slate-200 rounded p-2 text-xs font-semibold"
-                                            />
-                                        </div>
+                                        {/* Dynamic Fixed Earning Components */}
+                                        {payrollConfig?.salaryComponents && (
+                                            payrollConfig.salaryComponents
+                                                .filter(c => c.type === 'earning' && c.linkedTo === 'fixed' && !['basic', 'hra'].includes(c.id))
+                                                .map(c => (
+                                                    <div key={c.id}>
+                                                        <label className="block text-slate-500 font-semibold mb-1 text-[10px]">{c.name}</label>
+                                                        <input
+                                                            type="number"
+                                                            value={revisionDraft[c.id] !== undefined ? revisionDraft[c.id] : ''}
+                                                            onChange={(e) => handleDraftChange(c.id, e.target.value === '' ? '' : Number(e.target.value))}
+                                                            className="w-full border border-slate-200 rounded p-2 text-xs font-semibold"
+                                                        />
+                                                    </div>
+                                                ))
+                                        )}
                                         {/* Insurance Amount */}
                                         <div>
                                             <label className="block text-slate-500 font-semibold mb-1 text-[10px]">Insurance Amount</label>
@@ -4198,6 +4304,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                                         </div>
                                     </div>
                                 </div>
+                                    </>
+                                )}
 
                                 {/* Comparison Preview Table */}
                                 {(() => {
