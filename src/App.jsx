@@ -81,6 +81,7 @@ import {
   ROLE_ACCESS_PERMISSIONS,
   TA_CONFIG_PERMISSIONS,
   TA_EMAIL_TEMPLATE_PERMISSIONS,
+  SALARY_CALCULATOR_PERMISSIONS,
   canAccessTAAnalytics,
   canAccessUsers
 } from './constants/accessPolicies';
@@ -150,7 +151,11 @@ function App() {
                       <NotificationSettings />
                     </ProtectedRoute>
                   )} />
-                  <Route path="/salary-calculator" element={<SalaryCalculator />} />
+                  <Route path="/salary-calculator" element={(
+                    <ProtectedRoute requiredPermissions={SALARY_CALCULATOR_PERMISSIONS} redirectTo="/">
+                      <SalaryCalculator />
+                    </ProtectedRoute>
+                  )} />
                   <Route path="/timesheet" element={(
 
                     <ProtectedRoute moduleName="timesheet" redirectTo="/">

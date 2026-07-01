@@ -84,6 +84,7 @@ const SalaryCalculator = () => {
   const { user } = useAuth();
   const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role))
     || user?.permissions?.includes('*');
+  const canManageConfig = isAdmin || user?.permissions?.includes('payroll.config.manage');
 
   const [config, setConfig] = useState(DEFAULT_PAYROLL_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -621,11 +622,11 @@ const SalaryCalculator = () => {
       { id: 'bonuses', name: 'One-Time Pay' },
       { id: 'tax', name: 'Tax Declarations' }
     ];
-    if (isAdmin) {
+    if (canManageConfig) {
       list.push({ id: 'settings', name: 'Structure Settings' });
     }
     return list;
-  }, [isAdmin]);
+  }, [canManageConfig]);
 
   if (loading) {
     return (
