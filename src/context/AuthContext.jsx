@@ -4,6 +4,7 @@ import { connectSocket, disconnectSocket } from '../api/socket';
 import InvalidWorkspace from '../pages/InvalidWorkspace';
 import { clearAuthSession, hasAuthSessionHint, markAuthSessionActive, persistAccessToken, persistAuthUser, readStoredUser } from '../utils/authStorage';
 import { hasModuleEnabled, normalizeEnabledModules } from '../utils/enabledModules';
+import { isAdminUser } from '../constants/accessPolicies';
 
 const AuthContext = createContext(null);
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -273,7 +274,10 @@ export const AuthProvider = ({ children }) => {
     return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
   };
 
-  const isDossierComplete = user?.dossierStatus?.isComplete !== false;
+  const isDossierComplete =
+    user?.dossierStatus?.isComplete !== false ||
+    isAdminUser(user) ||
+    user?.permissions?.includes("dossier.bypass_completeness_gate");
   const dossierMissingSections = user?.dossierStatus?.missingSections || [];
   const dossierMissingFields = user?.dossierStatus?.missingFields || [];
 
