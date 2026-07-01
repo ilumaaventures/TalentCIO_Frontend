@@ -806,6 +806,7 @@ const Onboarding = () => {
             hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
             insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
             employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
+            flexiAmount: parseFloat(mergedSalary.flexiAmount) || 0,
             ptState: mergedSalary.ptState || '',
             deductions: {
               professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
@@ -1639,13 +1640,29 @@ const Onboarding = () => {
       ptState: emp.salary?.ptState || 'MH',
       professionalTax: emp.salary?.professionalTax || '200',
       basicPercent: emp.salary?.basicPercent !== undefined ? emp.salary.basicPercent : 50,
-      hraPercent: emp.salary?.hraPercent !== undefined ? emp.salary.hraPercent : 50
+      hraPercent: emp.salary?.hraPercent !== undefined ? emp.salary.hraPercent : 50,
+      flexiAmount: emp.salary?.flexiAmount !== undefined ? String(emp.salary.flexiAmount) : '0',
+      // Computed/saved values — pre-populate so CTC estimates show correctly on modal open
+      pfEmployer: emp.salary?.pfEmployer !== undefined ? String(emp.salary.pfEmployer) : '0',
+      pfEmployee: emp.salary?.pfEmployee !== undefined ? String(emp.salary.pfEmployee) : '0',
+      gratuity: emp.salary?.gratuity !== undefined ? String(emp.salary.gratuity) : '0',
+      lwfEmployer: emp.salary?.lwfEmployer !== undefined ? String(emp.salary.lwfEmployer) : '0',
+      lwfEmployee: emp.salary?.lwfEmployee !== undefined ? String(emp.salary.lwfEmployee) : '0',
+      esiEmployer: emp.salary?.esiEmployer !== undefined ? String(emp.salary.esiEmployer) : '0',
+      esiEmployee: emp.salary?.esiEmployee !== undefined ? String(emp.salary.esiEmployee) : '0',
+      tds: emp.salary?.tds !== undefined ? String(emp.salary.tds) : '0',
+      netTakeHome: emp.salary?.netTakeHome !== undefined ? String(emp.salary.netTakeHome) : '0',
     };
     if (payrollConfig?.salaryComponents) {
       payrollConfig.salaryComponents.forEach(c => {
-        if (c.linkedTo === 'fixed') {
-          salaryData[c.id] = emp.salary?.[c.id] !== undefined ? String(emp.salary[c.id]) : String(c.linkValue || 0);
-        }
+        // Load ALL component values from saved salary — not just fixed.
+          // Remainder/percent-linked components (e.g. Flexi) also need their saved value
+          // so they display correctly without requiring a field-change trigger.
+          if (emp.salary?.[c.id] !== undefined) {
+            salaryData[c.id] = String(emp.salary[c.id]);
+          } else if (c.linkedTo === 'fixed') {
+            salaryData[c.id] = String(c.linkValue || 0);
+          }
       });
     }
     setFormData({
