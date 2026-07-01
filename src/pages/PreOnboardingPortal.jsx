@@ -45,6 +45,12 @@ const PreOnboardingPortal = () => {
 
   const [offerAcceptedCheckbox, setOfferAcceptedCheckbox] = useState(false);
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [eSignName, setESignName] = useState('');
+  const [eSignType, setESignType] = useState('typed'); // 'typed' or 'drawn'
+  const [signatureStyle, setSignatureStyle] = useState('"Brush Script MT", cursive');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef(null);
   // REMOVED: logoutCountdown
 
   useEffect(() => {
@@ -406,24 +412,99 @@ const PreOnboardingPortal = () => {
     }
   };
 
-  const handleAcceptOffer = async () => {
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1e3a8a';
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    e.preventDefault();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleAcceptOffer = () => {
+    const fullName = profile ? `${profile.firstName} ${profile.lastName || ''}`.trim() : '';
+    setESignName(fullName);
+    setShowSignModal(true);
+  };
+
+  const submitSignature = async (e) => {
+    e.preventDefault();
+    let signValue = '';
+    if (eSignType === 'drawn') {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width;
+      blank.height = canvas.height;
+      if (canvas.toDataURL() === blank.toDataURL()) {
+        toast.error('Please draw your signature before submitting.');
+        return;
+      }
+      signValue = canvas.toDataURL('image/png');
+    } else {
+      if (!eSignName.trim()) {
+        toast.error('Please type your name before submitting.');
+        return;
+      }
+      signValue = eSignName;
+    }
+
     try {
       setAccepting(true);
-      await axios.post(`${API_URL}/my-profile/accept-offer`, {}, { headers: getHeaders() });
-      toast.success('Offer Accepted!');
+      await axios.post(`${API_URL}/my-profile/accept-offer`, {
+        eSignName,
+        eSignType,
+        eSignValue: signValue
+      }, { headers: getHeaders() });
+      toast.success('Offer Accepted and Signed!');
+      setShowSignModal(false);
 
-      // Fetch fresh profile to see if there are other sections to fill
       const res = await axios.get(`${API_URL}/my-profile`, { headers: getHeaders() });
       setProfile(res.data);
 
-      // Check progress of the newly fetched profile
       const updatedProgress = calculateProgress(res.data);
       if (updatedProgress === 100) {
         setShowSuccessScreen(true);
       } else {
-        // If not 100%, reveal the form and land on the first incomplete visible step
-        // (The conditional rendering in the main return will now skip the Welcome screen 
-        // because offerStatus is 'Accepted')
         const newVisibleSteps = ALL_STEPS.filter(step => {
           const rsLabels = (res.data.requestedSections || []).map(rs => typeof rs === 'string' ? rs : rs.label);
           const rdLabels = (res.data.requestedDocuments || []).map(rd => typeof rd === 'string' ? rd : rd.label);
@@ -1364,6 +1445,156 @@ const PreOnboardingPortal = () => {
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowExtensionModal(false)} style={{ padding: '10px 16px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" disabled={loading} style={{ padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Submit Request</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* E-Signature Modal */}
+      {showSignModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '520px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileSignature style={{ color: '#2563eb' }} /> Digital Signature
+              </h3>
+              <button onClick={() => setShowSignModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ margin: '0 0 24px', color: '#475569', fontSize: '14px', lineHeight: '1.6' }}>
+              Please digitally sign below to finalize your acceptance of the Offer Letter and standard employment conditions.
+            </p>
+
+            <form onSubmit={submitSignature}>
+              {/* Toggle Drawing vs. Typing */}
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '10px', marginBottom: '24px' }}>
+                <button
+                  type="button"
+                  onClick={() => setESignType('typed')}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    background: eSignType === 'typed' ? '#fff' : 'transparent',
+                    color: eSignType === 'typed' ? '#1e293b' : '#64748b',
+                    boxShadow: eSignType === 'typed' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Type Signature
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setESignType('drawn')}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    background: eSignType === 'drawn' ? '#fff' : 'transparent',
+                    color: eSignType === 'drawn' ? '#1e293b' : '#64748b',
+                    boxShadow: eSignType === 'drawn' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Draw Signature
+                </button>
+              </div>
+
+              {eSignType === 'drawn' ? (
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Draw your signature below</label>
+                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc', padding: '12px', position: 'relative' }}>
+                    <canvas
+                      ref={canvasRef}
+                      width={450}
+                      height={160}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                      style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'crosshair', display: 'block', width: '100%', height: '160px', touchAction: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={clearCanvas}
+                      style={{ position: 'absolute', top: '20px', right: '20px', padding: '6px 12px', background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginBottom: '24px' }}>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Your Name (for Signature)</label>
+                    <input
+                      type="text"
+                      required
+                      value={eSignName}
+                      onChange={(e) => setESignName(e.target.value)}
+                      placeholder="Type your full name"
+                      style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Select signature font style</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                    {[
+                      { font: '"Brush Script MT", cursive', label: 'Classic Script' },
+                      { font: '"Lucida Handwriting", cursive', label: 'Handwriting' },
+                      { font: '"Segoe Print", cursive', label: 'Casual Print' },
+                      { font: 'Courier New, monospace', label: 'Block Print' }
+                    ].map(style => (
+                      <div
+                        key={style.font}
+                        onClick={() => setSignatureStyle(style.font)}
+                        style={{
+                          padding: '16px 10px',
+                          border: signatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          background: signatureStyle === style.font ? '#eff6ff' : '#fff',
+                          textAlign: 'center',
+                          boxSizing: 'border-box',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'center',
+                          minHeight: '70px'
+                        }}
+                      >
+                        <span style={{ fontFamily: style.font, fontSize: '16px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {eSignName || 'Signature'}
+                        </span>
+                        <span style={{ fontSize: '9px', color: '#64748b', marginTop: '4px' }}>{style.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '24px', fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
+                By clicking "Confirm & Sign", I agree that this signature is as legally binding as my handwritten signature.
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowSignModal(false)} style={{ padding: '12px 20px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" disabled={accepting} style={{ padding: '12px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16,185,129,0.2)' }}>
+                  {accepting ? 'Signing...' : 'Confirm & Sign'}
+                </button>
               </div>
             </form>
           </div>

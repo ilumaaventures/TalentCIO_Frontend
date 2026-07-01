@@ -2649,8 +2649,21 @@ const Onboarding = () => {
                                 <div style={{ display: 'flex', gap: '8px' }}>{s.data?.agreesToOriginalVerification ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Agrees to Verification</span></div>
                                 <div style={{ marginTop: '8px', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
                                   <span style={{ color: '#94a3b8' }}>E-Signature:</span> <br />
-                                  <strong>{s.data?.eSignName}</strong> <br />
-                                  <span style={{ fontSize: '11px', color: '#64748b' }}>Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleDateString('en-IN') : '—'}</span>
+                                  <strong>{s.data?.eSignName || '—'}</strong> <br />
+                                  {s.data?.eSignType === 'drawn' && s.data?.eSignValue && (
+                                    <div style={{ margin: '8px 0', border: '1px solid #e2e8f0', padding: '6px', background: '#f8fafc', borderRadius: '8px', maxWidth: '200px' }}>
+                                      <img src={s.data.eSignValue} alt="Signature" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                                    </div>
+                                  )}
+                                  {s.data?.eSignType === 'typed' && (
+                                    <div style={{ margin: '8px 0', fontStyle: 'italic', fontSize: '15px', color: '#1e293b', fontFamily: 'cursive' }}>
+                                      {s.data?.eSignName}
+                                    </div>
+                                  )}
+                                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN') : '—'}
+                                    {s.data?.eSignIp ? ` (IP: ${s.data.eSignIp})` : ''}
+                                  </span>
                                 </div>
                               </div>
                             )}
