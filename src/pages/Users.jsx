@@ -1079,6 +1079,15 @@ const Users = () => {
                 tds: breakup.tds || '0',
                 netTakeHome: breakup.netTakeHome || '0',
             };
+            if (payrollConfig?.salaryComponents) {
+                payrollConfig.salaryComponents.forEach(c => {
+                    if (breakup[c.id] !== undefined) {
+                        salaryData[c.id] = String(breakup[c.id]);
+                    } else if (c.linkedTo === 'fixed') {
+                        salaryData[c.id] = String(c.linkValue || 0);
+                    }
+                });
+            }
         } catch (err) {
             console.error('Failed to fetch user dossier compensation:', err);
         }

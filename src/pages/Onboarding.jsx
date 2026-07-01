@@ -1314,18 +1314,19 @@ const Onboarding = () => {
   }, [activeTab, canManageOnboardingSettings]);
 
   useEffect(() => {
+    fetchPayrollConfig();
+  }, [fetchPayrollConfig]);
+
+  useEffect(() => {
     if (activeTab === 'employees') {
       initialEmployeesFetchDoneRef.current = true;
       fetchEmployees();
     }
-    if (activeTab === 'settings' || showAddModal || showEditModal) {
-      if (activeTab === 'settings') {
-        initialSettingsFetchDoneRef.current = true;
-        fetchSettings();
-      }
-      fetchPayrollConfig();
+    if (activeTab === 'settings') {
+      initialSettingsFetchDoneRef.current = true;
+      fetchSettings();
     }
-  }, [activeTab, fetchEmployees, fetchSettings, fetchPayrollConfig, page, debouncedSearchTerm, statusFilter, showAddModal, showEditModal]);
+  }, [activeTab, fetchEmployees, fetchSettings, page, debouncedSearchTerm, statusFilter, showAddModal, showEditModal]);
 
   const handlePolicyUpload = async (e) => {
     const file = e.target.files[0];
