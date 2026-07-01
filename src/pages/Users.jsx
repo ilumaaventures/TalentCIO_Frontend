@@ -18,7 +18,7 @@ const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'any', name: 'Any Time' }
 ];
 
-const PAGE_SIZE_OPTIONS = [10, 15, 20, 50];
+const PAGE_SIZE_OPTIONS = [50, 100];
 
 const buildUserListFingerprint = (users = []) => users
     .map((listedUser) => ([
@@ -81,7 +81,7 @@ const Users = () => {
     const [filterJoiningDate, setFilterJoiningDate] = useState('');
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
     const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(15);
+    const [rowsPerPage, setRowsPerPage] = useState(50);
     const [showPassword, setShowPassword] = useState(false);
 
     // Helpers for Export
