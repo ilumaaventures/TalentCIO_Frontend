@@ -2202,7 +2202,8 @@ const Onboarding = () => {
                     { tag: '{probation_period}', desc: 'Probation Period' }, { tag: '{basic_salary}', desc: 'Basic Salary' },
                     { tag: '{hra}', desc: 'House Rent Allowance' }, { tag: '{special_allowance}', desc: 'Special Allowance' },
                     { tag: '{monthly_gross}', desc: 'Monthly Gross' }, { tag: '{monthly_ctc}', desc: 'Monthly CTC' },
-                    { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' }
+                    { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' },
+                    { tag: '{@salary_table}', desc: 'Auto-Generated Salary Breakup Table' }
                   ];
 
                   const dynamicPlaceholders = [];
