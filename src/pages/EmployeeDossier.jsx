@@ -2631,18 +2631,43 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
     const handleDownloadBreakup = (breakup) => {
         if (!breakup) return;
-        const csvContent = [
+        
+        const rows = [
             ["Component", "Monthly Amount", "Annual Amount"],
             ["Monthly CTC", breakup.monthlyCTC, breakup.monthlyCTC * 12],
             ["Gross Salary", breakup.totalEarnings, breakup.totalEarnings * 12],
-            ["Basic Salary", breakup.basicMaster, breakup.basicMaster * 12],
-            ["HRA", breakup.hraMaster, breakup.hraMaster * 12],
-            ["Flexi Allowance", breakup.flexi, breakup.flexi * 12],
-            ["PF Employer", breakup.pfEmployer, breakup.pfEmployer * 12],
-            ["Gratuity", breakup.gratuity, breakup.gratuity * 12],
-            ["Insurance", breakup.insurance, breakup.insurance * 12],
-            ["Net Take-Home", breakup.netTakeHome, breakup.netTakeHome * 12]
-        ]
+        ];
+
+        const hasDynamicComponents = payrollConfig?.salaryComponents && payrollConfig.salaryComponents.length > 0;
+        if (hasDynamicComponents) {
+            payrollConfig.salaryComponents
+                .filter(c => c.type === 'earning')
+                .forEach(c => {
+                    const val = breakup.earningsMap?.[c.id] || 0;
+                    rows.push([c.name, val, val * 12]);
+                });
+        } else {
+            rows.push(["Basic Salary", breakup.basicMaster, breakup.basicMaster * 12]);
+            rows.push(["HRA", breakup.hraMaster, breakup.hraMaster * 12]);
+            if (breakup.specialAllowance > 0) {
+                rows.push(["Special Allowance", breakup.specialAllowance, breakup.specialAllowance * 12]);
+            }
+        }
+
+        if (breakup.pfEmployer > 0) rows.push(["PF Employer Cost", breakup.pfEmployer, breakup.pfEmployer * 12]);
+        if (breakup.gratuity > 0) rows.push(["Gratuity Accrual", breakup.gratuity, breakup.gratuity * 12]);
+        if (breakup.esiEmployer > 0) rows.push(["ESI Employer Cost", breakup.esiEmployer, breakup.esiEmployer * 12]);
+        if (breakup.lwfEmployer > 0) rows.push(["LWF Employer Cost", breakup.lwfEmployer, breakup.lwfEmployer * 12]);
+
+        if (breakup.pfEmployee > 0) rows.push(["Employee PF", breakup.pfEmployee, breakup.pfEmployee * 12]);
+        if (breakup.esiEmployee > 0) rows.push(["Employee ESI", breakup.esiEmployee, breakup.esiEmployee * 12]);
+        if (breakup.lwfEmployee > 0) rows.push(["Employee LWF", breakup.lwfEmployee, breakup.lwfEmployee * 12]);
+        if (breakup.professionalTax > 0) rows.push(["Professional Tax (PT)", breakup.professionalTax, breakup.professionalTax * 12]);
+        if (breakup.tds > 0) rows.push(["Income Tax (TDS)", breakup.tds, breakup.tds * 12]);
+
+        rows.push(["Net Take-Home", breakup.netTakeHome, breakup.netTakeHome * 12]);
+
+        const csvContent = rows
             .map(e => e.map(val => typeof val === 'string' ? `"${val}"` : val).join(","))
             .join("\n");
 
@@ -3045,6 +3070,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const renderCTCSnapshot = (breakup) => {
         if (!breakup) return null;
         
+        const hasDynamicComponents = payrollConfig?.salaryComponents && payrollConfig.salaryComponents.length > 0;
+        
         return (
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-6">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-4">
@@ -3071,31 +3098,116 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     </div>
                 </div>
 
-                <div className="space-y-3.5 pt-2">
-                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-100 pb-2">
-                        <span>Basic Salary</span>
-                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.basicMaster)}</span>
+                <div className="space-y-4 pt-2">
+                    {/* 1. Monthly Earnings Breakup */}
+                    <div>
+                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Monthly Earnings</div>
+                        <div className="space-y-2">
+                            {hasDynamicComponents ? (
+                                payrollConfig.salaryComponents
+                                    .filter(c => c.type === 'earning')
+                                    .map(c => {
+                                        const val = breakup.earningsMap?.[c.id] || 0;
+                                        return (
+                                            <div key={c.id} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                                <span>{c.name}</span>
+                                                <span className="font-semibold text-slate-800">{fmtMoney(val)}</span>
+                                            </div>
+                                        );
+                                    })
+                            ) : (
+                                <>
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Basic Salary</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.basicMaster)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>HRA</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.hraMaster)}</span>
+                                    </div>
+                                    {breakup.specialAllowance > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                            <span>Special Allowance</span>
+                                            <span className="font-semibold text-slate-800">{fmtMoney(breakup.specialAllowance)}</span>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-100 pb-2">
-                        <span>HRA</span>
-                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.hraMaster)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-100 pb-2">
-                        <span>Flexi Allowance</span>
-                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.flexi)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-100 pb-2">
-                        <span>PF Employer</span>
-                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.pfEmployer)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-100 pb-2">
-                        <span>Gratuity</span>
-                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.gratuity)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-100 pb-2">
-                        <span>Insurance</span>
-                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.insurance)}</span>
-                    </div>
+
+                    {/* 2. Employer Contributions */}
+                    {(breakup.pfEmployer > 0 || breakup.gratuity > 0 || breakup.esiEmployer > 0 || breakup.lwfEmployer > 0) && (
+                        <div>
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2">Employer Contributions</div>
+                            <div className="space-y-2">
+                                {breakup.pfEmployer > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>PF Employer Cost</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.pfEmployer)}</span>
+                                    </div>
+                                )}
+                                {breakup.gratuity > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Gratuity Accrual</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.gratuity)}</span>
+                                    </div>
+                                )}
+                                {breakup.esiEmployer > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>ESI Employer Cost</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.esiEmployer)}</span>
+                                    </div>
+                                )}
+                                {breakup.lwfEmployer > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>LWF Employer Cost</span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.lwfEmployer)}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 3. Employee Deductions */}
+                    {(breakup.pfEmployee > 0 || breakup.esiEmployee > 0 || breakup.lwfEmployee > 0 || breakup.professionalTax > 0 || breakup.tds > 0) && (
+                        <div>
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2">Employee Deductions</div>
+                            <div className="space-y-2">
+                                {breakup.pfEmployee > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Employee PF</span>
+                                        <span className="font-semibold text-slate-800 text-rose-600">{fmtMoney(breakup.pfEmployee)}</span>
+                                    </div>
+                                )}
+                                {breakup.esiEmployee > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Employee ESI</span>
+                                        <span className="font-semibold text-slate-800 text-rose-600">{fmtMoney(breakup.esiEmployee)}</span>
+                                    </div>
+                                )}
+                                {breakup.lwfEmployee > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Employee LWF</span>
+                                        <span className="font-semibold text-slate-800 text-rose-600">{fmtMoney(breakup.lwfEmployee)}</span>
+                                    </div>
+                                )}
+                                {breakup.professionalTax > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Professional Tax (PT)</span>
+                                        <span className="font-semibold text-slate-800 text-rose-600">{fmtMoney(breakup.professionalTax)}</span>
+                                    </div>
+                                )}
+                                {breakup.tds > 0 && (
+                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>Income Tax (TDS)</span>
+                                        <span className="font-semibold text-slate-800 text-rose-600">{fmtMoney(breakup.tds)}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex justify-between text-base font-bold text-slate-800 bg-blue-50 px-4 py-3 rounded-lg border border-blue-100/50 mt-4">
                         <span className="flex items-center"><Info size={16} className="text-blue-500 mr-2" /> Net Take-Home</span>
                         <span className="text-blue-600">{fmtMoney(breakup.netTakeHome)}</span>
