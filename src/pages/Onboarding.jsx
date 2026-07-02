@@ -8,7 +8,7 @@ import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import useDebouncedValue from '../hooks/useDebouncedValue';
-import { buildMasterSalaryStructure, buildPayrollSnapshot } from '../utils/payroll';
+import { buildMasterSalaryStructure, buildPayrollSnapshot, PT_STATE_LIST } from '../utils/payroll';
 import {
   ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
   getSupportedPlaceholderTokens,
@@ -290,29 +290,11 @@ const Onboarding = () => {
           url: template.url
         };
       }),
-      ...(onboardingSettings.offerLetterTemplateUrl ? [{
-        label: 'Offer Letter',
-        status: 'Template',
-        itemType: 'template',
-        _id: 'offer-letter-default',
-        isAccepted: employee.offerDeclaration?.hasReadOfferLetter,
-        emailSentAt: getRequestedDoc('Offer Letter')?.emailSentAt,
-        url: onboardingSettings.offerLetterTemplateUrl
-      }] : []),
-      ...(onboardingSettings.declarationTemplateUrl ? [{
-        label: 'Declaration',
-        status: 'Template',
-        itemType: 'template',
-        _id: 'declaration-default',
-        isAccepted: employee.offerDeclaration?.isComplete,
-        emailSentAt: getRequestedDoc('Declaration')?.emailSentAt,
-        url: onboardingSettings.declarationTemplateUrl
-      }] : []),
       ...(employee.documents || [])
         .filter((d) => d.type === 'custom_file')
         .map((d) => ({ ...d, itemType: 'document', isCustomSentFile: true }))
     ];
-  }, [getRequestedLabel, onboardingSettings.declarationTemplateUrl, onboardingSettings.dynamicTemplates, onboardingSettings.offerLetterTemplateUrl, onboardingSettings.policies]);
+  }, [getRequestedLabel, onboardingSettings.dynamicTemplates, onboardingSettings.policies]);
 
   const detailSections = getDetailSections(selectedEmployee);
   const detailDocuments = getDetailDocuments(selectedEmployee);
@@ -615,7 +597,28 @@ const Onboarding = () => {
     firstName: '', lastName: '', email: '', phone: '',
     designation: '', department: '', joiningDate: '', offerDate: '', documentDeadline: '',
     workLocation: '', address: '', probationPeriod: '',
-    salary: { annualCTC: '', basic: '', hra: '', specialAllowance: '', monthlyGross: '', monthlyCTC: '' }
+    salary: {
+      payType: 'salaried',
+      annualCTC: '',
+      monthlyCTC: '',
+      basic: '',
+      hra: '',
+      specialAllowance: '',
+      monthlyGross: '',
+      pfEnabled: true,
+      esiEnabled: true,
+      ptEnabled: true,
+      lwfEnabled: true,
+      gratuityEnabled: true,
+      includePfInCTC: false,
+      includeGratuityInCTC: true,
+      ptState: 'MH',
+      professionalTax: '200',
+      basicPercent: 50,
+      hraPercent: 50,
+      insuranceAmount: 0,
+      employerNPS: 0
+    }
   };
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
@@ -799,10 +802,14 @@ const Onboarding = () => {
             gratuityEnabled: mergedSalary.gratuityEnabled !== undefined ? !!mergedSalary.gratuityEnabled : true,
             includePfInCTC: !!mergedSalary.includePfInCTC,
             includeGratuityInCTC: mergedSalary.includeGratuityInCTC !== undefined ? !!mergedSalary.includeGratuityInCTC : true,
+            basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
+            hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
             insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
             employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
+            flexiAmount: parseFloat(mergedSalary.flexiAmount) || 0,
+            ptState: mergedSalary.ptState || '',
             deductions: {
-              professionalTax: mergedSalary.ptEnabled !== false ? (parseFloat(mergedSalary.professionalTax) || 200) : 0,
+              professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
             }
           };
           if (payrollConfig.salaryComponents) {
@@ -1047,19 +1054,24 @@ const Onboarding = () => {
                       <select
                         value={formData.salary.ptState || 'MH'}
                         onChange={(e) => {
-                          const state = e.target.value;
-                          let amount = 0;
-                          if (['MH', 'KA', 'TN', 'WB'].includes(state)) amount = 200;
-                          calculateSalaryBreakdown({ ptState: state, professionalTax: String(amount) });
+                          calculateSalaryBreakdown({ ptState: e.target.value });
                         }}
                         style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', outline: 'none', background: '#fff' }}
                       >
-                        <option value="MH">Maharashtra (₹200/mo)</option>
-                        <option value="KA">Karnataka (₹200/mo)</option>
-                        <option value="TN">Tamil Nadu (₹200/mo)</option>
-                        <option value="WB">West Bengal (₹200/mo)</option>
-                        <option value="none">Other / Exempt (₹0)</option>
-                        <option value="custom">Custom Override</option>
+                        <optgroup label="── No PT / Manual">
+                          <option value="">None — use manual override below</option>
+                          <option value="custom">Custom Override</option>
+                        </optgroup>
+                        <optgroup label="── States that levy PT">
+                          {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
+                            <option key={s.code} value={s.code}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="── States with no PT">
+                          {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
+                            <option key={s.code} value={s.code}>{s.name}</option>
+                          ))}
+                        </optgroup>
                       </select>
                     </div>
                     {formData.salary.ptState === 'custom' && (
@@ -1073,6 +1085,37 @@ const Onboarding = () => {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Ratio overrides */}
+            <div style={{ gridColumn: '1 / -1', marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', trackingWidth: '0.05em', color: '#475569', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                Ratio Overrides
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Basic Salary Override (%)</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={formData.salary.basicPercent !== undefined ? formData.salary.basicPercent : '50'} 
+                    onChange={(e) => calculateSalaryBreakdown({ basicPercent: e.target.value })} 
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#fff' }} 
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>HRA Override (% of Basic)</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={formData.salary.hraPercent !== undefined ? formData.salary.hraPercent : '50'} 
+                    onChange={(e) => calculateSalaryBreakdown({ hraPercent: e.target.value })} 
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#fff' }} 
+                  />
+                </div>
               </div>
             </div>
 
@@ -1132,10 +1175,12 @@ const Onboarding = () => {
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>HRA (Monthly)</label>
                   <input readOnly disabled value={formData.salary.hra} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Special Allowance (Monthly)</label>
-                  <input readOnly disabled value={formData.salary.specialAllowance} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
-                </div>
+                {payrollConfig?.salaryComponents?.some(c => c.id === 'special') && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Special Allowance (Monthly)</label>
+                    <input readOnly disabled value={formData.salary.specialAllowance} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f3f4f6', color: '#6b7280' }} />
+                  </div>
+                )}
               </>
             )}
 
@@ -1261,6 +1306,7 @@ const Onboarding = () => {
     }
   };
 
+
   useEffect(() => {
     if (activeTab === 'settings' && !canManageOnboardingSettings) {
       setActiveTab('employees');
@@ -1268,18 +1314,19 @@ const Onboarding = () => {
   }, [activeTab, canManageOnboardingSettings]);
 
   useEffect(() => {
+    fetchPayrollConfig();
+  }, [fetchPayrollConfig]);
+
+  useEffect(() => {
     if (activeTab === 'employees') {
       initialEmployeesFetchDoneRef.current = true;
       fetchEmployees();
     }
-    if (activeTab === 'settings' || showAddModal || showEditModal) {
-      if (activeTab === 'settings') {
-        initialSettingsFetchDoneRef.current = true;
-        fetchSettings();
-      }
-      fetchPayrollConfig();
+    if (activeTab === 'settings') {
+      initialSettingsFetchDoneRef.current = true;
+      fetchSettings();
     }
-  }, [activeTab, fetchEmployees, fetchSettings, fetchPayrollConfig, page, debouncedSearchTerm, statusFilter, showAddModal, showEditModal]);
+  }, [activeTab, fetchEmployees, fetchSettings, page, debouncedSearchTerm, statusFilter, showAddModal, showEditModal]);
 
   const handlePolicyUpload = async (e) => {
     const file = e.target.files[0];
@@ -1407,6 +1454,7 @@ const Onboarding = () => {
 
   const handleOpenAddModal = () => {
     const salaryData = {
+      ...INITIAL_FORM_DATA.salary,
       payType: 'salaried',
       annualCTC: '',
       monthlyCTC: '',
@@ -1583,15 +1631,110 @@ const Onboarding = () => {
       hourlyRate: emp.salary?.hourlyRate || '',
       hoursWorked: emp.salary?.hoursWorked || '160',
       insuranceAmount: emp.salary?.insuranceAmount || '0',
-      employerNPS: emp.salary?.employerNPS || '0'
+      employerNPS: emp.salary?.employerNPS || '0',
+      pfEnabled: emp.salary?.pfEnabled !== undefined ? emp.salary.pfEnabled : true,
+      esiEnabled: emp.salary?.esiEnabled !== undefined ? emp.salary.esiEnabled : true,
+      ptEnabled: emp.salary?.ptEnabled !== undefined ? emp.salary.ptEnabled : true,
+      lwfEnabled: emp.salary?.lwfEnabled !== undefined ? emp.salary.lwfEnabled : true,
+      gratuityEnabled: emp.salary?.gratuityEnabled !== undefined ? emp.salary.gratuityEnabled : true,
+      includePfInCTC: emp.salary?.includePfInCTC !== undefined ? emp.salary.includePfInCTC : false,
+      includeGratuityInCTC: emp.salary?.includeGratuityInCTC !== undefined ? emp.salary.includeGratuityInCTC : true,
+      ptState: emp.salary?.ptState || 'MH',
+      professionalTax: emp.salary?.professionalTax || '200',
+      basicPercent: emp.salary?.basicPercent !== undefined ? emp.salary.basicPercent : 50,
+      hraPercent: emp.salary?.hraPercent !== undefined ? emp.salary.hraPercent : 50,
+      flexiAmount: emp.salary?.flexiAmount !== undefined ? String(emp.salary.flexiAmount) : '0',
+      // Computed/saved values — pre-populate so CTC estimates show correctly on modal open
+      pfEmployer: emp.salary?.pfEmployer !== undefined ? String(emp.salary.pfEmployer) : '0',
+      pfEmployee: emp.salary?.pfEmployee !== undefined ? String(emp.salary.pfEmployee) : '0',
+      gratuity: emp.salary?.gratuity !== undefined ? String(emp.salary.gratuity) : '0',
+      lwfEmployer: emp.salary?.lwfEmployer !== undefined ? String(emp.salary.lwfEmployer) : '0',
+      lwfEmployee: emp.salary?.lwfEmployee !== undefined ? String(emp.salary.lwfEmployee) : '0',
+      esiEmployer: emp.salary?.esiEmployer !== undefined ? String(emp.salary.esiEmployer) : '0',
+      esiEmployee: emp.salary?.esiEmployee !== undefined ? String(emp.salary.esiEmployee) : '0',
+      tds: emp.salary?.tds !== undefined ? String(emp.salary.tds) : '0',
+      netTakeHome: emp.salary?.netTakeHome !== undefined ? String(emp.salary.netTakeHome) : '0',
     };
     if (payrollConfig?.salaryComponents) {
       payrollConfig.salaryComponents.forEach(c => {
-        if (c.linkedTo === 'fixed') {
-          salaryData[c.id] = emp.salary?.[c.id] !== undefined ? String(emp.salary[c.id]) : String(c.linkValue || 0);
-        }
+        // Load ALL component values from saved salary — not just fixed.
+          // Remainder/percent-linked components (e.g. Flexi) also need their saved value
+          // so they display correctly without requiring a field-change trigger.
+          if (emp.salary?.[c.id] !== undefined) {
+            salaryData[c.id] = String(emp.salary[c.id]);
+          } else if (c.linkedTo === 'fixed') {
+            salaryData[c.id] = String(c.linkValue || 0);
+          }
       });
     }
+
+    // Recalculate salary breakdown on open to ensure computed components are updated
+    let annualCTC = parseFloat(String(salaryData.annualCTC).replace(/[^0-9.]/g, '')) || 0;
+    let monthlyCTC = parseFloat(String(salaryData.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+
+    if (salaryData.annualCTC) {
+      monthlyCTC = Math.round(annualCTC / 12);
+    } else if (salaryData.monthlyCTC) {
+      annualCTC = monthlyCTC * 12;
+    }
+
+    if (payrollConfig && (annualCTC > 0 || monthlyCTC > 0)) {
+      const source = {
+        monthlyCTC,
+        payType: salaryData.payType,
+        pfEnabled: salaryData.pfEnabled !== false,
+        esiEnabled: salaryData.esiEnabled !== false,
+        ptEnabled: salaryData.ptEnabled !== false,
+        lwfEnabled: salaryData.lwfEnabled !== false,
+        gratuityEnabled: salaryData.gratuityEnabled !== false,
+        includePfInCTC: !!salaryData.includePfInCTC,
+        includeGratuityInCTC: salaryData.includeGratuityInCTC !== false,
+        basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
+        hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
+        insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
+        employerNPS: parseFloat(salaryData.employerNPS) || 0,
+        flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
+        ptState: salaryData.ptState || '',
+        deductions: {
+          professionalTax: salaryData.ptState === 'custom' ? (parseFloat(salaryData.professionalTax) || 0) : 0,
+        }
+      };
+      if (payrollConfig.salaryComponents) {
+        payrollConfig.salaryComponents.forEach(c => {
+          if (c.linkedTo === 'fixed') {
+            const val = salaryData[c.id] !== undefined ? salaryData[c.id] : (c.linkValue || 0);
+            source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+          }
+        });
+      }
+      const master = buildMasterSalaryStructure(source, payrollConfig);
+      if (master) {
+        salaryData.annualCTC = String(annualCTC);
+        salaryData.monthlyCTC = String(monthlyCTC);
+        salaryData.basic = String(master.basicMaster);
+        salaryData.hra = String(master.hraMaster);
+        salaryData.specialAllowance = String(master.specialAllowance || 0);
+        salaryData.monthlyGross = String(master.grossSalary || master.totalEarnings);
+        
+        salaryData.pfEmployer = String(master.pfEmployer || 0);
+        salaryData.pfEmployee = String(master.pfEmployee || 0);
+        salaryData.gratuity = String(master.gratuity || 0);
+        salaryData.lwfEmployer = String(master.lwfEmployer || 0);
+        salaryData.lwfEmployee = String(master.lwfEmployee || 0);
+        salaryData.esiEmployer = String(master.esiEmployer || 0);
+        salaryData.esiEmployee = String(master.esiEmployee || 0);
+        salaryData.professionalTax = String(master.professionalTax || 0);
+        salaryData.tds = String(master.tds || 0);
+        salaryData.netTakeHome = String(master.netTakeHome || 0);
+        
+        if (master.earningsMap) {
+          Object.entries(master.earningsMap).forEach(([id, val]) => {
+            salaryData[id] = String(val);
+          });
+        }
+      }
+    }
+
     setFormData({
       firstName: emp.firstName || '',
       lastName: emp.lastName || '',
@@ -2052,8 +2195,7 @@ const Onboarding = () => {
                 </label>
               </div>
 
-              <div style={{ padding: '16px' }}>
-                {(onboardingSettings.dynamicTemplates?.length === 0 && !onboardingSettings.offerLetterTemplateUrl) ? (
+                {!onboardingSettings.dynamicTemplates || onboardingSettings.dynamicTemplates.length === 0 ? (
                   <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '14px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>No dynamic templates uploaded yet.</div>
                 ) : (
                   <div style={{ display: 'grid', gap: '8px' }}>
@@ -2072,7 +2214,6 @@ const Onboarding = () => {
                     ))}
                   </div>
                 )}
-              </div>
             </div>
 
             {/* Portion 2: Static Policies */}
@@ -2130,7 +2271,11 @@ const Onboarding = () => {
                     { tag: '{probation_period}', desc: 'Probation Period' }, { tag: '{basic_salary}', desc: 'Basic Salary' },
                     { tag: '{hra}', desc: 'House Rent Allowance' }, { tag: '{special_allowance}', desc: 'Special Allowance' },
                     { tag: '{monthly_gross}', desc: 'Monthly Gross' }, { tag: '{monthly_ctc}', desc: 'Monthly CTC' },
-                    { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' }
+                    { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' },
+                    { tag: '{@salary_table}', desc: 'Auto-Generated Salary Breakup Table' },
+                    { tag: '{@employee_signature}', desc: 'Auto-Generated Digital Signature (Canvas Image / Typed Name)' },
+                    { tag: '{employee_signature_date}', desc: 'Signature Date' },
+                    { tag: '{employee_signature_ip}', desc: 'Signature IP Address' }
                   ];
 
                   const dynamicPlaceholders = [];
@@ -2176,7 +2321,7 @@ const Onboarding = () => {
       {/* Add Employee Modal */}
       {showAddModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '850px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <div style={{ padding: '24px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Add New Employee</h2>
               <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}><X size={20} /></button>
@@ -2249,7 +2394,7 @@ const Onboarding = () => {
       {/* Edit Employee Modal */}
       {showEditModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '850px', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <div style={{ padding: '24px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Edit Employee Details</h2>
@@ -2576,8 +2721,21 @@ const Onboarding = () => {
                                 <div style={{ display: 'flex', gap: '8px' }}>{s.data?.agreesToOriginalVerification ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Agrees to Verification</span></div>
                                 <div style={{ marginTop: '8px', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
                                   <span style={{ color: '#94a3b8' }}>E-Signature:</span> <br />
-                                  <strong>{s.data?.eSignName}</strong> <br />
-                                  <span style={{ fontSize: '11px', color: '#64748b' }}>Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleDateString('en-IN') : '—'}</span>
+                                  <strong>{s.data?.eSignName || '—'}</strong> <br />
+                                  {s.data?.eSignType === 'drawn' && s.data?.eSignValue && (
+                                    <div style={{ margin: '8px 0', border: '1px solid #e2e8f0', padding: '6px', background: '#f8fafc', borderRadius: '8px', maxWidth: '200px' }}>
+                                      <img src={s.data.eSignValue} alt="Signature" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                                    </div>
+                                  )}
+                                  {s.data?.eSignType === 'typed' && (
+                                    <div style={{ margin: '8px 0', fontStyle: 'italic', fontSize: '15px', color: '#1e293b', fontFamily: 'cursive' }}>
+                                      {s.data?.eSignName}
+                                    </div>
+                                  )}
+                                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN') : '—'}
+                                    {s.data?.eSignIp ? ` (IP: ${s.data.eSignIp})` : ''}
+                                  </span>
                                 </div>
                               </div>
                             )}
