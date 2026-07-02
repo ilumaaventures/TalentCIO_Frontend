@@ -17,6 +17,12 @@ import {
   validateTemplateSyntax
 } from '../utils/templatePlaceholders';
 
+const parseBool = (val, defaultVal = true) => {
+  if (val === false || val === 'false') return false;
+  if (val === true || val === 'true') return true;
+  return defaultVal;
+};
+
 const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
 const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
 const CUSTOM_FILE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
@@ -795,13 +801,13 @@ const Onboarding = () => {
           const source = {
             monthlyCTC,
             payType,
-            pfEnabled: mergedSalary.pfEnabled !== undefined ? !!mergedSalary.pfEnabled : true,
-            esiEnabled: mergedSalary.esiEnabled !== undefined ? !!mergedSalary.esiEnabled : true,
-            ptEnabled: mergedSalary.ptEnabled !== undefined ? !!mergedSalary.ptEnabled : true,
-            lwfEnabled: mergedSalary.lwfEnabled !== undefined ? !!mergedSalary.lwfEnabled : true,
-            gratuityEnabled: mergedSalary.gratuityEnabled !== undefined ? !!mergedSalary.gratuityEnabled : true,
-            includePfInCTC: !!mergedSalary.includePfInCTC,
-            includeGratuityInCTC: mergedSalary.includeGratuityInCTC !== undefined ? !!mergedSalary.includeGratuityInCTC : true,
+            pfEnabled: parseBool(mergedSalary.pfEnabled, true),
+            esiEnabled: parseBool(mergedSalary.esiEnabled, true),
+            ptEnabled: parseBool(mergedSalary.ptEnabled, true),
+            lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
+            gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+            includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
+            includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
             basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
             hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
             insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
@@ -983,7 +989,7 @@ const Onboarding = () => {
                     <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>Provident Fund (PF)</span>
                     <input 
                       type="checkbox" 
-                      checked={formData.salary.pfEnabled !== false} 
+                      checked={parseBool(formData.salary.pfEnabled, true)} 
                       onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })} 
                     />
                   </div>
@@ -1004,7 +1010,7 @@ const Onboarding = () => {
                     <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>Gratuity Accrual</span>
                     <input 
                       type="checkbox" 
-                      checked={formData.salary.gratuityEnabled !== false} 
+                      checked={parseBool(formData.salary.gratuityEnabled, true)} 
                       onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })} 
                     />
                   </div>
@@ -1013,7 +1019,7 @@ const Onboarding = () => {
                       <span style={{ fontSize: '11px', color: '#64748b' }}>Include Gratuity in CTC</span>
                       <input 
                         type="checkbox" 
-                        checked={formData.salary.includeGratuityInCTC !== false} 
+                        checked={parseBool(formData.salary.includeGratuityInCTC, true)} 
                         onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })} 
                       />
                     </div>
@@ -1024,7 +1030,7 @@ const Onboarding = () => {
                   <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>ESI Applicable</span>
                   <input 
                     type="checkbox" 
-                    checked={formData.salary.esiEnabled !== false} 
+                    checked={parseBool(formData.salary.esiEnabled, true)} 
                     onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })} 
                   />
                 </div>
@@ -1033,7 +1039,7 @@ const Onboarding = () => {
                   <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>LWF Applicable</span>
                   <input 
                     type="checkbox" 
-                    checked={formData.salary.lwfEnabled !== false} 
+                    checked={parseBool(formData.salary.lwfEnabled, true)} 
                     onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })} 
                   />
                 </div>
@@ -1044,7 +1050,7 @@ const Onboarding = () => {
                   <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>Professional Tax (PT)</span>
                   <input 
                     type="checkbox" 
-                    checked={formData.salary.ptEnabled !== false} 
+                    checked={parseBool(formData.salary.ptEnabled, true)} 
                     onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })} 
                   />
                 </div>
@@ -1632,13 +1638,13 @@ const Onboarding = () => {
       hoursWorked: emp.salary?.hoursWorked || '160',
       insuranceAmount: emp.salary?.insuranceAmount || '0',
       employerNPS: emp.salary?.employerNPS || '0',
-      pfEnabled: emp.salary?.pfEnabled !== undefined ? emp.salary.pfEnabled : true,
-      esiEnabled: emp.salary?.esiEnabled !== undefined ? emp.salary.esiEnabled : true,
-      ptEnabled: emp.salary?.ptEnabled !== undefined ? emp.salary.ptEnabled : true,
-      lwfEnabled: emp.salary?.lwfEnabled !== undefined ? emp.salary.lwfEnabled : true,
-      gratuityEnabled: emp.salary?.gratuityEnabled !== undefined ? emp.salary.gratuityEnabled : true,
-      includePfInCTC: emp.salary?.includePfInCTC !== undefined ? emp.salary.includePfInCTC : false,
-      includeGratuityInCTC: emp.salary?.includeGratuityInCTC !== undefined ? emp.salary.includeGratuityInCTC : true,
+      pfEnabled: parseBool(emp.salary?.pfEnabled, true),
+      esiEnabled: parseBool(emp.salary?.esiEnabled, true),
+      ptEnabled: parseBool(emp.salary?.ptEnabled, true),
+      lwfEnabled: parseBool(emp.salary?.lwfEnabled, true),
+      gratuityEnabled: parseBool(emp.salary?.gratuityEnabled, true),
+      includePfInCTC: parseBool(emp.salary?.includePfInCTC, false),
+      includeGratuityInCTC: parseBool(emp.salary?.includeGratuityInCTC, true),
       ptState: emp.salary?.ptState || 'MH',
       professionalTax: emp.salary?.professionalTax || '200',
       basicPercent: emp.salary?.basicPercent !== undefined ? emp.salary.basicPercent : 50,
@@ -1682,13 +1688,13 @@ const Onboarding = () => {
       const source = {
         monthlyCTC,
         payType: salaryData.payType,
-        pfEnabled: salaryData.pfEnabled !== false,
-        esiEnabled: salaryData.esiEnabled !== false,
-        ptEnabled: salaryData.ptEnabled !== false,
-        lwfEnabled: salaryData.lwfEnabled !== false,
-        gratuityEnabled: salaryData.gratuityEnabled !== false,
-        includePfInCTC: !!salaryData.includePfInCTC,
-        includeGratuityInCTC: salaryData.includeGratuityInCTC !== false,
+        pfEnabled: parseBool(salaryData.pfEnabled, true),
+        esiEnabled: parseBool(salaryData.esiEnabled, true),
+        ptEnabled: parseBool(salaryData.ptEnabled, true),
+        lwfEnabled: parseBool(salaryData.lwfEnabled, true),
+        gratuityEnabled: parseBool(salaryData.gratuityEnabled, true),
+        includePfInCTC: parseBool(salaryData.includePfInCTC, false),
+        includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
         basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
         hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
         insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,

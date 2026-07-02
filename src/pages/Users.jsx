@@ -1993,121 +1993,130 @@ const Users = () => {
                                             {formData.salary.payType === 'salaried' && (
                                                 <>
                                                     {/* Statutory Toggles */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Statutory Toggles</div>
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">Provident Fund (PF)</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.pfEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">Gratuity Accrual</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.gratuityEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">ESI Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.esiEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">LWF Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.lwfEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-                                                        </div>
-
-                                                        {parseBool(formData.salary.pfEnabled, true) && (
-                                                            <label className="flex items-center justify-between p-2 border-t border-slate-50 cursor-pointer">
-                                                                <span className="text-xs text-slate-500">Include Employer PF in CTC</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={!!formData.salary.includePfInCTC}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-                                                        )}
-
-                                                        {parseBool(formData.salary.gratuityEnabled, true) && (
-                                                            <label className="flex items-center justify-between p-2 border-t border-slate-50 cursor-pointer">
-                                                                <span className="text-xs text-slate-500">Include Gratuity in CTC</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.includeGratuityInCTC, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-                                                        )}
-                                                    </div>
-
-                                                    {/* State Tax (PT) */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Professional Tax (PT)</span>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={parseBool(formData.salary.ptEnabled, true)}
-                                                                onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
-                                                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                            />
-                                                        </div>
-                                                        {parseBool(formData.salary.ptEnabled, true) && (
-                                                            <div className="space-y-2">
-                                                                <select
-                                                                    value={formData.salary.ptState || 'MH'}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
-                                                                    className="zoho-input"
-                                                                >
-                                                                    <optgroup label="── No PT / Manual">
-                                                                        <option value="">None — use manual override below</option>
-                                                                        <option value="custom">Custom Override</option>
-                                                                    </optgroup>
-                                                                    <optgroup label="── States that levy PT">
-                                                                        {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
-                                                                            <option key={s.code} value={s.code}>{s.name}</option>
-                                                                        ))}
-                                                                    </optgroup>
-                                                                    <optgroup label="── States with no PT">
-                                                                        {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
-                                                                            <option key={s.code} value={s.code}>{s.name}</option>
-                                                                        ))}
-                                                                    </optgroup>
-                                                                </select>
-                                                                {formData.salary.ptState === 'custom' && (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs text-slate-500">Amount (₹):</span>
+                                                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4 shadow-sm">
+                                                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Statutory Toggles</div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            {/* PF Card */}
+                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-semibold text-slate-700">Provident Fund (PF)</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={parseBool(formData.salary.pfEnabled, true)}
+                                                                        onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
+                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                                {parseBool(formData.salary.pfEnabled, true) && (
+                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
+                                                                        <span className="text-[11px] text-slate-500">Include Employer PF in CTC</span>
                                                                         <input
-                                                                            type="number"
-                                                                            value={formData.salary.professionalTax || 0}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
-                                                                            className="w-24 text-xs rounded-lg border border-slate-200 px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                                            type="checkbox"
+                                                                            checked={!!formData.salary.includePfInCTC}
+                                                                            onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
+                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                                                         />
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                        )}
+
+                                                            {/* Gratuity Card */}
+                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-semibold text-slate-700">Gratuity Accrual</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={parseBool(formData.salary.gratuityEnabled, true)}
+                                                                        onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
+                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                                {parseBool(formData.salary.gratuityEnabled, true) && (
+                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
+                                                                        <span className="text-[11px] text-slate-500">Include Gratuity in CTC</span>
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={parseBool(formData.salary.includeGratuityInCTC, true)}
+                                                                            onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
+                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* ESI Card */}
+                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <span className="text-xs font-semibold text-slate-700">ESI Applicable</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.esiEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+
+                                                            {/* LWF Card */}
+                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <span className="text-xs font-semibold text-slate-700">LWF Applicable</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.lwfEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* PT Card */}
+                                                        <div className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-semibold text-slate-700">Professional Tax (PT)</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.ptEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                            {parseBool(formData.salary.ptEnabled, true) && (
+                                                                <div className="flex gap-2 items-center border-t border-slate-100 pt-2 mt-1">
+                                                                    <div className="flex-1">
+                                                                        <select
+                                                                            value={formData.salary.ptState || 'MH'}
+                                                                            onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
+                                                                            className="w-full p-2 border border-slate-300 rounded-lg text-xs outline-none bg-white text-slate-700"
+                                                                        >
+                                                                            <optgroup label="── No PT / Manual">
+                                                                                <option value="">None — use manual override below</option>
+                                                                                <option value="custom">Custom Override</option>
+                                                                            </optgroup>
+                                                                            <optgroup label="── States that levy PT">
+                                                                                {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
+                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
+                                                                                ))}
+                                                                            </optgroup>
+                                                                            <optgroup label="── States with no PT">
+                                                                                {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
+                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
+                                                                                ))}
+                                                                            </optgroup>
+                                                                        </select>
+                                                                    </div>
+                                                                    {formData.salary.ptState === 'custom' && (
+                                                                        <div className="w-[100px] flex items-center gap-1">
+                                                                            <span className="text-[11px] text-slate-500">₹</span>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={formData.salary.professionalTax || 0}
+                                                                                onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
+                                                                                className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none text-slate-700"
+                                                                                placeholder="Amount"
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
 
                                                     {/* Dynamic Salary Components Breakup */}
