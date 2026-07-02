@@ -13,6 +13,13 @@ import { createCachePayload, readSessionCache } from '../utils/cache';
 import { exportCandidateHRIS } from '../utils/hrisExporter';
 import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT } from '../utils/payroll';
 
+// Safely parse a boolean that may arrive as boolean false OR string "false" from a Mongoose Map.
+const parseBool = (val, defaultVal = true) => {
+    if (val === false || val === 'false') return false;
+    if (val === true || val === 'true') return true;
+    return defaultVal;
+};
+
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
     { code: 'any', name: 'Any Time' }
@@ -940,13 +947,13 @@ const Users = () => {
                     const source = {
                         monthlyCTC,
                         payType,
-                        pfEnabled: mergedSalary.pfEnabled !== false,
-                        esiEnabled: mergedSalary.esiEnabled !== false,
-                        ptEnabled: mergedSalary.ptEnabled !== false,
-                        lwfEnabled: mergedSalary.lwfEnabled !== false,
-                        gratuityEnabled: mergedSalary.gratuityEnabled !== false,
-                        includePfInCTC: !!mergedSalary.includePfInCTC,
-                        includeGratuityInCTC: mergedSalary.includeGratuityInCTC !== false,
+                        pfEnabled: parseBool(mergedSalary.pfEnabled, true),
+                        esiEnabled: parseBool(mergedSalary.esiEnabled, true),
+                        ptEnabled: parseBool(mergedSalary.ptEnabled, true),
+                        lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
+                        gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+                        includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
+                        includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                         basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
                         hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
                         insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
@@ -1050,16 +1057,16 @@ const Users = () => {
                 annualCTC: comp.ctc ? String(comp.ctc * 12) : '',
                 monthlyCTC: comp.ctc ? String(comp.ctc) : '',
                 payType: breakup.payType || 'salaried',
-                pfEnabled: breakup.pfEnabled !== false,
-                esiEnabled: breakup.esiEnabled !== false,
-                ptEnabled: breakup.ptEnabled !== false,
-                lwfEnabled: breakup.lwfEnabled !== false,
-                gratuityEnabled: breakup.gratuityEnabled !== false,
-                includePfInCTC: !!breakup.includePfInCTC,
-                includeGratuityInCTC: breakup.includeGratuityInCTC !== false,
+                pfEnabled: parseBool(breakup.pfEnabled, true),
+                esiEnabled: parseBool(breakup.esiEnabled, true),
+                ptEnabled: parseBool(breakup.ptEnabled, true),
+                lwfEnabled: parseBool(breakup.lwfEnabled, true),
+                gratuityEnabled: parseBool(breakup.gratuityEnabled, true),
+                includePfInCTC: parseBool(breakup.includePfInCTC, false),
+                includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
                 basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : null,
                 hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : null,
-                useSalaryComponents: breakup.useSalaryComponents !== false,
+                useSalaryComponents: parseBool(breakup.useSalaryComponents, true),
                 ptState: breakup.ptState || 'MH',
                 professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
                 insuranceAmount: comp.insuranceAmount || 0,
@@ -1106,16 +1113,16 @@ const Users = () => {
             const source = {
                 monthlyCTC,
                 payType: salaryData.payType,
-                pfEnabled: salaryData.pfEnabled !== false,
-                esiEnabled: salaryData.esiEnabled !== false,
-                ptEnabled: salaryData.ptEnabled !== false,
-                lwfEnabled: salaryData.lwfEnabled !== false,
-                gratuityEnabled: salaryData.gratuityEnabled !== false,
-                includePfInCTC: !!salaryData.includePfInCTC,
-                includeGratuityInCTC: salaryData.includeGratuityInCTC !== false,
+                pfEnabled: parseBool(salaryData.pfEnabled, true),
+                esiEnabled: parseBool(salaryData.esiEnabled, true),
+                ptEnabled: parseBool(salaryData.ptEnabled, true),
+                lwfEnabled: parseBool(salaryData.lwfEnabled, true),
+                gratuityEnabled: parseBool(salaryData.gratuityEnabled, true),
+                includePfInCTC: parseBool(salaryData.includePfInCTC, false),
+                includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
                 basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
                 hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
-                useSalaryComponents: salaryData.useSalaryComponents !== false,
+                useSalaryComponents: parseBool(salaryData.useSalaryComponents, true),
                 insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
                 employerNPS: parseFloat(salaryData.employerNPS) || 0,
                 flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
@@ -1993,7 +2000,7 @@ const Users = () => {
                                                                 <span className="text-xs font-medium text-slate-600">Provident Fund (PF)</span>
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={formData.salary.pfEnabled !== false}
+                                                                    checked={parseBool(formData.salary.pfEnabled, true)}
                                                                     onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
                                                                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                                                 />
@@ -2003,7 +2010,7 @@ const Users = () => {
                                                                 <span className="text-xs font-medium text-slate-600">Gratuity Accrual</span>
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={formData.salary.gratuityEnabled !== false}
+                                                                    checked={parseBool(formData.salary.gratuityEnabled, true)}
                                                                     onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
                                                                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                                                 />
@@ -2013,7 +2020,7 @@ const Users = () => {
                                                                 <span className="text-xs font-medium text-slate-600">ESI Applicable</span>
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={formData.salary.esiEnabled !== false}
+                                                                    checked={parseBool(formData.salary.esiEnabled, true)}
                                                                     onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
                                                                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                                                 />
@@ -2023,14 +2030,14 @@ const Users = () => {
                                                                 <span className="text-xs font-medium text-slate-600">LWF Applicable</span>
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={formData.salary.lwfEnabled !== false}
+                                                                    checked={parseBool(formData.salary.lwfEnabled, true)}
                                                                     onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
                                                                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                                                 />
                                                             </label>
                                                         </div>
 
-                                                        {formData.salary.pfEnabled !== false && (
+                                                        {parseBool(formData.salary.pfEnabled, true) && (
                                                             <label className="flex items-center justify-between p-2 border-t border-slate-50 cursor-pointer">
                                                                 <span className="text-xs text-slate-500">Include Employer PF in CTC</span>
                                                                 <input
@@ -2042,12 +2049,12 @@ const Users = () => {
                                                             </label>
                                                         )}
 
-                                                        {formData.salary.gratuityEnabled !== false && (
+                                                        {parseBool(formData.salary.gratuityEnabled, true) && (
                                                             <label className="flex items-center justify-between p-2 border-t border-slate-50 cursor-pointer">
                                                                 <span className="text-xs text-slate-500">Include Gratuity in CTC</span>
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={formData.salary.includeGratuityInCTC !== false}
+                                                                    checked={parseBool(formData.salary.includeGratuityInCTC, true)}
                                                                     onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
                                                                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                                                 />
@@ -2061,12 +2068,12 @@ const Users = () => {
                                                             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Professional Tax (PT)</span>
                                                             <input
                                                                 type="checkbox"
-                                                                checked={formData.salary.ptEnabled !== false}
+                                                                checked={parseBool(formData.salary.ptEnabled, true)}
                                                                 onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
                                                                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                                             />
                                                         </div>
-                                                        {formData.salary.ptEnabled !== false && (
+                                                        {parseBool(formData.salary.ptEnabled, true) && (
                                                             <div className="space-y-2">
                                                                 <select
                                                                     value={formData.salary.ptState || 'MH'}
