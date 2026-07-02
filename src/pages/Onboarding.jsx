@@ -2203,7 +2203,10 @@ const Onboarding = () => {
                     { tag: '{hra}', desc: 'House Rent Allowance' }, { tag: '{special_allowance}', desc: 'Special Allowance' },
                     { tag: '{monthly_gross}', desc: 'Monthly Gross' }, { tag: '{monthly_ctc}', desc: 'Monthly CTC' },
                     { tag: '{offer_date}', desc: 'Date of Offer' }, { tag: '{hr_name}', desc: 'Authorized Signatory Name' },
-                    { tag: '{@salary_table}', desc: 'Auto-Generated Salary Breakup Table' }
+                    { tag: '{@salary_table}', desc: 'Auto-Generated Salary Breakup Table' },
+                    { tag: '{@employee_signature}', desc: 'Auto-Generated Digital Signature (Canvas Image / Typed Name)' },
+                    { tag: '{employee_signature_date}', desc: 'Signature Date' },
+                    { tag: '{employee_signature_ip}', desc: 'Signature IP Address' }
                   ];
 
                   const dynamicPlaceholders = [];
