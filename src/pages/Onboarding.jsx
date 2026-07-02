@@ -1454,6 +1454,7 @@ const Onboarding = () => {
 
   const handleOpenAddModal = () => {
     const salaryData = {
+      ...INITIAL_FORM_DATA.salary,
       payType: 'salaried',
       annualCTC: '',
       monthlyCTC: '',
@@ -1666,6 +1667,74 @@ const Onboarding = () => {
           }
       });
     }
+
+    // Recalculate salary breakdown on open to ensure computed components are updated
+    let annualCTC = parseFloat(String(salaryData.annualCTC).replace(/[^0-9.]/g, '')) || 0;
+    let monthlyCTC = parseFloat(String(salaryData.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+
+    if (salaryData.annualCTC) {
+      monthlyCTC = Math.round(annualCTC / 12);
+    } else if (salaryData.monthlyCTC) {
+      annualCTC = monthlyCTC * 12;
+    }
+
+    if (payrollConfig && (annualCTC > 0 || monthlyCTC > 0)) {
+      const source = {
+        monthlyCTC,
+        payType: salaryData.payType,
+        pfEnabled: salaryData.pfEnabled !== false,
+        esiEnabled: salaryData.esiEnabled !== false,
+        ptEnabled: salaryData.ptEnabled !== false,
+        lwfEnabled: salaryData.lwfEnabled !== false,
+        gratuityEnabled: salaryData.gratuityEnabled !== false,
+        includePfInCTC: !!salaryData.includePfInCTC,
+        includeGratuityInCTC: salaryData.includeGratuityInCTC !== false,
+        basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
+        hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
+        insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
+        employerNPS: parseFloat(salaryData.employerNPS) || 0,
+        flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
+        ptState: salaryData.ptState || '',
+        deductions: {
+          professionalTax: salaryData.ptState === 'custom' ? (parseFloat(salaryData.professionalTax) || 0) : 0,
+        }
+      };
+      if (payrollConfig.salaryComponents) {
+        payrollConfig.salaryComponents.forEach(c => {
+          if (c.linkedTo === 'fixed') {
+            const val = salaryData[c.id] !== undefined ? salaryData[c.id] : (c.linkValue || 0);
+            source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+          }
+        });
+      }
+      const master = buildMasterSalaryStructure(source, payrollConfig);
+      if (master) {
+        salaryData.annualCTC = String(annualCTC);
+        salaryData.monthlyCTC = String(monthlyCTC);
+        salaryData.basic = String(master.basicMaster);
+        salaryData.hra = String(master.hraMaster);
+        salaryData.specialAllowance = String(master.specialAllowance || 0);
+        salaryData.monthlyGross = String(master.grossSalary || master.totalEarnings);
+        
+        salaryData.pfEmployer = String(master.pfEmployer || 0);
+        salaryData.pfEmployee = String(master.pfEmployee || 0);
+        salaryData.gratuity = String(master.gratuity || 0);
+        salaryData.lwfEmployer = String(master.lwfEmployer || 0);
+        salaryData.lwfEmployee = String(master.lwfEmployee || 0);
+        salaryData.esiEmployer = String(master.esiEmployer || 0);
+        salaryData.esiEmployee = String(master.esiEmployee || 0);
+        salaryData.professionalTax = String(master.professionalTax || 0);
+        salaryData.tds = String(master.tds || 0);
+        salaryData.netTakeHome = String(master.netTakeHome || 0);
+        
+        if (master.earningsMap) {
+          Object.entries(master.earningsMap).forEach(([id, val]) => {
+            salaryData[id] = String(val);
+          });
+        }
+      }
+    }
+
     setFormData({
       firstName: emp.firstName || '',
       lastName: emp.lastName || '',
