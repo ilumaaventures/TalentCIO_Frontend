@@ -74,6 +74,11 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 return parts.filter(Boolean).join(', ');
             };
 
+            // Derived booleans for conditional N/A logic
+            const isMarried = dossier.personal?.maritalStatus === 'Married';
+            const hasDisability = dossier.personal?.disabilityStatus === true || dossier.personal?.disabilityStatus === 'Yes';
+            const isUanApplicable = dossier.compensation?.isUanApplicable === true || dossier.compensation?.isUanApplicable === 'Yes';
+
             const fieldsToCheck = [
                 // General Account Info
                 { label: 'Roles', val: dossier.user?.roles?.map(r => r.name).join(', '), section: 'General' },
@@ -81,23 +86,27 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
 
                 // Personal Profile Details
                 { label: 'First Name (Personal)', val: dossier.personal?.firstName, section: 'Personal' },
-                { label: 'Middle Name (Personal)', val: dossier.personal?.middleName, section: 'Personal' },
+                // Middle Name: N/A if not provided
+                { label: 'Middle Name (Personal)', val: dossier.personal?.middleName, section: 'Personal', notApplicable: !dossier.personal?.middleName },
                 { label: 'Last Name (Personal)', val: dossier.personal?.lastName, section: 'Personal' },
                 { label: 'Full Name (Personal)', val: dossier.personal?.fullName, section: 'Personal' },
                 { label: 'Gender', val: dossier.personal?.gender, section: 'Personal' },
                 { label: 'Date of Birth', val: dossier.personal?.dob, section: 'Personal', type: 'date' },
                 { label: 'Marital Status', val: dossier.personal?.maritalStatus, section: 'Personal' },
-                { label: 'Date of Marriage', val: dossier.personal?.dateOfMarriage, section: 'Personal', type: 'date' },
+                // Date of Marriage: N/A if not married
+                { label: 'Date of Marriage', val: dossier.personal?.dateOfMarriage, section: 'Personal', type: 'date', notApplicable: !isMarried },
                 { label: 'Blood Group', val: dossier.personal?.bloodGroup, section: 'Personal' },
                 { label: 'Nationality', val: dossier.personal?.nationality, section: 'Personal' },
                 { label: 'Disability Status', val: dossier.personal?.disabilityStatus ? 'Yes' : 'No', section: 'Personal' },
-                { label: 'Disability Details', val: dossier.personal?.disabilityDetails, section: 'Personal' },
+                // Disability Details: N/A if disability status is not Yes
+                { label: 'Disability Details', val: dossier.personal?.disabilityDetails, section: 'Personal', notApplicable: !hasDisability },
 
 
                 // Identity Details
                 { label: 'Aadhaar Number', val: dossier.identity?.aadhaarNumber, section: 'Identity' },
                 { label: 'PAN Number', val: dossier.identity?.panNumber, section: 'Identity' },
-                { label: 'Passport Number', val: dossier.identity?.passportNumber, section: 'Identity' },
+                // Passport Number: N/A if not provided
+                { label: 'Passport Number', val: dossier.identity?.passportNumber, section: 'Identity', notApplicable: !dossier.identity?.passportNumber },
 
 
                 // Contact Details & Address
@@ -106,15 +115,18 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 { label: 'Mobile Number', val: dossier.contact?.mobileNumber, section: 'Contact' },
                 { label: 'Alternate Number', val: dossier.contact?.alternateNumber, section: 'Contact' },
                 { label: 'Emergency Number', val: dossier.contact?.emergencyNumber, section: 'Contact' },
-                { label: 'Landline Number', val: dossier.contact?.landlineNumber, section: 'Contact' },
+                // Landline Number: N/A if not provided
+                { label: 'Landline Number', val: dossier.contact?.landlineNumber, section: 'Contact', notApplicable: !dossier.contact?.landlineNumber },
                 { label: 'Current Address', val: formatFullAddr(currentAddr), section: 'Contact' },
                 { label: 'Permanent Address', val: formatFullAddr(permanentAddr), section: 'Contact' },
-                { label: 'Mailing Address', val: formatFullAddr(mailingAddr), section: 'Contact' },
+                // Mailing Address: N/A if not provided
+                { label: 'Mailing Address', val: formatFullAddr(mailingAddr), section: 'Contact', notApplicable: !formatFullAddr(mailingAddr) },
                 { label: 'Emergency Contact Name', val: dossier.contact?.emergencyContact?.name, section: 'Contact' },
                 { label: 'Emergency Contact Relation', val: dossier.contact?.emergencyContact?.relation, section: 'Contact' },
                 { label: 'Emergency Contact Phone', val: dossier.contact?.emergencyContact?.phone, section: 'Contact' },
                 { label: 'Emergency Contact Alternate Phone', val: dossier.contact?.emergencyContact?.alternatePhone, section: 'Contact' },
-                { label: 'Emergency Contact Email', val: dossier.contact?.emergencyContact?.email, section: 'Contact' },
+                // Emergency Contact Email: N/A if not provided
+                { label: 'Emergency Contact Email', val: dossier.contact?.emergencyContact?.email, section: 'Contact', notApplicable: !dossier.contact?.emergencyContact?.email },
 
                 // Family Details
                 { label: 'Father Name', val: dossier.family?.fatherName, section: 'Family' },
@@ -125,8 +137,10 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 { label: 'Mother Occupation', val: dossier.family?.motherOccupation, section: 'Family' },
                 { label: 'Parents Marital Status', val: dossier.family?.parentsMaritalStatus, section: 'Family' },
                 { label: 'Total Siblings', val: dossier.family?.totalSiblings, section: 'Family' },
-                { label: 'Spouse Name', val: dossier.family?.spouseName, section: 'Family' },
-                { label: 'Spouse DOB', val: dossier.family?.spouseDob, section: 'Family', type: 'date' },
+                // Spouse Name: N/A if not married or not provided
+                { label: 'Spouse Name', val: dossier.family?.spouseName, section: 'Family', notApplicable: !isMarried || !dossier.family?.spouseName },
+                // Spouse DOB: N/A if not married or not provided
+                { label: 'Spouse DOB', val: dossier.family?.spouseDob, section: 'Family', type: 'date', notApplicable: !isMarried || !dossier.family?.spouseDob },
 
                 // Employment Details
                 { label: 'Designation', val: dossier.employment?.designation, section: 'Employment' },
@@ -143,7 +157,8 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 { label: 'IFSC Code', val: dossier.compensation?.bankDetails?.ifscCode, section: 'Bank' },
                 { label: 'Branch Address', val: dossier.compensation?.bankDetails?.branchAddress, section: 'Bank' },
                 { label: 'UAN Applicable', val: dossier.compensation?.isUanApplicable ? 'Yes' : 'No', section: 'Bank' },
-                { label: 'UAN Number', val: dossier.compensation?.uanNumber, section: 'Bank' }
+                // UAN Number: N/A if UAN not applicable; blank if applicable but not yet provided
+                { label: 'UAN Number', val: dossier.compensation?.uanNumber, section: 'Bank', notApplicable: !isUanApplicable }
             ];
 
             const isFilled = (val) => {
@@ -312,7 +327,11 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             // Map each field to its column key
             fieldsToCheck.forEach((f, idx) => {
                 const formattedVal = f.type === 'date' && f.val ? format(new Date(f.val), 'dd MMM yyyy') : (f.val || '');
-                summaryRowData[`field_${idx}`] = formattedVal || '[PENDING]';
+                if (f.notApplicable) {
+                    summaryRowData[`field_${idx}`] = 'Not Applicable';
+                } else {
+                    summaryRowData[`field_${idx}`] = formattedVal || '[PENDING]';
+                }
             });
 
             // Map each required document checklist to its column key
@@ -372,7 +391,10 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             // Style HRIS Input Fields in Summary
             fieldsToCheck.forEach((f, idx) => {
                 const cell = summaryRow.getCell(8 + idx);
-                if (isFilled(f.val)) {
+                if (f.notApplicable) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Neutral grey
+                    cell.font = { color: { argb: 'FF94A3B8' }, italic: true };
+                } else if (isFilled(f.val)) {
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } }; // Light green
                     cell.font = { color: { argb: 'FF274E13' } };
                 } else {
@@ -437,10 +459,21 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             ws.addRow([]);
 
             // Add HRIS Rows Helper
-            const addHRISRow = (ws, label, value, isDate = false) => {
-                const formattedVal = isDate && value ? format(new Date(value), 'dd MMM yyyy') : (value || '');
-                const statusText = isFilled(value) ? 'Filled' : 'Pending / Missing';
-                const row = ws.addRow([label, formattedVal || '[PENDING]', statusText]);
+            // notApplicable=true  → show 'Not Applicable' in grey (field irrelevant for this user)
+            // notApplicable=false → show value or '[PENDING]' / 'Pending / Missing' in red
+            const addHRISRow = (ws, label, value, isDate = false, notApplicable = false) => {
+                let displayVal;
+                let statusText;
+
+                if (notApplicable) {
+                    displayVal = 'Not Applicable';
+                    statusText = 'Not Applicable';
+                } else {
+                    displayVal = isDate && value ? format(new Date(value), 'dd MMM yyyy') : (value || '[PENDING]');
+                    statusText = isFilled(value) ? 'Filled' : 'Pending / Missing';
+                }
+
+                const row = ws.addRow([label, displayVal, statusText]);
 
                 // Apply thin borders to all cells in candidate profile row
                 row.eachCell((cell) => {
@@ -455,7 +488,11 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 const valCell = row.getCell(2);
                 const statusCell = row.getCell(3);
 
-                if (isFilled(value)) {
+                if (notApplicable) {
+                    valCell.font = { color: { argb: 'FF94A3B8' }, italic: true };
+                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Neutral grey
+                    statusCell.font = { color: { argb: 'FF64748B' }, italic: true };
+                } else if (isFilled(value)) {
                     statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
                     statusCell.font = { color: { argb: 'FF274E13' }, bold: true };
                 } else {
@@ -486,7 +523,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             addHRISRow(ws, 'Employment Type (Account)', dossier.user?.employmentType);
 
             fieldsToCheck.filter(f => f.section === 'General').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date');
+                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
             });
 
             ws.addRow([]);
@@ -498,7 +535,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             sec2.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
 
             fieldsToCheck.filter(f => f.section === 'Personal').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date');
+                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
             });
 
             ws.addRow([]);
@@ -510,7 +547,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             sec3.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
 
             fieldsToCheck.filter(f => f.section === 'Identity').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date');
+                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
             });
 
             ws.addRow([]);
@@ -522,7 +559,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             sec4.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
 
             fieldsToCheck.filter(f => f.section === 'Contact').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date');
+                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
             });
 
             ws.addRow([]);
@@ -534,7 +571,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             sec5.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
 
             fieldsToCheck.filter(f => f.section === 'Family').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date');
+                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
             });
 
             // Display Children if present
@@ -554,7 +591,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             sec6.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
 
             fieldsToCheck.filter(f => f.section === 'Employment').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date');
+                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
             });
 
             ws.addRow([]);
@@ -566,7 +603,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             sec7.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
 
             fieldsToCheck.filter(f => f.section === 'Bank').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date');
+                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
             });
 
             // Section 8: Educational Qualifications
