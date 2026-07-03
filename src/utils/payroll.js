@@ -415,7 +415,13 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
           } else if (c.linkedTo === 'basic_percent') {
             amount = roundAmount(basicMaster * c.linkValue);
           } else if (c.linkedTo === 'fixed') {
-            const val = source[c.id] !== undefined ? source[c.id] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : 0);
+            let val = source[c.id] !== undefined ? source[c.id] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : 0);
+            if (c.id === 'medical' && val === 0) {
+              val = source.medicalAllowance !== undefined ? source.medicalAllowance : (source.salaryStructure?.medicalAllowance !== undefined ? source.salaryStructure.medicalAllowance : 0);
+            }
+            if (c.id === 'flexi' && val === 0) {
+              val = source.flexiAmount !== undefined ? source.flexiAmount : (source.salaryStructure?.flexiAmount !== undefined ? source.salaryStructure.flexiAmount : 0);
+            }
             amount = roundAmount(val);
           }
           if (c.id === 'lta') amount = roundAmount(Math.min(amount, ltaCap || amount));

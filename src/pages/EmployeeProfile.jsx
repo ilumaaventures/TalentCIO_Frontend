@@ -142,7 +142,7 @@ const EmployeeProfile = () => {
             const master = buildMasterSalaryStructure(source, payrollConfig);
             if (master) {
                 basicVal = String(master.basicMaster || 0);
-                grossVal = String(master.grossSalary || master.totalEarnings);
+                grossVal = String(master.totalEarnings);
                 mergedSalary.pfEmployer = String(master.pfEmployer || 0);
                 mergedSalary.pfEmployee = String(master.pfEmployee || 0);
                 mergedSalary.gratuity = String(master.gratuity || 0);
@@ -319,7 +319,7 @@ const EmployeeProfile = () => {
                 const master = buildMasterSalaryStructure(source, configData);
                 if (master) {
                     basicVal = String(master.basicMaster || 0);
-                    grossVal = String(master.grossSalary || master.totalEarnings);
+                    grossVal = String(master.totalEarnings);
                     salaryData.pfEmployer = String(master.pfEmployer || 0);
                     salaryData.pfEmployee = String(master.pfEmployee || 0);
                     salaryData.gratuity = String(master.gratuity || 0);

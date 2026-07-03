@@ -976,7 +976,7 @@ const Users = () => {
                         basicVal = String(master.basicMaster);
                         hraVal = String(master.hraMaster);
                         specialVal = String(master.specialAllowance);
-                        grossVal = String(master.grossSalary || master.totalEarnings);
+                        grossVal = String(master.totalEarnings);
                         
                         mergedSalary.pfEmployer = String(master.pfEmployer || 0);
                         mergedSalary.pfEmployee = String(master.pfEmployee || 0);
@@ -1146,7 +1146,7 @@ const Users = () => {
                 salaryData.basic = String(master.basicMaster);
                 salaryData.hra = String(master.hraMaster);
                 salaryData.specialAllowance = String(master.specialAllowance || 0);
-                salaryData.monthlyGross = String(master.grossSalary || master.totalEarnings);
+                salaryData.monthlyGross = String(master.totalEarnings);
                 
                 salaryData.pfEmployer = String(master.pfEmployer || 0);
                 salaryData.pfEmployee = String(master.pfEmployee || 0);
