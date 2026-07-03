@@ -801,6 +801,7 @@ const Onboarding = () => {
           const source = {
             monthlyCTC,
             payType,
+            useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
             pfEnabled: parseBool(mergedSalary.pfEnabled, true),
             esiEnabled: parseBool(mergedSalary.esiEnabled, true),
             ptEnabled: parseBool(mergedSalary.ptEnabled, true),
@@ -1688,6 +1689,7 @@ const Onboarding = () => {
       const source = {
         monthlyCTC,
         payType: salaryData.payType,
+        useSalaryComponents: salaryData.payType !== 'flat' && salaryData.payType !== 'hourly' && parseBool(salaryData.useSalaryComponents, true),
         pfEnabled: parseBool(salaryData.pfEnabled, true),
         esiEnabled: parseBool(salaryData.esiEnabled, true),
         ptEnabled: parseBool(salaryData.ptEnabled, true),
