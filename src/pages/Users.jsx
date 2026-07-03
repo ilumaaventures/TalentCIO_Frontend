@@ -947,6 +947,7 @@ const Users = () => {
                     const source = {
                         monthlyCTC,
                         payType,
+                        useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
                         pfEnabled: parseBool(mergedSalary.pfEnabled, true),
                         esiEnabled: parseBool(mergedSalary.esiEnabled, true),
                         ptEnabled: parseBool(mergedSalary.ptEnabled, true),
@@ -1122,7 +1123,7 @@ const Users = () => {
                 includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
                 basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
                 hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
-                useSalaryComponents: parseBool(salaryData.useSalaryComponents, true),
+                useSalaryComponents: salaryData.payType !== 'flat' && salaryData.payType !== 'hourly' && parseBool(salaryData.useSalaryComponents, true),
                 insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
                 employerNPS: parseFloat(salaryData.employerNPS) || 0,
                 flexiAmount: parseFloat(salaryData.flexiAmount) || 0,

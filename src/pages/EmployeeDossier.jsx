@@ -2614,7 +2614,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             payType: data.compensation?.payType || breakup.payType || 'salaried',
             hourlyRate: data.compensation?.hourlyRate || breakup.hourlyRate || 0,
             hoursWorked: data.compensation?.hoursWorked || breakup.hoursWorked || 160,
-            useSalaryComponents: breakup.useSalaryComponents !== false
+            useSalaryComponents: (data.compensation?.payType || breakup.payType || 'salaried') !== 'flat' && (data.compensation?.payType || breakup.payType || 'salaried') !== 'hourly' && breakup.useSalaryComponents !== false
         };
 
         if (payrollConfig?.salaryComponents) {

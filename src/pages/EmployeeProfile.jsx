@@ -113,6 +113,7 @@ const EmployeeProfile = () => {
             
             const source = {
                 monthlyCTC,
+                useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
                 pfEnabled: parseBool(mergedSalary.pfEnabled, true),
                 esiEnabled: parseBool(mergedSalary.esiEnabled, true),
                 ptEnabled: parseBool(mergedSalary.ptEnabled, true),
@@ -292,6 +293,7 @@ const EmployeeProfile = () => {
                 }
                 const source = {
                     monthlyCTC,
+                    useSalaryComponents: salaryData.payType !== 'flat' && salaryData.payType !== 'hourly' && salaryData.useSalaryComponents !== false,
                     pfEnabled: salaryData.pfEnabled !== false,
                     esiEnabled: salaryData.esiEnabled !== false,
                     ptEnabled: salaryData.ptEnabled !== false,
