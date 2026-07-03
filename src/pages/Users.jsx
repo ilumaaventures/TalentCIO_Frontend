@@ -13,6 +13,13 @@ import { createCachePayload, readSessionCache } from '../utils/cache';
 import { exportCandidateHRIS } from '../utils/hrisExporter';
 import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT } from '../utils/payroll';
 
+// Safely parse a boolean that may arrive as boolean false OR string "false" from a Mongoose Map.
+const parseBool = (val, defaultVal = true) => {
+    if (val === false || val === 'false') return false;
+    if (val === true || val === 'true') return true;
+    return defaultVal;
+};
+
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
     { code: 'any', name: 'Any Time' }
@@ -940,13 +947,13 @@ const Users = () => {
                     const source = {
                         monthlyCTC,
                         payType,
-                        pfEnabled: mergedSalary.pfEnabled !== false,
-                        esiEnabled: mergedSalary.esiEnabled !== false,
-                        ptEnabled: mergedSalary.ptEnabled !== false,
-                        lwfEnabled: mergedSalary.lwfEnabled !== false,
-                        gratuityEnabled: mergedSalary.gratuityEnabled !== false,
-                        includePfInCTC: !!mergedSalary.includePfInCTC,
-                        includeGratuityInCTC: mergedSalary.includeGratuityInCTC !== false,
+                        pfEnabled: parseBool(mergedSalary.pfEnabled, true),
+                        esiEnabled: parseBool(mergedSalary.esiEnabled, true),
+                        ptEnabled: parseBool(mergedSalary.ptEnabled, true),
+                        lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
+                        gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+                        includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
+                        includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                         basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
                         hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
                         insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
@@ -1050,16 +1057,16 @@ const Users = () => {
                 annualCTC: comp.ctc ? String(comp.ctc * 12) : '',
                 monthlyCTC: comp.ctc ? String(comp.ctc) : '',
                 payType: breakup.payType || 'salaried',
-                pfEnabled: breakup.pfEnabled !== false,
-                esiEnabled: breakup.esiEnabled !== false,
-                ptEnabled: breakup.ptEnabled !== false,
-                lwfEnabled: breakup.lwfEnabled !== false,
-                gratuityEnabled: breakup.gratuityEnabled !== false,
-                includePfInCTC: !!breakup.includePfInCTC,
-                includeGratuityInCTC: breakup.includeGratuityInCTC !== false,
+                pfEnabled: parseBool(breakup.pfEnabled, true),
+                esiEnabled: parseBool(breakup.esiEnabled, true),
+                ptEnabled: parseBool(breakup.ptEnabled, true),
+                lwfEnabled: parseBool(breakup.lwfEnabled, true),
+                gratuityEnabled: parseBool(breakup.gratuityEnabled, true),
+                includePfInCTC: parseBool(breakup.includePfInCTC, false),
+                includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
                 basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : null,
                 hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : null,
-                useSalaryComponents: breakup.useSalaryComponents !== false,
+                useSalaryComponents: parseBool(breakup.useSalaryComponents, true),
                 ptState: breakup.ptState || 'MH',
                 professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
                 insuranceAmount: comp.insuranceAmount || 0,
@@ -1106,16 +1113,16 @@ const Users = () => {
             const source = {
                 monthlyCTC,
                 payType: salaryData.payType,
-                pfEnabled: salaryData.pfEnabled !== false,
-                esiEnabled: salaryData.esiEnabled !== false,
-                ptEnabled: salaryData.ptEnabled !== false,
-                lwfEnabled: salaryData.lwfEnabled !== false,
-                gratuityEnabled: salaryData.gratuityEnabled !== false,
-                includePfInCTC: !!salaryData.includePfInCTC,
-                includeGratuityInCTC: salaryData.includeGratuityInCTC !== false,
+                pfEnabled: parseBool(salaryData.pfEnabled, true),
+                esiEnabled: parseBool(salaryData.esiEnabled, true),
+                ptEnabled: parseBool(salaryData.ptEnabled, true),
+                lwfEnabled: parseBool(salaryData.lwfEnabled, true),
+                gratuityEnabled: parseBool(salaryData.gratuityEnabled, true),
+                includePfInCTC: parseBool(salaryData.includePfInCTC, false),
+                includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
                 basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
                 hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
-                useSalaryComponents: salaryData.useSalaryComponents !== false,
+                useSalaryComponents: parseBool(salaryData.useSalaryComponents, true),
                 insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
                 employerNPS: parseFloat(salaryData.employerNPS) || 0,
                 flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
@@ -1986,121 +1993,130 @@ const Users = () => {
                                             {formData.salary.payType === 'salaried' && (
                                                 <>
                                                     {/* Statutory Toggles */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Statutory Toggles</div>
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">Provident Fund (PF)</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={formData.salary.pfEnabled !== false}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">Gratuity Accrual</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={formData.salary.gratuityEnabled !== false}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">ESI Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={formData.salary.esiEnabled !== false}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-
-                                                            <label className="flex items-center justify-between p-2 rounded-lg border border-slate-50 bg-slate-50/20 cursor-pointer">
-                                                                <span className="text-xs font-medium text-slate-600">LWF Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={formData.salary.lwfEnabled !== false}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-                                                        </div>
-
-                                                        {formData.salary.pfEnabled !== false && (
-                                                            <label className="flex items-center justify-between p-2 border-t border-slate-50 cursor-pointer">
-                                                                <span className="text-xs text-slate-500">Include Employer PF in CTC</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={!!formData.salary.includePfInCTC}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-                                                        )}
-
-                                                        {formData.salary.gratuityEnabled !== false && (
-                                                            <label className="flex items-center justify-between p-2 border-t border-slate-50 cursor-pointer">
-                                                                <span className="text-xs text-slate-500">Include Gratuity in CTC</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={formData.salary.includeGratuityInCTC !== false}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                                />
-                                                            </label>
-                                                        )}
-                                                    </div>
-
-                                                    {/* State Tax (PT) */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Professional Tax (PT)</span>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={formData.salary.ptEnabled !== false}
-                                                                onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
-                                                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                                            />
-                                                        </div>
-                                                        {formData.salary.ptEnabled !== false && (
-                                                            <div className="space-y-2">
-                                                                <select
-                                                                    value={formData.salary.ptState || 'MH'}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
-                                                                    className="zoho-input"
-                                                                >
-                                                                    <optgroup label="── No PT / Manual">
-                                                                        <option value="">None — use manual override below</option>
-                                                                        <option value="custom">Custom Override</option>
-                                                                    </optgroup>
-                                                                    <optgroup label="── States that levy PT">
-                                                                        {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
-                                                                            <option key={s.code} value={s.code}>{s.name}</option>
-                                                                        ))}
-                                                                    </optgroup>
-                                                                    <optgroup label="── States with no PT">
-                                                                        {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
-                                                                            <option key={s.code} value={s.code}>{s.name}</option>
-                                                                        ))}
-                                                                    </optgroup>
-                                                                </select>
-                                                                {formData.salary.ptState === 'custom' && (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs text-slate-500">Amount (₹):</span>
+                                                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4 shadow-sm">
+                                                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Statutory Toggles</div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            {/* PF Card */}
+                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-semibold text-slate-700">Provident Fund (PF)</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={parseBool(formData.salary.pfEnabled, true)}
+                                                                        onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
+                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                                {parseBool(formData.salary.pfEnabled, true) && (
+                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
+                                                                        <span className="text-[11px] text-slate-500">Include Employer PF in CTC</span>
                                                                         <input
-                                                                            type="number"
-                                                                            value={formData.salary.professionalTax || 0}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
-                                                                            className="w-24 text-xs rounded-lg border border-slate-200 px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                                            type="checkbox"
+                                                                            checked={!!formData.salary.includePfInCTC}
+                                                                            onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
+                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                                                                         />
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                        )}
+
+                                                            {/* Gratuity Card */}
+                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-semibold text-slate-700">Gratuity Accrual</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={parseBool(formData.salary.gratuityEnabled, true)}
+                                                                        onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
+                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                                {parseBool(formData.salary.gratuityEnabled, true) && (
+                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
+                                                                        <span className="text-[11px] text-slate-500">Include Gratuity in CTC</span>
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={parseBool(formData.salary.includeGratuityInCTC, true)}
+                                                                            onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
+                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* ESI Card */}
+                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <span className="text-xs font-semibold text-slate-700">ESI Applicable</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.esiEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+
+                                                            {/* LWF Card */}
+                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                <span className="text-xs font-semibold text-slate-700">LWF Applicable</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.lwfEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* PT Card */}
+                                                        <div className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-semibold text-slate-700">Professional Tax (PT)</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.ptEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                            {parseBool(formData.salary.ptEnabled, true) && (
+                                                                <div className="flex gap-2 items-center border-t border-slate-100 pt-2 mt-1">
+                                                                    <div className="flex-1">
+                                                                        <select
+                                                                            value={formData.salary.ptState || 'MH'}
+                                                                            onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
+                                                                            className="w-full p-2 border border-slate-300 rounded-lg text-xs outline-none bg-white text-slate-700"
+                                                                        >
+                                                                            <optgroup label="── No PT / Manual">
+                                                                                <option value="">None — use manual override below</option>
+                                                                                <option value="custom">Custom Override</option>
+                                                                            </optgroup>
+                                                                            <optgroup label="── States that levy PT">
+                                                                                {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
+                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
+                                                                                ))}
+                                                                            </optgroup>
+                                                                            <optgroup label="── States with no PT">
+                                                                                {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
+                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
+                                                                                ))}
+                                                                            </optgroup>
+                                                                        </select>
+                                                                    </div>
+                                                                    {formData.salary.ptState === 'custom' && (
+                                                                        <div className="w-[100px] flex items-center gap-1">
+                                                                            <span className="text-[11px] text-slate-500">₹</span>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={formData.salary.professionalTax || 0}
+                                                                                onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
+                                                                                className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none text-slate-700"
+                                                                                placeholder="Amount"
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
 
                                                     {/* Dynamic Salary Components Breakup */}
