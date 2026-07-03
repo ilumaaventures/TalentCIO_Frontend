@@ -831,7 +831,7 @@ const Onboarding = () => {
             basicVal = String(master.basicMaster);
             hraVal = String(master.hraMaster);
             specialVal = String(master.specialAllowance);
-            grossVal = String(master.grossSalary || master.totalEarnings);
+            grossVal = String(master.totalEarnings);
             
             mergedSalary.pfEmployer = String(master.pfEmployer || 0);
             mergedSalary.pfEmployee = String(master.pfEmployee || 0);
@@ -843,7 +843,7 @@ const Onboarding = () => {
             mergedSalary.professionalTax = String(master.professionalTax || 0);
             mergedSalary.tds = String(master.tds || 0);
             mergedSalary.netTakeHome = String(master.netTakeHome || 0);
-            mergedSalary.monthlyGross = String(master.grossSalary || master.totalEarnings);
+            mergedSalary.monthlyGross = String(master.totalEarnings);
             
             if (master.earningsMap) {
               Object.entries(master.earningsMap).forEach(([id, val]) => {
@@ -1720,7 +1720,7 @@ const Onboarding = () => {
         salaryData.basic = String(master.basicMaster);
         salaryData.hra = String(master.hraMaster);
         salaryData.specialAllowance = String(master.specialAllowance || 0);
-        salaryData.monthlyGross = String(master.grossSalary || master.totalEarnings);
+        salaryData.monthlyGross = String(master.totalEarnings);
         
         salaryData.pfEmployer = String(master.pfEmployer || 0);
         salaryData.pfEmployee = String(master.pfEmployee || 0);
