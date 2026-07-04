@@ -80,6 +80,8 @@ const Discussions = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [limit, setLimit] = useState(30);
+    const [statusFilter, setStatusFilter] = useState('');
+    const [projectFilter, setProjectFilter] = useState('');
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
     const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
@@ -87,7 +89,7 @@ const Discussions = () => {
         const force = options === true || !!options.force;
         const silent = typeof options === 'object' ? !!options.silent : false;
 
-        const CACHE_KEY = `discussion_data_${user?._id}_p${page}`;
+        const CACHE_KEY = `discussion_data_${user?._id}_p${page}_s${statusFilter}_pj${projectFilter}`;
 
         // 1. Initial Load from Cache
         if (!silent && !force) {
@@ -110,7 +112,13 @@ const Discussions = () => {
                 headers['Pragma'] = 'no-cache';
             }
             const res = await api.get('/discussions/bootstrap', {
-                params: { page, limit, _t: force ? Date.now() : undefined },
+                params: {
+                    page,
+                    limit,
+                    status: statusFilter || undefined,
+                    project: projectFilter || undefined,
+                    _t: force ? Date.now() : undefined
+                },
                 headers
             });
             const freshData = {
@@ -173,7 +181,7 @@ const Discussions = () => {
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [limit, user?._id]);
+    }, [limit, user?._id, statusFilter, projectFilter]);
 
     const fetchSupervisors = useCallback(async () => {
         const SUPERVISOR_CACHE_KEY = `supervisors_data_${user?._id}`;
@@ -1029,6 +1037,48 @@ const Discussions = () => {
 
                 {/* List View */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+
+                    {/* Filters Bar */}
+                    <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-4 items-center justify-between bg-slate-50/50 rounded-t-xl">
+                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                            <div className="flex flex-col gap-1 min-w-[150px] w-full sm:w-auto">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</label>
+                                <select
+                                    value={statusFilter}
+                                    onChange={(e) => {
+                                        setStatusFilter(e.target.value);
+                                        setCurrentPage(1);
+                                    }}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700"
+                                >
+                                    <option value="">All Statuses</option>
+                                    <option value="inprogress">In Progress</option>
+                                    <option value="planning">Planning</option>
+                                    <option value="on-hold">On-hold</option>
+                                    <option value="mark as complete">Mark as complete</option>
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-1 min-w-[180px] w-full sm:w-auto">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project</label>
+                                <select
+                                    value={projectFilter}
+                                    onChange={(e) => {
+                                        setProjectFilter(e.target.value);
+                                        setCurrentPage(1);
+                                    }}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700 w-full"
+                                >
+                                    <option value="">All Projects</option>
+                                    <option value="null">No Project</option>
+                                    {projects.map((project) => (
+                                        <option key={project._id} value={project._id}>
+                                            {project.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* ── Mobile card list (hidden on md+) ── */}
                     <div className="md:hidden divide-y divide-slate-100">
