@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import api from '../api/axios';
 import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, MoreVertical, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -79,9 +79,11 @@ const Discussions = () => {
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [limit, setLimit] = useState(30);
+    const [limit, setLimit] = useState(100);
     const [statusFilter, setStatusFilter] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
+    const [sortField, setSortField] = useState(null); // 'dueDate' | 'createdAt' | null
+    const [sortDirection, setSortDirection] = useState(null); // 'asc' | 'desc' | null
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
     const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
@@ -241,6 +243,61 @@ const Discussions = () => {
     useEffect(() => {
         fetchAssignedProjects();
     }, [fetchAssignedProjects]);
+
+    const sortedDiscussions = useMemo(() => {
+        if (!sortField || !sortDirection) {
+            return discussions;
+        }
+
+        return [...discussions].sort((a, b) => {
+            const valA = a[sortField];
+            const valB = b[sortField];
+            
+            const dateA = valA ? new Date(valA).getTime() : 0;
+            const dateB = valB ? new Date(valB).getTime() : 0;
+
+            if (sortDirection === 'asc') {
+                return dateA - dateB;
+            } else {
+                return dateB - dateA;
+            }
+        });
+    }, [discussions, sortField, sortDirection]);
+
+    const handleSortClick = (field) => {
+        if (sortField !== field) {
+            setSortField(field);
+            setSortDirection('asc');
+        } else {
+            if (sortDirection === 'asc') {
+                setSortDirection('desc');
+            } else if (sortDirection === 'desc') {
+                setSortField(null);
+                setSortDirection(null);
+            }
+        }
+    };
+
+    const renderSortArrow = (field) => {
+        if (sortField !== field) {
+            return <span className="text-slate-300 ml-1">↕</span>;
+        }
+        if (sortDirection === 'asc') {
+            return <span className="text-indigo-600 ml-1">↑</span>;
+        }
+        if (sortDirection === 'desc') {
+            return <span className="text-indigo-600 ml-1">↓</span>;
+        }
+        return null;
+    };
+
+    const handleClearAll = () => {
+        setStatusFilter('');
+        setProjectFilter('');
+        setSortField(null);
+        setSortDirection(null);
+        setCurrentPage(1);
+    };
 
     // Close export menu when clicking outside
     useEffect(() => {
@@ -1078,6 +1135,15 @@ const Discussions = () => {
                                 </select>
                             </div>
                         </div>
+                        {(statusFilter || projectFilter || sortField) && (
+                            <button
+                                onClick={handleClearAll}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors cursor-pointer self-start sm:self-center"
+                            >
+                                <X size={14} />
+                                <span>Clear Filters</span>
+                            </button>
+                        )}
                     </div>
 
                     {/* ── Mobile card list (hidden on md+) ── */}
@@ -1091,7 +1157,7 @@ const Discussions = () => {
                                 <p className="text-sm">Start a new discussion.</p>
                             </div>
                         ) : (
-                            discussions.map((discussion, index) => (
+                            sortedDiscussions.map((discussion, index) => (
                                 <React.Fragment key={discussion._id}>
                                     <div className="p-4 space-y-2 hover:bg-slate-50 transition-colors">
                                         <div className="flex items-start justify-between gap-2">
@@ -1151,8 +1217,24 @@ const Discussions = () => {
                                 <tr>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[6%]">S.No</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[34%]">Description</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Created Date</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Due Date</th>
+                                    <th 
+                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
+                                        onClick={() => handleSortClick('createdAt')}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Created Date</span>
+                                            {renderSortArrow('createdAt')}
+                                        </div>
+                                    </th>
+                                    <th 
+                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
+                                        onClick={() => handleSortClick('dueDate')}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Due Date</span>
+                                            {renderSortArrow('dueDate')}
+                                        </div>
+                                    </th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Project</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[13%]">Status</th>
                                     <th className="px-6 py-4 text-right font-semibold text-slate-600 w-[8%]">Actions</th>
@@ -1172,7 +1254,7 @@ const Discussions = () => {
                                         </div>
                                     </td></tr>
                                 ) : (
-                                    discussions.map((discussion, index) => (
+                                    sortedDiscussions.map((discussion, index) => (
                                         <React.Fragment key={discussion._id}>
                                             <tr className="hover:bg-slate-50 transition-colors group">
                                                 <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
@@ -1259,9 +1341,9 @@ const Discussions = () => {
                                         }}
                                         className="text-sm border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                     >
-                                        <option value={30}>30 entries</option>
-                                        <option value={50}>50 entries</option>
                                         <option value={100}>100 entries</option>
+                                        <option value={150}>150 entries</option>
+                                        <option value={200}>200 entries</option>
                                     </select>
                                 </div>
                             </div>
