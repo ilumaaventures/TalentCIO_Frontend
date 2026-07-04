@@ -11,6 +11,19 @@ import { Download, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 
+const useDebounce = (value, delay) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+    return debouncedValue;
+};
+
 const Discussions = () => {
     const navigate = useNavigate();
     const [discussions, setDiscussions] = useState([]);
@@ -41,14 +54,24 @@ const Discussions = () => {
     const [projects, setProjects] = useState([]);
     const [activeMenuId, setActiveMenuId] = useState(null);
     const [detailsDiscussion, setDetailsDiscussion] = useState(null);
-    const [createVisibleSearch, setCreateVisibleSearch] = useState('');
-    const [editVisibleSearch, setEditVisibleSearch] = useState('');
+
+    const [createVisibleSearchVal, setCreateVisibleSearchVal] = useState('');
+    const createVisibleSearch = useDebounce(createVisibleSearchVal, 300);
+
+    const [editVisibleSearchVal, setEditVisibleSearchVal] = useState('');
+    const editVisibleSearch = useDebounce(editVisibleSearchVal, 300);
+
+    const [createSupervisorSearchVal, setCreateSupervisorSearchVal] = useState('');
+    const createSupervisorSearch = useDebounce(createSupervisorSearchVal, 300);
+
+    const [editSupervisorSearchVal, setEditSupervisorSearchVal] = useState('');
+    const editSupervisorSearch = useDebounce(editSupervisorSearchVal, 300);
 
     const [newDiscussion, setNewDiscussion] = useState({
         discussion: '',
         status: 'inprogress',
         dueDate: '',
-        supervisor: '',
+        supervisor: [],
         visibleToUserIds: [],
         project: ''
     });
@@ -63,7 +86,7 @@ const Discussions = () => {
     const fetchDiscussions = useCallback(async (page, options = {}) => {
         const force = options === true || !!options.force;
         const silent = typeof options === 'object' ? !!options.silent : false;
-        
+
         const CACHE_KEY = `discussion_data_${user?._id}_p${page}`;
 
         // 1. Initial Load from Cache
@@ -81,14 +104,22 @@ const Discussions = () => {
 
         try {
             if (!silent && !readSessionCache(CACHE_KEY)) setLoading(true);
-            const res = await api.get('/discussions/bootstrap', { params: { page, limit } });
+            const headers = {};
+            if (force) {
+                headers['Cache-Control'] = 'no-cache';
+                headers['Pragma'] = 'no-cache';
+            }
+            const res = await api.get('/discussions/bootstrap', {
+                params: { page, limit, _t: force ? Date.now() : undefined },
+                headers
+            });
             const freshData = {
                 discussions: res.data.discussions || [],
                 supervisors: res.data.supervisors || [],
                 totalPages: res.data.totalPages || 1,
                 currentPage: res.data.currentPage || page
             };
-            const newFingerprint = (freshData.discussions || []).map(d => `${d._id}-${d.status}-${d.discussion?.substring(0, 20)}-${d.dueDate}`).join('|');
+            const newFingerprint = (freshData.discussions || []).map(d => `${d._id}-${d.status}-${d.discussion}-${d.dueDate}`).join('|');
             const cachedValue = readSessionCache(CACHE_KEY);
             const oldFingerprint = cachedValue?.fingerprint || '';
 
@@ -120,7 +151,7 @@ const Discussions = () => {
                     totalPages: freshData.totalPages,
                     currentPage: freshData.currentPage
                 }, newFingerprint);
-                
+
                 sessionStorage.setItem(CACHE_KEY, JSON.stringify(payload));
 
                 if (freshData.supervisors?.length > 0) {
@@ -146,7 +177,7 @@ const Discussions = () => {
 
     const fetchSupervisors = useCallback(async () => {
         const SUPERVISOR_CACHE_KEY = `supervisors_data_${user?._id}`;
-        
+
         // Load from cache first
         const cached = readSessionCache(SUPERVISOR_CACHE_KEY);
         if (cached) {
@@ -243,11 +274,12 @@ const Discussions = () => {
             discussion: '',
             status: 'inprogress',
             dueDate: '',
-            supervisor: '',
+            supervisor: [],
             visibleToUserIds: [],
             project: ''
         });
-        setCreateVisibleSearch('');
+        setCreateVisibleSearchVal('');
+        setCreateSupervisorSearchVal('');
     };
 
     const handleExportExcel = async () => {
@@ -382,7 +414,7 @@ const Discussions = () => {
         try {
             await api.put(`/discussions/${id}`, { status: newStatus });
             toast.success('Status updated');
-            fetchDiscussions(currentPage, { silent: true }); // Sync cache and server state
+            fetchDiscussions(currentPage, { silent: true, force: true }); // Sync cache and server state
         } catch (error) {
             console.error('Error updating status:', error);
             toast.error('Failed to update status');
@@ -395,8 +427,8 @@ const Discussions = () => {
             toast.error('Description is required');
             return;
         }
-        if (!newDiscussion.supervisor) {
-            toast.error('Supervisor is required');
+        if (!newDiscussion.supervisor || !newDiscussion.supervisor.length) {
+            toast.error('At least one supervisor is required');
             return;
         }
         if (!newDiscussion.visibleToUserIds.length) {
@@ -417,7 +449,7 @@ const Discussions = () => {
                 setDiscussions(prev => [createdDiscussion, ...prev].slice(0, limit));
             }
 
-            fetchDiscussions(1, { silent: true }); // Sync list and cache
+            fetchDiscussions(1, { silent: true, force: true }); // Sync list and cache
 
             setIsCreating(false);
             resetCreateForm();
@@ -437,11 +469,14 @@ const Discussions = () => {
             discussion: discussion.discussion,
             status: discussion.status,
             dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : '',
-            supervisor: discussion.supervisor?._id || discussion.supervisor,
+            supervisor: Array.isArray(discussion.supervisor)
+                ? discussion.supervisor.map((s) => s._id || s)
+                : (discussion.supervisor ? [discussion.supervisor._id || discussion.supervisor] : []),
             visibleToUserIds: Array.isArray(discussion.visibleToUsers) ? discussion.visibleToUsers.map((u) => u._id || u) : [],
             project: discussion.project?._id || discussion.project || ''
         });
-        setEditVisibleSearch('');
+        setEditVisibleSearchVal('');
+        setEditSupervisorSearchVal('');
     };
 
     const handleUpdateInline = async (id) => {
@@ -449,8 +484,8 @@ const Discussions = () => {
             toast.error('Description is required');
             return;
         }
-        if (!editData.supervisor) {
-            toast.error('Supervisor is required');
+        if (!editData.supervisor || !editData.supervisor.length) {
+            toast.error('At least one supervisor is required');
             return;
         }
         if (!editData.visibleToUserIds?.length) {
@@ -479,7 +514,7 @@ const Discussions = () => {
                 });
             });
 
-            fetchDiscussions(currentPage, { silent: true }); // Background fetch to update cache
+            fetchDiscussions(currentPage, { silent: true, force: true }); // Background fetch to update cache
 
             setEditingId(null);
             setEditData(null);
@@ -500,7 +535,7 @@ const Discussions = () => {
             try {
                 await api.delete(`/discussions/${id}`);
                 toast.success('Discussion deleted');
-                fetchDiscussions(currentPage, { silent: true }); // Re-sync and pull in next page item if needed
+                fetchDiscussions(currentPage, { silent: true, force: true }); // Re-sync and pull in next page item if needed
             } catch (error) {
                 console.error('Error deleting discussion:', error);
                 toast.error('Failed to delete discussion');
@@ -547,7 +582,8 @@ const Discussions = () => {
     const handleCreateButtonClick = () => {
         setEditingId(null);
         setEditData(null);
-        setEditVisibleSearch('');
+        setEditVisibleSearchVal('');
+        setEditSupervisorSearchVal('');
         setIsCreating(true);
         setActiveMenuId(null);
     };
@@ -556,12 +592,13 @@ const Discussions = () => {
         setIsCreating(false);
         setEditingId(null);
         setEditData(null);
-        setEditVisibleSearch('');
+        setEditVisibleSearchVal('');
+        setEditSupervisorSearchVal('');
         resetCreateForm();
     };
 
     const getFilteredUsers = (searchTerm) => {
-        const query = searchTerm.trim().toLowerCase();
+        const query = (searchTerm || '').trim().toLowerCase();
         if (!query) return supervisors;
         return supervisors.filter((supervisor) => (
             `${supervisor.firstName || ''} ${supervisor.lastName || ''}`.toLowerCase().includes(query)
@@ -576,8 +613,23 @@ const Discussions = () => {
         setter(nextIds);
     };
 
-    const renderVisibleUserPicker = ({ selectedIds, onToggle, searchValue, onSearchChange }) => {
-        const filteredUsers = getFilteredUsers(searchValue);
+    const handleSupervisorToggle = (setter, selectedSupervisorIds, visibleSetter, selectedVisibleIds, userId) => {
+        const isAdding = !selectedSupervisorIds.includes(userId);
+        
+        // 1. Update supervisors array
+        const nextSupervisorIds = isAdding
+            ? [...selectedSupervisorIds, userId]
+            : selectedSupervisorIds.filter((id) => id !== userId);
+        setter(nextSupervisorIds);
+
+        // 2. If adding, automatically add to visibleToUserIds
+        if (isAdding && !selectedVisibleIds.includes(userId)) {
+            visibleSetter([...selectedVisibleIds, userId]);
+        }
+    };
+
+    const renderUserPicker = ({ selectedIds, onToggle, searchValue, onSearchChange, debouncedSearchValue, placeholder = "Search users", subtitle = "" }) => {
+        const filteredUsers = getFilteredUsers(debouncedSearchValue);
 
         return (
             <div className="rounded-xl border border-slate-200 bg-white">
@@ -588,34 +640,34 @@ const Discussions = () => {
                             type="text"
                             value={searchValue}
                             onChange={(event) => onSearchChange(event.target.value)}
-                            placeholder="Search users"
+                            placeholder={placeholder}
                             className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
                         />
                     </div>
                     <p className="text-xs text-slate-500">
-                        {selectedIds.length ? `${selectedIds.length} user${selectedIds.length > 1 ? 's' : ''} selected` : 'Choose who can view this discussion'}
+                        {selectedIds.length ? `${selectedIds.length} selected` : subtitle}
                     </p>
                 </div>
                 <div className="max-h-52 overflow-y-auto p-2">
                     {filteredUsers.length === 0 ? (
                         <div className="px-3 py-6 text-center text-sm text-slate-400">No users found</div>
                     ) : (
-                        filteredUsers.map((supervisor) => {
-                            const checked = selectedIds.includes(supervisor._id);
+                        filteredUsers.map((u) => {
+                            const checked = selectedIds.includes(u._id);
 
                             return (
                                 <label
-                                    key={supervisor._id}
+                                    key={u._id}
                                     className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-colors ${checked ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-700'}`}
                                 >
                                     <input
                                         type="checkbox"
                                         checked={checked}
-                                        onChange={() => onToggle(supervisor._id)}
+                                        onChange={() => onToggle(u._id)}
                                         className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                                     />
                                     <div className="min-w-0">
-                                        <p className="truncate text-sm font-medium">{getUserDisplayName(supervisor)}</p>
+                                        <p className="truncate text-sm font-medium">{getUserDisplayName(u)}</p>
                                     </div>
                                 </label>
                             );
@@ -626,7 +678,175 @@ const Discussions = () => {
         );
     };
 
-    const renderActionMenu = (discussion, align = 'right') => {
+    const renderDiscussionForm = (isEdit = false) => {
+        return (
+            <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 ${isEdit ? 'my-2 bg-slate-50/50' : 'mb-6'}`}>
+                <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 className="text-lg font-semibold text-slate-800">
+                                {isEdit ? 'Edit Discussion' : 'Create Discussion'}
+                            </h2>
+                            <p className="text-sm text-slate-500">
+                                Choose supervisors and select visible users from the searchable lists.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleCancelForm}
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-2 lg:col-span-2">
+                            <label className="text-sm font-medium text-slate-700">Description</label>
+                            <textarea
+                                rows={4}
+                                value={isEdit ? editData?.discussion || '' : newDiscussion.discussion}
+                                onChange={(event) => isEdit
+                                    ? setEditData({ ...editData, discussion: event.target.value })
+                                    : setNewDiscussion({ ...newDiscussion, discussion: event.target.value })}
+                                placeholder="Enter full discussion details"
+                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Due Date</label>
+                            <input
+                                type="date"
+                                value={isEdit ? editData?.dueDate || '' : newDiscussion.dueDate}
+                                onChange={(event) => isEdit
+                                    ? setEditData({ ...editData, dueDate: event.target.value })
+                                    : setNewDiscussion({ ...newDiscussion, dueDate: event.target.value })}
+                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Status</label>
+                            <select
+                                disabled={isEdit}
+                                value={isEdit ? editData?.status || 'inprogress' : newDiscussion.status}
+                                onChange={(event) => isEdit
+                                    ? setEditData({ ...editData, status: event.target.value })
+                                    : setNewDiscussion({ ...newDiscussion, status: event.target.value })}
+                                className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${isEdit ? 'bg-slate-50 cursor-not-allowed text-slate-500 border-slate-200' : getStatusBadgeColor(isEdit ? editData?.status : newDiscussion.status)}`}
+                            >
+                                <option value="inprogress">In Progress</option>
+                                <option value="planning">Planning</option>
+                                <option value="on-hold">On-hold</option>
+                                <option value="mark as complete">Mark as complete</option>
+                            </select>
+                        </div>
+
+                        <div className="space-y-2 lg:col-span-2">
+                            <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Supervisors</label>
+                            {isEdit ? renderUserPicker({
+                                selectedIds: editData?.supervisor || [],
+                                onToggle: (userId) => handleSupervisorToggle(
+                                    (nextIds) => setEditData((prev) => ({ ...prev, supervisor: nextIds })),
+                                    editData?.supervisor || [],
+                                    (nextVisible) => setEditData((prev) => ({ ...prev, visibleToUserIds: nextVisible })),
+                                    editData?.visibleToUserIds || [],
+                                    userId
+                                ),
+                                searchValue: editSupervisorSearchVal,
+                                onSearchChange: setEditSupervisorSearchVal,
+                                debouncedSearchValue: editSupervisorSearch,
+                                placeholder: "Search supervisors",
+                                subtitle: "Choose supervisors for this discussion"
+                            }) : renderUserPicker({
+                                selectedIds: newDiscussion.supervisor || [],
+                                onToggle: (userId) => handleSupervisorToggle(
+                                    (nextIds) => setNewDiscussion((prev) => ({ ...prev, supervisor: nextIds })),
+                                    newDiscussion.supervisor || [],
+                                    (nextVisible) => setNewDiscussion((prev) => ({ ...prev, visibleToUserIds: nextVisible })),
+                                    newDiscussion.visibleToUserIds || [],
+                                    userId
+                                ),
+                                searchValue: createSupervisorSearchVal,
+                                onSearchChange: setCreateSupervisorSearchVal,
+                                debouncedSearchValue: createSupervisorSearch,
+                                placeholder: "Search supervisors",
+                                subtitle: "Choose supervisors for this discussion"
+                            })}
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Project</label>
+                            <select
+                                value={isEdit ? editData?.project || '' : newDiscussion.project}
+                                onChange={(event) => isEdit
+                                    ? setEditData({ ...editData, project: event.target.value })
+                                    : setNewDiscussion({ ...newDiscussion, project: event.target.value })}
+                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                            >
+                                <option value="">Select Project</option>
+                                {projects.map((project) => (
+                                    <option key={project._id} value={project._id}>
+                                        {project.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-2 lg:col-span-2">
+                            <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Visible To</label>
+                            {isEdit ? renderUserPicker({
+                                selectedIds: editData?.visibleToUserIds || [],
+                                onToggle: (userId) => handleVisibleUserToggle(
+                                    (nextIds) => setEditData((prev) => ({ ...prev, visibleToUserIds: nextIds })),
+                                    editData?.visibleToUserIds || [],
+                                    userId
+                                ),
+                                searchValue: editVisibleSearchVal,
+                                onSearchChange: setEditVisibleSearchVal,
+                                debouncedSearchValue: editVisibleSearch,
+                                placeholder: "Search users",
+                                subtitle: "Choose who can view this discussion"
+                            }) : renderUserPicker({
+                                selectedIds: newDiscussion.visibleToUserIds || [],
+                                onToggle: (userId) => handleVisibleUserToggle(
+                                    (nextIds) => setNewDiscussion((prev) => ({ ...prev, visibleToUserIds: nextIds })),
+                                    newDiscussion.visibleToUserIds || [],
+                                    userId
+                                ),
+                                searchValue: createVisibleSearchVal,
+                                onSearchChange: setCreateVisibleSearchVal,
+                                debouncedSearchValue: createVisibleSearch,
+                                placeholder: "Search users",
+                                subtitle: "Choose who can view this discussion"
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <button
+                            type="button"
+                            onClick={handleCancelForm}
+                            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => isEdit ? handleUpdateInline(editingId) : handleCreateInline()}
+                            disabled={isSaving}
+                            className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                            {isSaving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Discussion'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderActionMenu = (discussion, index, align = 'right') => {
         const hasActions = discussion?.canEdit || discussion?.canDelete || discussion?.discussion;
 
         if (!hasActions) return null;
@@ -800,153 +1020,10 @@ const Discussions = () => {
                     </div>
                 </div>
 
-                {(isCreating || editingId) && (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                        <div className="flex flex-col gap-4">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <h2 className="text-lg font-semibold text-slate-800">
-                                        {editingId ? 'Edit Discussion' : 'Create Discussion'}
-                                    </h2>
-                                    <p className="text-sm text-slate-500">
-                                        Choose a supervisor and select visible users from the searchable list.
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handleCancelForm}
-                                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-
-                            <div className="grid gap-4 lg:grid-cols-2">
-                                <div className="space-y-2 lg:col-span-2">
-                                    <label className="text-sm font-medium text-slate-700">Description</label>
-                                    <textarea
-                                        rows={4}
-                                        value={editingId ? editData?.discussion || '' : newDiscussion.discussion}
-                                        onChange={(event) => editingId
-                                            ? setEditData({ ...editData, discussion: event.target.value })
-                                            : setNewDiscussion({ ...newDiscussion, discussion: event.target.value })}
-                                        placeholder="Enter full discussion details"
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Due Date</label>
-                                    <input
-                                        type="date"
-                                        value={editingId ? editData?.dueDate || '' : newDiscussion.dueDate}
-                                        onChange={(event) => editingId
-                                            ? setEditData({ ...editData, dueDate: event.target.value })
-                                            : setNewDiscussion({ ...newDiscussion, dueDate: event.target.value })}
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Status</label>
-                                        <select
-                                            disabled={!!editingId}
-                                            value={editingId ? editData?.status || 'inprogress' : newDiscussion.status}
-                                            onChange={(event) => editingId
-                                                ? setEditData({ ...editData, status: event.target.value })
-                                                : setNewDiscussion({ ...newDiscussion, status: event.target.value })}
-                                            className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${editingId ? 'bg-slate-50 cursor-not-allowed text-slate-500 border-slate-200' : getStatusBadgeColor(editingId ? editData?.status : newDiscussion.status)}`}
-                                        >
-                                            <option value="inprogress">In Progress</option>
-                                            <option value="planning">Planning</option>
-                                            <option value="on-hold">On-hold</option>
-                                            <option value="mark as complete">Mark as complete</option>
-                                        </select>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Supervisor</label>
-                                    <select
-                                        value={editingId ? editData?.supervisor || '' : newDiscussion.supervisor}
-                                        onChange={(event) => editingId
-                                            ? setEditData({ ...editData, supervisor: event.target.value })
-                                            : setNewDiscussion({ ...newDiscussion, supervisor: event.target.value })}
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                                    >
-                                        <option value="">Select Supervisor</option>
-                                        {supervisors.map((supervisor) => (
-                                            <option key={supervisor._id} value={supervisor._id}>
-                                                {getUserDisplayName(supervisor)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Project</label>
-                                    <select
-                                        value={editingId ? editData?.project || '' : newDiscussion.project}
-                                        onChange={(event) => editingId
-                                            ? setEditData({ ...editData, project: event.target.value })
-                                            : setNewDiscussion({ ...newDiscussion, project: event.target.value })}
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                                    >
-                                        <option value="">Select Project</option>
-                                        {projects.map((project) => (
-                                            <option key={project._id} value={project._id}>
-                                                {project.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="space-y-2 lg:col-span-2">
-                                    <label className="text-sm font-medium text-slate-700">Visible To</label>
-                                    {editingId ? renderVisibleUserPicker({
-                                        selectedIds: editData?.visibleToUserIds || [],
-                                        onToggle: (userId) => handleVisibleUserToggle(
-                                            (nextIds) => setEditData((prev) => ({ ...prev, visibleToUserIds: nextIds })),
-                                            editData?.visibleToUserIds || [],
-                                            userId
-                                        ),
-                                        searchValue: editVisibleSearch,
-                                        onSearchChange: setEditVisibleSearch
-                                    }) : renderVisibleUserPicker({
-                                        selectedIds: newDiscussion.visibleToUserIds,
-                                        onToggle: (userId) => handleVisibleUserToggle(
-                                            (nextIds) => setNewDiscussion((prev) => ({ ...prev, visibleToUserIds: nextIds })),
-                                            newDiscussion.visibleToUserIds,
-                                            userId
-                                        ),
-                                        searchValue: createVisibleSearch,
-                                        onSearchChange: setCreateVisibleSearch
-                                    })}
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                                <button
-                                    type="button"
-                                    onClick={handleCancelForm}
-                                    className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => editingId ? handleUpdateInline(editingId) : handleCreateInline()}
-                                    disabled={isSaving}
-                                    className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
-                                >
-                                    {isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Discussion'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {isCreating && renderDiscussionForm(false)}
 
                 {/* List View */}
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200">
 
                     {/* ── Mobile card list (hidden on md+) ── */}
                     <div className="md:hidden divide-y divide-slate-100">
@@ -960,53 +1037,60 @@ const Discussions = () => {
                             </div>
                         ) : (
                             discussions.map((discussion, index) => (
-                                <div key={discussion._id} className="p-4 space-y-2 hover:bg-slate-50 transition-colors">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                            <span className="text-xs font-semibold text-slate-400 mr-1">#{(currentPage - 1) * limit + index + 1}</span>
-                                            <span className="text-sm text-slate-700 break-words leading-relaxed">
-                                                {truncateDescription(discussion.discussion, 40)}
-                                            </span>
-                                        </div>
-                                        {renderActionMenu(discussion, 'right')}
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <select
-                                            value={discussion.status}
-                                            onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                            disabled={!canUpdateStatus(discussion)}
-                                            className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
-                                        >
-                                            <option value="inprogress">In Progress</option>
-                                            <option value="planning" disabled={!canChangeRestrictedStatus(discussion)}>Planning {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
-                                            <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
-                                            <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
-                                        </select>
-                                        {discussion.project && (
-                                            <span className="px-2 py-0.5 text-xs font-medium bg-slate-200/80 text-slate-700 rounded border border-slate-300 truncate max-w-[150px]">
-                                                {discussion.project.name}
-                                            </span>
-                                        )}
-                                        {discussion.dueDate ? (
-                                            <div className="flex items-center text-slate-500 text-xs">
-                                                <Calendar size={12} className="mr-1 text-slate-400" />
-                                                Due: {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                <React.Fragment key={discussion._id}>
+                                    <div className="p-4 space-y-2 hover:bg-slate-50 transition-colors">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-xs font-semibold text-slate-400 mr-1">#{(currentPage - 1) * limit + index + 1}</span>
+                                                <span className="text-sm text-slate-700 break-words leading-relaxed">
+                                                    {truncateDescription(discussion.discussion, 40)}
+                                                </span>
                                             </div>
-                                        ) : (
-                                            <span className="text-slate-400 text-xs italic">No due date</span>
-                                        )}
-                                        <div className="flex items-center text-slate-500 text-xs">
-                                            <span className="mr-1 text-slate-400">Created:</span>
-                                            {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
+                                            {renderActionMenu(discussion, index, 'right')}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <select
+                                                value={discussion.status}
+                                                onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
+                                                disabled={!canUpdateStatus(discussion)}
+                                                className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+                                            >
+                                                <option value="inprogress">In Progress</option>
+                                                <option value="planning" disabled={!canChangeRestrictedStatus(discussion)}>Planning {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                                <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                                <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                            </select>
+                                            {discussion.project && (
+                                                <span className="px-2 py-0.5 text-xs font-medium bg-slate-200/80 text-slate-700 rounded border border-slate-300 truncate max-w-[150px]">
+                                                    {discussion.project.name}
+                                                </span>
+                                            )}
+                                            {discussion.dueDate ? (
+                                                <div className="flex items-center text-slate-500 text-xs">
+                                                    <Calendar size={12} className="mr-1 text-slate-400" />
+                                                    Due: {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-400 text-xs italic">No due date</span>
+                                            )}
+                                            <div className="flex items-center text-slate-500 text-xs">
+                                                <span className="mr-1 text-slate-400">Created:</span>
+                                                {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                    {editingId === discussion._id && (
+                                        <div className="px-4 pb-4">
+                                            {renderDiscussionForm(true)}
+                                        </div>
+                                    )}
+                                </React.Fragment>
                             ))
                         )}
                     </div>
 
                     {/* ── Desktop table (hidden below md) ── */}
-                    <div className="hidden md:block overflow-x-auto">
+                    <div className="hidden md:block overflow-visible">
                         <table className="min-w-full text-sm table-fixed">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
@@ -1034,59 +1118,68 @@ const Discussions = () => {
                                     </td></tr>
                                 ) : (
                                     discussions.map((discussion, index) => (
-                                        <tr key={discussion._id} className="hover:bg-slate-50 transition-colors group">
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center justify-between gap-2 max-w-xl text-sm text-slate-600 leading-relaxed min-w-0">
-                                                    <div className="break-all whitespace-pre-wrap min-w-0">
-                                                        {expandedRows[discussion._id]
-                                                            ? discussion.discussion
-                                                            : truncateDescription(discussion.discussion, 40)}
+                                        <React.Fragment key={discussion._id}>
+                                            <tr className="hover:bg-slate-50 transition-colors group">
+                                                <td className="px-6 py-4 text-sm font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center justify-between gap-2 max-w-xl text-sm text-slate-600 leading-relaxed min-w-0">
+                                                        <div className="break-all whitespace-pre-wrap min-w-0">
+                                                            {expandedRows[discussion._id]
+                                                                ? discussion.discussion
+                                                                : truncateDescription(discussion.discussion, 40)}
+                                                        </div>
+                                                        {discussion.discussion?.length > 40 && (
+                                                            <button
+                                                                onClick={() => toggleRowExpanded(discussion._id)}
+                                                                className="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 transition-all opacity-0 group-hover:opacity-100 cursor-pointer flex-shrink-0"
+                                                                title={expandedRows[discussion._id] ? "Show less" : "Show more"}
+                                                            >
+                                                                <Eye size={16} />
+                                                            </button>
+                                                        )}
                                                     </div>
-                                                    {discussion.discussion?.length > 40 && (
-                                                        <button
-                                                            onClick={() => toggleRowExpanded(discussion._id)}
-                                                            className="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 transition-all opacity-0 group-hover:opacity-100 cursor-pointer flex-shrink-0"
-                                                            title={expandedRows[discussion._id] ? "Show less" : "Show more"}
-                                                        >
-                                                            <Eye size={16} />
-                                                        </button>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-700 text-sm whitespace-nowrap">
+                                                    {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {discussion.dueDate ? (
+                                                        <div className="flex items-center text-slate-700 whitespace-nowrap text-sm">
+                                                            <Calendar size={14} className="mr-1.5 text-slate-400" />
+                                                            {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-400 text-xs italic">No due date</span>
                                                     )}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-slate-700 text-sm whitespace-nowrap">
-                                                {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                {discussion.dueDate ? (
-                                                    <div className="flex items-center text-slate-700 whitespace-nowrap text-sm">
-                                                        <Calendar size={14} className="mr-1.5 text-slate-400" />
-                                                        {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-700 text-sm break-all whitespace-normal">
+                                                    {discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <select value={discussion.status}
+                                                        onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
+                                                        disabled={!canUpdateStatus(discussion)}
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                                                        <option value="inprogress">In Progress</option>
+                                                        <option value="planning" disabled={!canChangeRestrictedStatus(discussion)}>Planning {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                                        <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                                        <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex justify-end">
+                                                        {renderActionMenu(discussion, index, 'right')}
                                                     </div>
-                                                ) : (
-                                                    <span className="text-slate-400 text-xs italic">No due date</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4 text-slate-700 text-sm break-all whitespace-normal">
-                                                {discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <select value={discussion.status}
-                                                    onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
-                                                    disabled={!canUpdateStatus(discussion)}
-                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-32 truncate ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
-                                                    <option value="inprogress">In Progress</option>
-                                                    <option value="planning" disabled={!canChangeRestrictedStatus(discussion)}>Planning {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
-                                                    <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
-                                                    <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
-                                                </select>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="flex justify-end">
-                                                    {renderActionMenu(discussion, 'right')}
-                                                </div>
-                                            </td>
-                                        </tr>
+                                                </td>
+                                            </tr>
+                                            {editingId === discussion._id && (
+                                                <tr>
+                                                    <td colSpan="7" className="px-6 py-4 bg-slate-50/30">
+                                                        {renderDiscussionForm(true)}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
                                     ))
                                 )}
                             </tbody>
@@ -1169,11 +1262,11 @@ const Discussions = () => {
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
                                         <p className="mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold text-slate-700">
-                                            {detailsDiscussion.status === 'inprogress' ? 'In Progress' : 
-                                             detailsDiscussion.status === 'planning' ? 'Planning' : 
-                                             detailsDiscussion.status === 'on-hold' ? 'On Hold' : 
-                                             detailsDiscussion.status === 'mark as complete' ? 'Mark as complete' : 
-                                             detailsDiscussion.status}
+                                            {detailsDiscussion.status === 'inprogress' ? 'In Progress' :
+                                                detailsDiscussion.status === 'planning' ? 'Planning' :
+                                                    detailsDiscussion.status === 'on-hold' ? 'On Hold' :
+                                                        detailsDiscussion.status === 'mark as complete' ? 'Mark as complete' :
+                                                            detailsDiscussion.status}
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -1204,23 +1297,35 @@ const Discussions = () => {
                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</p>
                                         <div className="mt-2 max-w-full overflow-hidden rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
                                             <p className="whitespace-pre-wrap break-all text-sm leading-6 text-slate-700">
-                                            {detailsDiscussion.discussion || '-'}
+                                                {detailsDiscussion.discussion || '-'}
                                             </p>
                                         </div>
                                     </div>
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supervisor</p>
-                                        <div className="mt-3 flex items-center gap-3">
-                                            {detailsDiscussion.supervisor?.profilePicture ? (
-                                                <img src={detailsDiscussion.supervisor.profilePicture} alt="" className="h-10 w-10 rounded-full border border-slate-200 object-cover" />
-                                            ) : (
-                                                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-bold text-slate-500">
-                                                    {getUserInitials(detailsDiscussion.supervisor)}
-                                                </div>
-                                            )}
-                                            <p className="text-sm font-medium text-slate-700">
-                                                {getUserDisplayName(detailsDiscussion.supervisor)}
-                                            </p>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supervisors</p>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {(() => {
+                                                const supervisorsArray = Array.isArray(detailsDiscussion.supervisor)
+                                                    ? detailsDiscussion.supervisor
+                                                    : (detailsDiscussion.supervisor ? [detailsDiscussion.supervisor] : []);
+                                                
+                                                return supervisorsArray.length > 0 ? (
+                                                    supervisorsArray.map((sup) => (
+                                                        <div key={sup._id || sup} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                                                            {sup.profilePicture ? (
+                                                                <img src={sup.profilePicture} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                                            ) : (
+                                                                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[9px] font-bold text-slate-500">
+                                                                    {getUserInitials(sup)}
+                                                                </div>
+                                                            )}
+                                                            <span>{getUserDisplayName(sup)}</span>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-sm italic text-slate-400">No supervisors</span>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
