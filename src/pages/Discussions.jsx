@@ -56,7 +56,7 @@ const Discussions = () => {
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const limit = 10;
+    const [limit, setLimit] = useState(30);
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
     const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
@@ -460,6 +460,7 @@ const Discussions = () => {
         try {
             setIsSaving(true);
             const payload = { ...editData };
+            delete payload.status;
             if (!payload.dueDate) delete payload.dueDate;
 
             const res = await api.put(`/discussions/${id}`, payload);
@@ -849,11 +850,12 @@ const Discussions = () => {
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-slate-700">Status</label>
                                         <select
+                                            disabled={!!editingId}
                                             value={editingId ? editData?.status || 'inprogress' : newDiscussion.status}
                                             onChange={(event) => editingId
                                                 ? setEditData({ ...editData, status: event.target.value })
                                                 : setNewDiscussion({ ...newDiscussion, status: event.target.value })}
-                                            className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${getStatusBadgeColor(editingId ? editData?.status : newDiscussion.status)}`}
+                                            className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${editingId ? 'bg-slate-50 cursor-not-allowed text-slate-500 border-slate-200' : getStatusBadgeColor(editingId ? editData?.status : newDiscussion.status)}`}
                                         >
                                             <option value="inprogress">In Progress</option>
                                             <option value="planning">Planning</option>
@@ -1092,35 +1094,55 @@ const Discussions = () => {
                     </div>
 
                     {/* Pagination Controls */}
-                    {totalPages > 1 && (
+                    {discussions.length > 0 && (
                         <div className="px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-sm text-slate-500">
-                                Page <span className="font-medium text-slate-700">{currentPage}</span> of <span className="font-medium text-slate-700">{totalPages}</span>
-                            </p>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1 || loading}
-                                    className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                                >
-                                    <ChevronLeft size={18} />
-                                </button>
-                                <div className="flex items-center gap-1">
-                                    {[...Array(totalPages)].map((_, i) => (
-                                        <button key={i} onClick={() => setCurrentPage(i + 1)} disabled={loading}
-                                            className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${currentPage === i + 1 ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                                            {i + 1}
-                                        </button>
-                                    ))}
+                            <div className="flex items-center gap-4 flex-wrap">
+                                <p className="text-sm text-slate-500">
+                                    Page <span className="font-medium text-slate-700">{currentPage}</span> of <span className="font-medium text-slate-700">{totalPages}</span>
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-slate-500">Show:</span>
+                                    <select
+                                        value={limit}
+                                        onChange={(e) => {
+                                            const newLimit = parseInt(e.target.value, 10);
+                                            setLimit(newLimit);
+                                            setCurrentPage(1);
+                                        }}
+                                        className="text-sm border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                    >
+                                        <option value={30}>30 entries</option>
+                                        <option value={50}>50 entries</option>
+                                        <option value={100}>100 entries</option>
+                                    </select>
                                 </div>
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages || loading}
-                                    className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                                >
-                                    <ChevronRight size={18} />
-                                </button>
                             </div>
+                            {totalPages > 1 && (
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1 || loading}
+                                        className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                                    >
+                                        <ChevronLeft size={18} />
+                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        {[...Array(totalPages)].map((_, i) => (
+                                            <button key={i} onClick={() => setCurrentPage(i + 1)} disabled={loading}
+                                                className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${currentPage === i + 1 ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                                                {i + 1}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages || loading}
+                                        className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                                    >
+                                        <ChevronRight size={18} />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
