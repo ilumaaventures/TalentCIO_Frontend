@@ -351,7 +351,7 @@ const HiringRequestDetails = () => {
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...((request.status === 'Approved') && request.isPublic ? ['public applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
+                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...((request.status === 'Approved') && (request.isPublic || request.publicApplicationsCount > 0) ? ['public applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
