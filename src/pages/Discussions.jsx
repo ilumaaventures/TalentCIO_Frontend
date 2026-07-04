@@ -211,12 +211,17 @@ const Discussions = () => {
 
     const fetchAssignedProjects = useCallback(async () => {
         try {
-            const res = await api.get('/projects', { params: { assignedOnly: true } });
+            const hasProjectRead = user?.permissions?.includes('project.read') || user?.permissions?.includes('*') || user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role));
+            const params = {};
+            if (!hasProjectRead) {
+                params.assignedOnly = true;
+            }
+            const res = await api.get('/projects', { params });
             setProjects(res.data || []);
         } catch (error) {
             console.error('Error fetching assigned projects:', error);
         }
-    }, []);
+    }, [user]);
 
     useEffect(() => {
         fetchDiscussions(currentPage);
@@ -648,7 +653,7 @@ const Discussions = () => {
                         {selectedIds.length ? `${selectedIds.length} selected` : subtitle}
                     </p>
                 </div>
-                <div className="max-h-52 overflow-y-auto p-2">
+                <div className="h-52 overflow-y-auto p-2">
                     {filteredUsers.length === 0 ? (
                         <div className="px-3 py-6 text-center text-sm text-slate-400">No users found</div>
                     ) : (
@@ -744,6 +749,24 @@ const Discussions = () => {
                         </div>
 
                         <div className="space-y-2 lg:col-span-2">
+                            <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Project</label>
+                            <select
+                                value={isEdit ? editData?.project || '' : newDiscussion.project}
+                                onChange={(event) => isEdit
+                                    ? setEditData({ ...editData, project: event.target.value })
+                                    : setNewDiscussion({ ...newDiscussion, project: event.target.value })}
+                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                            >
+                                <option value="">Select Project</option>
+                                {projects.map((project) => (
+                                    <option key={project._id} value={project._id}>
+                                        {project.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Supervisors</label>
                             {isEdit ? renderUserPicker({
                                 selectedIds: editData?.supervisor || [],
@@ -777,24 +800,6 @@ const Discussions = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Project</label>
-                            <select
-                                value={isEdit ? editData?.project || '' : newDiscussion.project}
-                                onChange={(event) => isEdit
-                                    ? setEditData({ ...editData, project: event.target.value })
-                                    : setNewDiscussion({ ...newDiscussion, project: event.target.value })}
-                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                            >
-                                <option value="">Select Project</option>
-                                {projects.map((project) => (
-                                    <option key={project._id} value={project._id}>
-                                        {project.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="space-y-2 lg:col-span-2">
                             <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Visible To</label>
                             {isEdit ? renderUserPicker({
                                 selectedIds: editData?.visibleToUserIds || [],
