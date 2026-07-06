@@ -15,7 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
-const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 
 const decisionColor = (d) => {
     switch (d) {
@@ -383,7 +383,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                 ['All', 'All Preferences'], ['Highly Recommended', 'Highly Recommended'], ['Recommended', 'Recommended'], ['Neutral / Average', 'Neutral / Average'], ['Not Recommended', 'Not Recommended'], ['Very Poor', 'Very Poor']
                             ]} />
                             <FilterSelect label="Status" val={filterStatus} onChange={setFilterStatus} options={[
-                                ['All', 'All Statuses'], ['Interested', 'Interested'], ['Not Interested', 'Not Interested'], ['Not Relevant', 'Not Relevant'], ['Not Picking', 'Not Picking']
+                                ['All', 'All Statuses'], ['Interested', 'Interested'], ['Not Interested', 'Not Interested'], ['Not Relevant', 'Not Relevant'], ['Not Picking', 'Not Picking'], ['High expectation', 'High expectation'], ['Long Notice period', 'Long Notice period'], ['Location Not suitable', 'Location Not suitable']
                             ]} />
                             <FilterSelect label="Decision" val={filterDecision} onChange={setFilterDecision} options={
                                 activePhase === 1 ? [['All', 'All Decisions'], ['Shortlisted', 'Shortlisted'], ['Profile Shared', 'Profile Shared'], ['Rejected', 'Rejected'], ['Did Not Turn Up', 'Did Not Turn Up'], ['On Hold', 'On Hold'], ['None', 'None']] :

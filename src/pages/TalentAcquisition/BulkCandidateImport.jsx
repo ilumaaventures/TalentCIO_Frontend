@@ -13,7 +13,7 @@ const normalizeHeaderValue = (value) => String(value || '').trim().toLowerCase()
 const ROUND_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled'];
 const PROFILE_SHORTLISTED_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
 const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
-const LEGACY_CANDIDATE_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+const LEGACY_CANDIDATE_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 
 const getCandidateStatusOptionsForImport = (request) => {
     if (request?.useDynamicPhases && Array.isArray(request?.phases) && request.phases.length > 0) {

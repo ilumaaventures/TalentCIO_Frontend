@@ -20,7 +20,7 @@ import { canViewTACandidateDetails } from '../../../constants/accessPolicies';
 
 const TOTAL_CANDIDATE_CARD_KEY = 'total_candidates';
 const INTERVIEWS_CARD_KEY = 'interviews';
-const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 
 const getPhaseEntryForOrder = (candidate, phaseOrder) => {
     const matches = (candidate?.phaseHistory || []).filter((entry) => Number(entry.phaseOrder) === Number(phaseOrder));
