@@ -4,7 +4,23 @@ import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import { LogIn, Eye, EyeOff, Lock, User, KeyRound } from 'lucide-react';
 
-const API_URL = `${import.meta.env.VITE_API_URL}/api/onboarding`;
+axios.defaults.withCredentials = true;
+
+const resolveApiUrl = (rawUrl) => {
+  if (!rawUrl || typeof window === 'undefined') return rawUrl;
+  try {
+    const parsedUrl = new URL(rawUrl);
+    const browserHost = window.location.hostname;
+    if (browserHost.endsWith('.localhost') && (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1')) {
+      parsedUrl.hostname = browserHost;
+    }
+    return parsedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return rawUrl;
+  }
+};
+
+const API_URL = `${resolveApiUrl(import.meta.env.VITE_API_URL)}/api/onboarding`;
 
 const PreOnboardingLogin = () => {
   const navigate = useNavigate();
@@ -20,12 +36,10 @@ const PreOnboardingLogin = () => {
   const [credentials, setCredentials] = useState({ tempEmployeeId: '', password: '' });
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [token, setToken] = useState('');
 
   // Add tenant header like the main app does
-  const getHeaders = (authToken, tenantOverride = '') => {
+  const getHeaders = (tenantOverride = '') => {
     const headers = { 'Content-Type': 'application/json' };
-    if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
@@ -48,14 +62,12 @@ const PreOnboardingLogin = () => {
     setLoading(true);
     try {
       const res = await axios.post(`${API_URL}/login`, credentials, { headers: getHeaders() });
-      const { token: authToken, isPasswordChanged, employee } = res.data;
+      const { isPasswordChanged, employee } = res.data;
 
       if (!isPasswordChanged) {
-        setToken(authToken);
         setStep('changePassword');
         toast.success('Please change your password to continue');
       } else {
-        localStorage.setItem('onboardingToken', authToken);
         localStorage.setItem('onboardingEmployee', JSON.stringify(employee));
         navigate('/pre-onboarding/portal');
       }
@@ -85,7 +97,7 @@ const PreOnboardingLogin = () => {
       const res = await axios.post(`${API_URL}/request-regeneration`, {
         tempEmployeeId: credentials.tempEmployeeId,
         reason: regenReason
-      }, { headers: getHeaders(undefined, resolvedWorkspace) });
+      }, { headers: getHeaders(resolvedWorkspace) });
       toast.success(res.data.message || 'Request sent!');
       setShowRegenModal(false);
       setRegenReason('');
@@ -108,8 +120,7 @@ const PreOnboardingLogin = () => {
     }
     setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/change-password`, { newPassword }, { headers: getHeaders(token) });
-      localStorage.setItem('onboardingToken', res.data.token);
+      await axios.post(`${API_URL}/change-password`, { newPassword }, { headers: getHeaders() });
       const empData = JSON.parse(localStorage.getItem('onboardingEmployee') || '{}');
       localStorage.setItem('onboardingEmployee', JSON.stringify(empData));
       toast.success('Password changed successfully!', { duration: 2000 });

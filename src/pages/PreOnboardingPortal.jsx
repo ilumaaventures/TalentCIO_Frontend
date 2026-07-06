@@ -4,7 +4,23 @@ import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import { CheckCircle, Clock, Upload, ChevronRight, ChevronLeft, LogOut, FileText, AlertTriangle, User, Phone, Building, CreditCard, FileSignature, Loader, Eye, Plus, X } from 'lucide-react';
 
-const API_URL = `${import.meta.env.VITE_API_URL}/api/onboarding`;
+axios.defaults.withCredentials = true;
+
+const resolveApiUrl = (rawUrl) => {
+  if (!rawUrl || typeof window === 'undefined') return rawUrl;
+  try {
+    const parsedUrl = new URL(rawUrl);
+    const browserHost = window.location.hostname;
+    if (browserHost.endsWith('.localhost') && (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1')) {
+      parsedUrl.hostname = browserHost;
+    }
+    return parsedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return rawUrl;
+  }
+};
+
+const API_URL = `${resolveApiUrl(import.meta.env.VITE_API_URL)}/api/onboarding`;
 const FOLLOW_UP_DOCUMENT_REDIRECT_GRACE_MS = 1000;
 
 const ALL_STEPS = [
@@ -124,8 +140,7 @@ const PreOnboardingPortal = () => {
   const [validationErrors, setValidationErrors] = useState({});
 
   const getHeaders = useCallback(() => {
-    const token = localStorage.getItem('onboardingToken');
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = {};
     const hostname = window.location.hostname;
     const urlParams = new URLSearchParams(window.location.search);
     let tenant = urlParams.get('tenant');
@@ -149,7 +164,7 @@ const PreOnboardingPortal = () => {
     } catch (err) {
       if (err.response?.status === 401) {
         toast.error(err.response?.data?.message || 'Session expired');
-        localStorage.removeItem('onboardingToken');
+        localStorage.removeItem('onboardingEmployee');
         navigate('/pre-onboarding/login');
       } else {
         toast.error('Failed to load profile');
@@ -165,8 +180,7 @@ const PreOnboardingPortal = () => {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const res = await axios.post(`${API_URL}/refresh-token`, {}, { headers: getHeaders() });
-        localStorage.setItem('onboardingToken', res.data.token);
+        await axios.post(`${API_URL}/refresh-token`, {}, { headers: getHeaders() });
       } catch { /* ignore */ }
     }, 12 * 60 * 1000); // every 12 min
     return () => clearInterval(interval);
@@ -370,7 +384,6 @@ const PreOnboardingPortal = () => {
     axios.post(`${API_URL}/logout`, {}, { headers: getHeaders() })
       .catch(() => {})
       .finally(() => {
-        localStorage.removeItem('onboardingToken');
         localStorage.removeItem('onboardingEmployee');
         navigate('/pre-onboarding/login');
       });
