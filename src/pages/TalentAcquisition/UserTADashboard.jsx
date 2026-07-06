@@ -261,6 +261,9 @@ const UserTADashboard = ({ providedUserName }) => {
                                     <option value="Not Interested">Not Interested</option>
                                     <option value="Not Relevant">Not Relevant</option>
                                     <option value="Not Picking">Not Picking</option>
+                                    <option value="High expectation">High expectation</option>
+                                    <option value="Long Notice period">Long Notice period</option>
+                                    <option value="Location Not suitable">Location Not suitable</option>
                                 </select>
                             </div>
                             <div>

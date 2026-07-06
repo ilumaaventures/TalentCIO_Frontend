@@ -20,7 +20,7 @@ import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
-const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking'];
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Scheduled'];
 const PROFILE_SHORTLISTED_EXPORT_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
 const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
@@ -2317,7 +2317,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     const statusMetricKey = {
                                         'Not Picking': 'notPicking',
                                         'Not Relevant': 'notRelevant',
-                                        'Not Interested': 'notInterested'
+                                        'Not Interested': 'notInterested',
+                                        'High expectation': 'highExpectation',
+                                        'Long Notice period': 'longNoticePeriod',
+                                        'Location Not suitable': 'locationNotSuitable'
                                     }[filterStatus];
                                     statusCount = metrics[statusMetricKey] || 0;
                                 } else {
@@ -2753,6 +2756,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             <option value="Not Interested">Not Interested</option>
                                             <option value="Not Relevant">Not Relevant</option>
                                             <option value="Not Picking">Not Picking</option>
+                                            <option value="High expectation">High expectation</option>
+                                            <option value="Long Notice period">Long Notice period</option>
+                                            <option value="Location Not suitable">Location Not suitable</option>
                                         </select>
                                     </div>
                                 )}
