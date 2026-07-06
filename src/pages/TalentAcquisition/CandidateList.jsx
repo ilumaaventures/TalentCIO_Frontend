@@ -15,6 +15,7 @@ import CandidateDetails from './CandidateDetails';
 import { ProfileReviewModal } from './PublicApplicationsView';
 import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
+import DecisionConfirmationModal from '../../components/DecisionConfirmationModal';
 import MassInterviewScheduleModal from './MassInterviewScheduleModal';
 import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
@@ -479,6 +480,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
     const [showMassInterviewModal, setShowMassInterviewModal] = useState(false);
+    const [pendingDecisionChange, setPendingDecisionChange] = useState(null);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
     const [showCreatedDateSortMenu, setShowCreatedDateSortMenu] = useState(false);
     const [openMultiFilter, setOpenMultiFilter] = useState(null);
@@ -1496,9 +1498,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     type: 'list',
                                     allowBlank: true,
                                     showErrorMessage: true,
-                                    formulae: ['"Shortlisted,Rejected,Scheduled"'],
+                                    formulae: ['"Scheduled"'],
                                     errorTitle: 'Invalid Phase 2 Interview Status',
-                                    error: 'Interview Status (Phase2) must be one of: Shortlisted, Rejected, Scheduled.'
+                                    error: 'Interview Status (Phase2) must be: Scheduled.'
                                 };
                             }
                         }
@@ -1769,6 +1771,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     };
 
     const handleDecisionChange = async (candidateId, newDecision) => {
+        if (['Shortlisted', 'Rejected', 'Did Not Turn Up'].includes(newDecision)) {
+            const cand = candidates.find(c => c._id === candidateId);
+            setPendingDecisionChange({ id: candidateId, name: cand?.candidateName || '', decision: newDecision });
+            return;
+        }
+        await executeDecisionChange(candidateId, newDecision);
+    };
+
+    const executeDecisionChange = async (candidateId, newDecision) => {
         try {
             await api.patch(`/ta/candidates/${candidateId}/decision`, { decision: newDecision });
             toast.success('Decision updated');
@@ -1780,6 +1791,18 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             console.error('Error updating decision:', error);
             toast.error(error.response?.data?.message || 'Failed to update decision');
         }
+    };
+
+    const handleConfirmDecisionChange = async () => {
+        if (!pendingDecisionChange) return;
+        const { id, decision } = pendingDecisionChange;
+        setPendingDecisionChange(null);
+        await executeDecisionChange(id, decision);
+    };
+
+    const handleCancelDecisionChange = () => {
+        setPendingDecisionChange(null);
+        fetchCandidates(true);
     };
 
     const handleMoveToNextPhase = async (candidateId) => {
@@ -3523,6 +3546,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     onClose={() => setProfileTarget(null)}
                 />
             )}
+
+            <DecisionConfirmationModal
+                isOpen={Boolean(pendingDecisionChange)}
+                onClose={handleCancelDecisionChange}
+                onConfirm={handleConfirmDecisionChange}
+                candidateName={pendingDecisionChange?.name}
+                decision={pendingDecisionChange?.decision}
+            />
         </div>
     );
 };

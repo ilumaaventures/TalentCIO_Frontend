@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import BulkTransferModal from './BulkTransferModal';
+import DecisionConfirmationModal from '../../components/DecisionConfirmationModal';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const Phase1Candidates = () => {
@@ -33,6 +34,7 @@ const Phase1Candidates = () => {
     const [activeMenu, setActiveMenu] = useState(null);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const [pendingDecisionChange, setPendingDecisionChange] = useState(null);
     const isAdmin = user?.roles?.includes('Admin');
     const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
         || user?.permissions?.includes('ta.analytics.global');
@@ -233,15 +235,35 @@ const Phase1Candidates = () => {
 
 
     const handleDecisionChange = async (candidateId, newDecision) => {
+        if (['Shortlisted', 'Rejected', 'Did Not Turn Up'].includes(newDecision)) {
+            const cand = candidates.find(c => c._id === candidateId);
+            setPendingDecisionChange({ id: candidateId, name: cand?.candidateName || '', decision: newDecision });
+            return;
+        }
+        await executeDecisionChange(candidateId, newDecision);
+    };
+
+    const executeDecisionChange = async (candidateId, newDecision) => {
         try {
             await api.patch(`/ta/candidates/${candidateId}/decision`, { decision: newDecision });
             toast.success('Decision updated');
-            // Re-fetch candidates to ensure the list is up-to-date and reflects any backend changes
             fetchCandidates();
         } catch (error) {
             console.error('Error updating decision:', error);
             toast.error(error.response?.data?.message || 'Failed to update decision');
         }
+    };
+
+    const handleConfirmDecisionChange = async () => {
+        if (!pendingDecisionChange) return;
+        const { id, decision } = pendingDecisionChange;
+        setPendingDecisionChange(null);
+        await executeDecisionChange(id, decision);
+    };
+
+    const handleCancelDecisionChange = () => {
+        setPendingDecisionChange(null);
+        fetchCandidates();
     };
 
     const getDecisionColor = (decision) => {
@@ -761,6 +783,13 @@ const Phase1Candidates = () => {
                     setShowTransferModal(false);
                     fetchCandidates();
                 }}
+            />
+            <DecisionConfirmationModal
+                isOpen={Boolean(pendingDecisionChange)}
+                onClose={handleCancelDecisionChange}
+                onConfirm={handleConfirmDecisionChange}
+                candidateName={pendingDecisionChange?.name}
+                decision={pendingDecisionChange?.decision}
             />
         </div>
     );
