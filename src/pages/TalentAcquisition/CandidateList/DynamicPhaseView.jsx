@@ -1745,7 +1745,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
                                     return (
                                         <tr key={candidate._id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-4 text-center align-top">
+                                            <td className="px-4 py-2 text-center align-top">
                                                 <input
                                                     type="checkbox"
                                                     checked={selectedCandidateIds.includes(candidate._id)}
@@ -1753,14 +1753,14 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                     className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                                 />
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-4 py-2">
                                                 <div>
-                                                    <div className="font-semibold text-slate-900">{candidate.candidateName}</div>
-                                                    <div className="text-sm text-slate-500">{candidate.email}</div>
+                                                    <div className="text-xs font-semibold text-slate-900">{candidate.candidateName}</div>
+                                                    <div className="text-[11px] text-slate-500">{candidate.email}</div>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4 align-top">
-                                                <div className="text-[12px] text-slate-600 space-y-0.5 whitespace-nowrap">
+                                            <td className="px-4 py-2 align-top">
+                                                <div className="text-[11px] text-slate-600 space-y-0.5 whitespace-nowrap">
                                                     {candidate.currentCTC !== undefined && candidate.currentCTC !== null && candidate.currentCTC !== '' && (
                                                         <div>Current: <span className="font-semibold">{candidate.currentCTC} LPA</span></div>
                                                     )}
@@ -1773,12 +1773,12 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                     {!hasCandidateCtcDetails(candidate) && <span className="text-slate-400">-</span>}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-4 py-2">
                                                 <select
                                                     value={phaseEntry?.status || ''}
                                                     onChange={(event) => handleStatusUpdate(candidate, event.target.value)}
                                                     disabled={!canEdit || isBusy || !isActiveInViewedPhase}
-                                                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    className="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                                                 >
                                                     <option value="">None</option>
                                                     {(activePhase?.statusOptions || []).map((statusOption) => (
@@ -1786,12 +1786,12 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                     ))}
                                                 </select>
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-4 py-2">
                                                 <select
                                                     value={phaseEntry?.decision || 'None'}
                                                     onChange={(event) => handleDecisionUpdate(candidate, event.target.value)}
                                                     disabled={!canMakeDecisions || isBusy || !isActiveInViewedPhase}
-                                                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    className="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                                                 >
                                                     <option value="None">None</option>
                                                     {(activePhase?.decisionOptions || []).map((decisionOption) => (
@@ -1799,14 +1799,14 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                     ))}
                                                 </select>
                                             </td>
-                                            <td className="px-4 py-4 text-sm text-slate-700">
-                                                <div className="flex flex-col gap-1.5 items-start">
+                                            <td className="px-4 py-2 text-xs text-slate-700">
+                                                <div className="flex flex-col gap-1 items-start">
                                                     <button
                                                         type="button"
                                                         onClick={() => openCandidateDetails(candidate._id)}
-                                                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-90 ${interviewSummary.color}`}
+                                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition hover:opacity-90 ${interviewSummary.color}`}
                                                     >
-                                                        <Calendar size={14} />
+                                                        <Calendar size={12} />
                                                         {interviewSummary.label}
                                                     </button>
                                                     {(() => {
@@ -1818,7 +1818,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                             const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
                                                             if (formatted) {
                                                                 return (
-                                                                    <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap mt-0.5" title={`${displayRound.levelName || 'Interview'} Date`}>
+                                                                    <span className="text-[9px] text-slate-500 font-medium whitespace-nowrap mt-0.5" title={`${displayRound.levelName || 'Interview'} Date`}>
                                                                         {formatted}
                                                                     </span>
                                                                 );
@@ -1828,40 +1828,37 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                     })()}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4 align-top">
+                                            <td className="px-4 py-2 align-top">
                                                 <div className="flex flex-col">
                                                     {candidate.profilePulledBy ? (
                                                         <button
                                                             type="button"
                                                             onClick={() => setPulledByFilter(String(candidate.profilePulledBy).trim())}
-                                                            className="w-fit text-left text-[13px] font-bold text-blue-600 transition hover:text-blue-700 hover:underline"
+                                                            className="w-fit text-left text-[11px] font-bold text-blue-600 transition hover:text-blue-700 hover:underline"
                                                             title={`Filter by ${candidate.profilePulledBy}`}
                                                         >
                                                             {candidate.profilePulledBy}
                                                         </button>
                                                     ) : (
-                                                        <span className="text-[13px] font-bold text-slate-400">-</span>
+                                                        <span className="text-[11px] font-bold text-slate-400">-</span>
                                                     )}
                                                     {getCandidateUploadedByName(candidate) ? (
                                                         <button
                                                             type="button"
                                                             onClick={() => setUploadedByFilter(getCandidateUploadedByName(candidate))}
-                                                            className="mt-1 w-fit text-left text-[11px] font-semibold text-indigo-600 transition hover:text-indigo-700 hover:underline"
+                                                            className="mt-0.5 w-fit text-left text-[10px] font-semibold text-indigo-600 transition hover:text-indigo-700 hover:underline"
                                                             title={`Filter by uploader ${getCandidateUploadedByName(candidate)}`}
                                                         >
                                                             {getCandidateUploadedByName(candidate)}
                                                         </button>
                                                     ) : (
-                                                        <span className="mt-1 text-[11px] text-slate-400">Unknown uploader</span>
+                                                        <span className="mt-0.5 text-[10px] text-slate-400">Unknown uploader</span>
                                                     )}
-                                                    <span className={`mt-1 w-fit rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                                    <span className={`mt-1 w-fit rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                                                         {getCandidateUploadType(candidate)}
                                                     </span>
-                                                    <span className="mt-1 text-[12px] text-slate-600">
-                                                        {candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'MMM dd, yyyy') : '-'}
-                                                    </span>
-                                                    <span className="text-[10px] text-slate-500">
-                                                        {candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'hh:mm a') : ''}
+                                                    <span className="mt-1 text-[10px] text-slate-600 whitespace-nowrap">
+                                                        {candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'MMM dd, yyyy hh:mm a') : '-'}
                                                     </span>
                                                 </div>
                                             </td>
