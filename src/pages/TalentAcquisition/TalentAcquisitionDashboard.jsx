@@ -9,6 +9,7 @@ import {
     Clock3,
     FileText,
     FileX,
+    Globe,
     RefreshCw,
     Target,
     Users,
@@ -294,6 +295,11 @@ const TalentAcquisitionDashboard = () => {
     const [availableSources, setAvailableSources] = useState([]);
     const [availableSkills, setAvailableSkills] = useState([]);
     const [skillsFilterText, setSkillsFilterText] = useState('');
+    // Public Applications mode
+    const [showPublicApps, setShowPublicApps] = useState(() => getSavedVal('showPublicApps', false));
+    const [publicAppReviewStatus, setPublicAppReviewStatus] = useState(() => getSavedVal('publicAppReviewStatus', ''));
+    const [publicAppResults, setPublicAppResults] = useState([]);
+    const [publicAppPagination, setPublicAppPagination] = useState({ currentPage: 1, totalPages: 1, count: 0, limit: 15 });
 
     // Applied states used for search execution
     const [appliedFilters, setAppliedFilters] = useState(() => {
@@ -316,7 +322,8 @@ const TalentAcquisitionDashboard = () => {
                     minExpectedCTC: parsed.minExpectedCTC ?? '',
                     maxExpectedCTC: parsed.maxExpectedCTC ?? '',
                     inHandOffer: parsed.inHandOffer ?? '',
-                    decision: parsed.decision ?? ''
+                    decision: parsed.decision ?? '',
+                    publicAppReviewStatus: parsed.publicAppReviewStatus ?? ''
                 };
             }
         } catch (e) {
@@ -336,7 +343,8 @@ const TalentAcquisitionDashboard = () => {
             minExpectedCTC: '',
             maxExpectedCTC: '',
             inHandOffer: '',
-            decision: ''
+            decision: '',
+            publicAppReviewStatus: ''
         };
     });
 
@@ -358,7 +366,9 @@ const TalentAcquisitionDashboard = () => {
             decision: searchDecision,
             showFilters,
             searchPage,
-            appliedFilters
+            appliedFilters,
+            showPublicApps,
+            publicAppReviewStatus
         };
         sessionStorage.setItem('ta_candidate_filters', JSON.stringify(stateToSave));
     }, [
@@ -378,7 +388,9 @@ const TalentAcquisitionDashboard = () => {
         searchDecision,
         showFilters,
         searchPage,
-        appliedFilters
+        appliedFilters,
+        showPublicApps,
+        publicAppReviewStatus
     ]);
 
     const canViewAnalytics = useMemo(() => (
@@ -452,6 +464,7 @@ const TalentAcquisitionDashboard = () => {
     }, [activeTab]);
 
     const fetchGlobalCandidates = useCallback(async () => {
+        if (showPublicApps) return; // handled by fetchPublicApplications
         setIsSearchLoading(true);
         try {
             const params = {
@@ -530,13 +543,49 @@ const TalentAcquisitionDashboard = () => {
         } finally {
             setIsSearchLoading(false);
         }
-    }, [searchPage, appliedFilters]);
+    }, [searchPage, appliedFilters, showPublicApps]);
+
+    const fetchPublicApplications = useCallback(async () => {
+        if (!showPublicApps) return;
+        setIsSearchLoading(true);
+        try {
+            const params = { page: searchPage, limit: 15 };
+            if (appliedFilters.search?.trim()) params.search = appliedFilters.search.trim();
+            if (appliedFilters.minExp !== '') params.minExperience = appliedFilters.minExp;
+            if (appliedFilters.maxExp !== '') params.maxExperience = appliedFilters.maxExp;
+            if (appliedFilters.client?.trim()) params.client = appliedFilters.client.trim();
+            if (appliedFilters.maxNoticePeriod !== '') params.maxNoticePeriod = appliedFilters.maxNoticePeriod;
+            if (appliedFilters.minCurrentCTC !== '') params.minCurrentCTC = appliedFilters.minCurrentCTC;
+            if (appliedFilters.maxCurrentCTC !== '') params.maxCurrentCTC = appliedFilters.maxCurrentCTC;
+            if (appliedFilters.minExpectedCTC !== '') params.minExpectedCTC = appliedFilters.minExpectedCTC;
+            if (appliedFilters.maxExpectedCTC !== '') params.maxExpectedCTC = appliedFilters.maxExpectedCTC;
+            if (appliedFilters.publicAppReviewStatus) params.reviewStatus = appliedFilters.publicAppReviewStatus;
+            const response = await api.get('/ta/candidates/global/public-applications/search', { params });
+            if (response.data) {
+                setPublicAppResults(response.data.applications || []);
+                setPublicAppPagination({
+                    currentPage: response.data.currentPage || 1,
+                    totalPages: response.data.totalPages || 1,
+                    count: response.data.count || 0,
+                    limit: response.data.limit || 15
+                });
+            }
+        } catch (err) {
+            console.error('Error fetching public applications:', err);
+        } finally {
+            setIsSearchLoading(false);
+        }
+    }, [searchPage, appliedFilters, showPublicApps]);
 
     useEffect(() => {
         if (activeTab === 'candidates') {
-            void fetchGlobalCandidates();
+            if (showPublicApps) {
+                void fetchPublicApplications();
+            } else {
+                void fetchGlobalCandidates();
+            }
         }
-    }, [activeTab, searchPage, appliedFilters, fetchGlobalCandidates]);
+    }, [activeTab, searchPage, appliedFilters, fetchGlobalCandidates, fetchPublicApplications, showPublicApps]);
 
     const loadDashboard = useCallback(async ({ silent = false } = {}) => {
         if (silent) {
@@ -1070,7 +1119,8 @@ const TalentAcquisitionDashboard = () => {
                 minExpectedCTC,
                 maxExpectedCTC,
                 inHandOffer: searchInHandOffer,
-                decision: searchDecision
+                decision: searchDecision,
+                publicAppReviewStatus
             });
         };
 
@@ -1090,6 +1140,7 @@ const TalentAcquisitionDashboard = () => {
             setSearchInHandOffer('');
             setSearchDecision('');
             setSkillsFilterText('');
+            setPublicAppReviewStatus('');
             setSearchPage(1);
             setAppliedFilters({
                 search: '',
@@ -1105,7 +1156,8 @@ const TalentAcquisitionDashboard = () => {
                 minExpectedCTC: '',
                 maxExpectedCTC: '',
                 inHandOffer: '',
-                decision: ''
+                decision: '',
+                publicAppReviewStatus: ''
             });
         };
 
@@ -1130,7 +1182,8 @@ const TalentAcquisitionDashboard = () => {
             minExpectedCTC !== '',
             maxExpectedCTC !== '',
             searchInHandOffer !== '',
-            searchDecision !== ''
+            searchDecision !== '',
+            publicAppReviewStatus !== ''
         ].filter(Boolean).length;
 
         const isFilterActive = !!(
@@ -1147,7 +1200,8 @@ const TalentAcquisitionDashboard = () => {
             appliedFilters.minExpectedCTC !== '' ||
             appliedFilters.maxExpectedCTC !== '' ||
             appliedFilters.inHandOffer !== '' ||
-            appliedFilters.decision !== ''
+            appliedFilters.decision !== '' ||
+            appliedFilters.publicAppReviewStatus !== ''
         );
 
         return (
@@ -1161,11 +1215,35 @@ const TalentAcquisitionDashboard = () => {
                                 type="text"
                                 value={candidateSearchText}
                                 onChange={(e) => setCandidateSearchText(e.target.value)}
-                                placeholder="Search candidates by name, email, phone, location or company..."
+                                placeholder={showPublicApps ? 'Search public applications by name, email or phone...' : 'Search candidates by name, email, phone, location or company...'}
                                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
                             />
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
+                            {/* Public Applications Toggle */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = !showPublicApps;
+                                    setShowPublicApps(next);
+                                    setSearchPage(1);
+                                    setAppliedFilters(prev => ({ ...prev, publicAppReviewStatus: next ? publicAppReviewStatus : '' }));
+                                }}
+                                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-sm transition ${
+                                    showPublicApps
+                                        ? 'border-violet-300 bg-violet-600 text-white shadow-violet-200'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                }`}
+                                title="Show public job board applications"
+                            >
+                                <Globe size={14} />
+                                <span>Public Applications</span>
+                                {showPublicApps && publicAppPagination.count > 0 && (
+                                    <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                        {publicAppPagination.count}
+                                    </span>
+                                )}
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => setShowFilters(!showFilters)}
@@ -1382,70 +1460,96 @@ const TalentAcquisitionDashboard = () => {
                                     )}
                                 </div>
 
-                                {/* Hiring Status / Decision */}
-                                <div>
-                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                                        Hiring Status
-                                    </label>
-                                    <select
-                                        value={searchDecision}
-                                        onChange={(e) => setSearchDecision(e.target.value)}
-                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
-                                    >
-                                        <option value="">All Statuses</option>
-                                        <option value="Shortlisted">Shortlisted</option>
-                                        <option value="Profile Shared">Profile Shared</option>
-                                        <option value="Rejected">Rejected</option>
-                                        <option value="On Hold">On Hold</option>
-                                        <option value="Did Not Turn Up">Did Not Turn Up</option>
-                                        <option value="Offer Sent">Offer Sent</option>
-                                        <option value="Offer Accepted">Offer Accepted</option>
-                                        <option value="Joined">Joined</option>
-                                        <option value="No Show">No Show</option>
-                                    </select>
-                                </div>
-
-                                {/* In Hand Offer */}
-                                <div>
-                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                                        Has In Hand Offer?
-                                    </label>
-                                    <select
-                                        value={searchInHandOffer}
-                                        onChange={(e) => setSearchInHandOffer(e.target.value)}
-                                        className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
-                                    >
-                                        <option value="">All Candidates</option>
-                                        <option value="true">Yes</option>
-                                        <option value="false">No</option>
-                                    </select>
-                                </div>
-
-                                {/* Source Filter */}
-                                <div className="md:col-span-2 lg:col-span-4">
-                                    <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">
-                                        Candidate Sources
-                                    </label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {availableSources.map((sourceName) => {
-                                            const isSelected = selectedSources.includes(sourceName);
-                                            return (
-                                                <button
-                                                    key={sourceName}
-                                                    type="button"
-                                                    onClick={() => toggleSource(sourceName)}
-                                                    className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition border ${
-                                                        isSelected
-                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                                                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                                                    }`}
-                                                >
-                                                    {sourceName}
-                                                </button>
-                                            );
-                                        })}
+                                {/* Hiring Status / Decision — only for regular candidates */}
+                                {!showPublicApps && (
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                            Hiring Status
+                                        </label>
+                                        <select
+                                            value={searchDecision}
+                                            onChange={(e) => setSearchDecision(e.target.value)}
+                                            className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
+                                        >
+                                            <option value="">All Statuses</option>
+                                            <option value="Shortlisted">Shortlisted</option>
+                                            <option value="Profile Shared">Profile Shared</option>
+                                            <option value="Rejected">Rejected</option>
+                                            <option value="On Hold">On Hold</option>
+                                            <option value="Did Not Turn Up">Did Not Turn Up</option>
+                                            <option value="Offer Sent">Offer Sent</option>
+                                            <option value="Offer Accepted">Offer Accepted</option>
+                                            <option value="Joined">Joined</option>
+                                            <option value="No Show">No Show</option>
+                                        </select>
                                     </div>
-                                </div>
+                                )}
+
+                                {/* Review Status — only for public applications */}
+                                {showPublicApps && (
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                            Review Status
+                                        </label>
+                                        <select
+                                            value={publicAppReviewStatus}
+                                            onChange={(e) => setPublicAppReviewStatus(e.target.value)}
+                                            className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
+                                        >
+                                            <option value="">All Review Statuses</option>
+                                            <option value="Pending Review">Pending Review</option>
+                                            <option value="Shortlisted">Shortlisted</option>
+                                            <option value="Rejected">Rejected</option>
+                                            <option value="Transferred">Transferred to Pipeline</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* In Hand Offer — only for regular candidates */}
+                                {!showPublicApps && (
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                            Has In Hand Offer?
+                                        </label>
+                                        <select
+                                            value={searchInHandOffer}
+                                            onChange={(e) => setSearchInHandOffer(e.target.value)}
+                                            className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
+                                        >
+                                            <option value="">All Candidates</option>
+                                            <option value="true">Yes</option>
+                                            <option value="false">No</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Source Filter — only for regular candidates */}
+                                {!showPublicApps && (
+                                    <div className="md:col-span-2 lg:col-span-4">
+                                        <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">
+                                            Candidate Sources
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {availableSources.map((sourceName) => {
+                                                const isSelected = selectedSources.includes(sourceName);
+                                                return (
+                                                    <button
+                                                        key={sourceName}
+                                                        type="button"
+                                                        onClick={() => toggleSource(sourceName)}
+                                                        className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition border ${
+                                                            isSelected
+                                                                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                                        }`}
+                                                    >
+                                                        {sourceName}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">
@@ -1468,12 +1572,18 @@ const TalentAcquisitionDashboard = () => {
                     )}
                 </div>
 
-                {/* Candidate Results Table */}
+                {/* Candidate Results / Public Applications Table */}
                 <SectionCard
-                    title={`All Candidates (${searchPagination.count})`}
+                    title={showPublicApps
+                        ? `Public Applications (${publicAppPagination.count})`
+                        : `All Candidates (${searchPagination.count})`
+                    }
                     action={
                         <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                            Page {searchPagination.currentPage} of {searchPagination.totalPages}
+                            {showPublicApps
+                                ? `Page ${publicAppPagination.currentPage} of ${publicAppPagination.totalPages}`
+                                : `Page ${searchPagination.currentPage} of ${searchPagination.totalPages}`
+                            }
                         </span>
                     }
                 >
@@ -1485,7 +1595,118 @@ const TalentAcquisitionDashboard = () => {
                                 <Skeleton className="h-10 w-full rounded-lg" />
                                 <Skeleton className="h-10 w-full rounded-lg" />
                             </div>
+                        ) : showPublicApps ? (
+                            // ─── Public Applications Table ───────────────────────────────
+                            publicAppResults.length > 0 ? (
+                                <table className="min-w-full text-xs">
+                                    <thead>
+                                        <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                                            <th className="px-4 py-3">Applicant</th>
+                                            <th className="px-4 py-3">Contact</th>
+                                            <th className="px-4 py-3">Applied For</th>
+                                            <th className="px-4 py-3">Current CTC</th>
+                                            <th className="px-4 py-3">Expected CTC</th>
+                                            <th className="px-4 py-3">Notice (Days)</th>
+                                            <th className="px-4 py-3">Review Status</th>
+                                            <th className="px-4 py-3">Applied On</th>
+                                            <th className="px-4 py-3 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {publicAppResults.map((app) => {
+                                            const reviewStatusColors = {
+                                                'Pending Review': 'bg-amber-50 text-amber-700 border-amber-200',
+                                                'Shortlisted': 'bg-sky-50 text-sky-700 border-sky-200',
+                                                'Rejected': 'bg-rose-50 text-rose-700 border-rose-200',
+                                                'Transferred': 'bg-blue-50 text-blue-700 border-blue-200'
+                                            };
+                                            const statusStyle = reviewStatusColors[app.reviewStatus] || 'bg-slate-100 text-slate-600 border-slate-200';
+                                            return (
+                                                <tr key={app._id} className="border-b border-slate-100 transition hover:bg-slate-50">
+                                                    <td className="px-4 py-3.5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">
+                                                                {getInitials(app.candidateName)}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-slate-900">{app.candidateName}</p>
+                                                                {app.coverNote && (
+                                                                    <p className="text-[10px] text-slate-400 max-w-[160px] truncate" title={app.coverNote}>
+                                                                        {app.coverNote}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <p className="text-slate-700">{app.email}</p>
+                                                        <p className="text-[10px] text-slate-400">{app.mobile}</p>
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <p className="font-medium text-slate-800">
+                                                            {app.hiringRequestId?.roleDetails?.title || '—'}
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-500">
+                                                            {app.hiringRequestId?.clientConfidential
+                                                                ? 'Confidential Client'
+                                                                : app.hiringRequestId?.client || '—'}
+                                                        </p>
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-slate-700 font-medium">
+                                                        {app.currentCTC != null ? `${app.currentCTC} LPA` : '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-slate-700 font-medium">
+                                                        {app.expectedCTC != null ? `${app.expectedCTC} LPA` : '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-slate-700">
+                                                        {app.noticePeriod != null ? `${app.noticePeriod}d` : '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] ${statusStyle}`}>
+                                                            {app.reviewStatus}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-[11px] text-slate-500">
+                                                        {formatShortDate(app.createdAt)}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-right">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            {app.resumeUrl && String(app.resumeUrl).startsWith('http') ? (
+                                                                <a
+                                                                    href={app.resumeUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                                    title="View/Download Resume"
+                                                                >
+                                                                    <FileText size={12} className="text-slate-500" />
+                                                                    <span>Resume</span>
+                                                                </a>
+                                                            ) : null}
+                                                            {app.hiringRequestId?._id && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => navigate(`/ta/view/${app.hiringRequestId._id}?tab=applications`)}
+                                                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                                >
+                                                                    View Req
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="py-8 text-center">
+                                    <p className="text-sm font-semibold text-slate-800">No public applications found</p>
+                                    <p className="mt-1 text-xs text-slate-500">Try adjusting your filters or check back later.</p>
+                                </div>
+                            )
                         ) : candidateResults.length > 0 ? (
+                            // ─── Regular Candidates Table ─────────────────────────────────
                             <table className="min-w-full text-xs">
                                 <thead>
                                     <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
@@ -1628,10 +1849,13 @@ const TalentAcquisitionDashboard = () => {
                     </div>
 
                     {/* Pagination Controls */}
-                    {searchPagination.totalPages > 1 && (
+                    {(showPublicApps ? publicAppPagination.totalPages : searchPagination.totalPages) > 1 && (
                         <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4 text-xs">
                             <span className="text-slate-500">
-                                Showing {((searchPage - 1) * 15) + 1} to {Math.min(searchPage * 15, searchPagination.count)} of {searchPagination.count} candidates
+                                {showPublicApps
+                                    ? `Showing ${((searchPage - 1) * 15) + 1} to ${Math.min(searchPage * 15, publicAppPagination.count)} of ${publicAppPagination.count} applications`
+                                    : `Showing ${((searchPage - 1) * 15) + 1} to ${Math.min(searchPage * 15, searchPagination.count)} of ${searchPagination.count} candidates`
+                                }
                             </span>
                             <div className="flex items-center gap-2">
                                 <button
@@ -1644,8 +1868,8 @@ const TalentAcquisitionDashboard = () => {
                                 </button>
                                 <button
                                     type="button"
-                                    disabled={searchPage === searchPagination.totalPages || isSearchLoading}
-                                    onClick={() => setSearchPage(prev => Math.min(prev + 1, searchPagination.totalPages))}
+                                    disabled={searchPage === (showPublicApps ? publicAppPagination.totalPages : searchPagination.totalPages) || isSearchLoading}
+                                    onClick={() => setSearchPage(prev => Math.min(prev + 1, showPublicApps ? publicAppPagination.totalPages : searchPagination.totalPages))}
                                     className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                                 >
                                     Next

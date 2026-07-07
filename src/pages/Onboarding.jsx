@@ -401,7 +401,8 @@ const Onboarding = () => {
     sharedFilesBlock: previewSharedFilesBlock,
     deadlineBlock: previewDeadlineBlock,
     portalButton: previewPortalButton,
-    currentYear: String(new Date().getFullYear())
+    currentYear: String(new Date().getFullYear()),
+    currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
   };
   const onboardingPreviewSubject = resolveTemplate(customEmailSubject, onboardingPreviewData);
   const onboardingPreviewHtml = renderTemplateBody(customEmailBody, onboardingPreviewData);
@@ -2283,7 +2284,8 @@ const Onboarding = () => {
                     { tag: '{@salary_table}', desc: 'Auto-Generated Salary Breakup Table' },
                     { tag: '{@employee_signature}', desc: 'Auto-Generated Digital Signature (Canvas Image / Typed Name)' },
                     { tag: '{employee_signature_date}', desc: 'Signature Date' },
-                    { tag: '{employee_signature_ip}', desc: 'Signature IP Address' }
+                    { tag: '{employee_signature_ip}', desc: 'Signature IP Address' },
+                    { tag: '{current_date}', desc: 'Current Date' }
                   ];
 
                   const dynamicPlaceholders = [];

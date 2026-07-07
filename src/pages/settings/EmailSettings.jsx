@@ -128,7 +128,8 @@ const SAMPLE_DATA = {
         </td>
     </tr>
 </table>`,
-    currentYear: '2026'
+    currentYear: '2026',
+    currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
 };
 
 const DEFAULT_EMAIL_LOGO_WIDTH = 200;
