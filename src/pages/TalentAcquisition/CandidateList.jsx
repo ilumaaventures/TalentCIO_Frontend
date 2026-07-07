@@ -22,7 +22,7 @@ import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
-const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Scheduled'];
+const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled', 'Did not Turn up'];
 const PROFILE_SHORTLISTED_EXPORT_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
 const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
 
@@ -69,7 +69,7 @@ const getRoundsForPhase = (candidate, phase) => (
 
 const getPhase2InterviewStatusValue = (candidate = {}) => {
     const normalized = String(candidate?.phase2InterviewStatus || '').trim();
-    if (['Scheduled', 'Rejected', 'Shortlisted'].includes(normalized)) {
+    if (['Scheduled', 'Rejected', 'Shortlisted', 'Did not Turn up'].includes(normalized)) {
         return normalized;
     }
 
@@ -103,7 +103,9 @@ const getDisplayInterviewRoundsForPhase = (candidate, phase) => {
             ? 'Failed'
             : phase2InterviewStatus === 'Shortlisted'
                 ? 'Passed'
-                : 'Scheduled',
+                : phase2InterviewStatus === 'Did not Turn up'
+                    ? 'Skipped'
+                    : 'Scheduled',
         displayStatusLabel: phase2InterviewStatus || 'Scheduled',
         feedback: candidate?.phase2InterviewerFeedback || '',
         rating: null,
@@ -155,6 +157,10 @@ const getInterviewSummaryValue = (rounds = []) => {
         return 'Scheduled';
     }
 
+    if (rounds.every((round) => round.status === 'Skipped')) {
+        return 'Skipped';
+    }
+
     const allClosed = rounds.every((round) => ['Passed', 'Skipped'].includes(round.status));
     if (allClosed) {
         return 'Shortlisted';
@@ -165,7 +171,8 @@ const getInterviewSummaryValue = (rounds = []) => {
 
 const getRoundExportInterviewStatus = (round = {}) => {
     if (round.status === 'Failed') return 'Rejected';
-    if (round.status === 'Passed' || round.status === 'Skipped') return 'Shortlisted';
+    if (round.status === 'Passed') return 'Shortlisted';
+    if (round.status === 'Skipped') return 'Did not Turn up';
     return 'Scheduled';
 };
 
@@ -468,10 +475,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCandidateId = searchParams.get('candidateId');
+    const initialPhaseParam = searchParams.get('phase');
+    const initialPhase = initialPhaseParam ? parseInt(initialPhaseParam, 10) : 1;
 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
-    const [activePhase, setActivePhase] = useState(1);
+    const [activePhase, setActivePhase] = useState(initialPhase);
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
     const [profileTarget, setProfileTarget] = useState(null);
@@ -611,6 +620,17 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             window.removeEventListener('scroll', handleClose, true);
         };
     }, []);
+
+    // Sync activePhase state with search parameters on URL change
+    useEffect(() => {
+        const phaseParam = searchParams.get('phase');
+        if (phaseParam) {
+            const parsedPhase = parseInt(phaseParam, 10);
+            if ([1, 2, 3].includes(parsedPhase) && parsedPhase !== activePhase) {
+                setActivePhase(parsedPhase);
+            }
+        }
+    }, [searchParams, activePhase]);
 
     // Reset page to 1 when any filter changes
     useEffect(() => {
@@ -1202,6 +1222,21 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [fetchCandidates]);
 
+    const handlePhaseChange = useCallback((phase) => {
+        setActivePhase(phase);
+        setPage(1);
+        setFilterStatus('All');
+        setFilterDecision('All');
+        setFilterInterviewStatus('All');
+        setFilterPreference('All');
+        setFilterRating('All');
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('phase', phase);
+            return next;
+        });
+    }, [setSearchParams]);
+
     const handleAddNew = useCallback(() => {
         navigate(`/ta/hiring-request/${hiringRequestId}/add-candidate`);
     }, [navigate, hiringRequestId]);
@@ -1498,9 +1533,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     type: 'list',
                                     allowBlank: true,
                                     showErrorMessage: true,
-                                    formulae: ['"Scheduled"'],
+                                    formulae: ['"Scheduled,Did not Turn up"'],
                                     errorTitle: 'Invalid Phase 2 Interview Status',
-                                    error: 'Interview Status (Phase2) must be: Scheduled.'
+                                    error: 'Interview Status (Phase2) must be: Scheduled or Did not Turn up.'
                                 };
                             }
                         }
@@ -1888,7 +1923,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         const interviewStatus = getInterviewSummaryValue(rounds);
 
         if (interviewStatus === 'Failed') {
-            return { label: 'Failed', color: 'text-red-700 bg-red-50 border-red-200' };
+            return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
         }
 
         if (interviewStatus === 'Pending') {
@@ -1897,6 +1932,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
         if (interviewStatus === 'Scheduled') {
             return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
+        }
+
+        if (interviewStatus === 'Skipped') {
+            return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
         }
 
         if (interviewStatus === 'Shortlisted') {
@@ -1962,15 +2001,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         </div>
                         <div className="inline-flex w-fit rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-inner shadow-slate-200/70">
                             <button
-                                onClick={() => {
-                                    setActivePhase(1);
-                                    setPage(1);
-                                    setFilterStatus('All');
-                                    setFilterDecision('All');
-                                    setFilterInterviewStatus('All');
-                                    setFilterPreference('All');
-                                    setFilterRating('All');
-                                }}
+                                onClick={() => handlePhaseChange(1)}
                                 className={`${phaseToggleButtonClass} ${activePhase === 1
                                     ? 'cursor-default bg-slate-900 text-white shadow-sm'
                                     : 'text-slate-600 hover:bg-white hover:text-slate-900'
@@ -1979,15 +2010,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 Phase 1
                             </button>
                             <button
-                                onClick={() => {
-                                    setActivePhase(2);
-                                    setPage(1);
-                                    setFilterStatus('All');
-                                    setFilterDecision('All');
-                                    setFilterInterviewStatus('All');
-                                    setFilterPreference('All');
-                                    setFilterRating('All');
-                                }}
+                                onClick={() => handlePhaseChange(2)}
                                 className={`${phaseToggleButtonClass} ${activePhase === 2
                                     ? 'cursor-default bg-slate-900 text-white shadow-sm'
                                     : 'text-slate-600 hover:bg-white hover:text-slate-900'
@@ -1996,15 +2019,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 Phase 2
                             </button>
                             <button
-                                onClick={() => {
-                                    setActivePhase(3);
-                                    setPage(1);
-                                    setFilterStatus('All');
-                                    setFilterDecision('All');
-                                    setFilterInterviewStatus('All');
-                                    setFilterPreference('All');
-                                    setFilterRating('All');
-                                }}
+                                onClick={() => handlePhaseChange(3)}
                                 className={`${phaseToggleButtonClass} ${activePhase === 3
                                     ? 'cursor-default bg-slate-900 text-white shadow-sm'
                                     : 'text-slate-600 hover:bg-white hover:text-slate-900'

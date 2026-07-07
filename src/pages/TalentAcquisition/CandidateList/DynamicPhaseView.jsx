@@ -37,7 +37,7 @@ const getPhaseEntryForOrder = (candidate, phaseOrder) => {
 
 const getPhase2InterviewStatusValue = (candidate = {}) => {
     const normalized = String(candidate?.phase2InterviewStatus || '').trim();
-    if (['Scheduled', 'Rejected', 'Shortlisted'].includes(normalized)) {
+    if (['Scheduled', 'Rejected', 'Shortlisted', 'Did not Turn up'].includes(normalized)) {
         return normalized;
     }
 
@@ -71,7 +71,9 @@ const getDisplayInterviewRoundsForPhase = (candidate, phaseOrder) => {
             ? 'Failed'
             : phase2InterviewStatus === 'Shortlisted'
                 ? 'Passed'
-                : 'Scheduled',
+                : phase2InterviewStatus === 'Did not Turn up'
+                    ? 'Skipped'
+                    : 'Scheduled',
         displayStatusLabel: phase2InterviewStatus || 'Scheduled',
         feedback: candidate?.phase2InterviewerFeedback || '',
         rating: null,

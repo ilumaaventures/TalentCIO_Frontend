@@ -281,16 +281,20 @@ const Phase1Candidates = () => {
 
         const pending = rounds.filter(r => r.status === 'Pending' || r.status === 'Scheduled').length;
         const passed = rounds.filter(r => r.status === 'Passed').length;
+        const skipped = rounds.filter(r => r.status === 'Skipped').length;
         const failedRounds = rounds.filter(r => r.status === 'Failed');
         const failedCount = failedRounds.length;
         const total = rounds.length;
 
         if (failedCount > 0) {
             const failedNames = failedRounds.map(r => r.levelName).join(', ');
-            return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+            return { label: `Rejected: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+        if (skipped > 0 && pending === 0) {
+            return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
         }
         if (pending > 0) return { label: `${passed}/${total} Completed`, color: 'text-amber-700 bg-amber-50 border-amber-200' };
-        if (passed === total) return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+        if (passed + skipped === total) return { label: 'All Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
 
         return { label: 'In Progress', color: 'text-blue-700 bg-blue-50 border-blue-200' };
     };
