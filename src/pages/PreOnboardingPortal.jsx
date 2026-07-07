@@ -1287,7 +1287,9 @@ const PreOnboardingPortal = () => {
 
               {/* Step 5: Offer Declaration */}
               {visibleSteps[currentStep]?.id === 'offerDeclaration' && (() => {
-                const sRO = isSectionReadOnly('offerDeclaration'); return (
+                const sRO = isSectionReadOnly('offerDeclaration');
+                const hasDynamicTemplate = reqDocsLabels.includes('Offer Letter') || profile.dynamicTemplates?.some(t => reqDocsLabels.includes(t.name));
+                return (
                   <div>
                     <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Offer & Declaration Documents</h3>
                     <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Please download, review, and acknowledge the following dynamic documents.</p>
@@ -1346,8 +1348,8 @@ const PreOnboardingPortal = () => {
                         (() => {
                           return [
                             { key: 'hasReadOfferLetter', label: 'I have read and understood the terms of my offer letter', show: profile.offerLetterUrl || reqDocsLabels.length === 0 || reqDocsLabels.some(label => /offer\s*letter/i.test(label)) },
-                            { key: 'hasProvidedTrueInfo', label: 'All information I have provided is true and accurate', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') },
-                            { key: 'agreesToOriginalVerification', label: 'I agree to submit original documents for verification on joining day', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') }
+                            { key: 'hasProvidedTrueInfo', label: 'All information I have provided is true and accurate', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate },
+                            { key: 'agreesToOriginalVerification', label: 'I agree to submit original documents for verification on joining day', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate }
                           ].filter(item => item.show).map((item) => (
                             <label key={item.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', border: '1px solid #e2e8f0', borderRadius: '10px', cursor: sRO ? 'default' : 'pointer', background: offerDeclaration[item.key] ? '#f0fdf4' : '#fff' }}>
                               <input type="checkbox" disabled={sRO} checked={offerDeclaration[item.key] || false} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, [item.key]: e.target.checked }); markChange(); }} style={{ marginTop: '2px', accentColor: '#16a34a' }} />
@@ -1359,7 +1361,7 @@ const PreOnboardingPortal = () => {
                     </div>
 
                     {(() => {
-                      return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration')) && (
+                      return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate) && (
                         <>
                           <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>E-Signature</h4>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
