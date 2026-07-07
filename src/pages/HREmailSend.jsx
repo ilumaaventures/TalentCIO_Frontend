@@ -163,7 +163,8 @@ const HREmailSend = () => {
         workEmail: previewEmployee?.workEmail || previewEmployee?.email || '',
         mobile: '',
         location: '',
-        currentYear: String(new Date().getFullYear())
+        currentYear: String(new Date().getFullYear()),
+        currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
     }), [previewEmployee, user?.company?.name]);
 
     const previewSubject = useMemo(() => resolveTemplate(subject, previewData), [previewData, subject]);

@@ -47,6 +47,7 @@ export const TEMPLATE_PLACEHOLDERS = [
     'deadlineBlock',
     'portalButton',
     'currentYear',
+    'currentDate',
     'JD'
 ];
 
@@ -72,7 +73,10 @@ export const GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS = [
     'documentListBlock',
     'personalNote',
     'offboardingStatus',
-    'hrRemarks'
+    'hrRemarks',
+    'joiningDate',
+    'currentYear',
+    'currentDate'
 ];
 
 export const ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
@@ -95,7 +99,8 @@ export const ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
     'sharedFilesBlock',
     'deadlineBlock',
     'portalButton',
-    'currentYear'
+    'currentYear',
+    'currentDate'
 ];
 
 export const OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
@@ -109,7 +114,8 @@ export const OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
     'lastWorkingDay',
     'exitType',
     'companyName',
-    'currentYear'
+    'currentYear',
+    'currentDate'
 ];
 
 export const getSupportedPlaceholderTokens = (placeholders = TEMPLATE_PLACEHOLDERS) => placeholders.map((placeholder) => `{{${placeholder}}}`);
