@@ -440,7 +440,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
 };
 
 const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
-    const itemsPerPage = 15;
+    const itemsPerPage = 30;
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
@@ -3053,7 +3053,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                             }`}
                                                     >
                                                         {!selectedCandidateId && !isLegacyView && (
-                                                            <td className="px-4 py-4 align-top text-center">
+                                                            <td className="px-4 py-2 align-top text-center">
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={selectedCandidateIds.includes(candidate._id)}
@@ -3063,14 +3063,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                 />
                                                             </td>
                                                         )}
-                                                        <td className="px-4 py-4 align-top">
+                                                        <td className="px-4 py-2 align-top">
                                                             <div className="flex flex-col gap-1">
-                                                                <span className="text-[13px] font-bold text-slate-700 leading-tight">
+                                                                <span className="text-xs font-bold text-slate-700 leading-tight">
                                                                     {candidate.candidateName.split(' ')[0]}<br />
                                                                     {candidate.candidateName.split(' ').slice(1).join(' ')}
                                                                 </span>
                                                                 {candidate.isTransferred && !isLegacyView && (
-                                                                    <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-bold w-max uppercase tracking-wider mt-1 border border-blue-200" title="Moved from an older requisition">
+                                                                    <span className="bg-blue-100 text-blue-700 text-[9px] px-1.5 py-0.5 rounded font-bold w-max uppercase tracking-wider mt-1 border border-blue-200" title="Moved from an older requisition">
                                                                         Transferred
                                                                     </span>
                                                                 )}
@@ -3081,30 +3081,30 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             e.stopPropagation();
                                                                             setProfileTarget(candidate);
                                                                         }}
-                                                                        className="mt-1 flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                                                                        className="mt-1 flex items-center gap-1 text-[9px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
                                                                     >
-                                                                        <Eye size={11} />
+                                                                        <Eye size={10} />
                                                                         Review Complete Profile
                                                                     </button>
                                                                 )}
                                                             </div>
                                                         </td>
                                                         {!selectedCandidateId && (
-                                                            <td className="px-4 py-4 align-top">
+                                                            <td className="px-4 py-2 align-top">
                                                                 <div className="flex flex-col">
-                                                                    <span className="text-[12px] text-slate-600 font-medium">{candidate.email}</span>
-                                                                    <span className="text-[12px] text-slate-500">{candidate.mobile}</span>
+                                                                    <span className="text-[11px] text-slate-600 font-medium">{candidate.email}</span>
+                                                                    <span className="text-[11px] text-slate-500">{candidate.mobile}</span>
                                                                 </div>
                                                             </td>
                                                         )}
                                                         {!selectedCandidateId && (
-                                                            <td className="px-4 py-4 align-top">
-                                                                <span className="text-[13px] font-bold text-slate-700">{candidate.totalExperience || '-'} yrs</span>
+                                                            <td className="px-4 py-2 align-top">
+                                                                <span className="text-[11px] font-bold text-slate-700">{candidate.totalExperience || '-'} yrs</span>
                                                             </td>
                                                         )}
                                                         {!selectedCandidateId && (
-                                                            <td className="px-4 py-4 align-top">
-                                                                <div className="text-[12px] text-slate-600 space-y-0.5 whitespace-nowrap">
+                                                            <td className="px-4 py-2 align-top">
+                                                                <div className="text-[11px] text-slate-600 space-y-0.5 whitespace-nowrap">
                                                                     {candidate.currentCTC !== undefined && candidate.currentCTC !== null && candidate.currentCTC !== '' && (
                                                                         <div>Current: <span className="font-semibold">{candidate.currentCTC} LPA</span></div>
                                                                     )}
@@ -3118,9 +3118,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                 </div>
                                                             </td>
                                                         )}
-
                                                         {!selectedCandidateId && (
-                                                            <td className="px-4 py-4 align-top">
+                                                            <td className="px-4 py-2 align-top">
                                                                 {(() => {
                                                                     const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase);
 
@@ -3133,12 +3132,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         : null;
 
                                                                     return (
-                                                                        <div className="flex flex-col gap-1.5 items-start">
-                                                                            <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold tracking-wide ${summary.color}`}>
+                                                                        <div className="flex flex-col gap-1 items-start">
+                                                                            <span className={`px-1.5 py-0.5 border rounded-md text-[9px] font-bold tracking-wide ${summary.color}`}>
                                                                                 {summary.label}
                                                                             </span>
                                                                             <div className="flex flex-col gap-1">
-                                                                                <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap leading-tight">
+                                                                                <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap leading-tight">
                                                                                     {rounds.length} rounds total
                                                                                 </span>
                                                                                 {(() => {
@@ -3150,7 +3149,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                                         const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
                                                                                         if (formatted) {
                                                                                             return (
-                                                                                                <span className="text-[10px] text-slate-600 font-semibold mt-0.5 whitespace-nowrap bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title={`${displayRound.levelName || 'Interview'} Date`}>
+                                                                                                <span className="text-[9px] text-slate-600 font-semibold mt-0.5 whitespace-nowrap bg-slate-100 px-1 py-0.5 rounded border border-slate-200" title={`${displayRound.levelName || 'Interview'} Date`}>
                                                                                                     {formatted}
                                                                                                 </span>
                                                                                             );
@@ -3160,13 +3159,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                                 })()}
                                                                                 <div className="flex flex-wrap gap-1 mt-0.5">
                                                                                     {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
-                                                                                        <span key={r._id || idx} title={r.roundName} className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                                        <span key={r._id || idx} title={r.roundName} className="text-[9px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
                                                                                             R{idx + 1}: {r.rating}/10
                                                                                         </span>
                                                                                     ))}
                                                                                     {ratedRounds.length > 2 && (
                                                                                         <span
-                                                                                            className={`text-[10px] font-bold flex items-center justify-center px-1.5 py-0.5 rounded border cursor-pointer hover:bg-amber-100 transition-colors ${averageRating !== null ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
+                                                                                            className={`text-[9px] font-bold flex items-center justify-center px-1 py-0.5 rounded border cursor-pointer hover:bg-amber-100 transition-colors ${averageRating !== null ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
                                                                                             onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
                                                                                             title="View all rounds"
                                                                                         >
@@ -3181,13 +3180,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                             </td>
                                                         )}
                                                         {!selectedCandidateId && (
-                                                            <td className="px-4 py-4 align-top">
+                                                            <td className="px-4 py-2 align-top">
                                                                 <div className="relative inline-block w-full max-w-27.5">
                                                                     {activePhase === 1 ? (
                                                                         <select
                                                                             value={candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None')}
                                                                             onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
+                                                                            className={`w-full appearance-none px-2 py-0.5 pr-7 text-[11px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
                                                                             onClick={(e) => e.stopPropagation()}
                                                                             disabled={!canMakeDecisions || hasMovedToPhase2(candidate)}
                                                                             title={hasMovedToPhase2(candidate) ? 'Phase 1 decision is locked after moving to Phase 2' : undefined}
@@ -3202,7 +3201,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         <select
                                                                             value={candidate.phase2Decision || 'None'}
                                                                             onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
-                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
+                                                                            className={`w-full appearance-none px-2 py-0.5 pr-7 text-[11px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
                                                                             onClick={(e) => e.stopPropagation()}
                                                                             disabled={!canManagePhase3Decisions}
                                                                         >
@@ -3216,7 +3215,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                         <select
                                                                             value={candidate.phase3Decision || 'None'}
                                                                             onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
-                                                                            className={`w-full appearance-none px-2.5 py-1 pr-7 text-[12px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
+                                                                            className={`w-full appearance-none px-2 py-0.5 pr-7 text-[11px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
                                                                             onClick={(e) => e.stopPropagation()}
                                                                             disabled={!canMakeDecisions}
                                                                         >
@@ -3237,8 +3236,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                             </td>
                                                         )}
                                                         {!selectedCandidateId && (
-                                                            <td className="px-4 py-4 align-top">
-                                                                <div className="flex flex-col gap-0.5 text-[12px] text-slate-500 font-medium whitespace-nowrap">
+                                                            <td className="px-4 py-2 align-top">
+                                                                <div className="flex flex-col gap-0.5 text-[11px] text-slate-500 font-medium whitespace-nowrap">
                                                                     <span
                                                                         className="font-bold text-blue-600 mb-0.5 max-w-30 truncate cursor-pointer hover:underline"
                                                                         title={candidate.profilePulledBy || '-'}
@@ -3258,7 +3257,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                     {getCandidateUploadedByName(candidate) ? (
                                                                         <button
                                                                             type="button"
-                                                                            className="w-fit text-left text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
+                                                                            className="w-fit text-left text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
                                                                                 setFilterUploadedBy([getCandidateUploadedByName(candidate)]);
@@ -3269,17 +3268,16 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             {getCandidateUploadedByName(candidate)}
                                                                         </button>
                                                                     ) : (
-                                                                        <span className="text-[11px] text-slate-400">Unknown uploader</span>
+                                                                        <span className="text-[10px] text-slate-400">Unknown uploader</span>
                                                                     )}
-                                                                    <span className={`mt-0.5 w-fit rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                                                    <span className={`mt-0.5 w-fit rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                                                                         {getCandidateUploadType(candidate)}
                                                                     </span>
-                                                                    <span>{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy')}</span>
-                                                                    <span className="text-[10px] mt-0.5">{format(new Date(candidate.uploadedAt), 'hh:mm a')}</span>
+                                                                    <span className="whitespace-nowrap">{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy hh:mm a')}</span>
                                                                 </div>
                                                             </td>
                                                         )}
-                                                        <td className="px-4 py-4 align-top text-center">
+                                                        <td className="px-4 py-2 align-top text-center">
                                                             <button
                                                                 onClick={(e) => toggleMenu(e, candidate._id)}
                                                                 data-legacy-action-menu-trigger="true"

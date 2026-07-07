@@ -82,6 +82,7 @@ const Discussions = () => {
     const [limit, setLimit] = useState(100);
     const [statusFilter, setStatusFilter] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
+    const [supervisorFilter, setSupervisorFilter] = useState('');
     const [sortField, setSortField] = useState(null); // 'dueDate' | 'createdAt' | null
     const [sortDirection, setSortDirection] = useState(null); // 'asc' | 'desc' | null
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
@@ -147,7 +148,9 @@ const Discussions = () => {
                     dueDate: d.dueDate,
                     createdAt: d.createdAt,
                     createdBy: d.createdBy ? { _id: d.createdBy._id, firstName: d.createdBy.firstName, lastName: d.createdBy.lastName, profilePicture: d.createdBy.profilePicture } : null,
-                    supervisor: d.supervisor ? { _id: d.supervisor._id, firstName: d.supervisor.firstName, lastName: d.supervisor.lastName, profilePicture: d.supervisor.profilePicture } : null,
+                    supervisor: Array.isArray(d.supervisor)
+                        ? d.supervisor.map((s) => ({ _id: s._id, firstName: s.firstName, lastName: s.lastName, profilePicture: s.profilePicture }))
+                        : [],
                     visibleToUsers: Array.isArray(d.visibleToUsers) ? d.visibleToUsers.map((u) => ({ _id: u._id, firstName: u.firstName, lastName: u.lastName, profilePicture: u.profilePicture })) : [],
                     project: d.project ? { _id: d.project._id, name: d.project.name } : null,
                     canEdit: d.canEdit,
@@ -245,11 +248,21 @@ const Discussions = () => {
     }, [fetchAssignedProjects]);
 
     const sortedDiscussions = useMemo(() => {
-        if (!sortField || !sortDirection) {
-            return discussions;
+        let result = discussions;
+
+        // Apply supervisor filter (client-side)
+        if (supervisorFilter) {
+            result = result.filter((d) => {
+                const supArr = Array.isArray(d.supervisor) ? d.supervisor : (d.supervisor ? [d.supervisor] : []);
+                return supArr.some((s) => (s?._id || s) === supervisorFilter);
+            });
         }
 
-        return [...discussions].sort((a, b) => {
+        if (!sortField || !sortDirection) {
+            return result;
+        }
+
+        return [...result].sort((a, b) => {
             const valA = a[sortField];
             const valB = b[sortField];
             
@@ -262,7 +275,7 @@ const Discussions = () => {
                 return dateB - dateA;
             }
         });
-    }, [discussions, sortField, sortDirection]);
+    }, [discussions, sortField, sortDirection, supervisorFilter]);
 
     const handleSortClick = (field) => {
         if (sortField !== field) {
@@ -294,6 +307,7 @@ const Discussions = () => {
     const handleClearAll = () => {
         setStatusFilter('');
         setProjectFilter('');
+        setSupervisorFilter('');
         setSortField(null);
         setSortDirection(null);
         setCurrentPage(1);
@@ -535,14 +549,31 @@ const Discussions = () => {
         setIsCreating(false);
         setActiveMenuId(null);
         setEditingId(discussion._id);
+
+        // Helper to extract a valid 24-char hex ObjectId string from a value
+        const extractId = (v) => {
+            if (!v) return null;
+            if (typeof v === 'string' && /^[a-f0-9]{24}$/i.test(v)) return v;
+            if (typeof v === 'object') {
+                const id = v._id || v.id;
+                if (id && typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)) return id;
+            }
+            return null;
+        };
+
+        const rawSupervisors = Array.isArray(discussion.supervisor)
+            ? discussion.supervisor
+            : (discussion.supervisor ? [discussion.supervisor] : []);
+        const rawVisible = Array.isArray(discussion.visibleToUsers)
+            ? discussion.visibleToUsers
+            : [];
+
         setEditData({
             discussion: discussion.discussion,
             status: discussion.status,
             dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : '',
-            supervisor: Array.isArray(discussion.supervisor)
-                ? discussion.supervisor.map((s) => s._id || s)
-                : (discussion.supervisor ? [discussion.supervisor._id || discussion.supervisor] : []),
-            visibleToUserIds: Array.isArray(discussion.visibleToUsers) ? discussion.visibleToUsers.map((u) => u._id || u) : [],
+            supervisor: rawSupervisors.map(extractId).filter(Boolean),
+            visibleToUserIds: rawVisible.map(extractId).filter(Boolean),
             project: discussion.project?._id || discussion.project || ''
         });
         setEditVisibleSearchVal('');
@@ -564,7 +595,25 @@ const Discussions = () => {
         }
         try {
             setIsSaving(true);
-            const payload = { ...editData };
+            // Sanitize: ensure supervisor and visibleToUserIds contain only valid 24-char hex strings
+            const sanitizeIds = (arr) => {
+                if (!Array.isArray(arr)) return [];
+                return arr
+                    .map((v) => {
+                        if (typeof v === 'string' && /^[a-f0-9]{24}$/i.test(v)) return v;
+                        if (typeof v === 'object' && v !== null) {
+                            const id = v._id || v.id;
+                            if (id && typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)) return id;
+                        }
+                        return null;
+                    })
+                    .filter(Boolean);
+            };
+            const payload = {
+                ...editData,
+                supervisor: sanitizeIds(editData.supervisor),
+                visibleToUserIds: sanitizeIds(editData.visibleToUserIds),
+            };
             delete payload.status;
             if (!payload.dueDate) delete payload.dueDate;
 
@@ -588,7 +637,7 @@ const Discussions = () => {
 
             setEditingId(null);
             setEditData(null);
-            setEditVisibleSearch('');
+            setEditVisibleSearchVal('');
         } catch (error) {
             console.error('Error updating discussion:', error);
             toast.error('Failed to update discussion');
@@ -624,9 +673,15 @@ const Discussions = () => {
         return styles[status] || 'bg-blue-100 text-blue-700 border-blue-200';
     };
 
-    const canChangeRestrictedStatus = (discussion) => (
-        discussion?.canChangeRestrictedStatus ?? (discussion?.supervisor?._id === user?._id)
-    );
+    const canChangeRestrictedStatus = (discussion) => {
+        if (discussion?.canChangeRestrictedStatus !== undefined) {
+            return discussion.canChangeRestrictedStatus;
+        }
+        const supervisors = Array.isArray(discussion?.supervisor)
+            ? discussion.supervisor
+            : (discussion?.supervisor ? [discussion.supervisor] : []);
+        return supervisors.some((s) => (s?._id || s) === user?._id);
+    };
 
     const canUpdateStatus = (discussion) => (
         discussion?.canUpdateStatus ?? canChangeRestrictedStatus(discussion)
@@ -1134,8 +1189,24 @@ const Discussions = () => {
                                     ))}
                                 </select>
                             </div>
+                            <div className="flex flex-col gap-1 min-w-[190px] w-full sm:w-auto">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supervisor</label>
+                                <select
+                                    id="supervisor-filter"
+                                    value={supervisorFilter}
+                                    onChange={(e) => setSupervisorFilter(e.target.value)}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700 w-full"
+                                >
+                                    <option value="">All Supervisors</option>
+                                    {supervisors.map((sup) => (
+                                        <option key={sup._id} value={sup._id}>
+                                            {[sup.firstName, sup.lastName].filter(Boolean).join(' ')}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                        {(statusFilter || projectFilter || sortField) && (
+                        {(statusFilter || projectFilter || supervisorFilter || sortField) && (
                             <button
                                 onClick={handleClearAll}
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors cursor-pointer self-start sm:self-center"
@@ -1145,6 +1216,7 @@ const Discussions = () => {
                             </button>
                         )}
                     </div>
+
 
                     {/* ── Mobile card list (hidden on md+) ── */}
                     <div className="md:hidden divide-y divide-slate-100">
