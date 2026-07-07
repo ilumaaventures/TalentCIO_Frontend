@@ -139,6 +139,57 @@ const PreOnboardingPortal = () => {
   const [offerDeclaration, setOfferDeclaration] = useState({});
   const [validationErrors, setValidationErrors] = useState({});
 
+  const inlineCanvasRef = useRef(null);
+  const [isInlineDrawing, setIsInlineDrawing] = useState(false);
+  const [inlineSignatureStyle, setInlineSignatureStyle] = useState('"Brush Script MT", cursive');
+
+  const startInlineDrawing = (e) => {
+    const canvas = inlineCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1e3a8a';
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsInlineDrawing(true);
+  };
+
+  const drawInline = (e) => {
+    if (!isInlineDrawing) return;
+    const canvas = inlineCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    e.preventDefault();
+  };
+
+  const stopInlineDrawing = () => {
+    setIsInlineDrawing(false);
+  };
+
+  const clearInlineCanvas = () => {
+    const canvas = inlineCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
   const getHeaders = useCallback(() => {
     const headers = {};
     const hostname = window.location.hostname;
@@ -214,7 +265,18 @@ const PreOnboardingPortal = () => {
     if (sectionId === 'documents') return; // docs are saved via uploads
     try {
       setSaving(true);
-      const data = dataOverride || getSectionData(sectionId);
+      let data = dataOverride || getSectionData(sectionId);
+      if (sectionId === 'offerDeclaration' && data.eSignType === 'drawn') {
+        const canvas = inlineCanvasRef.current;
+        if (canvas) {
+          const blank = document.createElement('canvas');
+          blank.width = canvas.width;
+          blank.height = canvas.height;
+          if (canvas.toDataURL() !== blank.toDataURL()) {
+            data.eSignValue = canvas.toDataURL('image/png');
+          }
+        }
+      }
       await axios.patch(`${API_URL}/my-profile/${sectionId}`, data, { headers: getHeaders() });
       setUnsavedChanges(false);
       if (!isAuto) toast.success('Saved!');
@@ -1361,19 +1423,102 @@ const PreOnboardingPortal = () => {
                     </div>
 
                     {(() => {
-                      return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate) && (
-                        <>
-                          <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>E-Signature</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                            <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} readOnly={sRO} placeholder="Type your full name" value={offerDeclaration.eSignName || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignName: e.target.value }); markChange(); }} /></div>
-                            <div><label style={labelStyle}>Date *</label><input type="date" style={inputStyle} readOnly={sRO} value={offerDeclaration.eSignDate?.split('T')[0] || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignDate: e.target.value }); markChange(); }} /></div>
+                      if (sRO) {
+                        return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate) && (
+                          <div style={{ marginTop: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', background: '#f8fafc' }}>
+                            <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>Signature Acknowledgment</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                              <div>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed By</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>{offerDeclaration.eSignName}</span>
+                              </div>
+                              <div>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed On</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>{offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleDateString('en-IN') : '—'}</span>
+                              </div>
+                              <div>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signature Mode</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155', textTransform: 'capitalize' }}>{offerDeclaration.eSignType || 'typed'} Signature</span>
+                              </div>
+                              <div style={{ gridColumn: '1 / -1' }}>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>Digital Signature Preview</span>
+                                {offerDeclaration.eSignType === 'drawn' && offerDeclaration.eSignValue ? (
+                                  <img src={offerDeclaration.eSignValue} alt="Digital Signature" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px', maxWidth: '240px', height: '80px', display: 'block' }} />
+                                ) : (
+                                  <span style={{ fontFamily: inlineSignatureStyle, fontSize: '24px', color: '#1e3a8a', padding: '8px 16px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'inline-block', minWidth: '180px', textAlign: 'center' }}>{offerDeclaration.eSignName || 'Signature'}</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
+                        );
+                      }
 
+                      return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate) && (
+                        <div>
+                          <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>E-Signature</h4>
+                          <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '10px', marginBottom: '20px', maxWidth: '280px' }}>
+                            <button type="button" onClick={() => { setOfferDeclaration({ ...offerDeclaration, eSignType: 'typed' }); markChange(); }} style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: offerDeclaration.eSignType !== 'drawn' ? '#fff' : 'transparent', color: offerDeclaration.eSignType !== 'drawn' ? '#1e293b' : '#64748b', boxShadow: offerDeclaration.eSignType !== 'drawn' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none', outline: 'none' }}>Type Signature</button>
+                            <button type="button" onClick={() => { setOfferDeclaration({ ...offerDeclaration, eSignType: 'drawn' }); markChange(); }} style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: offerDeclaration.eSignType === 'drawn' ? '#fff' : 'transparent', color: offerDeclaration.eSignType === 'drawn' ? '#1e293b' : '#64748b', boxShadow: offerDeclaration.eSignType === 'drawn' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none', outline: 'none' }}>Draw Signature</button>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                            <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} placeholder="Type your full name" value={offerDeclaration.eSignName || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignName: e.target.value, eSignValue: offerDeclaration.eSignType === 'drawn' ? offerDeclaration.eSignValue : e.target.value }); markChange(); }} /></div>
+                            <div><label style={labelStyle}>Date *</label><input type="date" style={inputStyle} value={offerDeclaration.eSignDate?.split('T')[0] || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignDate: e.target.value }); markChange(); }} /></div>
+                          </div>
+                          {offerDeclaration.eSignType === 'drawn' ? (
+                            <div style={{ marginBottom: '20px' }}>
+                              <label style={labelStyle}>Draw your signature below *</label>
+                              <div style={{ border: '1px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc', padding: '12px', position: 'relative', maxWidth: '480px' }}>
+                                <canvas ref={inlineCanvasRef} width={450} height={160} onMouseDown={startInlineDrawing} onMouseMove={drawInline} onMouseUp={stopInlineDrawing} onMouseLeave={stopInlineDrawing} onTouchStart={startInlineDrawing} onTouchMove={drawInline} onTouchEnd={stopInlineDrawing} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'crosshair', display: 'block', width: '100%', height: '160px', touchAction: 'none' }} />
+                                <button type="button" onClick={clearInlineCanvas} style={{ position: 'absolute', top: '20px', right: '20px', padding: '6px 12px', background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>Clear</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ marginBottom: '20px' }}>
+                              <label style={labelStyle}>Signature font preview style</label>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', maxWidth: '600px' }}>
+                                {[
+                                  { font: '"Brush Script MT", cursive', label: 'Classic Script' },
+                                  { font: '"Lucida Handwriting", cursive', label: 'Handwriting' },
+                                  { font: '"Segoe Print", cursive', label: 'Casual Print' },
+                                  { font: 'Courier New, monospace', label: 'Block Print' }
+                                ].map(style => (
+                                  <div key={style.font} onClick={() => { setInlineSignatureStyle(style.font); markChange(); }} style={{ padding: '12px 10px', border: inlineSignatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', background: inlineSignatureStyle === style.font ? '#eff6ff' : '#fff', textAlign: 'center' }}>
+                                    <span style={{ fontFamily: style.font, fontSize: '15px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{offerDeclaration.eSignName || 'Signature'}</span>
+                                    <span style={{ fontSize: '9px', color: '#64748b', marginTop: '4px', display: 'block' }}>{style.label}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {!isGlobalReadOnly && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
                               <input type="checkbox" id="od_complete" checked={offerDeclaration.isComplete || false} onChange={(e) => {
                                 const isChecked = e.target.checked;
-                                const updated = { ...offerDeclaration, isComplete: isChecked };
+                                const canvas = inlineCanvasRef.current;
+                                let signValue = offerDeclaration.eSignValue || '';
+                                if (isChecked) {
+                                  if (!offerDeclaration.eSignName?.trim()) {
+                                    toast.error('Signature name is required.');
+                                    return;
+                                  }
+                                  if (offerDeclaration.eSignType === 'drawn' && canvas) {
+                                    const blank = document.createElement('canvas');
+                                    blank.width = canvas.width;
+                                    blank.height = canvas.height;
+                                    if (canvas.toDataURL() === blank.toDataURL()) {
+                                      toast.error('Please draw your signature before marking complete.');
+                                      return;
+                                    }
+                                    signValue = canvas.toDataURL('image/png');
+                                  } else if (offerDeclaration.eSignType !== 'drawn') {
+                                    signValue = offerDeclaration.eSignName;
+                                  }
+                                  if (!offerDeclaration.eSignDate) {
+                                    toast.error('Signature date is required.');
+                                    return;
+                                  }
+                                }
+                                const updated = { ...offerDeclaration, isComplete: isChecked, eSignValue: signValue };
                                 setOfferDeclaration(updated);
                                 if (isChecked) handleSaveSection('offerDeclaration', false, updated);
                                 else markChange();
@@ -1381,7 +1526,7 @@ const PreOnboardingPortal = () => {
                               <label htmlFor="od_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
                             </div>
                           )}
-                        </>
+                        </div>
                       );
                     })()}
                   </div>
