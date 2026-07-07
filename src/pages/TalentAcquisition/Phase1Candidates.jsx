@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import BulkTransferModal from './BulkTransferModal';
+import DecisionConfirmationModal from '../../components/DecisionConfirmationModal';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
 const Phase1Candidates = () => {
@@ -33,6 +34,7 @@ const Phase1Candidates = () => {
     const [activeMenu, setActiveMenu] = useState(null);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferPresetIds, setTransferPresetIds] = useState([]);
+    const [pendingDecisionChange, setPendingDecisionChange] = useState(null);
     const isAdmin = user?.roles?.includes('Admin');
     const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
         || user?.permissions?.includes('ta.analytics.global');
@@ -233,15 +235,35 @@ const Phase1Candidates = () => {
 
 
     const handleDecisionChange = async (candidateId, newDecision) => {
+        if (['Shortlisted', 'Rejected', 'Did Not Turn Up'].includes(newDecision)) {
+            const cand = candidates.find(c => c._id === candidateId);
+            setPendingDecisionChange({ id: candidateId, name: cand?.candidateName || '', decision: newDecision });
+            return;
+        }
+        await executeDecisionChange(candidateId, newDecision);
+    };
+
+    const executeDecisionChange = async (candidateId, newDecision) => {
         try {
             await api.patch(`/ta/candidates/${candidateId}/decision`, { decision: newDecision });
             toast.success('Decision updated');
-            // Re-fetch candidates to ensure the list is up-to-date and reflects any backend changes
             fetchCandidates();
         } catch (error) {
             console.error('Error updating decision:', error);
             toast.error(error.response?.data?.message || 'Failed to update decision');
         }
+    };
+
+    const handleConfirmDecisionChange = async () => {
+        if (!pendingDecisionChange) return;
+        const { id, decision } = pendingDecisionChange;
+        setPendingDecisionChange(null);
+        await executeDecisionChange(id, decision);
+    };
+
+    const handleCancelDecisionChange = () => {
+        setPendingDecisionChange(null);
+        fetchCandidates();
     };
 
     const getDecisionColor = (decision) => {
@@ -259,16 +281,20 @@ const Phase1Candidates = () => {
 
         const pending = rounds.filter(r => r.status === 'Pending' || r.status === 'Scheduled').length;
         const passed = rounds.filter(r => r.status === 'Passed').length;
+        const skipped = rounds.filter(r => r.status === 'Skipped').length;
         const failedRounds = rounds.filter(r => r.status === 'Failed');
         const failedCount = failedRounds.length;
         const total = rounds.length;
 
         if (failedCount > 0) {
             const failedNames = failedRounds.map(r => r.levelName).join(', ');
-            return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+            return { label: `Rejected: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+        if (skipped > 0 && pending === 0) {
+            return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
         }
         if (pending > 0) return { label: `${passed}/${total} Completed`, color: 'text-amber-700 bg-amber-50 border-amber-200' };
-        if (passed === total) return { label: 'All Passed', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+        if (passed + skipped === total) return { label: 'All Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
 
         return { label: 'In Progress', color: 'text-blue-700 bg-blue-50 border-blue-200' };
     };
@@ -761,6 +787,13 @@ const Phase1Candidates = () => {
                     setShowTransferModal(false);
                     fetchCandidates();
                 }}
+            />
+            <DecisionConfirmationModal
+                isOpen={Boolean(pendingDecisionChange)}
+                onClose={handleCancelDecisionChange}
+                onConfirm={handleConfirmDecisionChange}
+                candidateName={pendingDecisionChange?.name}
+                decision={pendingDecisionChange?.decision}
             />
         </div>
     );

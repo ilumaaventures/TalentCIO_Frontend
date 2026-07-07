@@ -39,7 +39,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
     // Evaluation State
     const [evaluatingRoundId, setEvaluatingRoundId] = useState(null);
-    const [evaluationForm, setEvaluationForm] = useState({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
+    const [evaluationForm, setEvaluationForm] = useState({ status: '', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
 
     // Edit Round State
     const [editingRoundId, setEditingRoundId] = useState(null);
@@ -241,6 +241,10 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     }, [candidateId, fetchCandidate, onUpdate]);
 
     const submitEvaluation = useCallback(async (roundId) => {
+        if (!evaluationForm.status) {
+            toast.error('Decision Result is required');
+            return;
+        }
         if (!evaluationForm.feedback) {
             toast.error('Feedback is required');
             return;
@@ -257,7 +261,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             await api.patch(`/ta/candidates/${candidateId}/rounds/${roundId}/evaluate`, payload);
             toast.success('Evaluation submitted');
             setEvaluatingRoundId(null);
-            setEvaluationForm({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
+            setEvaluationForm({ status: '', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
             fetchCandidate();
             if (onUpdate) onUpdate();
         } catch (error) {
@@ -301,14 +305,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
     const getEffectiveRoundStatus = useCallback((round) => {
         if (round.displayStatusLabel) return round.displayStatusLabel;
-        if (round.status === 'Passed') return 'Passed';
-        if (round.status === 'Failed') return 'Failed';
-        if (round.status === 'Skipped') return 'Skipped';
+        if (round.status === 'Passed') return 'Shortlisted';
+        if (round.status === 'Failed') return 'Rejected';
+        if (round.status === 'Skipped') return 'Did not turn up';
         if (round.status === 'Scheduled') return 'Scheduled';
 
         // Only mark as Passed if both feedback and rating are present
         const isCompleted = round.feedback && (round.rating || round.rating === 0);
-        if (isCompleted) return 'Passed';
+        if (isCompleted) return 'Shortlisted';
 
         // If not completed, show as Scheduled if a date exists or it's already Scheduled
         if (round.scheduledDate || round.status === 'Scheduled') return 'Scheduled';
@@ -318,24 +322,26 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
     const getStatusBadgeColor = useCallback((status) => {
         switch (status) {
-            case 'Passed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+            case 'Passed':
             case 'Shortlisted': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-            case 'Failed': return 'bg-red-100 text-red-700 border-red-200';
+            case 'Failed':
             case 'Rejected': return 'bg-red-100 text-red-700 border-red-200';
             case 'Scheduled': return 'bg-blue-100 text-blue-700 border-blue-200';
-            case 'Skipped': return 'bg-slate-100 text-slate-700 border-slate-200';
+            case 'Skipped':
+            case 'Did not turn up': return 'bg-slate-100 text-slate-700 border-slate-200';
             default: return 'bg-amber-100 text-amber-700 border-amber-200'; // Pending
         }
     }, []);
 
     const getStatusIcon = useCallback((status) => {
         switch (status) {
-            case 'Passed': return <CheckCircle size={16} className="text-emerald-600" />;
+            case 'Passed':
             case 'Shortlisted': return <CheckCircle size={16} className="text-emerald-600" />;
-            case 'Failed': return <XCircle size={16} className="text-red-600" />;
+            case 'Failed':
             case 'Rejected': return <XCircle size={16} className="text-red-600" />;
             case 'Scheduled': return <Calendar size={16} className="text-blue-600" />;
-            case 'Skipped': return <Clock size={16} className="text-slate-500" />;
+            case 'Skipped':
+            case 'Did not turn up': return <XCircle size={16} className="text-slate-500" />;
             default: return <Clock size={16} className="text-amber-600" />;
         }
     }, []);
@@ -474,7 +480,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     {!isSidePanel && (
                         <button
                             type="button"
-                            onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)}
+                            onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications&phase=${phaseParam || 1}`)}
                             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
                         >
                             <ArrowLeft size={16} />
@@ -494,7 +500,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                     <div className="w-full px-3 sm:px-4 lg:px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="flex items-center gap-4">
-                            <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
+                            <button onClick={() => navigate(`/ta/view/${hiringRequestId}?tab=applications&phase=${phaseParam || 1}`)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
                                 <ArrowLeft size={20} />
                             </button>
                             <div>
@@ -1088,7 +1094,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             || (Array.isArray(round.skillRatings) && round.skillRatings.some(sr => sr.rating > 0));
                                         const canEvaluate = !round.isSyntheticPhase2 && canManageEvaluation && ['Pending', 'Scheduled'].includes(round.status) && !hasExistingEvaluationData;
                                         const canEditFeedback = !round.isSyntheticPhase2 && canManageEvaluation && (
-                                            ['Passed', 'Failed'].includes(round.status) || hasExistingEvaluationData
+                                            ['Passed', 'Failed', 'Skipped'].includes(round.status) || hasExistingEvaluationData
                                         );
                                         const isEvaluating = evaluatingRoundId === round._id;
                                         const isEditingRound = editingRoundId === round._id;
@@ -1243,7 +1249,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                     })
                                                                                     .map(sr => ({ ...sr, rating: 0 })),
                                                                                 feedback: '',
-                                                                                status: 'Passed',
+                                                                                status: '',
                                                                                 showAssessment: false,
                                                                                 manualSkillName: ''
                                                                             });
@@ -1258,7 +1264,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                         onClick={() => {
                                                                             setEvaluatingRoundId(round._id);
                                                                             setEvaluationForm({
-                                                                                status: ['Passed', 'Failed'].includes(round.status)
+                                                                                status: ['Passed', 'Failed', 'Skipped'].includes(round.status)
                                                                                     ? round.status
                                                                                     : 'Passed',
                                                                                 feedback: round.feedback || '',
@@ -1347,29 +1353,18 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                     <div className="space-y-4">
                                                                         <div>
                                                                             <label className="block text-sm font-medium text-slate-700 mb-2">Decision Result *</label>
-                                                                            <div className="flex gap-4">
-                                                                                <label className="flex items-center gap-2 cursor-pointer">
-                                                                                    <input
-                                                                                        type="radio"
-                                                                                        name={`status-${round._id}`}
-                                                                                        value="Passed"
-                                                                                        checked={evaluationForm.status === 'Passed'}
-                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value })}
-                                                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
-                                                                                    />
-                                                                                    <span className="text-sm font-medium text-slate-800">Pass</span>
-                                                                                </label>
-                                                                                <label className="flex items-center gap-2 cursor-pointer">
-                                                                                    <input
-                                                                                        type="radio"
-                                                                                        name={`status-${round._id}`}
-                                                                                        value="Failed"
-                                                                                        checked={evaluationForm.status === 'Failed'}
-                                                                                        onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value })}
-                                                                                        className="w-4 h-4 text-red-600 border-slate-300 focus:ring-red-500"
-                                                                                    />
-                                                                                    <span className="text-sm font-medium text-slate-800">Fail</span>
-                                                                                </label>
+                                                                            <div className="w-full">
+                                                                                <select
+                                                                                    name={`status-${round._id}`}
+                                                                                    value={evaluationForm.status || ''}
+                                                                                    onChange={(e) => setEvaluationForm({ ...evaluationForm, status: e.target.value })}
+                                                                                    className="w-full md:w-64 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 bg-white outline-none"
+                                                                                >
+                                                                                    <option value="">-- Select Result --</option>
+                                                                                    <option value="Passed">Shortlisted</option>
+                                                                                    <option value="Failed">Rejected</option>
+                                                                                    <option value="Skipped">Did not turn up</option>
+                                                                                </select>
                                                                             </div>
                                                                         </div>
 
@@ -1516,7 +1511,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                             <button
                                                                                 onClick={() => {
                                                                                     setEvaluatingRoundId(null);
-                                                                                    setEvaluationForm({ status: 'Passed', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
+                                                                                    setEvaluationForm({ status: '', feedback: '', rating: '', skillRatings: [], showAssessment: false, manualSkillName: '' });
                                                                                 }}
                                                                                 className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                                                                             >

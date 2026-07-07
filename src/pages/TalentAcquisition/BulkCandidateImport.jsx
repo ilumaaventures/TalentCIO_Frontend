@@ -10,7 +10,9 @@ import { useAuth } from '../../context/AuthContext';
 const normalizeSkillLabel = (value) => String(value || '').trim();
 const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();
 const normalizeHeaderValue = (value) => String(value || '').trim().toLowerCase();
-const ROUND_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled'];
+const ROUND_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled', 'Did not Turn up'];
+const PHASE2_INTERVIEW_STATUS_OPTIONS = ['Scheduled', 'Did not Turn up'];
+const ALL_PHASE2_INTERVIEW_STATUS_OPTIONS = ['Scheduled', 'Did not Turn up', 'Shortlisted', 'Rejected'];
 const PROFILE_SHORTLISTED_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
 const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
 const LEGACY_CANDIDATE_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
@@ -63,6 +65,10 @@ const normalizeRoundImportStatus = (value) => {
         return { excelValue: 'Scheduled', systemValue: 'Scheduled', isValid: true };
     }
 
+    if (normalized === 'did not turn up') {
+        return { excelValue: 'Did not Turn up', systemValue: 'Skipped', isValid: true };
+    }
+
     return { excelValue: String(value || '').trim(), systemValue: null, isValid: false };
 };
 
@@ -82,6 +88,10 @@ const normalizePhase2InterviewStatus = (value) => {
 
     if (normalized === 'shortlisted') {
         return { value: 'Shortlisted', isValid: true };
+    }
+
+    if (normalized === 'did not turn up') {
+        return { value: 'Did not Turn up', isValid: true };
     }
 
     return { value: String(value || '').trim(), isValid: false };
@@ -590,7 +600,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
                     resumePublicId: 'bulk-imported-placeholder',
-                    profileShared: profileSharedFlag === true || phase2ShortlistedFlag === true || phase2SelectedFlag === true || Boolean((phase2InterviewerFeedback || '').trim()) || ['Scheduled', 'Rejected', 'Shortlisted'].includes(derivedPhase2InterviewStatus),
+                    profileShared: profileSharedFlag === true || phase2ShortlistedFlag === true || phase2SelectedFlag === true || Boolean((phase2InterviewerFeedback || '').trim()) || ['Scheduled', 'Rejected', 'Shortlisted', 'Did not Turn up'].includes(derivedPhase2InterviewStatus),
                     phase2Decision: derivedPhase2Decision,
                     phase2InterviewerFeedback: phase2InterviewerFeedback || '',
                     phase2InterviewStatus: derivedPhase2InterviewStatus,
@@ -836,7 +846,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 if (mappedRow.invalidPhase2ShortlistedValue) errors.push('Shortlisted (Phase 2) must be Yes or No');
                 if (mappedRow.invalidPhase2SelectedValue) errors.push('Selected (Phase 2) must be Yes or No');
                 if (mappedRow.invalidPhase2InterviewStatus) {
-                    errors.push(`Phase 2 Interview Status must be one of ${ROUND_INTERVIEW_STATUS_OPTIONS.join(', ')}`);
+                    errors.push(`Phase 2 Interview Status must be one of ${ALL_PHASE2_INTERVIEW_STATUS_OPTIONS.join(', ')}`);
                 }
                 (mappedRow.interviewRounds || []).forEach((round) => {
                     if (round.invalidInterviewStatus) {
@@ -988,6 +998,9 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             PROFILE_SHORTLISTED_OPTIONS.forEach((option, index) => {
                 validationSheet.getCell(`D${index + 1}`).value = option;
             });
+            PHASE2_INTERVIEW_STATUS_OPTIONS.forEach((option, index) => {
+                validationSheet.getCell(`E${index + 1}`).value = option;
+            });
 
             validationSheet.state = 'hidden';
 
@@ -995,6 +1008,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             const interviewStatusValidationFormula = buildValidationRangeFormula('B', ROUND_INTERVIEW_STATUS_OPTIONS.length);
             const yesNoValidationFormula = buildValidationRangeFormula('C', yesNoOptions.length);
             const profileShortlistedValidationFormula = buildValidationRangeFormula('D', PROFILE_SHORTLISTED_OPTIONS.length);
+            const phase2InterviewStatusValidationFormula = buildValidationRangeFormula('E', PHASE2_INTERVIEW_STATUS_OPTIONS.length);
 
             // Skills from Hiring Request
             const techSkills = (Array.isArray(request?.requirements?.mustHaveSkills)
@@ -1140,9 +1154,9 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                                     type: 'list',
                                     allowBlank: true,
                                     showErrorMessage: true,
-                                    formulae: [interviewStatusValidationFormula],
+                                    formulae: [phase2InterviewStatusValidationFormula],
                                     errorTitle: 'Invalid Phase 2 Interview Status',
-                                    error: `Interview Status (Phase2) must be one of: ${ROUND_INTERVIEW_STATUS_OPTIONS.join(', ')}.`
+                                    error: `Interview Status (Phase2) must be one of: ${PHASE2_INTERVIEW_STATUS_OPTIONS.join(', ')}.`
                                 };
                             }
                         }

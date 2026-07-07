@@ -1052,7 +1052,6 @@ const CandidateForm = () => {
                                                 <select name="status" value={formData.status} onChange={handleChange} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-700 bg-blue-50" disabled={isViewMode}>
                                                     <option value="">None</option>
                                                     <option value="Interested">Interested</option>
-                                                    <option value="In Interview">In Interview</option>
                                                     <option value="Not Interested">Not Interested</option>
                                                     <option value="Not Relevant">Not Relevant</option>
                                                     <option value="Not Picking">Not Picking</option>
