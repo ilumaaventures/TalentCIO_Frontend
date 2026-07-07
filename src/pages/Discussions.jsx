@@ -82,6 +82,7 @@ const Discussions = () => {
     const [limit, setLimit] = useState(100);
     const [statusFilter, setStatusFilter] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
+    const [supervisorFilter, setSupervisorFilter] = useState('');
     const [sortField, setSortField] = useState(null); // 'dueDate' | 'createdAt' | null
     const [sortDirection, setSortDirection] = useState(null); // 'asc' | 'desc' | null
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
@@ -247,11 +248,21 @@ const Discussions = () => {
     }, [fetchAssignedProjects]);
 
     const sortedDiscussions = useMemo(() => {
-        if (!sortField || !sortDirection) {
-            return discussions;
+        let result = discussions;
+
+        // Apply supervisor filter (client-side)
+        if (supervisorFilter) {
+            result = result.filter((d) => {
+                const supArr = Array.isArray(d.supervisor) ? d.supervisor : (d.supervisor ? [d.supervisor] : []);
+                return supArr.some((s) => (s?._id || s) === supervisorFilter);
+            });
         }
 
-        return [...discussions].sort((a, b) => {
+        if (!sortField || !sortDirection) {
+            return result;
+        }
+
+        return [...result].sort((a, b) => {
             const valA = a[sortField];
             const valB = b[sortField];
             
@@ -264,7 +275,7 @@ const Discussions = () => {
                 return dateB - dateA;
             }
         });
-    }, [discussions, sortField, sortDirection]);
+    }, [discussions, sortField, sortDirection, supervisorFilter]);
 
     const handleSortClick = (field) => {
         if (sortField !== field) {
@@ -296,6 +307,7 @@ const Discussions = () => {
     const handleClearAll = () => {
         setStatusFilter('');
         setProjectFilter('');
+        setSupervisorFilter('');
         setSortField(null);
         setSortDirection(null);
         setCurrentPage(1);
@@ -1177,8 +1189,24 @@ const Discussions = () => {
                                     ))}
                                 </select>
                             </div>
+                            <div className="flex flex-col gap-1 min-w-[190px] w-full sm:w-auto">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supervisor</label>
+                                <select
+                                    id="supervisor-filter"
+                                    value={supervisorFilter}
+                                    onChange={(e) => setSupervisorFilter(e.target.value)}
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700 w-full"
+                                >
+                                    <option value="">All Supervisors</option>
+                                    {supervisors.map((sup) => (
+                                        <option key={sup._id} value={sup._id}>
+                                            {[sup.firstName, sup.lastName].filter(Boolean).join(' ')}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                        {(statusFilter || projectFilter || sortField) && (
+                        {(statusFilter || projectFilter || supervisorFilter || sortField) && (
                             <button
                                 onClick={handleClearAll}
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors cursor-pointer self-start sm:self-center"
@@ -1188,6 +1216,7 @@ const Discussions = () => {
                             </button>
                         )}
                     </div>
+
 
                     {/* ── Mobile card list (hidden on md+) ── */}
                     <div className="md:hidden divide-y divide-slate-100">
