@@ -225,8 +225,18 @@ const HiringRequestList = () => {
                                             <div className="font-semibold text-slate-800 text-xs">{req.roleDetails.title}</div>
                                             <div className="text-[10px] text-slate-500">{req.roleDetails.department} • {req.roleDetails.employmentType}</div>
                                         </td>
-                                        <td className="px-3.5 py-2.5 text-slate-600 font-medium">
-                                            {req.requirements?.location || '-'}
+                                        <td className="px-3.5 py-2.5 text-slate-600">
+                                            <div className="font-medium">{req.requirements?.location || '-'}</div>
+                                            {(req.requirements?.workPlace || req.requirements?.clientWorkLocation?.length > 0 || req.requirements?.workMode || req.requirements?.workingDaysPerWeek) && (
+                                                <div className="text-[10px] text-slate-400 font-normal">
+                                                    {[
+                                                        req.requirements.workPlace,
+                                                        req.requirements.clientWorkLocation && req.requirements.clientWorkLocation.length > 0 ? `(${req.requirements.clientWorkLocation.join(', ')})` : '',
+                                                        req.requirements.workMode,
+                                                        req.requirements.workingDaysPerWeek ? `${req.requirements.workingDaysPerWeek} Days/Week` : ''
+                                                    ].filter(Boolean).join(' • ')}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-3.5 py-2.5">
                                             <div className="flex flex-wrap gap-1 max-w-[150px]">
