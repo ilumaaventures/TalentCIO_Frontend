@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Building2, Users, User, Globe, Mail, MapPin, Phone, Briefcase, ChevronRight } from 'lucide-react';
 import api from '../api/axios';
@@ -40,41 +40,42 @@ const ClientView = () => {
         }
     }, [searchParams]);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                // Fetch Client
-                const clientRes = await api.get('/projects/clients');
-                const foundClient = clientRes.data.find(c => c._id === id);
+    const fetchData = useCallback(async () => {
+        try {
+            // Fetch Client
+            const clientRes = await api.get('/projects/clients');
+            const foundClient = clientRes.data.find(c => c._id === id);
 
-                if (foundClient) {
-                    setClient(foundClient);
+            if (foundClient) {
+                setClient(foundClient);
 
-                    // Fetch Projects
-                    try {
-                        const projectsRes = await api.get('/projects');
-                        // Filter projects for this client
-                        const clientProjects = projectsRes.data.filter(p =>
-                            p.client && (typeof p.client === 'string' ? p.client === id : p.client._id === id)
-                        );
-                        setProjects(clientProjects);
-                    } catch (err) {
-                        console.error("Failed to load projects", err);
-                        // Don't fail the whole page if projects fail
-                    }
-                } else {
-                    toast.error('Client not found');
-                    navigate('/clients');
+                // Fetch Projects
+                try {
+                    const projectsRes = await api.get('/projects');
+                    // Filter projects for this client
+                    const clientProjects = projectsRes.data.filter(p =>
+                        p.client && (typeof p.client === 'string' ? p.client === id : p.client._id === id)
+                    );
+                    setProjects(clientProjects);
+                } catch (err) {
+                    console.error("Failed to load projects", err);
+                    // Don't fail the whole page if projects fail
                 }
-            } catch {
-                toast.error('Failed to load client');
+            } else {
+                toast.error('Client not found');
                 navigate('/clients');
-            } finally {
-                setLoading(false);
             }
-        };
-        fetchData();
+        } catch {
+            toast.error('Failed to load client');
+            navigate('/clients');
+        } finally {
+            setLoading(false);
+        }
     }, [id, navigate]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     if (loading) {
         return (
