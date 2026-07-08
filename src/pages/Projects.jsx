@@ -168,7 +168,7 @@ const Projects = () => {
     // if (loading) return <div className="p-8 text-center">Loading...</div>;
 
     const handleStatusChange = async (project, newStatus) => {
-        const isActive = newStatus !== 'Completed';
+        const isActive = newStatus !== 'Completed' && newStatus !== 'Inactive';
         setActionLoading(project._id);
         try {
             await api.put(`/projects/${project._id}`, { status: newStatus, isActive });
@@ -244,7 +244,8 @@ const Projects = () => {
                                                 <td className="px-6 py-3">
                                                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${displayStatus === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                         displayStatus === 'On Hold' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                                            'bg-slate-100 text-slate-500 border-slate-200'
+                                                            displayStatus === 'Inactive' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                                                                'bg-slate-100 text-slate-500 border-slate-200'
                                                         }`}>
                                                         {displayStatus}
                                                     </span>
@@ -319,6 +320,19 @@ const Projects = () => {
                                                                             >
                                                                                 <Briefcase size={13} />
                                                                                 Mark as Active
+                                                                            </button>
+                                                                        )}
+
+                                                                        {displayStatus !== 'Inactive' && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    handleStatusChange(project, 'Inactive');
+                                                                                    setOpenMenuId(null);
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-purple-600 flex items-center gap-2"
+                                                                            >
+                                                                                <XCircle size={13} />
+                                                                                Inactive
                                                                             </button>
                                                                         )}
 

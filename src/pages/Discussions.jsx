@@ -230,7 +230,11 @@ const Discussions = () => {
                 params.assignedOnly = true;
             }
             const res = await api.get('/projects', { params });
-            setProjects(res.data || []);
+            // Exclude Inactive and On Hold projects from discussions
+            const activeProjects = (res.data || []).filter(
+                (p) => p.status !== 'Inactive' && p.status !== 'On Hold'
+            );
+            setProjects(activeProjects);
         } catch (error) {
             console.error('Error fetching assigned projects:', error);
         }
