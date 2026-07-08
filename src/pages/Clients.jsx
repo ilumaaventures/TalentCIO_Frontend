@@ -39,7 +39,7 @@ const Clients = () => {
                 if (!force && isCacheFresh(cachedData, CLIENT_CACHE_TTL_MS)) return;
             }
 
-            const clientsRes = await api.get('/projects/clients');
+            const clientsRes = await api.get(`/projects/clients?_t=${Date.now()}`);
             const clientData = clientsRes.data || [];
 
             const newFingerprint = JSON.stringify({ c: clientData.length, first: clientData[0]?._id });
@@ -51,6 +51,7 @@ const Clients = () => {
                 const minimalClients = clientData.map(c => ({
                     _id: c._id,
                     name: c.name,
+                    nickname: c.nickname,
                     companyName: c.companyName,
                     email: c.email,
                     status: c.status || 'Active',
@@ -111,7 +112,7 @@ const Clients = () => {
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 border-b border-slate-100">
                             <tr>
-                                {['#', 'Client Name', 'Company Name', 'Business Unit', 'Email', 'Status', 'Actions'].map(h => (
+                                {['#', 'Client Name', 'Nickname', 'Company Name', 'Business Unit', 'Status', 'Actions'].map(h => (
                                     <th key={h} className="px-4 py-3 text-left">
                                         <Skeleton className="h-3 w-20" />
                                     </th>
@@ -164,9 +165,9 @@ const Clients = () => {
                             <tr>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nickname</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Company Name</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Business Unit</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-16">Actions</th>
                             </tr>
@@ -190,6 +191,7 @@ const Clients = () => {
                                                 <span className="font-semibold text-slate-800">{client.name}</span>
                                             </div>
                                         </td>
+                                        <td className="px-4 py-3 text-slate-600">{client.nickname || <span className="text-slate-300">—</span>}</td>
                                         <td className="px-4 py-3 text-slate-600">{client.companyName || <span className="text-slate-300">—</span>}</td>
                                         <td className="px-4 py-3">
                                             {client.businessUnit?.name
@@ -197,7 +199,6 @@ const Clients = () => {
                                                 : <span className="text-slate-300">—</span>
                                             }
                                         </td>
-                                        <td className="px-4 py-3 text-slate-600">{client.email || <span className="text-slate-300">—</span>}</td>
                                         <td className="px-4 py-3">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
                                                 client.status === 'Inactive'

@@ -5,6 +5,7 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import ClientTADashboard from './TalentAcquisition/ClientTADashboard';
+import ClientForm from './ClientForm';
 
 const Field = ({ label, value, icon: Icon }) => (
     <div>
@@ -32,6 +33,7 @@ const ClientView = () => {
     const [loading, setLoading] = useState(true);
     const [searchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState('details');
+    const [isEditOpen, setIsEditOpen] = useState(false);
 
     useEffect(() => {
         const tab = searchParams.get('tab');
@@ -43,7 +45,7 @@ const ClientView = () => {
     const fetchData = useCallback(async () => {
         try {
             // Fetch Client
-            const clientRes = await api.get('/projects/clients');
+            const clientRes = await api.get(`/projects/clients?_t=${Date.now()}`);
             const foundClient = clientRes.data.find(c => c._id === id);
 
             if (foundClient) {
@@ -77,6 +79,22 @@ const ClientView = () => {
         fetchData();
     }, [fetchData]);
 
+    const handleToggleStatus = async () => {
+        const newStatus = client.status === 'Inactive' ? 'Active' : 'Inactive';
+        const loadingToast = toast.loading(`Updating status for ${client.name}...`);
+        try {
+            await api.put(`/projects/clients/${client._id}`, {
+                ...client,
+                status: newStatus
+            });
+            toast.success(`Client status set to ${newStatus}`, { id: loadingToast });
+            setClient(prev => ({ ...prev, status: newStatus }));
+            sessionStorage.removeItem(`client_data_${user?._id}`);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to update client status', { id: loadingToast });
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-100 flex items-center justify-center">
@@ -106,12 +124,24 @@ const ClientView = () => {
                         </div>
                     </div>
                     {canUpdate && (
-                        <button
-                            onClick={() => navigate(`/clients/${id}/edit`)}
-                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-md transition-colors"
-                        >
-                            Edit Client
-                        </button>
+                        <div className="flex items-center space-x-2">
+                            <button
+                                onClick={handleToggleStatus}
+                                className={`text-xs font-semibold px-4 py-2 rounded-md transition-colors border ${
+                                    client.status === 'Inactive'
+                                        ? 'text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 border-green-200'
+                                        : 'text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border-red-200'
+                                }`}
+                            >
+                                {client.status === 'Inactive' ? 'Activate Client' : 'Deactivate Client'}
+                            </button>
+                            <button
+                                onClick={() => setIsEditOpen(true)}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-md transition-colors border border-blue-200"
+                            >
+                                Edit Client
+                            </button>
+                        </div>
                     )}
                 </div>
 
@@ -162,6 +192,7 @@ const ClientView = () => {
                             </div>
                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <Field label="Client Name" value={client.name} icon={User} />
+                                <Field label="Nickname" value={client.nickname} icon={User} />
                                 <Field label="Client Email" value={client.email} icon={Mail} />
                                 <div>
                                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Business Unit</p>
@@ -171,6 +202,16 @@ const ClientView = () => {
                                     }
                                 </div>
                                 <Field label="Location" value={client.location} icon={MapPin} />
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Status</p>
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                                        client.status === 'Inactive'
+                                            ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                            : 'bg-green-50 text-green-700 border-green-200'
+                                    }`}>
+                                        {client.status || 'Active'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -274,6 +315,12 @@ const ClientView = () => {
                 )}
 
             </div>
+            <ClientForm
+                isOpen={isEditOpen}
+                onClose={() => setIsEditOpen(false)}
+                clientId={id}
+                onSuccess={fetchData}
+            />
         </div>
     );
 };

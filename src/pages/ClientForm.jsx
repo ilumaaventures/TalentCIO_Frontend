@@ -13,6 +13,7 @@ const INITIAL_FORM = {
     companyLocation: '',
     // Client Details
     name: '',
+    nickname: '',
     email: '',
     businessUnit: '',
     location: '',
@@ -45,7 +46,7 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
             if (isEditing) {
                 setLoading(true);
                 try {
-                    const res = await api.get('/projects/clients');
+                    const res = await api.get(`/projects/clients?_t=${Date.now()}`);
                     const client = res.data.find(c => c._id === clientId);
                     if (client) {
                         setFormData({
@@ -53,6 +54,7 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
                             companyUrl: client.companyUrl || '',
                             companyLocation: client.companyLocation || '',
                             name: client.name || '',
+                            nickname: client.nickname || '',
                             email: client.email || '',
                             businessUnit: client.businessUnit?._id || '',
                             location: client.location || '',
@@ -248,6 +250,11 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
                                             placeholder="Client name"
                                             className={`zoho-input ${errors.name ? 'border-red-400' : ''}`} />
                                         {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nickname</label>
+                                        <input name="nickname" value={formData.nickname} onChange={handleChange}
+                                            placeholder="Nickname" className="zoho-input" />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Client Email</label>
