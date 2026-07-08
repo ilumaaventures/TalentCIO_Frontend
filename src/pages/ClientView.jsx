@@ -113,7 +113,7 @@ const ClientView = () => {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <button
-                            onClick={() => navigate(activeTab === 'ta' ? '/ta' : '/clients')}
+                            onClick={() => navigate(activeTab === 'ta' ? `/ta/hiring-requests/${encodeURIComponent(client.name)}` : '/clients')}
                             className="text-slate-400 hover:text-slate-700 transition-colors"
                         >
                             <ArrowLeft size={20} />

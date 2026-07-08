@@ -93,8 +93,8 @@ const HiringRequestList = () => {
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex items-center gap-4">
-                        <button 
-                            onClick={() => navigate(clientName ? '/ta?tab=clients' : '/ta')}
+                        <button
+                            onClick={() => navigate(clientName ? '/ta?tab=clients' : `/ta/hiring-requests/${clientName}`)}
                             className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
                             title="Go back"
                         >
@@ -107,7 +107,27 @@ const HiringRequestList = () => {
                                 <span className="font-medium text-slate-800">{clientName ? decodeURIComponent(clientName) : 'All Positions'}</span>
                             </div>
                             <h1 className="text-xl font-bold text-slate-800">
-                                {clientName ? `${decodeURIComponent(clientName)} Positions` : 'Talent Acquisition'}
+                                {clientName ? (
+                                    <>
+                                        {(() => {
+                                            const decodedName = decodeURIComponent(clientName);
+                                            const clientId = getClientIdByName(decodedName);
+                                            return clientId ? (
+                                                <Link
+                                                    to={`/clients/${clientId}/view?tab=ta`}
+                                                    className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                                                >
+                                                    {decodedName}
+                                                </Link>
+                                            ) : (
+                                                <span>{decodedName}</span>
+                                            );
+                                        })()}
+                                        {' '}Positions
+                                    </>
+                                ) : (
+                                    'Talent Acquisition'
+                                )}
                             </h1>
                         </div>
                     </div>
@@ -169,13 +189,20 @@ const HiringRequestList = () => {
                     <table className="w-full text-xs text-left min-w-full">
                         <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-[10px] tracking-wider">
                             <tr>
-                                <th className="px-3.5 py-3">Request ID</th>
-                                <th className="px-3.5 py-3">Client</th>
+                                {!clientName && <th className="px-3.5 py-3">Request ID</th>}
+                                {!clientName && <th className="px-3.5 py-3">Client</th>}
                                 <th className="px-3.5 py-3">Role & Dept</th>
                                 <th className="px-3.5 py-3">Work Location</th>
+                                {clientName && (
+                                    <>
+                                        <th className="px-3.5 py-3">Working Days/Week</th>
+                                        <th className="px-3.5 py-3">Work Mode</th>
+                                        <th className="px-3.5 py-3">Work Place</th>
+                                    </>
+                                )}
                                 <th className="px-3.5 py-3">Assigned Users</th>
                                 <th className="px-3.5 py-3">Created On</th>
-                                <th className="px-3.5 py-3">Status</th>
+                                {!clientName && <th className="px-3.5 py-3">Status</th>}
                                 <th className="px-3.5 py-3 text-right">Action</th>
                             </tr>
                         </thead>
@@ -194,40 +221,44 @@ const HiringRequestList = () => {
                                 </tr>
                             ) : (
                                 requests.map(req => (
-                                    <tr 
-                                        key={req._id} 
+                                    <tr
+                                        key={req._id}
                                         className="hover:bg-slate-50 transition-colors group cursor-pointer text-xs"
                                         onClick={() => navigate(`/ta/view/${req._id}${(req.status === 'Approved' || req.status === 'Closed') ? '?tab=applications' : ''}`)}
                                     >
-                                        <td className="px-3.5 py-2.5 font-medium text-slate-700">
-                                            {req.requestId}
-                                        </td>
-                                        <td className="px-3.5 py-2.5 font-medium text-blue-600">
-                                            {req.client ? (
-                                                (() => {
-                                                    const clientId = getClientIdByName(req.client);
-                                                    return clientId ? (
-                                                        <Link
-                                                            to={`/clients/${clientId}/view?tab=ta`}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="hover:text-blue-800 hover:underline transition-colors"
-                                                            title="View Client TA Dashboard"
-                                                        >
-                                                            {req.client}
-                                                        </Link>
-                                                    ) : (
-                                                        <span>{req.client}</span>
-                                                    );
-                                                })()
-                                            ) : '-'}
-                                        </td>
+                                        {!clientName && (
+                                            <td className="px-3.5 py-2.5 font-medium text-slate-700">
+                                                {req.requestId}
+                                            </td>
+                                        )}
+                                        {!clientName && (
+                                            <td className="px-3.5 py-2.5 font-medium text-blue-600">
+                                                {req.client ? (
+                                                    (() => {
+                                                        const clientId = getClientIdByName(req.client);
+                                                        return clientId ? (
+                                                            <Link
+                                                                to={`/clients/${clientId}/view?tab=ta`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className="hover:text-blue-800 hover:underline transition-colors"
+                                                                title="View Client TA Dashboard"
+                                                            >
+                                                                {req.client}
+                                                            </Link>
+                                                        ) : (
+                                                            <span>{req.client}</span>
+                                                        );
+                                                    })()
+                                                ) : '-'}
+                                            </td>
+                                        )}
                                         <td className="px-3.5 py-2.5">
                                             <div className="font-semibold text-slate-800 text-xs">{req.roleDetails.title}</div>
                                             <div className="text-[10px] text-slate-500">{req.roleDetails.department} • {req.roleDetails.employmentType}</div>
                                         </td>
                                         <td className="px-3.5 py-2.5 text-slate-600">
                                             <div className="font-medium">{req.requirements?.location || '-'}</div>
-                                            {(req.requirements?.workPlace || req.requirements?.clientWorkLocation?.length > 0 || req.requirements?.workMode || req.requirements?.workingDaysPerWeek) && (
+                                            {!clientName && (req.requirements?.workPlace || req.requirements?.clientWorkLocation?.length > 0 || req.requirements?.workMode || req.requirements?.workingDaysPerWeek) && (
                                                 <div className="text-[10px] text-slate-400 font-normal">
                                                     {[
                                                         req.requirements.workPlace,
@@ -238,13 +269,26 @@ const HiringRequestList = () => {
                                                 </div>
                                             )}
                                         </td>
+                                        {clientName && (
+                                            <>
+                                                <td className="px-3.5 py-2.5 text-slate-600 font-medium">
+                                                    {req.requirements?.workingDaysPerWeek ? `${req.requirements.workingDaysPerWeek} Days` : '-'}
+                                                </td>
+                                                <td className="px-3.5 py-2.5 text-slate-600 font-medium">
+                                                    {req.requirements?.workMode || '-'}
+                                                </td>
+                                                <td className="px-3.5 py-2.5 text-slate-600 font-medium">
+                                                    {req.requirements?.workPlace || '-'}
+                                                </td>
+                                            </>
+                                        )}
                                         <td className="px-3.5 py-2.5">
                                             <div className="flex flex-wrap gap-1 max-w-[150px]">
                                                 {req.assignedUsers && req.assignedUsers.length > 0 ? (
                                                     req.assignedUsers.map(u => {
                                                         const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim();
                                                         return (
-                                                            <span 
+                                                            <span
                                                                 key={u._id}
                                                                 title={fullName}
                                                                 className="inline-flex items-center rounded bg-slate-50 border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600"
@@ -261,9 +305,11 @@ const HiringRequestList = () => {
                                         <td className="px-3.5 py-2.5 text-slate-600">
                                             {format(new Date(req.createdAt), 'dd MMM yyyy')}
                                         </td>
-                                        <td className="px-3.5 py-2.5">
-                                            {getStatusBadge(req.status)}
-                                        </td>
+                                        {!clientName && (
+                                            <td className="px-3.5 py-2.5">
+                                                {getStatusBadge(req.status)}
+                                            </td>
+                                        )}
                                         <td className="px-3.5 py-2.5 text-right">
                                             <div className="flex justify-end">
                                                 <button
