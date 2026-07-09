@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Building2, Users, User, Globe, Mail, MapPin, Phone, Briefcase, ChevronRight } from 'lucide-react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
@@ -21,6 +21,7 @@ const ClientView = () => {
     const navigate = useNavigate();
     const { id } = useParams();
     const { user } = useAuth();
+    const location = useLocation();
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.update');
     const canViewTAAnalytics = user?.roles?.includes('Admin')
         || user?.permissions?.includes('ta.analytics.global')
@@ -113,7 +114,14 @@ const ClientView = () => {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <button
-                            onClick={() => navigate(activeTab === 'ta' ? `/ta/hiring-requests/${encodeURIComponent(client.name)}` : '/clients')}
+                            onClick={() => {
+                                const fromPath = location.state?.from;
+                                if (fromPath) {
+                                    navigate(fromPath);
+                                } else {
+                                    navigate(activeTab === 'ta' ? `/ta/hiring-requests/${encodeURIComponent(client.name)}` : '/clients');
+                                }
+                            }}
                             className="text-slate-400 hover:text-slate-700 transition-colors"
                         >
                             <ArrowLeft size={20} />

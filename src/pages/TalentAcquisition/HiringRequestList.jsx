@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { Plus, Filter, Settings, TrendingUp, ChevronRight, ArrowLeft } from 'lucide-react';
@@ -10,6 +10,7 @@ import { createNoCacheRequestConfig } from '../../utils/taCache';
 const HiringRequestList = () => {
     const { user } = useAuth();
     const { clientName } = useParams();
+    const location = useLocation();
     const [requests, setRequests] = useState([]);
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -115,6 +116,7 @@ const HiringRequestList = () => {
                                             return clientId ? (
                                                 <Link
                                                     to={`/clients/${clientId}/view?tab=ta`}
+                                                    state={{ from: location.pathname }}
                                                     className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
                                                 >
                                                     {decodedName}
@@ -239,6 +241,7 @@ const HiringRequestList = () => {
                                                         return clientId ? (
                                                             <Link
                                                                 to={`/clients/${clientId}/view?tab=ta`}
+                                                                state={{ from: location.pathname }}
                                                                 onClick={(e) => e.stopPropagation()}
                                                                 className="hover:text-blue-800 hover:underline transition-colors"
                                                                 title="View Client TA Dashboard"

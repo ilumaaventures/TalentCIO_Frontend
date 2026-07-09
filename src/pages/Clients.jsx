@@ -222,7 +222,7 @@ const Clients = () => {
                                                 {activeDropdownId === client._id && (
                                                     <div className="absolute right-4 mt-2 w-40 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-10 text-left">
                                                         <button
-                                                            onClick={() => navigate(`/clients/${client._id}/view`)}
+                                                            onClick={() => navigate(`/clients/${client._id}/view`, { state: { from: '/clients' } })}
                                                             className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center"
                                                         >
                                                             View Details
