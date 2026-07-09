@@ -154,9 +154,10 @@ const formatDateLabel = (value) => {
   });
 };
 
-const getEmployeeName = (employee = {}) => (
-  `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Employee'
-);
+const getEmployeeName = (employee) => {
+  if (!employee) return 'Employee';
+  return `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Employee';
+};
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 
