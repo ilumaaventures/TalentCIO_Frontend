@@ -81,6 +81,9 @@ const HREmailSend = () => {
     const [sending, setSending] = useState(false);
     const [result, setResult] = useState(null);
     const [loadingOptions, setLoadingOptions] = useState(true);
+    const [customEmails, setCustomEmails] = useState({});
+    const [contextMenu, setContextMenu] = useState(null);
+    const [editingEmailId, setEditingEmailId] = useState(null);
 
     useEffect(() => {
         const timer = window.setTimeout(async () => {
@@ -136,6 +139,12 @@ const HREmailSend = () => {
         fetchOptions();
     }, []);
 
+    useEffect(() => {
+        const closeMenu = () => setContextMenu(null);
+        window.addEventListener('click', closeMenu);
+        return () => window.removeEventListener('click', closeMenu);
+    }, []);
+
     const selectedEmployeeMap = useMemo(() => (
         new Map(selectedEmployees.map((employee) => [String(employee._id), employee]))
     ), [selectedEmployees]);
@@ -160,27 +169,47 @@ const HREmailSend = () => {
         employeeCode: previewEmployee?.employeeCode || '',
         joiningDate: '',
         companyName: user?.company?.name || '',
-        workEmail: previewEmployee?.workEmail || previewEmployee?.email || '',
+        workEmail: (previewEmployee && customEmails[previewEmployee._id]) || previewEmployee?.workEmail || previewEmployee?.email || '',
         mobile: '',
         location: '',
         currentYear: String(new Date().getFullYear()),
         currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
-    }), [previewEmployee, user?.company?.name]);
+    }), [previewEmployee, user?.company?.name, customEmails]);
 
     const previewSubject = useMemo(() => resolveTemplate(subject, previewData), [previewData, subject]);
     const previewHtml = useMemo(() => formatBodyPreview(htmlBody, previewData), [htmlBody, previewData]);
 
     const toggleEmployee = (employee) => {
         const employeeId = String(employee._id);
-        setSelectedEmployees((current) => (
-            current.some((item) => String(item._id) === employeeId)
-                ? current.filter((item) => String(item._id) !== employeeId)
-                : [...current, employee]
-        ));
+        setSelectedEmployees((current) => {
+            const isSelected = current.some((item) => String(item._id) === employeeId);
+            if (isSelected) {
+                setCustomEmails((prev) => {
+                    const next = { ...prev };
+                    delete next[employeeId];
+                    return next;
+                });
+                return current.filter((item) => String(item._id) !== employeeId);
+            } else {
+                return [...current, employee];
+            }
+        });
     };
 
     const removeEmployee = (employeeId) => {
+        setCustomEmails((prev) => {
+            const next = { ...prev };
+            delete next[String(employeeId)];
+            return next;
+        });
         setSelectedEmployees((current) => current.filter((employee) => String(employee._id) !== String(employeeId)));
+    };
+
+    const handleEmailEdit = (employeeId, newEmail) => {
+        setCustomEmails((prev) => ({
+            ...prev,
+            [String(employeeId)]: newEmail
+        }));
     };
 
     const toggleAllVisibleEmployees = () => {
@@ -195,6 +224,13 @@ const HREmailSend = () => {
                 return Array.from(currentMap.values());
             }
 
+            setCustomEmails((prev) => {
+                const next = { ...prev };
+                visibleEmployeeIds.forEach((id) => {
+                    delete next[id];
+                });
+                return next;
+            });
             return current.filter((employee) => !visibleEmployeeIdSet.has(String(employee._id)));
         });
     };
@@ -254,6 +290,7 @@ const HREmailSend = () => {
         setDossierCategory('Other');
         setNotes('');
         setResult(null);
+        setCustomEmails({});
     };
 
     const handleSend = async () => {
@@ -274,6 +311,15 @@ const HREmailSend = () => {
 
         const formData = new FormData();
         formData.append('recipientUserIds', JSON.stringify(selectedEmployees.map((employee) => employee._id)));
+
+        const customEmailPayload = {};
+        selectedEmployees.forEach((employee) => {
+            const empIdStr = String(employee._id);
+            if (customEmails[empIdStr]) {
+                customEmailPayload[empIdStr] = customEmails[empIdStr];
+            }
+        });
+        formData.append('customEmails', JSON.stringify(customEmailPayload));
         if (selectedTemplateId) {
             formData.append('emailTemplateId', selectedTemplateId);
         }
@@ -548,7 +594,52 @@ const HREmailSend = () => {
                                                 </td>
                                                 <td className="px-4 py-3 align-top text-slate-700">{employee.designation || 'Not set'}</td>
                                                 <td className="px-4 py-3 align-top text-slate-600">{employee.department || 'No department'}</td>
-                                                <td className="px-4 py-3 align-top text-slate-600">{employee.email || 'No email found'}</td>
+                                                <td
+                                                    className="px-4 py-3 align-top"
+                                                    onClick={(e) => {
+                                                        if (isSelected) {
+                                                            e.stopPropagation();
+                                                        }
+                                                    }}
+                                                    onContextMenu={(e) => {
+                                                         if (isSelected) {
+                                                             e.preventDefault();
+                                                             e.stopPropagation();
+                                                             setContextMenu({
+                                                                 x: e.clientX,
+                                                                 y: e.clientY,
+                                                                 employeeId: employee._id
+                                                             });
+                                                         }
+                                                    }}
+                                                >
+                                                    {editingEmailId === employee._id && isSelected ? (
+                                                        <input
+                                                            type="text"
+                                                            value={customEmails[employee._id] !== undefined ? customEmails[employee._id] : employee.email || ''}
+                                                            onChange={(e) => handleEmailEdit(employee._id, e.target.value)}
+                                                            onBlur={() => setEditingEmailId(null)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') setEditingEmailId(null);
+                                                            }}
+                                                            autoFocus
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="w-full rounded-xl border border-blue-500 bg-white px-3 py-1.5 text-xs font-semibold outline-none"
+                                                            placeholder="Enter custom email address"
+                                                        />
+                                                    ) : (
+                                                        <span
+                                                            className={`font-medium transition-colors ${
+                                                                isSelected
+                                                                    ? 'text-blue-700 underline decoration-dashed underline-offset-4 decoration-blue-300 cursor-context-menu hover:text-blue-800'
+                                                                    : 'text-slate-600'
+                                                            }`}
+                                                            title={isSelected ? 'Right click to change email address' : ''}
+                                                        >
+                                                             {customEmails[employee._id] !== undefined ? customEmails[employee._id] : employee.email || 'No email found'}
+                                                        </span>
+                                                    )}
+                                                </td>
                                             </tr>
                                         );
                                     })}
@@ -824,7 +915,7 @@ const HREmailSend = () => {
                             <div className="mt-4 flex flex-wrap gap-2">
                                 {selectedEmployees.map((employee) => (
                                     <span key={employee._id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700">
-                                        {`${employee.firstName} ${employee.lastName}`.trim()} · {employee.email || 'No email'}
+                                        {`${employee.firstName} ${employee.lastName}`.trim()} · {customEmails[employee._id] !== undefined ? customEmails[employee._id] : employee.email || 'No email'}
                                     </span>
                                 ))}
                             </div>
@@ -873,6 +964,25 @@ const HREmailSend = () => {
                             {sending ? `Sending to ${selectedEmployees.length} employees...` : 'Send Email'}
                         </button>
                     </div>
+                </div>
+            )}
+
+            {contextMenu && (
+                <div
+                    className="fixed z-50 rounded-xl border border-slate-200 bg-white py-1 shadow-lg text-xs font-semibold text-slate-700 min-w-[150px]"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEditingEmailId(contextMenu.employeeId);
+                            setContextMenu(null);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                    >
+                        Change email address
+                    </button>
                 </div>
             )}
         </div>
