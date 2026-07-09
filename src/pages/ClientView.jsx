@@ -17,6 +17,9 @@ const Field = ({ label, value, icon: Icon }) => (
     </div>
 );
 
+
+
+
 const ClientView = () => {
     const navigate = useNavigate();
     const { id } = useParams();
