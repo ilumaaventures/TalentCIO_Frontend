@@ -4,7 +4,7 @@ import {
     ArrowLeft, TrendingUp, Users, UserCheck, PieChart as PieIcon,
     BarChart3, RefreshCw, Briefcase, Filter, Calendar,
     Search, CheckSquare, Clock, AlertCircle, Inbox,
-    ChevronDown, Download, ExternalLink, Award, PlayCircle
+    ChevronDown, ExternalLink, Award, PlayCircle, Globe
 } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -132,7 +132,8 @@ const GlobalTADashboard = () => {
         topMetrics, pipelineDistribution, recruitmentFunnel,
         departmentAnalysis, sourcingPerformance,
         positionPerformance, timeMetrics, sourceAnalysis, monthlyTrend,
-        filterOptions // New: dynamic options for dropdowns
+        filterOptions, // New: dynamic options for dropdowns
+        publicAppBreakdown, publicSourceAnalysis
     } = data || {};
 
     return (
@@ -165,8 +166,8 @@ const GlobalTADashboard = () => {
                                         key={p}
                                         onClick={() => setFilters(prev => ({ ...prev, phase: p }))}
                                         className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${filters.phase === p
-                                                ? 'bg-white text-indigo-600 shadow-sm'
-                                                : 'text-slate-500 hover:text-slate-700'
+                                            ? 'bg-white text-indigo-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'
                                             }`}
                                     >
                                         {p === 'all' ? 'Global' : `Phase ${p}`}
@@ -411,6 +412,95 @@ const GlobalTADashboard = () => {
                     </DashboardCard>
                 </div>
 
+                {/* PUBLIC APPLICATIONS ANALYSIS */}
+                {publicAppBreakdown && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in slide-in-from-bottom-2 duration-300">
+                        {/* Status Breakdown Card */}
+                        <DashboardCard title="Public Applications" sub="Review & conversion status" icon={<Globe />} color="blue" className="lg:col-span-1">
+                            <div className="flex flex-col justify-between h-full space-y-6">
+                                <div className="flex items-center justify-between bg-blue-50/50 p-4 rounded-2xl border border-blue-100/50">
+                                    <div>
+                                        <div className="text-[10px] font-black text-blue-600 uppercase tracking-wider">Total Received</div>
+                                        <div className="text-3xl font-black text-slate-800">{publicAppBreakdown.total || 0}</div>
+                                    </div>
+                                    <Globe className="text-blue-500 opacity-80" size={32} />
+                                </div>
+
+                                <div className="space-y-4">
+                                    <ProgressBarLabel label="Pending Review" val={publicAppBreakdown.pending || 0} max={publicAppBreakdown.total || 1} color="bg-amber-500" />
+                                    <ProgressBarLabel label="Shortlisted" val={publicAppBreakdown.shortlisted || 0} max={publicAppBreakdown.total || 1} color="bg-sky-500" />
+                                    <ProgressBarLabel label="Transferred to Candidate" val={publicAppBreakdown.transferred || 0} max={publicAppBreakdown.total || 1} color="bg-indigo-500" />
+                                    <ProgressBarLabel label="Rejected" val={publicAppBreakdown.rejected || 0} max={publicAppBreakdown.total || 1} color="bg-rose-500" />
+                                </div>
+                            </div>
+                        </DashboardCard>
+
+                        {/* Sourcing Channels Card */}
+                        <DashboardCard title="Public Sourcing Channels" sub="Traffic by public job board" icon={<PieIcon />} color="cyan" className="lg:col-span-1">
+                            <div className="h-64">
+                                {publicSourceAnalysis?.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={publicSourceAnalysis}
+                                                cx="50%" cy="50%"
+                                                innerRadius={60} outerRadius={90}
+                                                paddingAngle={4} dataKey="value"
+                                            >
+                                                {publicSourceAnalysis.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip content={<CustomTooltip />} />
+                                            <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 600 }} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-xs font-bold text-slate-400">
+                                        No source channel data available
+                                    </div>
+                                )}
+                            </div>
+                        </DashboardCard>
+
+                        {/* Popular Postings Card */}
+                        <DashboardCard title="Popular Public Postings" sub="Most applied active jobs" icon={<Briefcase />} color="indigo" className="lg:col-span-1">
+                            <div className="overflow-y-auto max-h-64 rounded-xl border border-slate-100">
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-100">
+                                            <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Position</th>
+                                            <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-right">Apps</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(positionPerformance || [])
+                                            .filter(pos => pos.publicAppsCount > 0)
+                                            .sort((a, b) => b.publicAppsCount - a.publicAppsCount)
+                                            .slice(0, 5)
+                                            .map((pos, i) => (
+                                                <tr key={i} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 font-medium">
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-bold text-slate-800">{pos.title}</div>
+                                                        <div className="text-[10px] text-slate-400 font-semibold">{pos.client}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-extrabold text-indigo-600">{pos.publicAppsCount || 0}</td>
+                                                </tr>
+                                            ))}
+                                        {!(positionPerformance || []).some(pos => pos.publicAppsCount > 0) && (
+                                            <tr>
+                                                <td colSpan="2" className="px-4 py-8 text-center text-slate-400 font-bold">
+                                                    No public applications recorded.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </DashboardCard>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* 4. DEPARTMENT HIRING ANALYSIS */}
                     <DashboardCard title="Department Analysis" sub="Hiring volume by functional area" icon={<Inbox />} color="blue">
@@ -495,6 +585,7 @@ const GlobalTADashboard = () => {
                                     <tr className="bg-slate-50 border-b border-slate-100">
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Position</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Open</th>
+                                        <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Public Apps</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Intv.</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-center">Join</th>
                                         <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-right">Health %</th>
@@ -510,6 +601,7 @@ const GlobalTADashboard = () => {
                                                     <div className="text-[10px] text-slate-400 font-semibold">{pos.client}</div>
                                                 </td>
                                                 <td className="px-4 py-3 text-center font-bold text-slate-600">{pos.open}</td>
+                                                <td className="px-4 py-3 text-center text-slate-600 font-bold">{pos.publicAppsCount || 0}</td>
                                                 <td className="px-4 py-3 text-center text-slate-600">{pos.interviewed}</td>
                                                 <td className="px-4 py-3 text-center text-emerald-600 font-bold">{pos.joined}</td>
                                                 <td className="px-4 py-3 text-right">
@@ -561,37 +653,65 @@ const GlobalTADashboard = () => {
                     </DashboardCard>
 
                     {/* 9. JOINING EFFICIENCY METRIC */}
-                    <div className="bg-linear-to-br from-indigo-600 to-indigo-800 rounded-4xl p-8 text-white shadow-xl flex flex-col justify-between relative overflow-hidden h-full min-h-87.5">
+                    <div className="bg-white rounded-4xl p-6 shadow-xl border border-gray-200 flex flex-col justify-between relative overflow-hidden h-full min-h-80">
                         <div className="relative z-10">
-                            <div className="p-3 bg-white/10 w-fit rounded-2xl mb-6">
-                                <TrendingUp size={24} />
+                            <div className="p-2.5 bg-gray-100 w-fit rounded-xl mb-5">
+                                <TrendingUp size={20} className="text-gray-800" />
                             </div>
-                            <h3 className="text-2xl font-black mb-4 tracking-tight leading-tight">Joining Efficiency<br />Metric</h3>
-                            <p className="text-indigo-100 text-sm font-medium leading-relaxed mb-8 opacity-80">
+
+                            <h3 className="text-xl font-bold mb-3 tracking-tight leading-tight text-black">
+                                Joining Efficiency
+                                <br />
+                                Metric
+                            </h3>
+
+                            <p className="text-gray-600 text-xs leading-relaxed mb-6">
                                 Sourced to Joined conversion ratio highlights the ROI of your recruitment sourcing machinery.
                             </p>
 
-                            <div className="space-y-6">
-                                <div className="flex items-end gap-3">
-                                    <span className="text-6xl font-black leading-none">{topMetrics?.totalSourced}</span>
-                                    <span className="text-indigo-300 font-bold mb-1 opacity-60">Sourced Candidates</span>
+                            <div className="space-y-5">
+                                <div className="flex items-end gap-2">
+                                    <span className="text-5xl font-bold leading-none text-black">
+                                        {topMetrics?.totalSourced}
+                                    </span>
+                                    <span className="text-gray-500 text-sm mb-1">
+                                        Sourced Candidates
+                                    </span>
                                 </div>
-                                <div className="flex items-center gap-4">
-                                    <div className="grow h-3 bg-white/10 rounded-full overflow-hidden">
+
+                                <div className="flex items-center gap-3">
+                                    <div className="grow h-2.5 bg-gray-200 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-indigo-300 shadow-[0_0_20px_rgba(165,180,252,0.5)] transition-all duration-1000"
-                                            style={{ width: `${topMetrics?.joiningConversionRate}%` }}
+                                            className="h-full bg-indigo-600 transition-all duration-1000"
+                                            style={{
+                                                width: `${topMetrics?.joiningConversionRate}%`,
+                                            }}
                                         ></div>
                                     </div>
-                                    <span className="text-xl font-black">{topMetrics?.joiningConversionRate}%</span>
+
+                                    <span className="text-lg font-bold text-black">
+                                        {topMetrics?.joiningConversionRate}%
+                                    </span>
                                 </div>
-                                <div className="bg-white/10 p-4 rounded-3xl border border-white/10 backdrop-blur-md">
-                                    <div className="text-[10px] font-bold text-indigo-300 uppercase tracking-[2px] mb-1">Efficiency Ratio</div>
-                                    <div className="text-3xl font-black italic">100 : {((topMetrics?.totalJoined / (topMetrics?.totalSourced || 1)) * 100).toFixed(0)}</div>
+
+                                <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                                    <div className="text-[9px] font-semibold text-gray-500 uppercase tracking-widest mb-1">
+                                        Efficiency Ratio
+                                    </div>
+
+                                    <div className="text-2xl font-bold text-black">
+                                        100 :
+                                        {(
+                                            (topMetrics?.totalJoined /
+                                                (topMetrics?.totalSourced || 1)) *
+                                            100
+                                        ).toFixed(0)}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <TrendingUp className="absolute -right-16 -bottom-16 size-80 text-white opacity-[0.05]" />
+
+                        <TrendingUp className="absolute -right-12 -bottom-12 size-64 text-gray-200 opacity-20" />
                     </div>
                 </div>
 
@@ -659,11 +779,26 @@ const DashboardCard = ({ title, sub, icon, color, children, className = '' }) =>
                     </div>
                 </div>
                 <button className="p-2 text-slate-300 hover:text-slate-500 transition-colors">
-                    <Download size={20} />
+                    {/* <Download size={20} /> */}
                 </button>
             </div>
             <div className="grow">
                 {children}
+            </div>
+        </div>
+    );
+};
+
+const ProgressBarLabel = ({ label, val, max, color }) => {
+    const pct = max > 0 ? ((val / max) * 100).toFixed(0) : 0;
+    return (
+        <div>
+            <div className="flex justify-between text-xs font-bold text-slate-600 mb-1.5 px-1">
+                <span>{label}</span>
+                <span>{val} ({pct}%)</span>
+            </div>
+            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div className={`${color} h-full transition-all duration-500`} style={{ width: `${pct}%` }}></div>
             </div>
         </div>
     );
