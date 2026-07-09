@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Building2, Users, User, Globe, Mail, MapPin, Phone, Briefcase, ChevronRight } from 'lucide-react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import ClientTADashboard from './TalentAcquisition/ClientTADashboard';
+import ClientForm from './ClientForm';
 
 const Field = ({ label, value, icon: Icon }) => (
     <div>
@@ -20,6 +21,7 @@ const ClientView = () => {
     const navigate = useNavigate();
     const { id } = useParams();
     const { user } = useAuth();
+    const location = useLocation();
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.update');
     const canViewTAAnalytics = user?.roles?.includes('Admin')
         || user?.permissions?.includes('ta.analytics.global')
@@ -32,6 +34,7 @@ const ClientView = () => {
     const [loading, setLoading] = useState(true);
     const [searchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState('details');
+    const [isEditOpen, setIsEditOpen] = useState(false);
 
     useEffect(() => {
         const tab = searchParams.get('tab');
@@ -40,41 +43,58 @@ const ClientView = () => {
         }
     }, [searchParams]);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                // Fetch Client
-                const clientRes = await api.get('/projects/clients');
-                const foundClient = clientRes.data.find(c => c._id === id);
+    const fetchData = useCallback(async () => {
+        try {
+            // Fetch Client
+            const clientRes = await api.get(`/projects/clients?_t=${Date.now()}`);
+            const foundClient = clientRes.data.find(c => c._id === id);
 
-                if (foundClient) {
-                    setClient(foundClient);
+            if (foundClient) {
+                setClient(foundClient);
 
-                    // Fetch Projects
-                    try {
-                        const projectsRes = await api.get('/projects');
-                        // Filter projects for this client
-                        const clientProjects = projectsRes.data.filter(p =>
-                            p.client && (typeof p.client === 'string' ? p.client === id : p.client._id === id)
-                        );
-                        setProjects(clientProjects);
-                    } catch (err) {
-                        console.error("Failed to load projects", err);
-                        // Don't fail the whole page if projects fail
-                    }
-                } else {
-                    toast.error('Client not found');
-                    navigate('/clients');
+                // Fetch Projects
+                try {
+                    const projectsRes = await api.get('/projects');
+                    // Filter projects for this client
+                    const clientProjects = projectsRes.data.filter(p =>
+                        p.client && (typeof p.client === 'string' ? p.client === id : p.client._id === id)
+                    );
+                    setProjects(clientProjects);
+                } catch (err) {
+                    console.error("Failed to load projects", err);
+                    // Don't fail the whole page if projects fail
                 }
-            } catch {
-                toast.error('Failed to load client');
+            } else {
+                toast.error('Client not found');
                 navigate('/clients');
-            } finally {
-                setLoading(false);
             }
-        };
-        fetchData();
+        } catch {
+            toast.error('Failed to load client');
+            navigate('/clients');
+        } finally {
+            setLoading(false);
+        }
     }, [id, navigate]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const handleToggleStatus = async () => {
+        const newStatus = client.status === 'Inactive' ? 'Active' : 'Inactive';
+        const loadingToast = toast.loading(`Updating status for ${client.name}...`);
+        try {
+            await api.put(`/projects/clients/${client._id}`, {
+                ...client,
+                status: newStatus
+            });
+            toast.success(`Client status set to ${newStatus}`, { id: loadingToast });
+            setClient(prev => ({ ...prev, status: newStatus }));
+            sessionStorage.removeItem(`client_data_${user?._id}`);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to update client status', { id: loadingToast });
+        }
+    };
 
     if (loading) {
         return (
@@ -94,7 +114,14 @@ const ClientView = () => {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <button
-                            onClick={() => navigate(activeTab === 'ta' ? '/ta' : '/clients')}
+                            onClick={() => {
+                                const fromPath = location.state?.from;
+                                if (fromPath) {
+                                    navigate(fromPath);
+                                } else {
+                                    navigate(activeTab === 'ta' ? `/ta/hiring-requests/${encodeURIComponent(client.name)}` : '/clients');
+                                }
+                            }}
                             className="text-slate-400 hover:text-slate-700 transition-colors"
                         >
                             <ArrowLeft size={20} />
@@ -105,12 +132,24 @@ const ClientView = () => {
                         </div>
                     </div>
                     {canUpdate && (
-                        <button
-                            onClick={() => navigate(`/clients/${id}/edit`)}
-                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-md transition-colors"
-                        >
-                            Edit Client
-                        </button>
+                        <div className="flex items-center space-x-2">
+                            <button
+                                onClick={handleToggleStatus}
+                                className={`text-xs font-semibold px-4 py-2 rounded-md transition-colors border ${
+                                    client.status === 'Inactive'
+                                        ? 'text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 border-green-200'
+                                        : 'text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border-red-200'
+                                }`}
+                            >
+                                {client.status === 'Inactive' ? 'Activate Client' : 'Deactivate Client'}
+                            </button>
+                            <button
+                                onClick={() => setIsEditOpen(true)}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-md transition-colors border border-blue-200"
+                            >
+                                Edit Client
+                            </button>
+                        </div>
                     )}
                 </div>
 
@@ -161,6 +200,7 @@ const ClientView = () => {
                             </div>
                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <Field label="Client Name" value={client.name} icon={User} />
+                                <Field label="Nickname" value={client.nickname} icon={User} />
                                 <Field label="Client Email" value={client.email} icon={Mail} />
                                 <div>
                                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Business Unit</p>
@@ -170,6 +210,16 @@ const ClientView = () => {
                                     }
                                 </div>
                                 <Field label="Location" value={client.location} icon={MapPin} />
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Status</p>
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                                        client.status === 'Inactive'
+                                            ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                            : 'bg-green-50 text-green-700 border-green-200'
+                                    }`}>
+                                        {client.status || 'Active'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -273,6 +323,12 @@ const ClientView = () => {
                 )}
 
             </div>
+            <ClientForm
+                isOpen={isEditOpen}
+                onClose={() => setIsEditOpen(false)}
+                clientId={id}
+                onSuccess={fetchData}
+            />
         </div>
     );
 };

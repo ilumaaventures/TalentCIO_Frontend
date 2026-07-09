@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import api from '../api/axios';
 import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -104,11 +105,13 @@ const Projects = () => {
 
     const [editingId, setEditingId] = useState(null);
     const [openMenuId, setOpenMenuId] = useState(null);
+    const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+    const menuRef = useRef(null);
 
     // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (openMenuId && !event.target.closest('.action-menu-container')) {
+            if (openMenuId && menuRef.current && !menuRef.current.contains(event.target) && !event.target.closest('.action-menu-trigger')) {
                 setOpenMenuId(null);
             }
         };
@@ -168,7 +171,7 @@ const Projects = () => {
     // if (loading) return <div className="p-8 text-center">Loading...</div>;
 
     const handleStatusChange = async (project, newStatus) => {
-        const isActive = newStatus !== 'Completed';
+        const isActive = newStatus !== 'Completed' && newStatus !== 'Inactive';
         setActionLoading(project._id);
         try {
             await api.put(`/projects/${project._id}`, { status: newStatus, isActive });
@@ -244,7 +247,8 @@ const Projects = () => {
                                                 <td className="px-6 py-3">
                                                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${displayStatus === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                         displayStatus === 'On Hold' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                                            'bg-slate-100 text-slate-500 border-slate-200'
+                                                            displayStatus === 'Inactive' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                                                                'bg-slate-100 text-slate-500 border-slate-200'
                                                         }`}>
                                                         {displayStatus}
                                                     </span>
@@ -254,101 +258,31 @@ const Projects = () => {
                                                         <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium whitespace-nowrap">View Modules</a>
 
                                                         {canUpdate && (
-                                                            <div className="relative">
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setOpenMenuId(openMenuId === project._id ? null : project._id);
-                                                                    }}
-                                                                    disabled={actionLoading === project._id}
-                                                                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50"
-                                                                >
-                                                                    {actionLoading === project._id ? (
-                                                                        <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
-                                                                    ) : (
-                                                                        <MoreVertical size={16} />
-                                                                    )}
-                                                                </button>
-
-                                                                {openMenuId === project._id && (
-                                                                    <div className={`absolute right-0 ${index >= projects.length - 2 ? 'bottom-full mb-1' : 'top-full mt-1'} w-40 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-50`}>
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleEdit(project);
-                                                                                setOpenMenuId(null);
-                                                                            }}
-                                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
-                                                                        >
-                                                                            <Edit2 size={13} />
-                                                                            Edit
-                                                                        </button>
-
-                                                                        {displayStatus !== 'Completed' && (
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    handleStatusChange(project, 'Completed');
-                                                                                    setOpenMenuId(null);
-                                                                                }}
-                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-emerald-600 flex items-center gap-2"
-                                                                            >
-                                                                                <XCircle size={13} />
-                                                                                Close
-                                                                            </button>
-                                                                        )}
-
-                                                                        {displayStatus === 'Active' && (
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    handleStatusChange(project, 'On Hold');
-                                                                                    setOpenMenuId(null);
-                                                                                }}
-                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-orange-600 flex items-center gap-2"
-                                                                            >
-                                                                                <PauseCircle size={13} />
-                                                                                On Hold
-                                                                            </button>
-                                                                        )}
-
-                                                                        {(displayStatus === 'On Hold' || displayStatus === 'Completed' || displayStatus === 'Inactive') && (
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    handleStatusChange(project, 'Active');
-                                                                                    setOpenMenuId(null);
-                                                                                }}
-                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
-                                                                            >
-                                                                                <Briefcase size={13} />
-                                                                                Mark as Active
-                                                                            </button>
-                                                                        )}
-
-                                                                        {user?.permissions?.includes('project.delete') && (
-                                                                            <button
-                                                                                onClick={async () => {
-                                                                                    if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
-                                                                                        setActionLoading(project._id);
-                                                                                         try {
-                                                                                             await api.delete(`/projects/${project._id}`);
-                                                                                             toast.success('Project deleted');
-                                                                                             sessionStorage.removeItem(`project_data_${user?._id}`);
-                                                                                             await fetchData({ force: true });
-                                                                                         } catch {
-                                                                                             toast.error('Failed to delete project');
-                                                                                         } finally {
-                                                                                             setActionLoading(null);
-                                                                                         }
-                                                                                    }
-                                                                                    setOpenMenuId(null);
-                                                                                }}
-                                                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-red-600 flex items-center gap-2 border-t border-slate-50 mt-1 pt-2"
-                                                                            >
-                                                                                <Trash2 size={13} />
-                                                                                Delete
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
+                                                            <button
+                                                                className="action-menu-trigger p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50"
+                                                                disabled={actionLoading === project._id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (openMenuId === project._id) {
+                                                                        setOpenMenuId(null);
+                                                                    } else {
+                                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                                        const spaceBelow = window.innerHeight - rect.bottom;
+                                                                        const menuHeight = 220;
+                                                                        const top = spaceBelow >= menuHeight
+                                                                            ? rect.bottom + window.scrollY + 4
+                                                                            : rect.top + window.scrollY - menuHeight - 4;
+                                                                        setMenuPosition({ top, left: rect.right + window.scrollX - 160 });
+                                                                        setOpenMenuId(project._id);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                {actionLoading === project._id ? (
+                                                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                                                                ) : (
+                                                                    <MoreVertical size={16} />
                                                                 )}
-                                                            </div>
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </td>
@@ -369,124 +303,304 @@ const Projects = () => {
 
             </div>
 
-            {/* Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800">{editingId ? 'Edit Project' : 'New Project'}</h3>
-                            <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
-                        </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                            {/* ... inputs same ... */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project Name</label>
-                                <input
-                                    required
-                                    className="zoho-input"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client</label>
-                                <select
-                                    className="zoho-input"
-                                    value={formData.client}
-                                    onChange={e => setFormData({ ...formData, client: e.target.value })}
+            {/* Portal Dropdown Menu — rendered outside overflow containers */}
+            {openMenuId && ReactDOM.createPortal(
+                (() => {
+                    const project = projects.find(p => p._id === openMenuId);
+                    if (!project) return null;
+                    const displayStatus = project.status || (project.isActive ? 'Active' : 'Completed');
+                    return (
+                        <div
+                            ref={menuRef}
+                            style={{ position: 'absolute', top: menuPosition.top, left: menuPosition.left, zIndex: 9999 }}
+                            className="w-40 bg-white rounded-lg shadow-xl border border-slate-100 py-1"
+                        >
+                            <button
+                                onClick={() => { handleEdit(project); setOpenMenuId(null); }}
+                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                            >
+                                <Edit2 size={13} /> Edit
+                            </button>
+
+                            {displayStatus !== 'Completed' && (
+                                <button
+                                    onClick={() => { handleStatusChange(project, 'Completed'); setOpenMenuId(null); }}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-emerald-600 flex items-center gap-2"
                                 >
-                                    <option value="">Internal / No Client</option>
-                                    {clients.map(c => (
-                                        <option key={c._id} value={c._id}>{c.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
-                                <textarea
-                                    className="zoho-input"
-                                    value={formData.description}
-                                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    rows="3"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label>
-                                    <input
-                                        type="date"
-                                        className="zoho-input"
-                                        value={formData.startDate}
-                                        onChange={e => setFormData({ ...formData, startDate: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
-                                    <input
-                                        type="date"
-                                        className="zoho-input"
-                                        value={formData.dueDate}
-                                        onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            {/* Status Input for Edit */}
-                            {editingId && (
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
-                                    <select
-                                        className="zoho-input"
-                                        value={formData.status}
-                                        onChange={e => setFormData({ ...formData, status: e.target.value })}
-                                    >
-                                        <option value="Active">Active</option>
-                                        <option value="On Hold">On Hold</option>
-                                        <option value="Completed">Completed</option>
-                                        <option value="Inactive">Inactive</option>
-                                    </select>
-                                </div>
+                                    <XCircle size={13} /> Close
+                                </button>
                             )}
 
-                            {/* Assign Members */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Project Members (Visibility)</label>
-                                <div className="h-32 overflow-y-auto border border-slate-200 rounded p-2 bg-slate-50 grid grid-cols-2 gap-2">
-                                    {employees.map(emp => (
-                                        <label key={emp._id} className="flex items-center space-x-2 text-sm bg-white p-2 rounded border border-slate-100 shadow-sm cursor-pointer hover:border-blue-300">
-                                            <input
-                                                type="checkbox"
-                                                value={emp._id}
-                                                checked={formData.members?.includes(emp._id)}
-                                                onChange={(e) => {
-                                                    const checked = e.target.checked;
-                                                    const id = emp._id;
-                                                    setFormData(prev => {
-                                                        const current = prev.members || [];
-                                                        if (checked) return { ...prev, members: [...current, id] };
-                                                        return { ...prev, members: current.filter(x => x !== id) };
-                                                    });
-                                                }}
-                                                className="rounded text-blue-600 focus:ring-blue-500"
-                                            />
-                                            <div className="flex flex-col">
-                                                <span className="font-medium text-slate-700">{emp.firstName} {emp.lastName}</span>
-                                                <span className="text-[10px] text-slate-400">{emp.email}</span>
-                                            </div>
-                                        </label>
-                                    ))}
-                                    {employees.length === 0 && <div className="col-span-2 text-xs text-slate-400 italic text-center p-4">No employees found</div>}
+                            {displayStatus === 'Active' && (
+                                <button
+                                    onClick={() => { handleStatusChange(project, 'On Hold'); setOpenMenuId(null); }}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-orange-600 flex items-center gap-2"
+                                >
+                                    <PauseCircle size={13} /> On Hold
+                                </button>
+                            )}
+
+                            {(displayStatus === 'On Hold' || displayStatus === 'Completed' || displayStatus === 'Inactive') && (
+                                <button
+                                    onClick={() => { handleStatusChange(project, 'Active'); setOpenMenuId(null); }}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                                >
+                                    <Briefcase size={13} /> Mark as Active
+                                </button>
+                            )}
+
+                            {displayStatus !== 'Inactive' && (
+                                <button
+                                    onClick={() => { handleStatusChange(project, 'Inactive'); setOpenMenuId(null); }}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-purple-600 flex items-center gap-2"
+                                >
+                                    <XCircle size={13} /> Inactive
+                                </button>
+                            )}
+
+                            {user?.permissions?.includes('project.delete') && (
+                                <button
+                                    onClick={async () => {
+                                        if (window.confirm('Are you sure you want to delete this project? This will delete all modules and tasks within it.')) {
+                                            setActionLoading(project._id);
+                                            try {
+                                                await api.delete(`/projects/${project._id}`);
+                                                toast.success('Project deleted');
+                                                sessionStorage.removeItem(`project_data_${user?._id}`);
+                                                await fetchData({ force: true });
+                                            } catch {
+                                                toast.error('Failed to delete project');
+                                            } finally {
+                                                setActionLoading(null);
+                                            }
+                                        }
+                                        setOpenMenuId(null);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-red-600 flex items-center gap-2 border-t border-slate-100 mt-1 pt-2"
+                                >
+                                    <Trash2 size={13} /> Delete
+                                </button>
+                            )}
+                        </div>
+                    );
+                })(),
+                document.body
+            )}
+
+            {/* Modal */}
+            {showModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+
+                        {/* Header */}
+                        <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center justify-between rounded-t-xl">
+                            <div className="flex items-center gap-4">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100">
+                                    <Briefcase size={20} className="text-blue-600" />
                                 </div>
-                                <p className="text-[10px] text-slate-400 mt-1">Select users who should have access to this project.</p>
+
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900">
+                                        {editingId ? "Edit Project" : "New Project"}
+                                    </h3>
+
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        {editingId
+                                            ? "Update project details and team assignments"
+                                            : "Fill in the details to create a new project"}
+                                    </p>
+                                </div>
                             </div>
 
-                            <div className="flex justify-end space-x-3 pt-4">
-                                <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-                                <Button type="submit" isLoading={submitLoading}>{editingId ? 'Update' : 'Create'}</Button>
+                            <button
+                                onClick={() => setShowModal(false)}
+                                className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        {/* Form body — scrollable */}
+                        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+                            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+
+                                {/* Section: Basic Information */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <span className="w-1 h-4 bg-blue-600 rounded-full"></span>
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Basic Information</h4>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-5">
+                                        <div className="col-span-2">
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                                                Project Name <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                required
+                                                placeholder="e.g. Website Redesign Q3"
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                value={formData.name}
+                                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Client</label>
+                                            <select
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                value={formData.client}
+                                                onChange={e => setFormData({ ...formData, client: e.target.value })}
+                                            >
+                                                <option value="">Internal / No Client</option>
+                                                {clients.map(c => (
+                                                    <option key={c._id} value={c._id}>{c.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {editingId && (
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>
+                                                <select
+                                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                    value={formData.status}
+                                                    onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                                >
+                                                    <option value="Active">Active</option>
+                                                    <option value="On Hold">On Hold</option>
+                                                    <option value="Completed">Completed</option>
+                                                    <option value="Inactive">Inactive</option>
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        <div className={editingId ? 'col-span-2' : 'col-span-1'}>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
+                                            <textarea
+                                                placeholder="Briefly describe the project scope and goals..."
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white resize-none"
+                                                value={formData.description}
+                                                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                                rows="3"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Divider */}
+                                <div className="border-t border-slate-100" />
+
+                                {/* Section: Timeline */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <span className="w-1 h-4 bg-blue-600 rounded-full"></span>
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Timeline</h4>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-5">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Start Date</label>
+                                            <input
+                                                type="date"
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                value={formData.startDate}
+                                                onChange={e => setFormData({ ...formData, startDate: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Due Date</label>
+                                            <input
+                                                type="date"
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                value={formData.dueDate}
+                                                onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Divider */}
+                                <div className="border-t border-slate-100" />
+
+                                {/* Section: Team Members */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-1 h-4 bg-blue-600 rounded-full"></span>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Team Members</h4>
+                                        </div>
+                                        {formData.members?.length > 0 && (
+                                            <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
+                                                {formData.members.length} selected
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="h-44 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 grid grid-cols-2 gap-2">
+                                        {employees.map(emp => {
+                                            const isChecked = formData.members?.includes(emp._id);
+                                            return (
+                                                <label
+                                                    key={emp._id}
+                                                    className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${isChecked
+                                                        ? 'bg-blue-50 border-blue-300 shadow-sm'
+                                                        : 'bg-white border-slate-200 hover:border-blue-200 hover:bg-blue-50/40'
+                                                        }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        value={emp._id}
+                                                        checked={isChecked}
+                                                        onChange={(e) => {
+                                                            const checked = e.target.checked;
+                                                            const id = emp._id;
+                                                            setFormData(prev => {
+                                                                const current = prev.members || [];
+                                                                if (checked) return { ...prev, members: [...current, id] };
+                                                                return { ...prev, members: current.filter(x => x !== id) };
+                                                            });
+                                                        }}
+                                                        className="rounded text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                                                    />
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-semibold text-slate-700 truncate">{emp.firstName} {emp.lastName}</p>
+                                                        <p className="text-[10px] text-slate-400 truncate">{emp.email}</p>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                        {employees.length === 0 && (
+                                            <div className="col-span-2 flex flex-col items-center justify-center py-8 text-slate-400">
+                                                <Briefcase size={28} className="mb-2 opacity-30" />
+                                                <p className="text-xs italic">No employees found</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 mt-1.5 pl-1">Selected members will have visibility access to this project.</p>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between flex-shrink-0 rounded-b-2xl">
+                                <p className="text-xs text-slate-400">
+                                    {editingId ? 'Changes will be saved immediately.' : 'All fields marked * are required.'}
+                                </p>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowModal(false)}
+                                        className="px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <Button type="submit" isLoading={submitLoading} className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm">
+                                        {editingId ? 'Save Changes' : 'Create Project'}
+                                    </Button>
+                                </div>
                             </div>
                         </form>
                     </div>
-                </div >
+                </div>
             )}
+
         </div >
     );
 };

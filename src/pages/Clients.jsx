@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../api/axios';
-import { Users, Plus } from 'lucide-react';
+import { Users, Plus, MoreVertical } from 'lucide-react';
 import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
 import Skeleton from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
+import ClientForm from './ClientForm';
 
 const Clients = () => {
     const { user } = useAuth();
@@ -13,9 +15,18 @@ const Clients = () => {
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.update');
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [activeDropdownId, setActiveDropdownId] = useState(null);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [selectedClientId, setSelectedClientId] = useState(null);
     const initialFetchDoneRef = useRef(false);
     const CLIENT_CACHE_TTL_MS = 45 * 1000;
     const cacheKey = `client_data_${user?._id}`;
+
+    useEffect(() => {
+        const handleOutsideClick = () => setActiveDropdownId(null);
+        document.addEventListener('click', handleOutsideClick);
+        return () => document.removeEventListener('click', handleOutsideClick);
+    }, []);
 
     const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
@@ -28,7 +39,7 @@ const Clients = () => {
                 if (!force && isCacheFresh(cachedData, CLIENT_CACHE_TTL_MS)) return;
             }
 
-            const clientsRes = await api.get('/projects/clients');
+            const clientsRes = await api.get(`/projects/clients?_t=${Date.now()}`);
             const clientData = clientsRes.data || [];
 
             const newFingerprint = JSON.stringify({ c: clientData.length, first: clientData[0]?._id });
@@ -40,8 +51,10 @@ const Clients = () => {
                 const minimalClients = clientData.map(c => ({
                     _id: c._id,
                     name: c.name,
-                    location: c.location,
+                    nickname: c.nickname,
+                    companyName: c.companyName,
                     email: c.email,
+                    status: c.status || 'Active',
                     businessUnit: c.businessUnit ? { _id: c.businessUnit._id, name: c.businessUnit.name } : null
                 }));
 
@@ -57,6 +70,25 @@ const Clients = () => {
             setLoading(false);
         }
     }, [CLIENT_CACHE_TTL_MS, cacheKey]);
+
+    const handleToggleStatus = async (client) => {
+        const newStatus = client.status === 'Inactive' ? 'Active' : 'Inactive';
+        const loadingToast = toast.loading(`Updating status for ${client.name}...`);
+        try {
+            await api.put(`/projects/clients/${client._id}`, {
+                ...client,
+                status: newStatus
+            });
+            toast.success(`Client ${client.name} is now ${newStatus.toLowerCase()}`, { id: loadingToast });
+            
+            // Invalidate cache and refetch
+            sessionStorage.removeItem(cacheKey);
+            fetchData({ force: true });
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to update status', { id: loadingToast });
+        }
+    };
 
     useEffect(() => {
         if (initialFetchDoneRef.current) return;
@@ -76,11 +108,11 @@ const Clients = () => {
                     </div>
                     <Skeleton className="h-10 w-32 rounded-lg" />
                 </div>
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-white rounded-xl shadow-sm overflow-visible">
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 border-b border-slate-100">
                             <tr>
-                                {['#', 'Client Name', 'Location', 'Business Unit', 'Email', 'Actions'].map(h => (
+                                {['#', 'Client Name', 'Nickname', 'Company Name', 'Business Unit', 'Status', 'Actions'].map(h => (
                                     <th key={h} className="px-4 py-3 text-left">
                                         <Skeleton className="h-3 w-20" />
                                     </th>
@@ -90,7 +122,7 @@ const Clients = () => {
                         <tbody>
                             {[1, 2, 3, 4, 5].map(i => (
                                 <tr key={i} className="border-b border-slate-50">
-                                    {[1, 2, 3, 4, 5, 6].map(j => (
+                                    {[1, 2, 3, 4, 5, 6, 7].map(j => (
                                         <td key={j} className="px-4 py-3">
                                             <Skeleton className="h-4 w-full" />
                                         </td>
@@ -115,8 +147,11 @@ const Clients = () => {
                     </div>
                     {canCreate && (
                         <button
-                            onClick={() => navigate('/clients/new')}
-                            className="flex items-center space-x-2 zoho-btn-primary"
+                             onClick={() => {
+                                 setSelectedClientId(null);
+                                 setIsFormOpen(true);
+                             }}
+                             className="flex items-center space-x-2 zoho-btn-primary"
                         >
                             <Plus size={18} />
                             <span>Add Client</span>
@@ -124,22 +159,23 @@ const Clients = () => {
                     )}
                 </div>
 
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-white rounded-xl shadow-sm overflow-visible">
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client Name</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Location</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nickname</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Company Name</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Business Unit</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-16">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {clients.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                                    <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                                         No clients found.
                                     </td>
                                 </tr>
@@ -155,29 +191,68 @@ const Clients = () => {
                                                 <span className="font-semibold text-slate-800">{client.name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-slate-600">{client.location || <span className="text-slate-300">—</span>}</td>
+                                        <td className="px-4 py-3 text-slate-600">{client.nickname || <span className="text-slate-300">—</span>}</td>
+                                        <td className="px-4 py-3 text-slate-600">{client.companyName || <span className="text-slate-300">—</span>}</td>
                                         <td className="px-4 py-3">
                                             {client.businessUnit?.name
                                                 ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">{client.businessUnit.name}</span>
                                                 : <span className="text-slate-300">—</span>
                                             }
                                         </td>
-                                        <td className="px-4 py-3 text-slate-600">{client.email || <span className="text-slate-300">—</span>}</td>
                                         <td className="px-4 py-3">
-                                            <div className="flex items-center space-x-2">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
+                                                client.status === 'Inactive'
+                                                    ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                                    : 'bg-green-50 text-green-700 border-green-200'
+                                            }`}>
+                                                {client.status || 'Active'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 relative">
+                                            <div className="flex items-center justify-start">
                                                 <button
-                                                    onClick={() => navigate(`/clients/${client._id}/view`)}
-                                                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActiveDropdownId(activeDropdownId === client._id ? null : client._id);
+                                                    }}
+                                                    className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
                                                 >
-                                                    View
+                                                    <MoreVertical size={16} />
                                                 </button>
-                                                {canUpdate && (
-                                                    <button
-                                                        onClick={() => navigate(`/clients/${client._id}/edit`)}
-                                                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-md transition-colors"
-                                                    >
-                                                        Edit
-                                                    </button>
+                                                {activeDropdownId === client._id && (
+                                                    <div className="absolute right-4 mt-2 w-40 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-10 text-left">
+                                                        <button
+                                                            onClick={() => navigate(`/clients/${client._id}/view`, { state: { from: '/clients' } })}
+                                                            className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center"
+                                                        >
+                                                            View Details
+                                                        </button>
+                                                        {canUpdate && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSelectedClientId(client._id);
+                                                                        setIsFormOpen(true);
+                                                                        setActiveDropdownId(null);
+                                                                    }}
+                                                                    className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center"
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setActiveDropdownId(null);
+                                                                        handleToggleStatus(client);
+                                                                    }}
+                                                                    className={`w-full text-left px-4 py-2 text-xs font-semibold hover:bg-slate-50 flex items-center ${
+                                                                        client.status === 'Inactive' ? 'text-green-600' : 'text-red-600'
+                                                                    }`}
+                                                                >
+                                                                    {client.status === 'Inactive' ? 'Mark as Active' : 'Mark as Inactive'}
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         </td>
@@ -188,6 +263,12 @@ const Clients = () => {
                     </table>
                 </div>
             </div>
+            <ClientForm
+                isOpen={isFormOpen}
+                onClose={() => setIsFormOpen(false)}
+                clientId={selectedClientId}
+                onSuccess={() => fetchData({ force: true })}
+            />
         </div>
     );
 };

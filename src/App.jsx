@@ -273,16 +273,7 @@ function App() {
                         <Clients />
                       </ProtectedRoute>
                     )} />
-                    <Route path="/clients/new" element={(
-                      <ProtectedRoute requiredPermissions={CLIENT_CREATE_PERMISSIONS}>
-                        <ClientForm />
-                      </ProtectedRoute>
-                    )} />
-                    <Route path="/clients/:id/edit" element={(
-                      <ProtectedRoute requiredPermissions={CLIENT_UPDATE_PERMISSIONS}>
-                        <ClientForm />
-                      </ProtectedRoute>
-                    )} />
+
                     <Route path="/clients/:id/view" element={(
                       <ProtectedRoute requiredPermissions={CLIENT_ACCESS_PERMISSIONS}>
                         <ClientView />

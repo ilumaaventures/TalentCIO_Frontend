@@ -483,14 +483,49 @@ const HiringRequestDetails = () => {
                                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Experience Range</h4>
                                             <p className="text-slate-900 font-bold text-sm">{request.requirements.experienceMin} - {request.requirements.experienceMax} <span className="text-xs font-medium text-slate-500">Years</span></p>
                                         </div>
+                                        {request.requirements.shift && (
+                                            <div>
+                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Shift</h4>
+                                                <p className="text-slate-900 font-semibold text-sm">{request.requirements.shift}</p>
+                                            </div>
+                                        )}
+                                        {request.requirements.workPlace && (
+                                            <div>
+                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Work Place</h4>
+                                                <p className="text-slate-900 font-semibold text-sm">{request.requirements.workPlace}</p>
+                                            </div>
+                                        )}
+                                        {request.requirements.clientWorkLocation && request.requirements.clientWorkLocation.length > 0 && (
+                                            <div className="col-span-2">
+                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Client Work Location</h4>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {request.requirements.clientWorkLocation.map(loc => (
+                                                        <span key={loc} className="px-2.5 py-1 bg-slate-50 text-slate-600 border border-slate-200 rounded-full text-xs font-medium hover:bg-slate-100 transition-colors cursor-default">
+                                                            {loc}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {request.requirements.workMode && (
+                                            <div>
+                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Work Mode</h4>
+                                                <p className="text-slate-900 font-semibold text-sm">{request.requirements.workMode}</p>
+                                            </div>
+                                        )}
                                         <div>
-                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Location</h4>
+                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Work Location</h4>
                                             <div className="flex items-center gap-1.5 text-slate-900 font-medium text-sm">
                                                 <MapPin size={13} className="text-slate-400" />
                                                 {request.requirements.location}
-                                                {request.requirements.shift && <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">({request.requirements.shift})</span>}
                                             </div>
                                         </div>
+                                        {request.requirements.workingDaysPerWeek && (
+                                            <div>
+                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Working Days/Week</h4>
+                                                <p className="text-slate-900 font-semibold text-sm">{request.requirements.workingDaysPerWeek} Days</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </section>
