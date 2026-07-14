@@ -2127,7 +2127,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     <>
                         {/* Inline Detail View */}
                         <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden mb-6">
-                            <div className="overflow-x-auto scrollbar-hide">
+                            <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left border-collapse">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
