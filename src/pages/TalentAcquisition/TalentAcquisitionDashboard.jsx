@@ -296,7 +296,7 @@ const TalentAcquisitionDashboard = () => {
     const [availableSkills, setAvailableSkills] = useState([]);
     const [skillsFilterText, setSkillsFilterText] = useState('');
     // Public Applications mode
-    const [showPublicApps, setShowPublicApps] = useState(() => getSavedVal('showPublicApps', false));
+    const showPublicApps = false;
     const [publicAppReviewStatus, setPublicAppReviewStatus] = useState(() => getSavedVal('publicAppReviewStatus', ''));
     const [publicAppResults, setPublicAppResults] = useState([]);
     const [publicAppPagination, setPublicAppPagination] = useState({ currentPage: 1, totalPages: 1, count: 0, limit: 15 });
@@ -1220,38 +1220,14 @@ const TalentAcquisitionDashboard = () => {
                             />
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
-                            {/* Public Applications Toggle */}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const next = !showPublicApps;
-                                    setShowPublicApps(next);
-                                    setSearchPage(1);
-                                    setAppliedFilters(prev => ({ ...prev, publicAppReviewStatus: next ? publicAppReviewStatus : '' }));
-                                }}
-                                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-sm transition ${
-                                    showPublicApps
-                                        ? 'border-violet-300 bg-violet-600 text-white shadow-violet-200'
-                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                }`}
-                                title="Show public job board applications"
-                            >
-                                <Globe size={14} />
-                                <span>Public Applications</span>
-                                {showPublicApps && publicAppPagination.count > 0 && (
-                                    <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                                        {publicAppPagination.count}
-                                    </span>
-                                )}
-                            </button>
+
                             <button
                                 type="button"
                                 onClick={() => setShowFilters(!showFilters)}
-                                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-sm transition ${
-                                    showFilters || activeFiltersCount > 0
-                                        ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-sm transition ${showFilters || activeFiltersCount > 0
+                                    ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                    }`}
                             >
                                 <SlidersHorizontal size={14} />
                                 <span>Filters</span>
@@ -1419,7 +1395,7 @@ const TalentAcquisitionDashboard = () => {
                                     {skillsFilterText.trim() && (
                                         <div className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
                                             {availableSkills
-                                                .filter(skill => 
+                                                .filter(skill =>
                                                     skill.toLowerCase().includes(skillsFilterText.toLowerCase()) &&
                                                     !searchSkills.includes(skill)
                                                 )
@@ -1530,18 +1506,29 @@ const TalentAcquisitionDashboard = () => {
                                             Candidate Sources
                                         </label>
                                         <div className="flex flex-wrap gap-2">
-                                            {availableSources.map((sourceName) => {
+                                            {[
+                                                'Public Application',
+                                                'Consultancy',
+                                                'Direct Upload',
+                                                'indeed',
+                                                'Internal Database',
+                                                'Job Portal',
+                                                'LinkedIn',
+                                                'naukri',
+                                                'Other',
+                                                'Referral'
+
+                                            ].map((sourceName) => {
                                                 const isSelected = selectedSources.includes(sourceName);
                                                 return (
                                                     <button
                                                         key={sourceName}
                                                         type="button"
                                                         onClick={() => toggleSource(sourceName)}
-                                                        className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition border ${
-                                                            isSelected
-                                                                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                                                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                                                        }`}
+                                                        className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition border ${isSelected
+                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                                            }`}
                                                     >
                                                         {sourceName}
                                                     </button>
@@ -1722,9 +1709,9 @@ const TalentAcquisitionDashboard = () => {
                                 <tbody>
                                     {candidateResults.map((candidate) => {
                                         const allSkills = [
-                                            ...(candidate.mustHaveSkills || []).map(s => s.skill),
-                                            ...(candidate.niceToHaveSkills || []).map(s => s.skill)
-                                        ];
+                                            ...(candidate.mustHaveSkills || []).map(s => typeof s?.skill === 'object' ? s.skill?.name : s?.skill),
+                                            ...(candidate.niceToHaveSkills || []).map(s => typeof s?.skill === 'object' ? s.skill?.name : s?.skill)
+                                        ].filter(Boolean);
 
                                         return (
                                             <tr key={candidate._id} className="border-b border-slate-100 transition hover:bg-slate-50">
@@ -1737,13 +1724,12 @@ const TalentAcquisitionDashboard = () => {
                                                             <div className="flex items-center gap-2">
                                                                 <p className="font-semibold text-slate-900">{candidate.candidateName}</p>
                                                                 {candidate.confidenceRating !== undefined && candidate.confidenceRating !== null && (
-                                                                    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide border ${
-                                                                        candidate.confidenceRating >= 75
-                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                            : candidate.confidenceRating >= 50
+                                                                    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide border ${candidate.confidenceRating >= 75
+                                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                        : candidate.confidenceRating >= 50
                                                                             ? 'bg-amber-50 text-amber-700 border-amber-200'
                                                                             : 'bg-slate-100 text-slate-600 border-slate-200'
-                                                                    }`}>
+                                                                        }`}>
                                                                         {candidate.confidenceRating}% {isFilterActive ? 'Match' : 'Strength'}
                                                                     </span>
                                                                 )}
@@ -1819,20 +1805,32 @@ const TalentAcquisitionDashboard = () => {
                                                                 <span>Resume</span>
                                                             </span>
                                                         )}
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const hrId = candidate.hiringRequestId?._id || candidate.hiringRequestId;
-                                                                if (hrId) {
-                                                                    window.open(`/ta/hiring-request/${hrId}/candidate/${candidate._id}/view`, '_blank');
-                                                                } else {
-                                                                    console.error("No hiring request ID found for candidate view");
-                                                                }
-                                                            }}
-                                                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-                                                        >
-                                                            View
-                                                        </button>
+                                                        {candidate.isPublicApplication ? (
+                                                            candidate.hiringRequestId?._id && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => navigate(`/ta/view/${candidate.hiringRequestId._id}?tab=applications`)}
+                                                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                                >
+                                                                    View Req
+                                                                </button>
+                                                            )
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const hrId = candidate.hiringRequestId?._id || candidate.hiringRequestId;
+                                                                    if (hrId) {
+                                                                        window.open(`/ta/hiring-request/${hrId}/candidate/${candidate._id}/view`, '_blank');
+                                                                    } else {
+                                                                        console.error("No hiring request ID found for candidate view");
+                                                                    }
+                                                                }}
+                                                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                            >
+                                                                View
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
