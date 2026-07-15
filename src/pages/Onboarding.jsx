@@ -256,11 +256,27 @@ const Onboarding = () => {
     const requestedDocuments = employee.requestedDocuments || [];
     const getRequestedDoc = (label) => requestedDocuments.find((entry) => getRequestedLabel(entry) === label);
 
+    const rawTemplates = employee.companyDynamicTemplates || onboardingSettings.dynamicTemplates || [];
+    const templatesList = rawTemplates.filter((t) => {
+      if (t.isDeleted !== true) return true;
+      const req = getRequestedDoc(t.name);
+      const isAccepted = (employee.offerDeclaration?.acceptedTemplates || []).some((at) => at.templateId === t._id);
+      return req || isAccepted;
+    });
+
+    const rawPolicies = employee.companyPolicies || onboardingSettings.policies || [];
+    const policiesList = rawPolicies.filter((p) => {
+      if (p.isDeleted !== true) return true;
+      const req = getRequestedDoc(p.name);
+      const isAccepted = (employee.offerDeclaration?.acceptedPolicies || []).some((ap) => ap.policyId === p._id);
+      return req || isAccepted;
+    });
+
     return [
       ...(employee.documents || [])
         .filter((d) => d.type !== 'custom_file')
         .map((d) => ({ ...d, itemType: 'document' })),
-      ...(onboardingSettings.policies || []).map((policy) => {
+      ...policiesList.map((policy) => {
         const req = getRequestedDoc(policy.name);
         return {
           label: policy.name,
@@ -272,7 +288,7 @@ const Onboarding = () => {
           url: policy.url
         };
       }),
-      ...(onboardingSettings.dynamicTemplates || []).map((template) => {
+      ...templatesList.map((template) => {
         const req = getRequestedDoc(template.name);
         return {
           label: template.name,
@@ -1492,7 +1508,7 @@ const Onboarding = () => {
       // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
-        setSelectedEmployee(updatedEmp);
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
         syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
@@ -1508,7 +1524,7 @@ const Onboarding = () => {
       // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
-        setSelectedEmployee(updatedEmp);
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
         syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
