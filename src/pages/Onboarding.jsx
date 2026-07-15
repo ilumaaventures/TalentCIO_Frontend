@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { useSearchParams } from 'react-router-dom';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { buildMasterSalaryStructure, buildPayrollSnapshot, PT_STATE_LIST } from '../utils/payroll';
 import {
@@ -23,8 +23,6 @@ const parseBool = (val, defaultVal = true) => {
   return defaultVal;
 };
 
-const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
-const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
 const CUSTOM_FILE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const CUSTOM_FILE_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,image/*';
 const CUSTOM_FILE_ALLOWED_MIME_TYPES = new Set([
@@ -152,7 +150,11 @@ const Onboarding = () => {
   const [expandedSections, setExpandedSections] = useState({});
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [activeTab, setActiveTab] = useState('employees'); // 'employees' or 'settings'
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'employees';
+  const setActiveTab = useCallback((tab) => {
+    setSearchParams({ tab }, { replace: true });
+  }, [setSearchParams]); // 'employees' or 'settings'
   const [onboardingSettings, setOnboardingSettings] = useState({ offerLetterTemplateUrl: '', declarationTemplateUrl: '' });
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -192,21 +194,7 @@ const Onboarding = () => {
     };
   }, []);
 
-  // Clear onboarding cache on mount/refresh to ensure fresh data loads on entry
-  useEffect(() => {
-    if (user?._id) {
-      const prefix = `onboarding_employees_${user._id}_`;
-      try {
-        Object.keys(sessionStorage).forEach((key) => {
-          if (key.startsWith(prefix)) {
-            sessionStorage.removeItem(key);
-          }
-        });
-      } catch (e) {
-        console.error('Failed to clear onboarding cache on mount', e);
-      }
-    }
-  }, [user?._id]);
+
 
   const toggleMenu = useCallback((e, employeeId) => {
     e.stopPropagation();
@@ -268,11 +256,27 @@ const Onboarding = () => {
     const requestedDocuments = employee.requestedDocuments || [];
     const getRequestedDoc = (label) => requestedDocuments.find((entry) => getRequestedLabel(entry) === label);
 
+    const rawTemplates = employee.companyDynamicTemplates || onboardingSettings.dynamicTemplates || [];
+    const templatesList = rawTemplates.filter((t) => {
+      if (t.isDeleted !== true) return true;
+      const req = getRequestedDoc(t.name);
+      const isAccepted = (employee.offerDeclaration?.acceptedTemplates || []).some((at) => at.templateId === t._id);
+      return req || isAccepted;
+    });
+
+    const rawPolicies = employee.companyPolicies || onboardingSettings.policies || [];
+    const policiesList = rawPolicies.filter((p) => {
+      if (p.isDeleted !== true) return true;
+      const req = getRequestedDoc(p.name);
+      const isAccepted = (employee.offerDeclaration?.acceptedPolicies || []).some((ap) => ap.policyId === p._id);
+      return req || isAccepted;
+    });
+
     return [
       ...(employee.documents || [])
         .filter((d) => d.type !== 'custom_file')
         .map((d) => ({ ...d, itemType: 'document' })),
-      ...(onboardingSettings.policies || []).map((policy) => {
+      ...policiesList.map((policy) => {
         const req = getRequestedDoc(policy.name);
         return {
           label: policy.name,
@@ -284,7 +288,7 @@ const Onboarding = () => {
           url: policy.url
         };
       }),
-      ...(onboardingSettings.dynamicTemplates || []).map((template) => {
+      ...templatesList.map((template) => {
         const req = getRequestedDoc(template.name);
         return {
           label: template.name,
@@ -630,23 +634,7 @@ const Onboarding = () => {
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  const clearOnboardingCache = useCallback(() => {
-    if (user?._id) {
-      const prefix = `onboarding_employees_${user._id}_`;
-      try {
-        Object.keys(sessionStorage).forEach((key) => {
-          if (key.startsWith(prefix)) {
-            sessionStorage.removeItem(key);
-          }
-        });
-      } catch (e) {
-        console.error('Failed to clear onboarding cache', e);
-      }
-    }
-  }, [user?._id]);
-
   const syncEmployeeState = useCallback((updatedEmp, mode = 'update') => {
-    clearOnboardingCache();
     setEmployees(prev => {
       if (mode === 'delete') {
         return prev.filter(e => e._id !== updatedEmp._id);
@@ -656,26 +644,11 @@ const Onboarding = () => {
         return prev.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
       }
     });
-  }, [clearOnboardingCache]);
+  }, []);
 
-  const fetchEmployees = useCallback(async ({ force = false } = {}) => {
-    const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${debouncedSearchTerm || 'all'}`;
+  const fetchEmployees = useCallback(async () => {
     try {
-      const cached = readSessionCache(cacheKey);
-      if (cached) {
-        // Only set from cache if NOT forcing a refresh. This prevents flickering back to old data.
-        if (!force) {
-          const data = cached.data || {};
-          setEmployees(data.employees || []);
-          setStats(data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
-          setTotalPages(data.totalPages || 1);
-          setLoading(false);
-          if (isCacheFresh(cached, ONBOARDING_EMPLOYEE_CACHE_TTL_MS)) return;
-        }
-      } else {
-        setLoading(true);
-      }
-
+      setLoading(true);
       const params = { tab: 'employees', page, limit: 15 };
       if (statusFilter !== 'All') params.status = statusFilter;
       if (debouncedSearchTerm) params.search = debouncedSearchTerm;
@@ -686,71 +659,22 @@ const Onboarding = () => {
       setEmployees(employeesData);
       setStats(statsData);
       setTotalPages(totalPagesData);
-
-      const fingerprint = JSON.stringify({
-        page,
-        statusFilter,
-        searchTerm: debouncedSearchTerm,
-        total: res.data.total || employeesData.length,
-        first: employeesData[0]?._id
-      });
-
-      const minimalEmployees = employeesData.map(employee => ({
-        _id: employee._id,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        email: employee.email,
-        phone: employee.phone,
-        designation: employee.designation,
-        department: employee.department,
-        joiningDate: employee.joiningDate,
-        offerDate: employee.offerDate,
-        status: employee.status,
-        tempEmployeeId: employee.tempEmployeeId,
-        createdBy: employee.createdBy,
-        sourcedFromTA: employee.sourcedFromTA,
-        documents: employee.documents,
-        personalDetails: employee.personalDetails,
-        emergencyContact: employee.emergencyContact,
-        bankDetails: employee.bankDetails,
-        offerDeclaration: employee.offerDeclaration
-      }));
-
-      sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload({
-        employees: minimalEmployees,
-        stats: statsData,
-        totalPages: totalPagesData
-      }, fingerprint)));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, page, statusFilter, user?._id]);
+  }, [debouncedSearchTerm, page, statusFilter]);
 
-  const fetchSettings = useCallback(async ({ force = false } = {}) => {
-    const cacheKey = `onboarding_settings_${user?._id}`;
+  const fetchSettings = useCallback(async () => {
     try {
-      const cached = readSessionCache(cacheKey);
-      if (cached && !force) {
-        setOnboardingSettings(cached.data || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] });
-        if (isCacheFresh(cached, ONBOARDING_SETTINGS_CACHE_TTL_MS)) return;
-      }
-
       const res = await api.get('/onboarding/bootstrap', { params: { tab: 'settings' } });
       const settings = res.data?.settings || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] };
       setOnboardingSettings(settings);
-      const fingerprint = JSON.stringify({
-        offer: settings.offerLetterTemplateUrl || '',
-        declaration: settings.declarationTemplateUrl || '',
-        policies: settings.policies?.length || 0,
-        templates: settings.dynamicTemplates?.length || 0
-      });
-      sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(settings, fingerprint)));
     } catch {
       console.error('Failed to fetch onboarding settings');
     }
-  }, [user?._id]);
+  }, []);
 
   const fetchPayrollConfig = useCallback(async () => {
     try {
@@ -1290,7 +1214,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Template uploaded!', { id: 'dynamic' });
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed', { id: 'dynamic' });
     }
@@ -1307,10 +1231,10 @@ const Onboarding = () => {
 
       await api.delete(`/onboarding/settings/templates/dynamic/${id}`);
       toast.success('Template deleted');
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch {
       toast.error('Failed to delete template');
-      fetchSettings({ force: true });
+      fetchSettings();
     }
   };
 
@@ -1319,7 +1243,7 @@ const Onboarding = () => {
     if (activeTab === 'settings' && !canManageOnboardingSettings) {
       setActiveTab('employees');
     }
-  }, [activeTab, canManageOnboardingSettings]);
+  }, [activeTab, canManageOnboardingSettings, setActiveTab]);
 
   useEffect(() => {
     fetchPayrollConfig();
@@ -1358,7 +1282,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Policy uploaded!', { id: 'policy' });
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed', { id: 'policy' });
     }
@@ -1375,10 +1299,10 @@ const Onboarding = () => {
 
       await api.delete(`/onboarding/settings/policies/${policyId}`);
       toast.success('Policy deleted');
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch {
       toast.error('Failed to delete policy');
-      fetchSettings({ force: true });
+      fetchSettings();
     }
   };
 
@@ -1584,7 +1508,7 @@ const Onboarding = () => {
       // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
-        setSelectedEmployee(updatedEmp);
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
         syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
@@ -1600,7 +1524,7 @@ const Onboarding = () => {
       // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
-        setSelectedEmployee(updatedEmp);
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
         syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
@@ -1783,8 +1707,15 @@ const Onboarding = () => {
 
   const handleRegenerateCredentials = async (empId) => {
     if (!confirm('Are you sure you want to regenerate credentials? The old password will stop working immediately.')) return;
+    
+    const sendEmail = confirm('Would you like to email these new credentials to the candidate immediately?');
+    
     try {
-      const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`);
+      const emailAccountId = selectedEmailAccountId || 'platform';
+      const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`, {
+        sendEmail,
+        emailAccountId
+      });
       toast.success(
         () => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1792,11 +1723,15 @@ const Onboarding = () => {
             <div style={{ fontSize: '13px' }}>
               <div><strong>ID:</strong> {res.data.tempEmployeeId}</div>
               <div><strong>Password:</strong> {res.data.tempPassword}</div>
-              <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px' }}>Select sections and click Send Email to notify the candidate.</div>
+              {sendEmail ? (
+                <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px', fontWeight: 'bold' }}>📧 Email sent to candidate successfully.</div>
+              ) : (
+                <div style={{ color: '#dc2626', marginTop: '4px', fontSize: '11px' }}>⚠️ Credentials not emailed. Copy them or notify the candidate.</div>
+              )}
             </div>
           </div>
         ),
-        { duration: 10000 }
+        { duration: 12000 }
       );
       if (res.data?.employee) {
         syncEmployeeState(res.data.employee, 'update');
