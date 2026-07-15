@@ -1691,8 +1691,15 @@ const Onboarding = () => {
 
   const handleRegenerateCredentials = async (empId) => {
     if (!confirm('Are you sure you want to regenerate credentials? The old password will stop working immediately.')) return;
+    
+    const sendEmail = confirm('Would you like to email these new credentials to the candidate immediately?');
+    
     try {
-      const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`);
+      const emailAccountId = selectedEmailAccountId || 'platform';
+      const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`, {
+        sendEmail,
+        emailAccountId
+      });
       toast.success(
         () => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1700,11 +1707,15 @@ const Onboarding = () => {
             <div style={{ fontSize: '13px' }}>
               <div><strong>ID:</strong> {res.data.tempEmployeeId}</div>
               <div><strong>Password:</strong> {res.data.tempPassword}</div>
-              <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px' }}>Select sections and click Send Email to notify the candidate.</div>
+              {sendEmail ? (
+                <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px', fontWeight: 'bold' }}>📧 Email sent to candidate successfully.</div>
+              ) : (
+                <div style={{ color: '#dc2626', marginTop: '4px', fontSize: '11px' }}>⚠️ Credentials not emailed. Copy them or notify the candidate.</div>
+              )}
             </div>
           </div>
         ),
-        { duration: 10000 }
+        { duration: 12000 }
       );
       if (res.data?.employee) {
         syncEmployeeState(res.data.employee, 'update');
