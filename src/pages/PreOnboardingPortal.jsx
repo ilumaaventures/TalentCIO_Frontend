@@ -812,7 +812,7 @@ const PreOnboardingPortal = () => {
             <strong>Your onboarding form has been submitted!</strong>
           </div>
           <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.9 }}>
-            Submitted on {new Date(profile.submittedAt).toLocaleString('en-IN')}. Your form is now read-only.
+            Submitted on {new Date(profile.submittedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}. Your form is now read-only.
           </p>
         </div>
       )}
@@ -1434,7 +1434,9 @@ const PreOnboardingPortal = () => {
                               </div>
                               <div>
                                 <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed On</span>
-                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>{offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleDateString('en-IN') : '—'}</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>
+                                  {offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
+                                </span>
                               </div>
                               <div>
                                 <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signature Mode</span>
@@ -1518,7 +1520,12 @@ const PreOnboardingPortal = () => {
                                     return;
                                   }
                                 }
-                                const updated = { ...offerDeclaration, isComplete: isChecked, eSignValue: signValue };
+                                const updated = { 
+                                  ...offerDeclaration, 
+                                  isComplete: isChecked, 
+                                  eSignValue: signValue,
+                                  eSignDate: isChecked ? new Date().toISOString() : offerDeclaration.eSignDate 
+                                };
                                 setOfferDeclaration(updated);
                                 if (isChecked) handleSaveSection('offerDeclaration', false, updated);
                                 else markChange();
