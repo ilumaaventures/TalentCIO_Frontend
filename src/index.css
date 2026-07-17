@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Kalam:wght@700&family=Short+Stack&family=Courier+Prime:wght@700&family=DM+Sans:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap");
 @import "tailwindcss";
 
 @layer base {
@@ -175,3 +175,33 @@
     background-color: #64748b;
   }
 }
+
+/* @font-face aliases to map Word document XML fonts directly to Google Web Fonts in previews */
+@font-face {
+  font-family: 'Segoe Print';
+  src: local('Segoe Print'), local('SegoePrint'), url('https://fonts.gstatic.com/s/shortstack/v19/H4cmBXOjo4e-f8mEru382vH8.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Brush Script MT';
+  src: local('Brush Script MT'), local('BrushScriptMT'), url('https://fonts.gstatic.com/s/caveat/v18/Wn7HaTq5Y8FD9ZsUoW5Y.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Lucida Handwriting';
+  src: local('Lucida Handwriting'), local('LucidaHandwriting'), url('https://fonts.gstatic.com/s/kalam/v16/Hgo01y3I9t05qYMJ.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Courier New';
+  src: local('Courier New'), local('CourierNew'), url('https://fonts.gstatic.com/s/courierprime/v9/u-4n0qKx6sOEcVatU83zpKOC8w.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+

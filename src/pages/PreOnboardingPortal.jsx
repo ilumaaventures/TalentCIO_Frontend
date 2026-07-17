@@ -212,6 +212,9 @@ const PreOnboardingPortal = () => {
       setPersonalDetails(res.data.personalDetails || {});
       setEmergencyContact(res.data.emergencyContact || {});
       setOfferDeclaration(res.data.offerDeclaration || {});
+      if (res.data.offerDeclaration?.eSignStyle) {
+        setInlineSignatureStyle(res.data.offerDeclaration.eSignStyle);
+      }
     } catch (err) {
       if (err.response?.status === 401) {
         toast.error(err.response?.data?.message || 'Session expired');
@@ -1484,7 +1487,11 @@ const PreOnboardingPortal = () => {
                                   { font: '"Segoe Print", cursive', label: 'Casual Print' },
                                   { font: 'Courier New, monospace', label: 'Block Print' }
                                 ].map(style => (
-                                  <div key={style.font} onClick={() => { setInlineSignatureStyle(style.font); markChange(); }} style={{ padding: '12px 10px', border: inlineSignatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', background: inlineSignatureStyle === style.font ? '#eff6ff' : '#fff', textAlign: 'center' }}>
+                                  <div key={style.font} onClick={() => { 
+                                    setInlineSignatureStyle(style.font); 
+                                    setOfferDeclaration({ ...offerDeclaration, eSignStyle: style.font });
+                                    markChange(); 
+                                  }} style={{ padding: '12px 10px', border: inlineSignatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', background: inlineSignatureStyle === style.font ? '#eff6ff' : '#fff', textAlign: 'center' }}>
                                     <span style={{ fontFamily: style.font, fontSize: '15px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{offerDeclaration.eSignName || 'Signature'}</span>
                                     <span style={{ fontSize: '9px', color: '#64748b', marginTop: '4px', display: 'block' }}>{style.label}</span>
                                   </div>

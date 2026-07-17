@@ -3077,6 +3077,18 @@ const Onboarding = () => {
                   font-size: 11.5pt !important;
                   line-height: 1.5 !important;
                 }
+                #docx-preview-root [style*="Brush Script" i] {
+                  font-family: 'Brush Script MT', cursive !important;
+                }
+                #docx-preview-root [style*="Lucida" i] {
+                  font-family: 'Lucida Handwriting', cursive !important;
+                }
+                #docx-preview-root [style*="Segoe" i] {
+                  font-family: 'Segoe Print', cursive !important;
+                }
+                #docx-preview-root [style*="Courier" i] {
+                  font-family: 'Courier New', monospace !important;
+                }
                 #docx-preview-root strong,
                 #docx-preview-root b {
                   font-weight: 700 !important;
