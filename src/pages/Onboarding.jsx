@@ -465,7 +465,7 @@ const Onboarding = () => {
       'Graduation Marksheet / Certificate'
     ];
     const sectionsToSelect = allSectionLabels.filter(label => !phase1Sections.includes(label));
-    const docsToSelect = allDocumentLabels.filter(label => !phase1Docs.includes(label));
+    const docsToSelect = allDocumentLabels.filter(label => !phase1Docs.includes(label) && label !== 'Character Certificate');
     setCheckedSections(new Set(sectionsToSelect));
     setCheckedDocuments(new Set(docsToSelect));
   }, [allDocumentLabels, allSectionLabels]);

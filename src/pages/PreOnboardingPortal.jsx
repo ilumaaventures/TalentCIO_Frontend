@@ -666,7 +666,7 @@ const PreOnboardingPortal = () => {
       case 'documents': {
         const targetDocs = p.documents?.filter(d => rdLabels.length === 0 || rdLabels.includes(d.label)) || [];
         if (targetDocs.length === 0) return true;
-        return targetDocs.every(d => d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport');
+        return targetDocs.every(d => d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport' || d.type === 'character_certificate');
       }
       case 'policies': {
         const targetPolicies = p.companyPolicies?.filter(p => rdLabels.length === 0 || rdLabels.includes(p.name)) || [];
@@ -921,7 +921,7 @@ const PreOnboardingPortal = () => {
                         const targetDocs = profile?.documents?.filter(d => reqDocsLabels.length === 0 || reqDocsLabels.includes(d.label)) || [];
                         if (targetDocs.length === 0) return true;
                         // Section is only complete if ALL requested docs are Uploaded or Approved (and not flagged)
-                        return targetDocs.every(d => (d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'));
+                        return targetDocs.every(d => (d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport' || d.type === 'character_certificate'));
                       })() :
                         step.id === 'bankDetails' ? profile?.bankDetails?.isComplete :
                           step.id === 'policies' ? (() => {
