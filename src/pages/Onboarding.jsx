@@ -378,8 +378,8 @@ const Onboarding = () => {
     designation: selectedEmployee?.designation || 'Software Engineer',
     client: '',
     department: selectedEmployee?.department || 'Engineering',
-    offerDate: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
-    dateOfOffer: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
+    offerDate: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '10 Jun 2026',
+    dateOfOffer: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '10 Jun 2026',
     workLocation: selectedEmployee?.workLocation || 'Bengaluru',
     employmentDetails: [
       selectedEmployee?.designation || 'Software Engineer',
@@ -396,7 +396,7 @@ const Onboarding = () => {
     employeeFirstName: selectedEmployee?.firstName || 'Sarthak',
     employeeFullName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak Sharma',
     employeeId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
-    joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '15 Jun 2026',
+    joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '15 Jun 2026',
     submissionDeadline: emailDeadline || '2026-06-10',
     portalLink: `${window.location.origin}/pre-onboarding/login`,
     credentialsSection: previewCredentialsSection,
@@ -405,8 +405,8 @@ const Onboarding = () => {
     sharedFilesBlock: previewSharedFilesBlock,
     deadlineBlock: previewDeadlineBlock,
     portalButton: previewPortalButton,
-    currentYear: String(new Date().getFullYear()),
-    currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+    currentYear: new Date().toLocaleString('en-US', { year: 'numeric', timeZone: 'Asia/Kolkata' }),
+    currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric', timeZone: 'Asia/Kolkata' })
   };
   const onboardingPreviewSubject = resolveTemplate(customEmailSubject, onboardingPreviewData);
   const onboardingPreviewHtml = renderTemplateBody(customEmailBody, onboardingPreviewData);
@@ -465,7 +465,7 @@ const Onboarding = () => {
       'Graduation Marksheet / Certificate'
     ];
     const sectionsToSelect = allSectionLabels.filter(label => !phase1Sections.includes(label));
-    const docsToSelect = allDocumentLabels.filter(label => !phase1Docs.includes(label));
+    const docsToSelect = allDocumentLabels.filter(label => !phase1Docs.includes(label) && label !== 'Character Certificate');
     setCheckedSections(new Set(sectionsToSelect));
     setCheckedDocuments(new Set(docsToSelect));
   }, [allDocumentLabels, allSectionLabels]);
@@ -1997,8 +1997,8 @@ const Onboarding = () => {
                           <code style={{ background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', fontSize: '13px', fontWeight: '600' }}>{emp.tempEmployeeId}</code>
                         </td>
                         <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.designation || '—'}</td>
-                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
-                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.documentDeadline ? new Date(emp.documentDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</td>
+                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.documentDeadline ? new Date(emp.documentDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</td>
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{ flex: 1, height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
@@ -2478,7 +2478,7 @@ const Onboarding = () => {
                           currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
                           api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
                             .then((res) => {
-                              toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString()}`);
+                              toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
                               if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
                               else fetchEmployees();
                               const updatedExt = { ...ext, status: 'Approved' };
@@ -2498,14 +2498,14 @@ const Onboarding = () => {
                 {selectedEmployee.documentDeadline && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '13px', color: '#92400e', marginBottom: '8px' }}>
                     <Clock size={16} />
-                    <strong>Document Deadline:</strong> {new Date(selectedEmployee.documentDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    <strong>Document Deadline:</strong> {new Date(selectedEmployee.documentDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                   </div>
                 )}
 
                 {selectedEmployee.credentialsExpireAt && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', color: '#991b1b', marginBottom: '12px' }}>
                     <AlertTriangle size={16} />
-                    <strong>Credentials Expire:</strong> {new Date(selectedEmployee.credentialsExpireAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    <strong>Credentials Expire:</strong> {new Date(selectedEmployee.credentialsExpireAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
                   </div>
                 )}
 
@@ -2599,7 +2599,7 @@ const Onboarding = () => {
                             <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{s.label}</span>
                             <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                               <span style={{ fontSize: '11px', fontWeight: '700', color: badgeColor, background: badgeBg, padding: '4px 10px', borderRadius: '999px' }}>{statusText}</span>
-                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '4px' }}>Sent on {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}
+                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '4px' }}>Sent on {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}</span>}
                             </div>
                             <ChevronDown size={16} style={{ color: '#94a3b8', transform: expandedSections[s.id] ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
                           </div>
@@ -2610,7 +2610,7 @@ const Onboarding = () => {
                             {s.id === 'personal' && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div><span style={{ color: '#94a3b8' }}>Full Name:</span> <br /> <strong>{s.data?.fullName || '—'}</strong></div>
-                                <div><span style={{ color: '#94a3b8' }}>DOB:</span> <br /> <strong>{s.data?.dateOfBirth ? new Date(s.data.dateOfBirth).toLocaleDateString('en-IN') : '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>DOB:</span> <br /> <strong>{s.data?.dateOfBirth ? new Date(s.data.dateOfBirth).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Gender:</span> <br /> <strong>{s.data?.gender || '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Blood Group:</span> <br /> <strong>{s.data?.bloodGroup || '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Email:</span> <br /> <strong>{s.data?.personalEmail || '—'}</strong></div>
@@ -2678,7 +2678,7 @@ const Onboarding = () => {
                                     </div>
                                   )}
                                   <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN') : '—'}
+                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
                                     {s.data?.eSignIp ? ` (IP: ${s.data.eSignIp})` : ''}
                                   </span>
                                 </div>
@@ -2718,10 +2718,10 @@ const Onboarding = () => {
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
                           {(item.itemType === 'policy' || item.itemType === 'template') && !item.isAccepted && (
                             <div style={{ fontSize: '11px', color: item.emailSentAt ? '#92400e' : '#d97706', marginTop: '2px' }}>
-                              {item.emailSentAt ? `📧 Sent: ${new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : 'Not Requested'}
+                              {item.emailSentAt ? `📧 Sent: ${new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}` : 'Not Requested'}
                             </div>
                           )}
-                          {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
+                          {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}</div>}
                         </div>
 
                         {item.itemType === 'policy' || item.itemType === 'template' ? (
@@ -3032,7 +3032,7 @@ const Onboarding = () => {
                     <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
                       {selectedEmployee.auditLog.slice().reverse().map((log, i) => (
                         <div key={i} style={{ display: 'flex', gap: '8px', padding: '8px 12px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
-                          <span style={{ color: '#94a3b8', minWidth: '130px' }}>{new Date(log.timestamp).toLocaleString('en-IN')}</span>
+                          <span style={{ color: '#94a3b8', minWidth: '130px' }}>{new Date(log.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
                           <span style={{ fontWeight: '600', color: '#475569' }}>{log.action}</span>
                           <span style={{ color: '#64748b' }}>{log.details}</span>
                         </div>
@@ -3076,6 +3076,18 @@ const Onboarding = () => {
                   font-family: 'Inter', system-ui, sans-serif !important;
                   font-size: 11.5pt !important;
                   line-height: 1.5 !important;
+                }
+                #docx-preview-root [style*="Brush Script" i] {
+                  font-family: 'Brush Script MT', cursive !important;
+                }
+                #docx-preview-root [style*="Lucida" i] {
+                  font-family: 'Lucida Handwriting', cursive !important;
+                }
+                #docx-preview-root [style*="Segoe" i] {
+                  font-family: 'Segoe Print', cursive !important;
+                }
+                #docx-preview-root [style*="Courier" i] {
+                  font-family: 'Courier New', monospace !important;
                 }
                 #docx-preview-root strong,
                 #docx-preview-root b {

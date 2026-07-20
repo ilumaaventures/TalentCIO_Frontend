@@ -367,9 +367,7 @@ const AnnouncementComposerDrawer = ({
                       <option key={category} value={category}>{category}</option>
                     ))}
                   </select>
-                </label>
-
-                <label className="block space-y-2">
+                </label>                 <label className="block space-y-2">
                   <span className="text-sm font-semibold text-slate-700">Expiry date</span>
                   <div className="relative">
                     <CalendarDays size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -382,8 +380,63 @@ const AnnouncementComposerDrawer = ({
                       } focus:ring-2`}
                     />
                   </div>
-                  <span className="text-xs text-red-500">{errors.expiresAt || ''}</span>
+                  <span className="text-xs text-red-500">
+                    {errors.expiresAt || ''}
+                  </span>
                 </label>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">Recurrence Schedule</div>
+                    <div className="mt-1 text-xs text-slate-500">Automatically activate this announcement periodically.</div>
+                  </div>
+                  <select
+                    value={form.recurringInterval || 'none'}
+                    onChange={(event) => {
+                      onChange({ recurringInterval: event.target.value });
+                    }}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="none">None (One-time)</option>
+                    <option value="monthly">Repeat Monthly</option>
+                    <option value="quarterly">Repeat Quarterly</option>
+                    <option value="yearly">Repeat Yearly</option>
+                  </select>
+                </div>
+
+                {form.recurringInterval && form.recurringInterval !== 'none' && (
+                  <div className="mt-3 block space-y-2 border-t border-slate-200 pt-3">
+                    <span className="text-sm font-semibold text-slate-700">Recurring Day of Month (1–31) *</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={form.recurringDayOfMonth || ''}
+                      onChange={(event) => onChange({ recurringDayOfMonth: event.target.value })}
+                      className={`w-full rounded-2xl border px-4 py-2.5 text-sm text-slate-700 outline-none transition ${
+                        errors.recurringDayOfMonth ? 'border-red-300 focus:ring-red-100' : 'border-slate-200 focus:border-blue-300 focus:ring-blue-100'
+                      } focus:ring-2`}
+                      placeholder="e.g. 15"
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs text-red-500">{errors.recurringDayOfMonth || ''}</span>
+                    </div>
+                    <div className="flex flex-col gap-1 mt-1">
+                      <span className="text-xs text-slate-400">
+                        {form.recurringInterval === 'monthly' && `Will publish on day ${form.recurringDayOfMonth || 'X'} of every month.`}
+                        {form.recurringInterval === 'quarterly' && `Will publish on day ${form.recurringDayOfMonth || 'X'} every 3 months.`}
+                        {form.recurringInterval === 'yearly' && `Will publish on day ${form.recurringDayOfMonth || 'X'} of the launch month every year.`}
+                      </span>
+                      {form.recurringDayOfMonth && parseInt(form.recurringDayOfMonth, 10) > 28 && (
+                        <span className="text-xs text-amber-600 font-medium">
+                          Note: In shorter months (e.g. February, April), this day will be skipped.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">

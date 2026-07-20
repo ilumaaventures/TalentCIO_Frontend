@@ -212,6 +212,9 @@ const PreOnboardingPortal = () => {
       setPersonalDetails(res.data.personalDetails || {});
       setEmergencyContact(res.data.emergencyContact || {});
       setOfferDeclaration(res.data.offerDeclaration || {});
+      if (res.data.offerDeclaration?.eSignStyle) {
+        setInlineSignatureStyle(res.data.offerDeclaration.eSignStyle);
+      }
     } catch (err) {
       if (err.response?.status === 401) {
         toast.error(err.response?.data?.message || 'Session expired');
@@ -663,7 +666,7 @@ const PreOnboardingPortal = () => {
       case 'documents': {
         const targetDocs = p.documents?.filter(d => rdLabels.length === 0 || rdLabels.includes(d.label)) || [];
         if (targetDocs.length === 0) return true;
-        return targetDocs.every(d => d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport');
+        return targetDocs.every(d => d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport' || d.type === 'character_certificate');
       }
       case 'policies': {
         const targetPolicies = p.companyPolicies?.filter(p => rdLabels.length === 0 || rdLabels.includes(p.name)) || [];
@@ -812,7 +815,7 @@ const PreOnboardingPortal = () => {
             <strong>Your onboarding form has been submitted!</strong>
           </div>
           <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.9 }}>
-            Submitted on {new Date(profile.submittedAt).toLocaleString('en-IN')}. Your form is now read-only.
+            Submitted on {new Date(profile.submittedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}. Your form is now read-only.
           </p>
         </div>
       )}
@@ -918,7 +921,7 @@ const PreOnboardingPortal = () => {
                         const targetDocs = profile?.documents?.filter(d => reqDocsLabels.length === 0 || reqDocsLabels.includes(d.label)) || [];
                         if (targetDocs.length === 0) return true;
                         // Section is only complete if ALL requested docs are Uploaded or Approved (and not flagged)
-                        return targetDocs.every(d => (d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'));
+                        return targetDocs.every(d => (d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport' || d.type === 'character_certificate'));
                       })() :
                         step.id === 'bankDetails' ? profile?.bankDetails?.isComplete :
                           step.id === 'policies' ? (() => {
@@ -1434,7 +1437,9 @@ const PreOnboardingPortal = () => {
                               </div>
                               <div>
                                 <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed On</span>
-                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>{offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleDateString('en-IN') : '—'}</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>
+                                  {offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
+                                </span>
                               </div>
                               <div>
                                 <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signature Mode</span>
@@ -1482,7 +1487,11 @@ const PreOnboardingPortal = () => {
                                   { font: '"Segoe Print", cursive', label: 'Casual Print' },
                                   { font: 'Courier New, monospace', label: 'Block Print' }
                                 ].map(style => (
-                                  <div key={style.font} onClick={() => { setInlineSignatureStyle(style.font); markChange(); }} style={{ padding: '12px 10px', border: inlineSignatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', background: inlineSignatureStyle === style.font ? '#eff6ff' : '#fff', textAlign: 'center' }}>
+                                  <div key={style.font} onClick={() => { 
+                                    setInlineSignatureStyle(style.font); 
+                                    setOfferDeclaration({ ...offerDeclaration, eSignStyle: style.font });
+                                    markChange(); 
+                                  }} style={{ padding: '12px 10px', border: inlineSignatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', background: inlineSignatureStyle === style.font ? '#eff6ff' : '#fff', textAlign: 'center' }}>
                                     <span style={{ fontFamily: style.font, fontSize: '15px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{offerDeclaration.eSignName || 'Signature'}</span>
                                     <span style={{ fontSize: '9px', color: '#64748b', marginTop: '4px', display: 'block' }}>{style.label}</span>
                                   </div>
@@ -1518,7 +1527,12 @@ const PreOnboardingPortal = () => {
                                     return;
                                   }
                                 }
-                                const updated = { ...offerDeclaration, isComplete: isChecked, eSignValue: signValue };
+                                const updated = { 
+                                  ...offerDeclaration, 
+                                  isComplete: isChecked, 
+                                  eSignValue: signValue,
+                                  eSignDate: isChecked ? new Date().toISOString() : offerDeclaration.eSignDate 
+                                };
                                 setOfferDeclaration(updated);
                                 if (isChecked) handleSaveSection('offerDeclaration', false, updated);
                                 else markChange();
