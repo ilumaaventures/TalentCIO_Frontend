@@ -67,6 +67,7 @@ const Input = ({ label, name, value, onChange, type = "text", required, options,
                 disabled={disabled}
                 placeholder={placeholder}
                 step={type === 'number' ? 'any' : undefined}
+                onWheel={(e) => type === 'number' && e.target.blur()}
                 className={`w-full p-2.5 border rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all ${error ? 'border-red-500' : 'border-slate-300'}`}
             />
         )}
@@ -114,7 +115,7 @@ const TagInput = ({ label, tags = [], onTagsChange, placeholder, gridCols = 1 })
                     className="flex-1 bg-transparent border-none outline-none text-sm p-1 placeholder:text-slate-400 min-w-30"
                 />
             </div>
-            <p className="text-[10px] text-slate-400 mt-1 italic">Type a skill and press Enter to add</p>
+            <p className="text-[10px] text-slate-400 mt-1 italic">Type and press Enter to add</p>
         </div>
     );
 };
@@ -149,8 +150,12 @@ const CreateHiringRequest = () => {
         niceToHaveSkills: [],
         experienceMin: '',
         experienceMax: '',
-        location: 'Onsite',
+        location: '',
         shift: 'General',
+        workPlace: '',
+        clientWorkLocation: [],
+        workMode: '',
+        workingDaysPerWeek: '',
 
         // Hiring Details
         openPositions: 1,
@@ -259,6 +264,10 @@ const CreateHiringRequest = () => {
                         experienceMax: data.requirements.experienceMax,
                         location: data.requirements.location,
                         shift: data.requirements.shift,
+                        workPlace: data.requirements.workPlace || '',
+                        clientWorkLocation: data.requirements.clientWorkLocation || [],
+                        workMode: data.requirements.workMode || '',
+                        workingDaysPerWeek: data.requirements.workingDaysPerWeek || '',
                         openPositions: reopenFrom ? resolvedRequestedPositions : Math.max(storedOpenPositions, 1),
                         expectedJoiningDate: data.hiringDetails.expectedJoiningDate ? data.hiringDetails.expectedJoiningDate.split('T')[0] : '', // Format for date input
                         budgetMin: data.hiringDetails.budgetRange?.min ?? '',
@@ -421,7 +430,11 @@ const CreateHiringRequest = () => {
                     experienceMin: Number(formData.experienceMin),
                     experienceMax: Number(formData.experienceMax),
                     location: formData.location,
-                    shift: formData.shift
+                    shift: formData.shift,
+                    workPlace: formData.workPlace || undefined,
+                    clientWorkLocation: formData.clientWorkLocation,
+                    workMode: formData.workMode || undefined,
+                    workingDaysPerWeek: parseOptionalNumber(formData.workingDaysPerWeek)
                 },
                 hiringDetails: {
                     openPositions: formData.openPositions ? Number(formData.openPositions) : 1, // Default to 1 if empty
@@ -729,9 +742,9 @@ const CreateHiringRequest = () => {
                     <TagInput
                         label="Must-Have Skills (Technical)"
                         tags={formData.mustHaveSkills.technical}
-                        onTagsChange={(tags) => setFormData(prev => ({ 
-                            ...prev, 
-                            mustHaveSkills: { ...prev.mustHaveSkills, technical: tags } 
+                        onTagsChange={(tags) => setFormData(prev => ({
+                            ...prev,
+                            mustHaveSkills: { ...prev.mustHaveSkills, technical: tags }
                         }))}
                         placeholder="e.g. React, Node.js"
                         gridCols={1}
@@ -739,9 +752,9 @@ const CreateHiringRequest = () => {
                     <TagInput
                         label="Must-Have Skills (Soft Skills)"
                         tags={formData.mustHaveSkills.softSkills}
-                        onTagsChange={(tags) => setFormData(prev => ({ 
-                            ...prev, 
-                            mustHaveSkills: { ...prev.mustHaveSkills, softSkills: tags } 
+                        onTagsChange={(tags) => setFormData(prev => ({
+                            ...prev,
+                            mustHaveSkills: { ...prev.mustHaveSkills, softSkills: tags }
                         }))}
                         placeholder="e.g. Communication, Leadership"
                         gridCols={1}
@@ -755,8 +768,18 @@ const CreateHiringRequest = () => {
                     />
                     <Input label="Min Experience (Yrs)" name="experienceMin" type="number" value={formData.experienceMin} onChange={handleChange} />
                     <Input label="Max Experience (Yrs)" name="experienceMax" type="number" value={formData.experienceMax} onChange={handleChange} />
-                    <Input label="Work Location" name="location" value={formData.location} onChange={handleChange} placeholder="e.g. Onsite - Noida, Remote, Hybrid" />
                     <Input label="Shift" name="shift" value={formData.shift} onChange={handleChange} placeholder="e.g. General, UK Shift" />
+                    <Input label="Work Place" name="workPlace" value={formData.workPlace} onChange={handleChange} options={['Company Office', 'Client Site']} />
+                    <TagInput
+                        label="Client Work Location"
+                        tags={formData.clientWorkLocation}
+                        onTagsChange={(tags) => setFormData(prev => ({ ...prev, clientWorkLocation: tags }))}
+                        placeholder="Type location and press Enter"
+                        gridCols={1}
+                    />
+                    <Input label="Work Mode" name="workMode" value={formData.workMode} onChange={handleChange} options={['Work from Office', 'Hybrid', 'Remote']} />
+                    <Input label="Work Location" name="location" value={formData.location} onChange={handleChange} placeholder="e.g. Noida" />
+                    <Input label="Number of working days in a week" name="workingDaysPerWeek" type="number" value={formData.workingDaysPerWeek} onChange={handleChange} placeholder="e.g. 5" />
                 </Section>
 
                 <Section title="4. Hiring Details" icon={DollarSign}>
@@ -817,7 +840,7 @@ const CreateHiringRequest = () => {
                                     </div>
                                     <div className="text-center">
                                         <p className="text-sm font-bold text-slate-800">JD File Attached!</p>
-                                        <button 
+                                        <button
                                             type="button"
                                             onClick={() => setFormData(prev => ({ ...prev, jobDescriptionFile: '' }))}
                                             className="text-xs text-red-500 hover:text-red-700 font-medium underline mt-1"
@@ -833,8 +856,8 @@ const CreateHiringRequest = () => {
                                         <p className="text-sm font-medium text-slate-600">Click to upload or drag and drop</p>
                                         <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tight">PDF, DOCX (Max 5MB)</p>
                                     </div>
-                                    <input 
-                                        type="file" 
+                                    <input
+                                        type="file"
                                         onChange={handleFileUpload}
                                         accept=".pdf,.doc,.docx"
                                         className="absolute inset-0 opacity-0 cursor-pointer"
@@ -848,9 +871,9 @@ const CreateHiringRequest = () => {
                                     <FileText className="text-blue-600" size={18} />
                                     <span className="text-xs font-medium text-blue-800 truncate max-w-50">JD_Attachment.pdf</span>
                                 </div>
-                                <a 
-                                    href={formData.jobDescriptionFile} 
-                                    target="_blank" 
+                                <a
+                                    href={formData.jobDescriptionFile}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-xs text-blue-600 hover:underline font-bold"
                                 >

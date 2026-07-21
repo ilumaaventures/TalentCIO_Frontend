@@ -57,6 +57,8 @@ const buildFormFromAnnouncement = (announcement = {}) => ({
   audienceEmploymentTypes: announcement.audienceEmploymentTypes || [],
   audienceUserIds: (announcement.audienceUserIds || []).map((value) => String(value?._id || value)),
   expiresAt: formatDateInputValue(announcement.expiresAt),
+  recurringInterval: announcement.recurringInterval || 'none',
+  recurringDayOfMonth: announcement.recurringDayOfMonth || '',
   attachment: announcement.attachment || null,
   attachmentFile: null,
   removeAttachment: false,
@@ -76,6 +78,8 @@ const buildAnnouncementFormData = (form, status) => {
   formData.append('audienceEmploymentTypes', JSON.stringify(form.audienceEmploymentTypes || []));
   formData.append('audienceUserIds', JSON.stringify(form.audienceUserIds || []));
   formData.append('expiresAt', form.expiresAt || '');
+  formData.append('recurringInterval', form.recurringInterval || 'none');
+  formData.append('recurringDayOfMonth', form.recurringDayOfMonth || '');
   formData.append('removeAttachment', String(Boolean(form.removeAttachment && !form.attachmentFile)));
 
   if (form.attachmentFile) {
@@ -526,9 +530,17 @@ const Announcements = () => {
                                 {announcement.status === 'draft' ? 'Draft' : 'Needs review'}
                               </span>
                             </td>
-                            <td className="px-3 py-4 text-slate-600">
-                              {announcement.expiresAt ? formatAnnouncementDate(announcement.expiresAt) : 'No expiry'}
-                            </td>
+                             <td className="px-3 py-4 text-slate-600">
+                               {announcement.recurringInterval && announcement.recurringInterval !== 'none' ? (
+                                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-700/10 capitalize">
+                                   Repeat ({announcement.recurringInterval}, Day {announcement.recurringDayOfMonth})
+                                 </span>
+                               ) : announcement.expiresAt ? (
+                                 formatAnnouncementDate(announcement.expiresAt)
+                               ) : (
+                                 'No expiry'
+                               )}
+                             </td>
                             <td className="px-3 py-4">
                               <div className="flex items-center justify-end gap-2">
                                 <button
@@ -574,6 +586,7 @@ const Announcements = () => {
                             <div className="truncate text-sm font-semibold text-slate-900">{announcement.title}</div>
                             <div className="mt-1 text-xs text-slate-500">
                               {announcement.status === 'draft' ? 'Draft' : 'Needs review'} • {announcement.category}
+                              {announcement.recurringInterval && announcement.recurringInterval !== 'none' && ` • Repeat (${announcement.recurringInterval}, Day ${announcement.recurringDayOfMonth})`}
                             </div>
                           </div>
                           {announcement.pinned ? <Pin size={14} className="text-amber-500" /> : null}

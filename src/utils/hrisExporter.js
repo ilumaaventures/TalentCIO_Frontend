@@ -44,6 +44,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             { title: 'Pan Card', category: 'ID Proof' },
             { title: 'Passport', category: 'ID Proof' },
             { title: 'Recent Passport-Size Photograph', category: 'ID Proof' },
+            { title: 'Live Photograph', category: 'ID Proof' },
             { title: '10th Marksheet / Certificate', category: 'Education' },
             { title: '12th Marksheet / Certificate', category: 'Education' },
             { title: 'Graduation Marksheet / Certificate', category: 'Education' },

@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
+import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle, Camera } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { useSearchParams } from 'react-router-dom';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { buildMasterSalaryStructure, buildPayrollSnapshot, PT_STATE_LIST } from '../utils/payroll';
 import {
@@ -23,8 +23,6 @@ const parseBool = (val, defaultVal = true) => {
   return defaultVal;
 };
 
-const ONBOARDING_EMPLOYEE_CACHE_TTL_MS = 20 * 1000;
-const ONBOARDING_SETTINGS_CACHE_TTL_MS = 60 * 1000;
 const CUSTOM_FILE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const CUSTOM_FILE_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,image/*';
 const CUSTOM_FILE_ALLOWED_MIME_TYPES = new Set([
@@ -152,7 +150,11 @@ const Onboarding = () => {
   const [expandedSections, setExpandedSections] = useState({});
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [activeTab, setActiveTab] = useState('employees'); // 'employees' or 'settings'
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'employees';
+  const setActiveTab = useCallback((tab) => {
+    setSearchParams({ tab }, { replace: true });
+  }, [setSearchParams]); // 'employees' or 'settings'
   const [onboardingSettings, setOnboardingSettings] = useState({ offerLetterTemplateUrl: '', declarationTemplateUrl: '' });
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -192,21 +194,7 @@ const Onboarding = () => {
     };
   }, []);
 
-  // Clear onboarding cache on mount/refresh to ensure fresh data loads on entry
-  useEffect(() => {
-    if (user?._id) {
-      const prefix = `onboarding_employees_${user._id}_`;
-      try {
-        Object.keys(sessionStorage).forEach((key) => {
-          if (key.startsWith(prefix)) {
-            sessionStorage.removeItem(key);
-          }
-        });
-      } catch (e) {
-        console.error('Failed to clear onboarding cache on mount', e);
-      }
-    }
-  }, [user?._id]);
+
 
   const toggleMenu = useCallback((e, employeeId) => {
     e.stopPropagation();
@@ -268,11 +256,27 @@ const Onboarding = () => {
     const requestedDocuments = employee.requestedDocuments || [];
     const getRequestedDoc = (label) => requestedDocuments.find((entry) => getRequestedLabel(entry) === label);
 
+    const rawTemplates = employee.companyDynamicTemplates || onboardingSettings.dynamicTemplates || [];
+    const templatesList = rawTemplates.filter((t) => {
+      if (t.isDeleted !== true) return true;
+      const req = getRequestedDoc(t.name);
+      const isAccepted = (employee.offerDeclaration?.acceptedTemplates || []).some((at) => at.templateId === t._id);
+      return req || isAccepted;
+    });
+
+    const rawPolicies = employee.companyPolicies || onboardingSettings.policies || [];
+    const policiesList = rawPolicies.filter((p) => {
+      if (p.isDeleted !== true) return true;
+      const req = getRequestedDoc(p.name);
+      const isAccepted = (employee.offerDeclaration?.acceptedPolicies || []).some((ap) => ap.policyId === p._id);
+      return req || isAccepted;
+    });
+
     return [
       ...(employee.documents || [])
         .filter((d) => d.type !== 'custom_file')
         .map((d) => ({ ...d, itemType: 'document' })),
-      ...(onboardingSettings.policies || []).map((policy) => {
+      ...policiesList.map((policy) => {
         const req = getRequestedDoc(policy.name);
         return {
           label: policy.name,
@@ -284,7 +288,7 @@ const Onboarding = () => {
           url: policy.url
         };
       }),
-      ...(onboardingSettings.dynamicTemplates || []).map((template) => {
+      ...templatesList.map((template) => {
         const req = getRequestedDoc(template.name);
         return {
           label: template.name,
@@ -374,8 +378,8 @@ const Onboarding = () => {
     designation: selectedEmployee?.designation || 'Software Engineer',
     client: '',
     department: selectedEmployee?.department || 'Engineering',
-    offerDate: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
-    dateOfOffer: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '10 Jun 2026',
+    offerDate: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '10 Jun 2026',
+    dateOfOffer: selectedEmployee?.offerDate ? new Date(selectedEmployee.offerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '10 Jun 2026',
     workLocation: selectedEmployee?.workLocation || 'Bengaluru',
     employmentDetails: [
       selectedEmployee?.designation || 'Software Engineer',
@@ -392,7 +396,7 @@ const Onboarding = () => {
     employeeFirstName: selectedEmployee?.firstName || 'Sarthak',
     employeeFullName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak Sharma',
     employeeId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
-    joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '15 Jun 2026',
+    joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '15 Jun 2026',
     submissionDeadline: emailDeadline || '2026-06-10',
     portalLink: `${window.location.origin}/pre-onboarding/login`,
     credentialsSection: previewCredentialsSection,
@@ -401,8 +405,8 @@ const Onboarding = () => {
     sharedFilesBlock: previewSharedFilesBlock,
     deadlineBlock: previewDeadlineBlock,
     portalButton: previewPortalButton,
-    currentYear: String(new Date().getFullYear()),
-    currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+    currentYear: new Date().toLocaleString('en-US', { year: 'numeric', timeZone: 'Asia/Kolkata' }),
+    currentDate: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric', timeZone: 'Asia/Kolkata' })
   };
   const onboardingPreviewSubject = resolveTemplate(customEmailSubject, onboardingPreviewData);
   const onboardingPreviewHtml = renderTemplateBody(customEmailBody, onboardingPreviewData);
@@ -461,7 +465,7 @@ const Onboarding = () => {
       'Graduation Marksheet / Certificate'
     ];
     const sectionsToSelect = allSectionLabels.filter(label => !phase1Sections.includes(label));
-    const docsToSelect = allDocumentLabels.filter(label => !phase1Docs.includes(label));
+    const docsToSelect = allDocumentLabels.filter(label => !phase1Docs.includes(label) && label !== 'Character Certificate');
     setCheckedSections(new Set(sectionsToSelect));
     setCheckedDocuments(new Set(docsToSelect));
   }, [allDocumentLabels, allSectionLabels]);
@@ -630,23 +634,7 @@ const Onboarding = () => {
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  const clearOnboardingCache = useCallback(() => {
-    if (user?._id) {
-      const prefix = `onboarding_employees_${user._id}_`;
-      try {
-        Object.keys(sessionStorage).forEach((key) => {
-          if (key.startsWith(prefix)) {
-            sessionStorage.removeItem(key);
-          }
-        });
-      } catch (e) {
-        console.error('Failed to clear onboarding cache', e);
-      }
-    }
-  }, [user?._id]);
-
   const syncEmployeeState = useCallback((updatedEmp, mode = 'update') => {
-    clearOnboardingCache();
     setEmployees(prev => {
       if (mode === 'delete') {
         return prev.filter(e => e._id !== updatedEmp._id);
@@ -656,26 +644,11 @@ const Onboarding = () => {
         return prev.map(e => e._id === updatedEmp._id ? { ...e, ...updatedEmp } : e);
       }
     });
-  }, [clearOnboardingCache]);
+  }, []);
 
-  const fetchEmployees = useCallback(async ({ force = false } = {}) => {
-    const cacheKey = `onboarding_employees_${user?._id}_${page}_${statusFilter}_${debouncedSearchTerm || 'all'}`;
+  const fetchEmployees = useCallback(async () => {
     try {
-      const cached = readSessionCache(cacheKey);
-      if (cached) {
-        // Only set from cache if NOT forcing a refresh. This prevents flickering back to old data.
-        if (!force) {
-          const data = cached.data || {};
-          setEmployees(data.employees || []);
-          setStats(data.stats || { Pending: 0, 'In Progress': 0, Submitted: 0, Reviewed: 0 });
-          setTotalPages(data.totalPages || 1);
-          setLoading(false);
-          if (isCacheFresh(cached, ONBOARDING_EMPLOYEE_CACHE_TTL_MS)) return;
-        }
-      } else {
-        setLoading(true);
-      }
-
+      setLoading(true);
       const params = { tab: 'employees', page, limit: 15 };
       if (statusFilter !== 'All') params.status = statusFilter;
       if (debouncedSearchTerm) params.search = debouncedSearchTerm;
@@ -686,71 +659,22 @@ const Onboarding = () => {
       setEmployees(employeesData);
       setStats(statsData);
       setTotalPages(totalPagesData);
-
-      const fingerprint = JSON.stringify({
-        page,
-        statusFilter,
-        searchTerm: debouncedSearchTerm,
-        total: res.data.total || employeesData.length,
-        first: employeesData[0]?._id
-      });
-
-      const minimalEmployees = employeesData.map(employee => ({
-        _id: employee._id,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        email: employee.email,
-        phone: employee.phone,
-        designation: employee.designation,
-        department: employee.department,
-        joiningDate: employee.joiningDate,
-        offerDate: employee.offerDate,
-        status: employee.status,
-        tempEmployeeId: employee.tempEmployeeId,
-        createdBy: employee.createdBy,
-        sourcedFromTA: employee.sourcedFromTA,
-        documents: employee.documents,
-        personalDetails: employee.personalDetails,
-        emergencyContact: employee.emergencyContact,
-        bankDetails: employee.bankDetails,
-        offerDeclaration: employee.offerDeclaration
-      }));
-
-      sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload({
-        employees: minimalEmployees,
-        stats: statsData,
-        totalPages: totalPagesData
-      }, fingerprint)));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, page, statusFilter, user?._id]);
+  }, [debouncedSearchTerm, page, statusFilter]);
 
-  const fetchSettings = useCallback(async ({ force = false } = {}) => {
-    const cacheKey = `onboarding_settings_${user?._id}`;
+  const fetchSettings = useCallback(async () => {
     try {
-      const cached = readSessionCache(cacheKey);
-      if (cached && !force) {
-        setOnboardingSettings(cached.data || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] });
-        if (isCacheFresh(cached, ONBOARDING_SETTINGS_CACHE_TTL_MS)) return;
-      }
-
       const res = await api.get('/onboarding/bootstrap', { params: { tab: 'settings' } });
       const settings = res.data?.settings || { offerLetterTemplateUrl: '', declarationTemplateUrl: '', policies: [], dynamicTemplates: [] };
       setOnboardingSettings(settings);
-      const fingerprint = JSON.stringify({
-        offer: settings.offerLetterTemplateUrl || '',
-        declaration: settings.declarationTemplateUrl || '',
-        policies: settings.policies?.length || 0,
-        templates: settings.dynamicTemplates?.length || 0
-      });
-      sessionStorage.setItem(cacheKey, JSON.stringify(createCachePayload(settings, fingerprint)));
     } catch {
       console.error('Failed to fetch onboarding settings');
     }
-  }, [user?._id]);
+  }, []);
 
   const fetchPayrollConfig = useCallback(async () => {
     try {
@@ -1290,7 +1214,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Template uploaded!', { id: 'dynamic' });
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed', { id: 'dynamic' });
     }
@@ -1307,10 +1231,10 @@ const Onboarding = () => {
 
       await api.delete(`/onboarding/settings/templates/dynamic/${id}`);
       toast.success('Template deleted');
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch {
       toast.error('Failed to delete template');
-      fetchSettings({ force: true });
+      fetchSettings();
     }
   };
 
@@ -1319,7 +1243,7 @@ const Onboarding = () => {
     if (activeTab === 'settings' && !canManageOnboardingSettings) {
       setActiveTab('employees');
     }
-  }, [activeTab, canManageOnboardingSettings]);
+  }, [activeTab, canManageOnboardingSettings, setActiveTab]);
 
   useEffect(() => {
     fetchPayrollConfig();
@@ -1358,7 +1282,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Policy uploaded!', { id: 'policy' });
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed', { id: 'policy' });
     }
@@ -1375,10 +1299,10 @@ const Onboarding = () => {
 
       await api.delete(`/onboarding/settings/policies/${policyId}`);
       toast.success('Policy deleted');
-      fetchSettings({ force: true });
+      fetchSettings();
     } catch {
       toast.error('Failed to delete policy');
-      fetchSettings({ force: true });
+      fetchSettings();
     }
   };
 
@@ -1584,7 +1508,7 @@ const Onboarding = () => {
       // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
-        setSelectedEmployee(updatedEmp);
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
         syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
@@ -1600,11 +1524,28 @@ const Onboarding = () => {
       // Update local state and cache instantly without full refresh
       const updatedEmp = res.data.employee;
       if (updatedEmp) {
-        setSelectedEmployee(updatedEmp);
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
         syncEmployeeState(updatedEmp, 'update');
       }
     } catch {
       toast.error('Failed to approve');
+    }
+  };
+
+  const handleToggleLivePhoto = async (empId, docId, currentValue) => {
+    const newValue = !currentValue;
+    try {
+      const res = await api.patch(`/onboarding/employees/${empId}/documents/${docId}/live-photo`, {
+        requireLivePhoto: newValue
+      });
+      toast.success(newValue ? '📷 Live photo required for this document' : 'Live photo requirement removed');
+      const updatedEmp = res.data.employee;
+      if (updatedEmp) {
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
+        syncEmployeeState(updatedEmp, 'update');
+      }
+    } catch {
+      toast.error('Failed to update live photo requirement');
     }
   };
 
@@ -1783,8 +1724,15 @@ const Onboarding = () => {
 
   const handleRegenerateCredentials = async (empId) => {
     if (!confirm('Are you sure you want to regenerate credentials? The old password will stop working immediately.')) return;
+    
+    const sendEmail = confirm('Would you like to email these new credentials to the candidate immediately?');
+    
     try {
-      const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`);
+      const emailAccountId = selectedEmailAccountId || 'platform';
+      const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`, {
+        sendEmail,
+        emailAccountId
+      });
       toast.success(
         () => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1792,11 +1740,15 @@ const Onboarding = () => {
             <div style={{ fontSize: '13px' }}>
               <div><strong>ID:</strong> {res.data.tempEmployeeId}</div>
               <div><strong>Password:</strong> {res.data.tempPassword}</div>
-              <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px' }}>Select sections and click Send Email to notify the candidate.</div>
+              {sendEmail ? (
+                <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px', fontWeight: 'bold' }}>📧 Email sent to candidate successfully.</div>
+              ) : (
+                <div style={{ color: '#dc2626', marginTop: '4px', fontSize: '11px' }}>⚠️ Credentials not emailed. Copy them or notify the candidate.</div>
+              )}
             </div>
           </div>
         ),
-        { duration: 10000 }
+        { duration: 12000 }
       );
       if (res.data?.employee) {
         syncEmployeeState(res.data.employee, 'update');
@@ -2062,8 +2014,8 @@ const Onboarding = () => {
                           <code style={{ background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', fontSize: '13px', fontWeight: '600' }}>{emp.tempEmployeeId}</code>
                         </td>
                         <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.designation || '—'}</td>
-                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
-                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.documentDeadline ? new Date(emp.documentDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</td>
+                        <td style={{ padding: '14px 16px', color: '#475569' }}>{emp.documentDeadline ? new Date(emp.documentDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</td>
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{ flex: 1, height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
@@ -2543,7 +2495,7 @@ const Onboarding = () => {
                           currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
                           api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
                             .then((res) => {
-                              toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString()}`);
+                              toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
                               if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
                               else fetchEmployees();
                               const updatedExt = { ...ext, status: 'Approved' };
@@ -2563,14 +2515,14 @@ const Onboarding = () => {
                 {selectedEmployee.documentDeadline && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '13px', color: '#92400e', marginBottom: '8px' }}>
                     <Clock size={16} />
-                    <strong>Document Deadline:</strong> {new Date(selectedEmployee.documentDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    <strong>Document Deadline:</strong> {new Date(selectedEmployee.documentDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                   </div>
                 )}
 
                 {selectedEmployee.credentialsExpireAt && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', color: '#991b1b', marginBottom: '12px' }}>
                     <AlertTriangle size={16} />
-                    <strong>Credentials Expire:</strong> {new Date(selectedEmployee.credentialsExpireAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    <strong>Credentials Expire:</strong> {new Date(selectedEmployee.credentialsExpireAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
                   </div>
                 )}
 
@@ -2664,7 +2616,7 @@ const Onboarding = () => {
                             <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{s.label}</span>
                             <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                               <span style={{ fontSize: '11px', fontWeight: '700', color: badgeColor, background: badgeBg, padding: '4px 10px', borderRadius: '999px' }}>{statusText}</span>
-                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '4px' }}>Sent on {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>}
+                              {statusText === 'Mail Sent' && sentDate && <span style={{ fontSize: '10px', color: '#92400e', marginTop: '4px' }}>Sent on {new Date(sentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}</span>}
                             </div>
                             <ChevronDown size={16} style={{ color: '#94a3b8', transform: expandedSections[s.id] ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
                           </div>
@@ -2675,7 +2627,7 @@ const Onboarding = () => {
                             {s.id === 'personal' && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div><span style={{ color: '#94a3b8' }}>Full Name:</span> <br /> <strong>{s.data?.fullName || '—'}</strong></div>
-                                <div><span style={{ color: '#94a3b8' }}>DOB:</span> <br /> <strong>{s.data?.dateOfBirth ? new Date(s.data.dateOfBirth).toLocaleDateString('en-IN') : '—'}</strong></div>
+                                <div><span style={{ color: '#94a3b8' }}>DOB:</span> <br /> <strong>{s.data?.dateOfBirth ? new Date(s.data.dateOfBirth).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Gender:</span> <br /> <strong>{s.data?.gender || '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Blood Group:</span> <br /> <strong>{s.data?.bloodGroup || '—'}</strong></div>
                                 <div><span style={{ color: '#94a3b8' }}>Email:</span> <br /> <strong>{s.data?.personalEmail || '—'}</strong></div>
@@ -2743,7 +2695,7 @@ const Onboarding = () => {
                                     </div>
                                   )}
                                   <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN') : '—'}
+                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
                                     {s.data?.eSignIp ? ` (IP: ${s.data.eSignIp})` : ''}
                                   </span>
                                 </div>
@@ -2767,26 +2719,32 @@ const Onboarding = () => {
                   {detailDocuments.map((item, idx) => {
                     const isDoc = item.itemType === 'document';
                     const badge = isDoc ? (DOC_BADGE[item.status] || DOC_BADGE.Pending) : { bg: '#f0fdf4', text: '#16a34a' };
+                    const isLiveRequired = isDoc && item.type === 'live_photo';
                     return (
-                      <div key={item._id || idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', flexWrap: 'wrap' }}>
+                      <div key={item._id || idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: isLiveRequired ? '#fffbf0' : '#fff', border: isLiveRequired ? '1px solid #fbbf24' : '1px solid #e2e8f0', borderRadius: '8px', flexWrap: 'wrap' }}>
                         <div onClick={() => toggleCheckedDocument(item.label)} style={{ cursor: 'pointer', flexShrink: 0 }}>
                           {checkedDocuments.has(item.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
                         </div>
                         {item.itemType === 'policy' ? <ScrollText size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
                           item.itemType === 'template' ? <FileSignature size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
+                            isLiveRequired ? <Camera size={16} style={{ color: '#d97706', flexShrink: 0 }} /> :
                             <FileText size={16} style={{ color: '#64748b', flexShrink: 0 }} />}
 
                         <div style={{ flex: 1, minWidth: '120px' }}>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
                           {item.itemType === 'policy' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>STATIC POLICY</span></div>}
                           {item.isCustomSentFile && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>Added FILE</span></div>}
+                          {isLiveRequired && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#92400e' }}>📷 LIVE PHOTO REQUIRED</span></div>}
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
                           {(item.itemType === 'policy' || item.itemType === 'template') && !item.isAccepted && (
                             <div style={{ fontSize: '11px', color: item.emailSentAt ? '#92400e' : '#d97706', marginTop: '2px' }}>
-                              {item.emailSentAt ? `📧 Sent: ${new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : 'Not Requested'}
+                              {item.emailSentAt ? `📧 Sent: ${new Date(item.emailSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}` : 'Not Requested'}
                             </div>
                           )}
-                          {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>}
+                          {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}</div>}
+                          {isDoc && item.livePhotoMetadata?.capturedAt && (
+                            <div style={{ fontSize: '11px', color: '#7c3aed', marginTop: '2px' }}>📷 Live: {new Date(item.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                          )}
                         </div>
 
                         {item.itemType === 'policy' || item.itemType === 'template' ? (
@@ -2797,36 +2755,38 @@ const Onboarding = () => {
                           <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>{item.status}</span>
                         )}
 
-                        {(item.url || isDoc) && (
-                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                            {item.url && (
-                              <button onClick={() => {
-                                if (item.itemType === 'template') {
-                                  let templatePreviewUrl = '';
-                                  if (item.label === 'Offer Letter') {
-                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/offer-letter`;
-                                  } else if (item.label === 'Declaration') {
-                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/declaration`;
+                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
+                          {(item.url || isDoc) && (
+                            <>
+                              {item.url && (
+                                <button onClick={() => {
+                                  if (item.itemType === 'template') {
+                                    let templatePreviewUrl = '';
+                                    if (item.label === 'Offer Letter') {
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/offer-letter`;
+                                    } else if (item.label === 'Declaration') {
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/declaration`;
+                                    } else {
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${item._id}`;
+                                    }
+                                    handleFilePreview(templatePreviewUrl, item.label, 'document');
                                   } else {
-                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${item._id}`;
+                                    handleFilePreview(item.url, item.label, item.itemType || 'file');
                                   }
-                                  handleFilePreview(templatePreviewUrl, item.label, 'document');
-                                } else {
-                                  handleFilePreview(item.url, item.label, item.itemType || 'file');
-                                }
-                              }} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>View</button>
-                            )}
-                            {isDoc && item.status === 'Uploaded' && (
-                              <>
-                                <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✓ Approve</button>
-                                <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✕ Flag</button>
-                              </>
-                            )}
-                            {item.isCustomSentFile && (
-                              <button onClick={() => handleDeleteCustomFile(item._id, item.label)} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fff5f5', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>Delete</button>
-                            )}
-                          </div>
-                        )}
+                                }} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>View</button>
+                              )}
+                              {isDoc && item.status === 'Uploaded' && (
+                                <>
+                                  <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✓ Approve</button>
+                                  <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✕ Flag</button>
+                                </>
+                              )}
+                              {item.isCustomSentFile && (
+                                <button onClick={() => handleDeleteCustomFile(item._id, item.label)} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fff5f5', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>Delete</button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -3097,7 +3057,7 @@ const Onboarding = () => {
                     <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
                       {selectedEmployee.auditLog.slice().reverse().map((log, i) => (
                         <div key={i} style={{ display: 'flex', gap: '8px', padding: '8px 12px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
-                          <span style={{ color: '#94a3b8', minWidth: '130px' }}>{new Date(log.timestamp).toLocaleString('en-IN')}</span>
+                          <span style={{ color: '#94a3b8', minWidth: '130px' }}>{new Date(log.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
                           <span style={{ fontWeight: '600', color: '#475569' }}>{log.action}</span>
                           <span style={{ color: '#64748b' }}>{log.details}</span>
                         </div>
@@ -3141,6 +3101,18 @@ const Onboarding = () => {
                   font-family: 'Inter', system-ui, sans-serif !important;
                   font-size: 11.5pt !important;
                   line-height: 1.5 !important;
+                }
+                #docx-preview-root [style*="Brush Script" i] {
+                  font-family: 'Brush Script MT', cursive !important;
+                }
+                #docx-preview-root [style*="Lucida" i] {
+                  font-family: 'Lucida Handwriting', cursive !important;
+                }
+                #docx-preview-root [style*="Segoe" i] {
+                  font-family: 'Segoe Print', cursive !important;
+                }
+                #docx-preview-root [style*="Courier" i] {
+                  font-family: 'Courier New', monospace !important;
                 }
                 #docx-preview-root strong,
                 #docx-preview-root b {

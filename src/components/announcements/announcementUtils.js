@@ -29,6 +29,8 @@ export const EMPTY_ANNOUNCEMENT_FORM = {
   audienceEmploymentTypes: [],
   audienceUserIds: [],
   expiresAt: '',
+  recurringInterval: 'none',
+  recurringDayOfMonth: '',
   attachment: null,
   attachmentFile: null,
   removeAttachment: false,
@@ -310,6 +312,8 @@ export const buildAnnouncementPayload = (announcement = {}, overrides = {}) => (
   audienceEmploymentTypes: announcement.audienceEmploymentTypes || [],
   audienceUserIds: (announcement.audienceUserIds || []).map((value) => String(value?._id || value)),
   expiresAt: announcement.expiresAt ? formatDateInputValue(announcement.expiresAt) : null,
+  recurringInterval: announcement.recurringInterval || 'none',
+  recurringDayOfMonth: announcement.recurringDayOfMonth || null,
   removeAttachment: false,
   ...overrides,
 });
@@ -403,6 +407,13 @@ export const getAnnouncementValidationErrors = (form) => {
     const date = new Date(expiresAt);
     if (Number.isNaN(date.getTime())) {
       errors.expiresAt = 'Choose a valid expiry date.';
+    }
+  }
+
+  if (form?.recurringInterval && form?.recurringInterval !== 'none') {
+    const recurringDay = parseInt(form.recurringDayOfMonth, 10);
+    if (!form.recurringDayOfMonth || Number.isNaN(recurringDay) || recurringDay < 1 || recurringDay > 31) {
+      errors.recurringDayOfMonth = 'Recurring day must be between 1 and 31.';
     }
   }
 
