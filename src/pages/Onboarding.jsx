@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle } from 'lucide-react';
+import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle, Camera } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
@@ -1532,6 +1532,23 @@ const Onboarding = () => {
     }
   };
 
+  const handleToggleLivePhoto = async (empId, docId, currentValue) => {
+    const newValue = !currentValue;
+    try {
+      const res = await api.patch(`/onboarding/employees/${empId}/documents/${docId}/live-photo`, {
+        requireLivePhoto: newValue
+      });
+      toast.success(newValue ? '📷 Live photo required for this document' : 'Live photo requirement removed');
+      const updatedEmp = res.data.employee;
+      if (updatedEmp) {
+        setSelectedEmployee(prev => prev ? { ...prev, ...updatedEmp } : updatedEmp);
+        syncEmployeeState(updatedEmp, 'update');
+      }
+    } catch {
+      toast.error('Failed to update live photo requirement');
+    }
+  };
+
   const handleDownloadZip = async (emp) => {
     try {
       toast.loading('Generating ZIP...', { id: 'zip' });
@@ -2702,19 +2719,22 @@ const Onboarding = () => {
                   {detailDocuments.map((item, idx) => {
                     const isDoc = item.itemType === 'document';
                     const badge = isDoc ? (DOC_BADGE[item.status] || DOC_BADGE.Pending) : { bg: '#f0fdf4', text: '#16a34a' };
+                    const isLiveRequired = isDoc && item.type === 'live_photo';
                     return (
-                      <div key={item._id || idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', flexWrap: 'wrap' }}>
+                      <div key={item._id || idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: isLiveRequired ? '#fffbf0' : '#fff', border: isLiveRequired ? '1px solid #fbbf24' : '1px solid #e2e8f0', borderRadius: '8px', flexWrap: 'wrap' }}>
                         <div onClick={() => toggleCheckedDocument(item.label)} style={{ cursor: 'pointer', flexShrink: 0 }}>
                           {checkedDocuments.has(item.label) ? <CheckSquare size={18} color="#2563eb" /> : <Square size={18} color="#94a3b8" />}
                         </div>
                         {item.itemType === 'policy' ? <ScrollText size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
                           item.itemType === 'template' ? <FileSignature size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
+                            isLiveRequired ? <Camera size={16} style={{ color: '#d97706', flexShrink: 0 }} /> :
                             <FileText size={16} style={{ color: '#64748b', flexShrink: 0 }} />}
 
                         <div style={{ flex: 1, minWidth: '120px' }}>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
                           {item.itemType === 'policy' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>STATIC POLICY</span></div>}
                           {item.isCustomSentFile && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>Added FILE</span></div>}
+                          {isLiveRequired && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#92400e' }}>📷 LIVE PHOTO REQUIRED</span></div>}
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
                           {(item.itemType === 'policy' || item.itemType === 'template') && !item.isAccepted && (
                             <div style={{ fontSize: '11px', color: item.emailSentAt ? '#92400e' : '#d97706', marginTop: '2px' }}>
@@ -2722,6 +2742,9 @@ const Onboarding = () => {
                             </div>
                           )}
                           {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}</div>}
+                          {isDoc && item.livePhotoMetadata?.capturedAt && (
+                            <div style={{ fontSize: '11px', color: '#7c3aed', marginTop: '2px' }}>📷 Live: {new Date(item.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                          )}
                         </div>
 
                         {item.itemType === 'policy' || item.itemType === 'template' ? (
@@ -2732,36 +2755,38 @@ const Onboarding = () => {
                           <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>{item.status}</span>
                         )}
 
-                        {(item.url || isDoc) && (
-                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                            {item.url && (
-                              <button onClick={() => {
-                                if (item.itemType === 'template') {
-                                  let templatePreviewUrl = '';
-                                  if (item.label === 'Offer Letter') {
-                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/offer-letter`;
-                                  } else if (item.label === 'Declaration') {
-                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/declaration`;
+                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
+                          {(item.url || isDoc) && (
+                            <>
+                              {item.url && (
+                                <button onClick={() => {
+                                  if (item.itemType === 'template') {
+                                    let templatePreviewUrl = '';
+                                    if (item.label === 'Offer Letter') {
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/offer-letter`;
+                                    } else if (item.label === 'Declaration') {
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/declaration`;
+                                    } else {
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${item._id}`;
+                                    }
+                                    handleFilePreview(templatePreviewUrl, item.label, 'document');
                                   } else {
-                                    templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${item._id}`;
+                                    handleFilePreview(item.url, item.label, item.itemType || 'file');
                                   }
-                                  handleFilePreview(templatePreviewUrl, item.label, 'document');
-                                } else {
-                                  handleFilePreview(item.url, item.label, item.itemType || 'file');
-                                }
-                              }} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>View</button>
-                            )}
-                            {isDoc && item.status === 'Uploaded' && (
-                              <>
-                                <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✓ Approve</button>
-                                <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✕ Flag</button>
-                              </>
-                            )}
-                            {item.isCustomSentFile && (
-                              <button onClick={() => handleDeleteCustomFile(item._id, item.label)} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fff5f5', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>Delete</button>
-                            )}
-                          </div>
-                        )}
+                                }} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#3b82f6', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>View</button>
+                              )}
+                              {isDoc && item.status === 'Uploaded' && (
+                                <>
+                                  <button onClick={() => handleApproveDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #dcfce7, #d1fae5)', color: '#15803d', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✓ Approve</button>
+                                  <button onClick={() => handleFlagDoc(selectedEmployee._id, item._id)} style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>✕ Flag</button>
+                                </>
+                              )}
+                              {item.isCustomSentFile && (
+                                <button onClick={() => handleDeleteCustomFile(item._id, item.label)} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fff5f5', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>Delete</button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
