@@ -261,7 +261,7 @@ const Onboarding = () => {
       if (t.isDeleted !== true) return true;
       const req = getRequestedDoc(t.name);
       const isAccepted = (employee.offerDeclaration?.acceptedTemplates || []).some((at) => at.templateId === t._id);
-      return req || isAccepted;
+      return (req && req.emailSentAt) || isAccepted;
     });
 
     const rawPolicies = employee.companyPolicies || onboardingSettings.policies || [];
