@@ -48,6 +48,7 @@ const Meetings                 = lazy(() => import('./pages/Meetings'));
 const MeetingForm              = lazy(() => import('./pages/MeetingForm'));
 const MeetingDetails           = lazy(() => import('./pages/MeetingDetails'));
 const HelpDesk                 = lazy(() => import('./pages/HelpDesk'));
+const HelpdeskAnalytics        = lazy(() => import('./pages/HelpdeskAnalytics'));
 const QueryDetails             = lazy(() => import('./pages/QueryDetails'));
 const Discussions              = lazy(() => import('./pages/Discussions'));
 const Announcements            = lazy(() => import('./pages/Announcements'));
@@ -236,6 +237,7 @@ function App() {
                   {/* Help Desk Routes */}
                   <Route element={<ProtectedRoute moduleName="helpdesk" redirectTo="/" />}>
                     <Route path="/helpdesk" element={<HelpDesk />} />
+                    <Route path="/helpdesk/analytics" element={<HelpdeskAnalytics />} />
                     <Route path="/helpdesk/:id" element={<QueryDetails />} />
                   </Route>
 

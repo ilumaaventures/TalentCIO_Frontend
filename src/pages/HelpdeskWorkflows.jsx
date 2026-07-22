@@ -13,7 +13,8 @@ const HelpdeskWorkflows = () => {
     const [editingId, setEditingId] = useState(null); // 'new' or ID
     const [formData, setFormData] = useState({
         name: '', assignedRole: '', assignedPerson: '',
-        enableEscalation: false, escalationDays: 2, escalationRole: '', escalationPerson: ''
+        enableEscalation: false, escalationDays: 2, escalationRole: '', escalationPerson: '',
+        autoResponse: ''
     });
 
     useEffect(() => {
@@ -49,13 +50,15 @@ const HelpdeskWorkflows = () => {
                 enableEscalation: type.enableEscalation || false,
                 escalationDays: type.escalationDays || 2,
                 escalationRole: type.escalationRole?._id || '',
-                escalationPerson: type.escalationPerson?._id || ''
+                escalationPerson: type.escalationPerson?._id || '',
+                autoResponse: type.autoResponse || ''
             });
         } else {
             setEditingId('new');
             setFormData({
                 name: '', assignedRole: '', assignedPerson: '',
-                enableEscalation: false, escalationDays: 2, escalationRole: '', escalationPerson: ''
+                enableEscalation: false, escalationDays: 2, escalationRole: '', escalationPerson: '',
+                autoResponse: ''
             });
         }
     };
@@ -64,7 +67,8 @@ const HelpdeskWorkflows = () => {
         setEditingId(null);
         setFormData({
             name: '', assignedRole: '', assignedPerson: '',
-            enableEscalation: false, escalationDays: 2, escalationRole: '', escalationPerson: ''
+            enableEscalation: false, escalationDays: 2, escalationRole: '', escalationPerson: '',
+            autoResponse: ''
         });
     };
 
@@ -177,6 +181,17 @@ const HelpdeskWorkflows = () => {
                         </div>
                     </div>
 
+                    <div className="mb-6">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Auto-Response Message (Optional)</label>
+                        <textarea
+                            value={formData.autoResponse}
+                            onChange={(e) => setFormData({ ...formData, autoResponse: e.target.value })}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none font-medium text-slate-700 resize-none bg-white"
+                            rows={3}
+                            placeholder="Enter a predefined response that will be automatically sent/displayed when a ticket is created under this query type..."
+                        />
+                    </div>
+
                     {/* Escalation Workflow Settings */}
                     <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
                         <div className="flex items-center space-x-3 mb-4">
@@ -274,7 +289,12 @@ const HelpdeskWorkflows = () => {
                             {queryTypes.map(qt => (
                                 <tr key={qt._id} className="hover:bg-slate-50 transition-colors">
                                     <td className="px-5 py-4 font-semibold text-slate-800 text-sm">
-                                        {qt.name}
+                                        <div>{qt.name}</div>
+                                        {qt.autoResponse && (
+                                            <div className="text-[10px] text-indigo-500 font-medium mt-0.5">
+                                                Auto-response configured
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-5 py-4 text-slate-600 font-medium text-sm">
                                         {qt.assignedPerson ? `${qt.assignedPerson.firstName} ${qt.assignedPerson.lastName}` : <span className="text-red-500 text-xs">Unassigned</span>}

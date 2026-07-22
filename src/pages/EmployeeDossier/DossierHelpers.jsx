@@ -354,7 +354,7 @@ export const documentCategories = [
         name: 'Identity Documents',
         category: 'ID Proof',
         allowMultiple: false,
-        fixedDocs: ['Aadhaar Card (Front)', 'Aadhaar Card (Back)', 'Pan Card', 'Passport', 'Recent Passport-Size Photograph']
+        fixedDocs: ['Aadhaar Card (Front)', 'Aadhaar Card (Back)', 'Pan Card', 'Passport', 'Recent Passport-Size Photograph', 'Live Photograph']
     },
     {
         name: 'Qualification Certificates',
