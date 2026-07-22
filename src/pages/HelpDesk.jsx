@@ -630,9 +630,9 @@ const HelpDesk = () => {
                             >
                                 <span className="flex items-center">
                                     {isAdmin ? 'Queries' : 'Assigned to Me'}
-                                    {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length > 0 && (
+                                    {assignedQueries.filter(q => ['New', 'In Progress', 'Pending', 'Escalated'].includes(q.status)).length > 0 && (
                                         <span className="ml-2 bg-indigo-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                                            {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length}
+                                            {assignedQueries.filter(q => ['New', 'In Progress', 'Pending', 'Escalated'].includes(q.status)).length}
                                         </span>
                                     )}
                                 </span>
