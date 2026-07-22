@@ -662,6 +662,14 @@ const HelpDesk = () => {
                                 </button>
                             </>
                         )}
+                        {isResolverRole && (
+                            <button
+                                onClick={() => navigate('/helpdesk/analytics')}
+                                className="px-5 py-2 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:text-slate-900"
+                            >
+                                Analytics
+                            </button>
+                        )}
                     </div>
                 </div>
 
