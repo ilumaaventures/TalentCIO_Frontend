@@ -13,6 +13,7 @@ const OTPReset                 = lazy(() => import('./pages/OTPReset'));
 const Unauthorized             = lazy(() => import('./pages/Unauthorized'));
 const Dashboard                = lazy(() => import('./pages/Dashboard'));
 const Attendance               = lazy(() => import('./pages/Attendance'));
+const FlexibleOffSelection      = lazy(() => import('./pages/FlexibleOffSelection'));
 const AttendanceSettings       = lazy(() => import('./pages/AttendanceSettings'));
 const Timesheet                = lazy(() => import('./pages/Timesheet'));
 const EmailSettings            = lazy(() => import('./pages/settings/EmailSettings'));
@@ -129,6 +130,16 @@ function App() {
                   <Route path="/attendance" element={(
                     <ProtectedRoute moduleName="attendance" redirectTo="/">
                       <Attendance />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/attendance/flexible-off" element={(
+                    <ProtectedRoute moduleName="attendance" redirectTo="/">
+                      <FlexibleOffSelection />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/flexible-off" element={(
+                    <ProtectedRoute moduleName="attendance" redirectTo="/">
+                      <FlexibleOffSelection />
                     </ProtectedRoute>
                   )} />
                   <Route path="/attendance-settings" element={(
