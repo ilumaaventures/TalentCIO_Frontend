@@ -808,6 +808,16 @@ const AttendanceSettings = () => {
                             <label className="flex items-center gap-3">
                                 <input
                                     type="checkbox"
+                                    disabled={!canEditWeeklyOff}
+                                    checked={Boolean(flexWeeklyOff.enabled)}
+                                    onChange={(e) => updateFlexWeeklyOff({ enabled: e.target.checked })}
+                                />
+                                <span className="text-sm font-medium text-slate-700">Enable Custom Flexible Off</span>
+                            </label>
+
+                            <label className="flex items-center gap-3">
+                                <input
+                                    type="checkbox"
                                     disabled={!canEditIpRules}
                                     checked={attendance.ipCheck}
                                     onChange={(e) => updateAttendance({ ipCheck: e.target.checked })}
@@ -872,13 +882,15 @@ const AttendanceSettings = () => {
                                 type="button"
                                 disabled={!canEditWeeklyOff}
                                 onClick={() => {
-                                    updateFlexWeeklyOff({ enabled: !flexWeeklyOff.enabled });
+                                    const section = document.getElementById('flexible-off-section');
+                                    if (section) {
+                                        section.scrollIntoView({ behavior: 'smooth' });
+                                    }
                                 }}
-                                className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${flexWeeklyOff.enabled
-                                    ? 'border-violet-300 bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200'
-                                    : 'border-dashed border-violet-200 bg-violet-50/40 text-violet-600 hover:border-violet-300 hover:bg-violet-50'} ${!canEditWeeklyOff ? 'cursor-not-allowed opacity-60' : ''}`}
+                                className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition border-violet-300 bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200 ${!canEditWeeklyOff ? 'cursor-not-allowed opacity-60' : 'hover:bg-violet-100 hover:border-violet-400'}`}
+                                title="Custom Flexible Off is enabled for your company. Click to configure rules below."
                             >
-                                <Sparkles size={15} className={flexWeeklyOff.enabled ? 'animate-pulse text-violet-600' : ''} />
+                                <Sparkles size={15} className="animate-pulse text-violet-600" />
                                 Custom Flexible Off
                             </button>
                         )}
@@ -888,7 +900,7 @@ const AttendanceSettings = () => {
 
             {/* ── Flexible Off Configurations Section (Dynamic Multi-Tier Rules) ────────────────────────── */}
             {flexWeeklyOff.enabled && (
-                <div className="rounded-xl border border-violet-200 bg-white shadow-sm ring-1 ring-violet-100 transition-all space-y-0 overflow-hidden">
+                <div id="flexible-off-section" className="rounded-xl border border-violet-200 bg-white shadow-sm ring-1 ring-violet-100 transition-all space-y-0 overflow-hidden">
                     <div className="flex flex-col gap-2 border-b border-violet-100 bg-violet-50/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-2">
                             <Sparkles size={20} className="text-violet-600" />
