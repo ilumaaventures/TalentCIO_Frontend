@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut, CheckCircle, XCircle, Info, Search, X } from 'lucide-react';
+import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut, CheckCircle, XCircle, Info, Search, X, Sparkles, Check } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -38,9 +38,105 @@ const DEFAULT_ATTENDANCE_SHIFTS = [
     }
 ];
 
+const resolveUserFlexPolicy = (emp, attendanceSettings) => {
+    const flexConfig = attendanceSettings?.flexWeeklyOff || {};
+    if (flexConfig.enabled === false) {
+        return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: 'Disabled' };
+    }
+
+    const normalizeArray = (obj) => {
+        if (Array.isArray(obj?.allowedDays) && obj.allowedDays.length > 0) return obj.allowedDays;
+        if (obj?.allowedDay) return [obj.allowedDay];
+        return ['Custom (Employee Chooses)'];
+    };
+
+    const defaultAllowedDays = normalizeArray(flexConfig);
+
+    // 1. Per-user override
+    if (emp?.flexWeeklyOffCount !== undefined && emp?.flexWeeklyOffCount !== null && emp?.flexWeeklyOffCount !== '' && Number(emp?.flexWeeklyOffCount) > 0) {
+        const allowedDays = defaultAllowedDays;
+        const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
+        return {
+            enabled: true,
+            count: Math.max(1, Number(emp.flexWeeklyOffCount)),
+            allowedDays,
+            isCustomChoice,
+            source: 'Employee Override'
+        };
+    }
+
+    // Extract user role names and IDs
+    const userRoleNames = Array.isArray(emp?.roles)
+        ? emp.roles.map((r) => (typeof r === 'string' ? r : r?.name)).filter(Boolean)
+        : [];
+    const userRoleIds = Array.isArray(emp?.roles)
+        ? emp.roles.map((r) => (typeof r === 'string' ? r : r?._id ? String(r._id) : null)).filter(Boolean)
+        : [];
+
+    // 2. Role policy override
+    const activeRolePolicies = flexConfig.rolePolicies || [];
+    const matchedRolePolicy = activeRolePolicies.find(
+        (rp) => userRoleNames.includes(rp.roleName) ||
+            userRoleNames.includes(rp.roleId) ||
+            userRoleIds.includes(rp.roleId) ||
+            userRoleIds.includes(rp.roleName)
+    );
+    if (matchedRolePolicy) {
+        if (matchedRolePolicy.enabled === false) {
+            return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})` };
+        }
+        if (matchedRolePolicy.isCustom) {
+            const allowedDays = normalizeArray(matchedRolePolicy);
+            const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
+            return {
+                enabled: true,
+                count: matchedRolePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
+                allowedDays,
+                isCustomChoice,
+                source: `Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})`
+            };
+        }
+    }
+
+    // 3. Employment Type policy override
+    const activeEmpTypePolicies = flexConfig.employmentTypePolicies || [];
+    const cleanEmpType = (s) => String(s || '').replace(/[\s\-_]/g, '').toLowerCase();
+    const userEmpTypeClean = cleanEmpType(emp?.employmentType || 'Full-Time');
+    const matchedEmpTypePolicy = activeEmpTypePolicies.find(
+        (ep) => cleanEmpType(ep.employmentType) === userEmpTypeClean
+    );
+    if (matchedEmpTypePolicy) {
+        if (matchedEmpTypePolicy.enabled === false) {
+            return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Employment Type (${matchedEmpTypePolicy.employmentType})` };
+        }
+        if (matchedEmpTypePolicy.isCustom) {
+            const allowedDays = normalizeArray(matchedEmpTypePolicy);
+            const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
+            return {
+                enabled: true,
+                count: matchedEmpTypePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
+                allowedDays,
+                isCustomChoice,
+                source: `Employment Type (${matchedEmpTypePolicy.employmentType})`
+            };
+        }
+    }
+
+    // 4. Company Default
+    const isCustomChoice = defaultAllowedDays.includes('Custom (Employee Chooses)') || defaultAllowedDays.includes('Custom');
+    return {
+        enabled: true,
+        count: flexConfig.allowedCount ?? 2,
+        allowedDays: defaultAllowedDays,
+        isCustomChoice,
+        source: 'Company Default'
+    };
+};
+
 const Attendance = () => {
     const { user, hasModule, isDossierComplete, dossierMissingSections, dossierMissingFields } = useAuth();
     const location = useLocation();
+    const navigate = useNavigate();
     const [status, setStatus] = useState(null);
     const [timesheetSummary, setTimesheetSummary] = useState(null);
     const [history, setHistory] = useState([]);
@@ -83,6 +179,12 @@ const Attendance = () => {
     const [regularizationRequests, setRegularizationRequests] = useState([]);
     const [processingRegId, setProcessingRegId] = useState(null);
 
+    // Flexible Off State
+    const [customFlexibleOffDays, setCustomFlexibleOffDays] = useState([]);
+    const [showFlexModal, setShowFlexModal] = useState(false);
+    const [selectedFlexDates, setSelectedFlexDates] = useState([]);
+    const [savingFlexDays, setSavingFlexDays] = useState(false);
+
     // Robust Check for Admin (matching SystemRoute.jsx)
     const isAdmin = user?.roles?.some(r => {
         const roleName = typeof r === 'string' ? r : r?.name;
@@ -105,7 +207,20 @@ const Attendance = () => {
         || user?.permissions?.includes('attendance.view_others');
     const showDocumentsTab = Boolean(user?.company?.settings?.timesheet?.requireAttachment);
     const showRGDocumentTrackerTab = showDocumentsTab && isRGWorkspace(user) && canViewRGDocumentTracker(user);
-    const attendanceSettings = user?.company?.settings?.attendance || {};
+    const [fetchedAttendanceSettings, setFetchedAttendanceSettings] = useState(null);
+    const attendanceSettings = fetchedAttendanceSettings || user?.company?.settings?.attendance || {};
+
+    const effectiveFlexPolicy = useMemo(() => {
+        return resolveUserFlexPolicy(viewUser || user, attendanceSettings);
+    }, [viewUser, user, attendanceSettings]);
+
+    const computedFlexibleOffDays = useMemo(() => {
+        if (!effectiveFlexPolicy.enabled) return [];
+        if (Array.isArray(customFlexibleOffDays) && customFlexibleOffDays.length > 0) {
+            return customFlexibleOffDays;
+        }
+        return (viewUser || user)?.customFlexibleOffDays || [];
+    }, [effectiveFlexPolicy.enabled, customFlexibleOffDays, viewUser, user]);
     const companyShiftOptions = Array.isArray(attendanceSettings.attendanceShifts) && attendanceSettings.attendanceShifts.length > 0
         ? attendanceSettings.attendanceShifts
         : DEFAULT_ATTENDANCE_SHIFTS;
@@ -535,6 +650,15 @@ const Attendance = () => {
             setHolidays(res.data.holidays || []);
             setApprovedLeaves(res.data.approvedLeaves || []);
             setTimesheetSummary(res.data.timesheetSummary || null);
+            if (res.data.attendanceSettings) {
+                setFetchedAttendanceSettings(res.data.attendanceSettings);
+            }
+            if (res.data.customFlexibleOffDays) {
+                setCustomFlexibleOffDays(res.data.customFlexibleOffDays);
+            }
+            if (res.data.targetUser) {
+                setViewUser(res.data.targetUser);
+            }
         } catch (error) {
             console.error('Error fetching month data', error);
             toast.error('Could not load calendar data');
@@ -757,6 +881,9 @@ const Attendance = () => {
             if (payload.timesheetSummary !== undefined) setTimesheetSummary(payload.timesheetSummary);
             if (payload.weeklyOff) setWeeklyOffs(payload.weeklyOff);
             if (payload.holidays) setHolidays(payload.holidays);
+            if (payload.customFlexibleOffDays) setCustomFlexibleOffDays(payload.customFlexibleOffDays);
+            if (payload.targetUser) setViewUser(payload.targetUser);
+            if (payload.attendanceSettings) setFetchedAttendanceSettings(payload.attendanceSettings);
         };
 
         // 1. Try Cache First (Instant UI)
@@ -791,7 +918,10 @@ const Attendance = () => {
                 holidays: bootstrapData?.holidays || [],
                 approvedLeaves: bootstrapData?.approvedLeaves || [],
                 timesheetSummary: bootstrapData?.timesheetSummary || null,
-                weeklyOff: bootstrapData?.weeklyOff || []
+                weeklyOff: bootstrapData?.weeklyOff || [],
+                customFlexibleOffDays: bootstrapData?.customFlexibleOffDays || [],
+                targetUser: bootstrapData?.targetUser || null,
+                attendanceSettings: bootstrapData?.attendanceSettings || null
             };
 
             const freshFingerprint = buildFingerprint(freshData);
@@ -838,6 +968,8 @@ const Attendance = () => {
                 setApprovedLeaves(res.data.approvedLeaves || []);
                 setTimesheetSummary(res.data.timesheetSummary || null);
                 if (res.data.weeklyOff) setWeeklyOffs(res.data.weeklyOff);
+                if (res.data.customFlexibleOffDays) setCustomFlexibleOffDays(res.data.customFlexibleOffDays);
+                if (res.data.targetUser) setViewUser(res.data.targetUser);
             })
             .catch(e => { if (e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') console.error(e); });
 
@@ -1872,6 +2004,52 @@ const Attendance = () => {
                             </div>
                         </div>
 
+                        {/* Flexible Off Section (Just Above Recent Activity) */}
+                        {effectiveFlexPolicy.enabled && (
+                            <div className="zoho-card p-5 mt-6 border-l-4 border-l-violet-500 bg-white shadow-sm">
+                                <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles size={16} className="text-violet-600 animate-pulse" />
+                                        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                                            Flexible Off Days
+                                        </h4>
+                                    </div>
+                                    <span className="text-[11px] font-semibold text-violet-700 bg-violet-50 px-2.5 py-0.5 rounded-full border border-violet-200">
+                                        {effectiveFlexPolicy.count} Days / Mo
+                                    </span>
+                                </div>
+
+                                {effectiveFlexPolicy.isCustomChoice ? (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-slate-500 font-medium">Monthly Selection:</span>
+                                            <span className="font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded border border-violet-100">
+                                                {customFlexibleOffDays.filter(d => d.startsWith(format(calendarDate, 'yyyy-MM'))).length} / {effectiveFlexPolicy.count} Selected
+                                            </span>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate('/attendance/flexible-off')}
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-bold rounded-xl shadow-md shadow-violet-200 hover:from-violet-700 hover:to-purple-700 active:scale-95 transition-all tracking-wide"
+                                        >
+                                            <Calendar size={15} />
+                                            <span>Choose Flexible Off</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-1.5 text-xs">
+                                        <div className="text-slate-600 font-medium">
+                                            Company Fixed Days: <strong className="text-violet-700">{effectiveFlexPolicy.allowedDays.join(', ')}</strong>
+                                        </div>
+                                        <div className="text-[11px] text-slate-400">
+                                            Applied Rule: {effectiveFlexPolicy.source}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {hasModule('projects') && (
                             <div className="zoho-card p-5 mt-6">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Recent Activity</h4>
@@ -2090,12 +2268,13 @@ const Attendance = () => {
                                         setCalendarDate(new Date(year, month - 1, 1));
                                         fetchMonthHistory(year, month);
                                     }}
-                                    user={user}
+                                    user={viewUser || user}
                                     date={calendarDate}
                                     holidays={holidays}
                                     approvedLeaves={approvedLeaves}
                                     onRegularize={handleRegularize}
                                     weeklyOffs={weeklyOffs}
+                                    flexibleOffDays={computedFlexibleOffDays}
                                 />
                             ) : activeTab === 'regularize' ? (
                                 <RegularizationRequestsView

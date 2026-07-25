@@ -13,6 +13,7 @@ const OTPReset                 = lazy(() => import('./pages/OTPReset'));
 const Unauthorized             = lazy(() => import('./pages/Unauthorized'));
 const Dashboard                = lazy(() => import('./pages/Dashboard'));
 const Attendance               = lazy(() => import('./pages/Attendance'));
+const FlexibleOffSelection      = lazy(() => import('./pages/FlexibleOffSelection'));
 const AttendanceSettings       = lazy(() => import('./pages/AttendanceSettings'));
 const Timesheet                = lazy(() => import('./pages/Timesheet'));
 const EmailSettings            = lazy(() => import('./pages/settings/EmailSettings'));
@@ -48,6 +49,7 @@ const Meetings                 = lazy(() => import('./pages/Meetings'));
 const MeetingForm              = lazy(() => import('./pages/MeetingForm'));
 const MeetingDetails           = lazy(() => import('./pages/MeetingDetails'));
 const HelpDesk                 = lazy(() => import('./pages/HelpDesk'));
+const HelpdeskAnalytics        = lazy(() => import('./pages/HelpdeskAnalytics'));
 const QueryDetails             = lazy(() => import('./pages/QueryDetails'));
 const Discussions              = lazy(() => import('./pages/Discussions'));
 const Announcements            = lazy(() => import('./pages/Announcements'));
@@ -128,6 +130,16 @@ function App() {
                   <Route path="/attendance" element={(
                     <ProtectedRoute moduleName="attendance" redirectTo="/">
                       <Attendance />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/attendance/flexible-off" element={(
+                    <ProtectedRoute moduleName="attendance" redirectTo="/">
+                      <FlexibleOffSelection />
+                    </ProtectedRoute>
+                  )} />
+                  <Route path="/flexible-off" element={(
+                    <ProtectedRoute moduleName="attendance" redirectTo="/">
+                      <FlexibleOffSelection />
                     </ProtectedRoute>
                   )} />
                   <Route path="/attendance-settings" element={(
@@ -236,6 +248,7 @@ function App() {
                   {/* Help Desk Routes */}
                   <Route element={<ProtectedRoute moduleName="helpdesk" redirectTo="/" />}>
                     <Route path="/helpdesk" element={<HelpDesk />} />
+                    <Route path="/helpdesk/analytics" element={<HelpdeskAnalytics />} />
                     <Route path="/helpdesk/:id" element={<QueryDetails />} />
                   </Route>
 

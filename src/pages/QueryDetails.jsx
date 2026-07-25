@@ -90,7 +90,11 @@ const QueryDetails = () => {
             await api.put(`/helpdesk/${id}/close`, { status: newStatus, feedback });
             toast.success(newStatus === 'In Progress' && query.status === 'Resolved' ? 'Query reopened with feedback' : `Query marked as ${newStatus}`);
             // Clear list cache to reflect status change in main list
-            sessionStorage.removeItem(`helpdesk_data_${user?._id}`);
+            Object.keys(sessionStorage).forEach(key => {
+                if (key.startsWith(`helpdesk_data_${user?._id}`)) {
+                    sessionStorage.removeItem(key);
+                }
+            });
             fetchQueryDetails();
         } catch (error) {
             toast.error(error.response?.data?.message || `Failed to update status to ${newStatus}`);
@@ -113,7 +117,11 @@ const QueryDetails = () => {
             await api.post(`/helpdesk/${id}/comments`, { text: commentText });
             setCommentText('');
             // Clear list cache so comment count updates in main list
-            sessionStorage.removeItem(`helpdesk_data_${user?._id}`);
+            Object.keys(sessionStorage).forEach(key => {
+                if (key.startsWith(`helpdesk_data_${user?._id}`)) {
+                    sessionStorage.removeItem(key);
+                }
+            });
             // Optional: Re-fetch if socket doesn't update fast enough, but socket should handle it
             const res = await api.get(`/helpdesk/${id}`);
             setQuery(res.data.data || res.data);

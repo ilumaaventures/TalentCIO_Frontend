@@ -147,6 +147,18 @@ const HelpDesk = () => {
     const [activeTab, setActiveTab] = useState('my-queries');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showAllQueries, setShowAllQueries] = useState(false);
+
+    const [myQueriesPage, setMyQueriesPage] = useState(1);
+    const [myQueriesLimit, setMyQueriesLimit] = useState(30);
+    const [myQueriesPagination, setMyQueriesPagination] = useState({ page: 1, limit: 30, total: 0, totalPages: 1 });
+
+    const [assignedPage, setAssignedPage] = useState(1);
+    const [assignedLimit, setAssignedLimit] = useState(30);
+    const [assignedPagination, setAssignedPagination] = useState({ page: 1, limit: 30, total: 0, totalPages: 1 });
+
+    const [allPage, setAllPage] = useState(1);
+    const [allLimit, setAllLimit] = useState(30);
+    const [allPagination, setAllPagination] = useState({ page: 1, limit: 30, total: 0, totalPages: 1 });
     
     const [filters, setFilters] = useState({ status: '', priority: '' });
     const initialBootstrapDoneRef = React.useRef(false);
@@ -208,15 +220,19 @@ const HelpDesk = () => {
             let freshAllData = null;
 
             if (tab === 'my-queries') {
-                const res = await api.get('/helpdesk/my-queries');
+                const res = await api.get(`/helpdesk/my-queries?page=${myQueriesPage}&limit=${myQueriesLimit}`);
                 freshData = res.data.data || res.data;
+                if (res.data.pagination) setMyQueriesPagination(res.data.pagination);
             } else if (tab === 'assigned') {
                 const [assignedRes, allRes] = await Promise.all([
-                    api.get('/helpdesk/assigned'),
-                    isAdmin ? api.get('/helpdesk/all') : Promise.resolve({ data: { data: [] } }),
+                    api.get(`/helpdesk/assigned?page=${assignedPage}&limit=${assignedLimit}`),
+                    isAdmin ? api.get(`/helpdesk/all?page=${allPage}&limit=${allLimit}`) : Promise.resolve({ data: { data: [] } }),
                 ]);
                 freshData = assignedRes.data.data || assignedRes.data;
                 freshAllData = allRes.data.data || allRes.data;
+                
+                if (assignedRes.data.pagination) setAssignedPagination(assignedRes.data.pagination);
+                if (allRes.data.pagination) setAllPagination(allRes.data.pagination);
             } else if (tab === 'escalated' && isAdmin) {
                 const res = await api.get('/helpdesk/escalated');
                 freshData = res.data.data || res.data;
@@ -282,7 +298,7 @@ const HelpDesk = () => {
         } finally {
             if (!silent) setTabLoading(false);
         }
-    }, [isAdmin, user?._id]);
+    }, [isAdmin, isResolverRole, user?._id, myQueriesPage, myQueriesLimit, assignedPage, assignedLimit, allPage, allLimit]);
 
     const fetchBootstrap = useCallback(async (options = {}) => {
         const force = options === true || !!options.force;
@@ -393,6 +409,15 @@ const HelpDesk = () => {
         initialBootstrapDoneRef.current = true;
         fetchBootstrap();
     }, [fetchBootstrap]);
+
+    // Trigger tab fetch on pagination change
+    useEffect(() => {
+        if (activeTab === 'assigned') {
+            fetchTabData('assigned', { force: true });
+        } else if (activeTab === 'my-queries') {
+            fetchTabData('my-queries', { force: true });
+        }
+    }, [myQueriesPage, myQueriesLimit, assignedPage, assignedLimit, allPage, allLimit, activeTab, fetchTabData]);
 
     // Fetch data whenever the active tab changes (for tabs not fetched on mount)
     useEffect(() => {
@@ -605,9 +630,9 @@ const HelpDesk = () => {
                             >
                                 <span className="flex items-center">
                                     {isAdmin ? 'Queries' : 'Assigned to Me'}
-                                    {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length > 0 && (
+                                    {assignedQueries.filter(q => ['New', 'In Progress', 'Pending', 'Escalated'].includes(q.status)).length > 0 && (
                                         <span className="ml-2 bg-indigo-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                                            {assignedQueries.filter(q => q.status === 'New' || q.status === 'In Progress').length}
+                                            {assignedQueries.filter(q => ['New', 'In Progress', 'Pending', 'Escalated'].includes(q.status)).length}
                                         </span>
                                     )}
                                 </span>
@@ -637,11 +662,65 @@ const HelpDesk = () => {
                                 </button>
                             </>
                         )}
+                        {isResolverRole && (
+                            <button
+                                onClick={() => navigate('/helpdesk/analytics')}
+                                className="px-5 py-2 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:text-slate-900"
+                            >
+                                Analytics
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 {/* Content */}
-                {activeTab === 'my-queries' && renderTable(queries, false)}
+                {activeTab === 'my-queries' && (
+                    <div className="space-y-4">
+                        {renderTable(queries, false)}
+
+                        {/* Premium Pagination Controls for My Queries */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm shadow-slate-100/40 mt-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-500 font-semibold">
+                                    Showing {queries.length} of {myQueriesPagination.total} results
+                                </span>
+                                <span className="text-slate-300">|</span>
+                                <select
+                                    value={myQueriesLimit}
+                                    onChange={(e) => {
+                                        setMyQueriesLimit(Number(e.target.value));
+                                        setMyQueriesPage(1);
+                                    }}
+                                    className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold focus:border-indigo-500 outline-none bg-white text-slate-700 cursor-pointer"
+                                >
+                                    <option value={30}>30 per page</option>
+                                    <option value={50}>50 per page</option>
+                                    <option value={100}>100 per page</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setMyQueriesPage(prev => Math.max(prev - 1, 1))}
+                                    disabled={myQueriesPage === 1}
+                                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                >
+                                    Previous
+                                </button>
+                                <span className="text-xs font-bold text-slate-600 px-2">
+                                    Page {myQueriesPage} of {myQueriesPagination.totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setMyQueriesPage(prev => Math.min(prev + 1, myQueriesPagination.totalPages))}
+                                    disabled={myQueriesPage >= myQueriesPagination.totalPages}
+                                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {activeTab === 'assigned' && (
                     <div className="space-y-4">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -674,13 +753,19 @@ const HelpDesk = () => {
                             {isAdmin && (
                                 <div className="bg-slate-200/50 p-1 rounded-lg inline-flex items-center">
                                     <button
-                                        onClick={() => setShowAllQueries(false)}
+                                        onClick={() => {
+                                            setShowAllQueries(false);
+                                            setAssignedPage(1);
+                                        }}
                                         className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!showAllQueries ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                                     >
                                         Assigned to Me
                                     </button>
                                     <button
-                                        onClick={() => setShowAllQueries(true)}
+                                        onClick={() => {
+                                            setShowAllQueries(true);
+                                            setAllPage(1);
+                                        }}
                                         className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${showAllQueries ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                                     >
                                         All Queries
@@ -693,6 +778,60 @@ const HelpDesk = () => {
                             if (filters.priority && q.priority !== filters.priority) return false;
                             return true;
                         }), true)}
+
+                        {/* Premium Pagination Controls */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm shadow-slate-100/40 mt-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-500 font-semibold">
+                                    Showing {(showAllQueries ? allQueries : assignedQueries).length} of {showAllQueries ? allPagination.total : assignedPagination.total} results
+                                </span>
+                                <span className="text-slate-300">|</span>
+                                <select
+                                    value={showAllQueries ? allLimit : assignedLimit}
+                                    onChange={(e) => {
+                                        const newLimit = Number(e.target.value);
+                                        if (showAllQueries) {
+                                            setAllLimit(newLimit);
+                                            setAllPage(1);
+                                        } else {
+                                            setAssignedLimit(newLimit);
+                                            setAssignedPage(1);
+                                        }
+                                    }}
+                                    className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold focus:border-indigo-500 outline-none bg-white text-slate-700 cursor-pointer"
+                                >
+                                    <option value={30}>30 per page</option>
+                                    <option value={50}>50 per page</option>
+                                    <option value={100}>100 per page</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        if (showAllQueries) setAllPage(prev => Math.max(prev - 1, 1));
+                                        else setAssignedPage(prev => Math.max(prev - 1, 1));
+                                    }}
+                                    disabled={showAllQueries ? allPage === 1 : assignedPage === 1}
+                                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                >
+                                    Previous
+                                </button>
+                                <span className="text-xs font-bold text-slate-600 px-2">
+                                    Page {showAllQueries ? allPage : assignedPage} of {showAllQueries ? allPagination.totalPages : assignedPagination.totalPages}
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        if (showAllQueries) setAllPage(prev => Math.min(prev + 1, allPagination.totalPages));
+                                        else setAssignedPage(prev => Math.min(prev + 1, assignedPagination.totalPages));
+                                    }}
+                                    disabled={showAllQueries ? allPage >= allPagination.totalPages : assignedPage >= assignedPagination.totalPages}
+                                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
                 {activeTab === 'escalated' && renderTable(escalatedQueries, true)}

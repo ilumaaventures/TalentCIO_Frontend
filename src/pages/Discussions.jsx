@@ -518,6 +518,32 @@ const Discussions = () => {
         }
     };
 
+    const handlePriorityChange = async (id, newPriority) => {
+        // Local state update for immediate feedback
+        const updateState = (items) => {
+            const updated = items.map(d => d._id === id ? { ...d, priority: newPriority } : d);
+            return updated.sort((a, b) => {
+                const aCompleted = a.status === 'mark as complete';
+                const bCompleted = b.status === 'mark as complete';
+                if (aCompleted && !bCompleted) return 1;
+                if (!aCompleted && bCompleted) return -1;
+                return 0;
+            });
+        };
+
+        setDiscussions(prev => updateState(prev));
+
+        try {
+            await api.put(`/discussions/${id}`, { priority: newPriority });
+            toast.success('Priority updated');
+            fetchDiscussions(currentPage, { silent: true, force: true }); // Sync cache and server state
+        } catch (error) {
+            console.error('Error updating priority:', error);
+            toast.error('Failed to update priority');
+            fetchDiscussions(currentPage, { force: true }); // Revert on failure
+        }
+    };
+
     const handleCreateInline = async () => {
         if (!newDiscussion.discussion) {
             toast.error('Description is required');
@@ -684,6 +710,16 @@ const Discussions = () => {
             'planning': 'bg-sky-100 text-sky-700 border-sky-200'
         };
         return styles[status] || 'bg-blue-100 text-blue-700 border-blue-200';
+    };
+
+    const getPriorityBadgeColor = (priority) => {
+        const styles = {
+            'Urgent': 'bg-rose-50 text-rose-700 border-rose-100',
+            'High': 'bg-orange-50 text-orange-700 border-orange-100',
+            'Medium': 'bg-yellow-50 text-yellow-700 border-yellow-100',
+            'Low': 'bg-slate-50 text-slate-600 border-slate-100'
+        };
+        return styles[priority] || styles['Medium'];
     };
 
     const canChangeRestrictedStatus = (discussion) => {
@@ -1412,14 +1448,15 @@ const Discussions = () => {
                                                     {discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
-                                                        discussion.priority === 'Urgent' ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                        discussion.priority === 'High' ? 'bg-orange-50 text-orange-700 border-orange-100' :
-                                                        discussion.priority === 'Medium' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
-                                                        'bg-slate-50 text-slate-600 border-slate-100'
-                                                    }`}>
-                                                        {discussion.priority || 'Medium'}
-                                                    </span>
+                                                    <select value={discussion.priority || 'Medium'}
+                                                        onChange={(e) => handlePriorityChange(discussion._id, e.target.value)}
+                                                        disabled={!discussion.canEdit}
+                                                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-28 truncate ${getPriorityBadgeColor(discussion.priority || 'Medium')} ${discussion.canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                                                        <option value="Urgent">Urgent</option>
+                                                        <option value="High">High</option>
+                                                        <option value="Medium">Medium</option>
+                                                        <option value="Low">Low</option>
+                                                    </select>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <select value={discussion.status}
