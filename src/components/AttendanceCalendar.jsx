@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
 
-const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false, weeklyOffs = ['Sunday'] }) => {
+const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], date, approvedLeaves = [], onRegularize, isPrivileged = false, weeklyOffs = ['Sunday'], flexibleOffDays = [] }) => {
     const [internalDate, setInternalDate] = useState(date || new Date());
     const currentDate = date || internalDate;
 
@@ -131,6 +131,13 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.getDay()];
                     const isWeeklyOff = weeklyOffs.includes(dayName);
 
+                    const dayLocalStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+                    const isFlexOffDay = (flexibleOffDays || []).some(item => {
+                        if (!item) return false;
+                        const cleanItem = String(item).trim();
+                        return cleanItem === dayName || cleanItem === dayLocalStr;
+                    });
+
                     const isToday = normalizeDate(day) === normalizeDate(new Date());
                     const joiningDate = user?.joiningDate ? new Date(user.joiningDate) : null;
                     if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
@@ -139,9 +146,9 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                     return (
                         <div
                             key={day.toISOString()}
-                            className={`min-h-25 border-b border-r border-slate-100 px-2 py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : 'bg-white'} ${isWeeklyOff ? 'bg-slate-50/40' : ''}`}
+                            className={`min-h-25 border-b border-r border-slate-100 px-2 py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : (isFlexOffDay && !isWeeklyOff ? 'bg-violet-50/40' : (isWeeklyOff ? 'bg-slate-50/40' : 'bg-white'))}`}
                         >
-                            <div className={`text-right mb-2 font-medium text-[11px] ${isToday ? 'text-blue-600' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400')}`}>
+                            <div className={`text-right mb-2 font-medium text-[11px] ${isToday ? 'text-blue-600' : (isFlexOffDay && !isWeeklyOff ? 'text-violet-600 font-bold' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400'))}`}>
                                 {day.getDate()}
                             </div>
 
@@ -157,7 +164,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                                 if (isBeforeJoining || day > todayStart) return null;
 
                                 // 2. Skip if it's a weekly off or holiday (no attendance allowed)
-                                if (isWeeklyOff || isHoliday) return null;
+                                if (isWeeklyOff || isHoliday || isFlexOffDay) return null;
 
                                 // 3. Calculate 4 working days ago
                                 let workingDaysCount = 0;
@@ -203,6 +210,12 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                             {holiday && (
                                 <div className={`mb-1 text-[9px] font-semibold px-1 py-0.5 rounded ${holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} truncate`} title={holiday.name}>
                                     {holiday.name}
+                                </div>
+                            )}
+
+                            {isFlexOffDay && !isWeeklyOff && !holiday && (
+                                <div className="mb-1 text-[9px] font-bold px-1 py-0.5 rounded bg-violet-100 text-violet-700 truncate" title="Flexible Off">
+                                    FLEX OFF
                                 </div>
                             )}
 
@@ -267,6 +280,10 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                                             <div className="flex justify-center mt-6 opacity-80">
                                                 <span className="text-[11px] text-slate-300 font-semibold uppercase tracking-wide">OFF</span>
                                             </div>
+                                        ) : isFlexOffDay ? (
+                                            <div className="flex justify-center mt-6 opacity-90">
+                                                <span className="text-[11px] text-violet-600 font-bold uppercase tracking-wide">FLEX OFF</span>
+                                            </div>
                                         ) : (
                                             !holiday && day < new Date() && (
                                                 <div className="flex justify-center mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -299,6 +316,10 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                 <div className="flex items-center space-x-1.5">
                     <div className="h-2 w-2 rounded-full bg-purple-500"></div>
                     <span className="text-[10px] text-slate-600 font-medium">Leave</span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                    <div className="h-2 w-2 rounded-full bg-violet-600"></div>
+                    <span className="text-[10px] text-slate-600 font-medium">Flexible Off</span>
                 </div>
                 <div className="flex items-center space-x-1.5 border-l border-slate-200 pl-4 ml-2">
                     <div className="h-2 w-2 rounded-full bg-green-200"></div>
