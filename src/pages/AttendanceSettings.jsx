@@ -867,19 +867,21 @@ const AttendanceSettings = () => {
                         ))}
 
                         {/* Custom Flexible Off Option */}
-                        <button
-                            type="button"
-                            disabled={!canEditWeeklyOff}
-                            onClick={() => {
-                                updateFlexWeeklyOff({ enabled: !flexWeeklyOff.enabled });
-                            }}
-                            className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${flexWeeklyOff.enabled
-                                ? 'border-violet-300 bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200'
-                                : 'border-dashed border-violet-200 bg-violet-50/40 text-violet-600 hover:border-violet-300 hover:bg-violet-50'} ${!canEditWeeklyOff ? 'cursor-not-allowed opacity-60' : ''}`}
-                        >
-                            <Sparkles size={15} className={flexWeeklyOff.enabled ? 'animate-pulse text-violet-600' : ''} />
-                            Custom Flexible Off
-                        </button>
+                        {flexWeeklyOff.enabled && (
+                            <button
+                                type="button"
+                                disabled={!canEditWeeklyOff}
+                                onClick={() => {
+                                    updateFlexWeeklyOff({ enabled: !flexWeeklyOff.enabled });
+                                }}
+                                className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${flexWeeklyOff.enabled
+                                    ? 'border-violet-300 bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200'
+                                    : 'border-dashed border-violet-200 bg-violet-50/40 text-violet-600 hover:border-violet-300 hover:bg-violet-50'} ${!canEditWeeklyOff ? 'cursor-not-allowed opacity-60' : ''}`}
+                            >
+                                <Sparkles size={15} className={flexWeeklyOff.enabled ? 'animate-pulse text-violet-600' : ''} />
+                                Custom Flexible Off
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -988,7 +990,7 @@ const AttendanceSettings = () => {
                                         </span>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                        {ALLOWED_DAY_OPTIONS.map((opt) => {
+                                        {ALLOWED_DAY_OPTIONS.filter((opt) => flexWeeklyOff.enabled || opt !== 'Custom (Employee Chooses)').map((opt) => {
                                             const currentList = normalizeAllowedDaysArray(flexWeeklyOff);
                                             const isSelected = currentList.includes(opt);
 
@@ -1130,7 +1132,7 @@ const AttendanceSettings = () => {
                                                                         Allowed Day(s) Choice (Select Multiple):
                                                                     </label>
                                                                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                                                        {ALLOWED_DAY_OPTIONS.map((opt) => {
+                                                                        {ALLOWED_DAY_OPTIONS.filter((opt) => flexWeeklyOff.enabled || opt !== 'Custom (Employee Chooses)').map((opt) => {
                                                                             const isSelected = currentDays.includes(opt);
                                                                             return (
                                                                                 <button
@@ -1271,7 +1273,7 @@ const AttendanceSettings = () => {
                                                                     Allowed Day(s) Choice (Select Multiple):
                                                                 </label>
                                                                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                                                    {ALLOWED_DAY_OPTIONS.map((opt) => {
+                                                                    {ALLOWED_DAY_OPTIONS.filter((opt) => flexWeeklyOff.enabled || opt !== 'Custom (Employee Chooses)').map((opt) => {
                                                                         const isSelected = currentDays.includes(opt);
                                                                         return (
                                                                             <button
