@@ -54,6 +54,7 @@ const QueryDetails             = lazy(() => import('./pages/QueryDetails'));
 const Discussions              = lazy(() => import('./pages/Discussions'));
 const Announcements            = lazy(() => import('./pages/Announcements'));
 const GlobalTADashboard        = lazy(() => import('./pages/TalentAcquisition/GlobalTADashboard'));
+const InterviewAnalytics       = lazy(() => import('./pages/TalentAcquisition/InterviewAnalytics'));
 const Onboarding               = lazy(() => import('./pages/Onboarding'));
 const Offboarding              = lazy(() => import('./pages/Offboarding'));
 const HREmailSend              = lazy(() => import('./pages/HREmailSend'));
@@ -223,6 +224,7 @@ function App() {
                         <GlobalTADashboard />
                       </ProtectedRoute>
                     )} />
+                    <Route path="/ta/interview-analytics" element={<InterviewAnalytics />} />
                   </Route>
                   
                   <Route path="/profile" element={<Profile />} />

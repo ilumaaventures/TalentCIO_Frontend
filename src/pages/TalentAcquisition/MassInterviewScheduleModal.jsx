@@ -24,6 +24,13 @@ const MassInterviewScheduleModal = ({
     const [loadingInterviewers, setLoadingInterviewers] = useState(false);
     const [interviewerSearch, setInterviewerSearch] = useState('');
     const [scheduling, setScheduling] = useState(false);
+    const [emailTemplates, setEmailTemplates] = useState([]);
+    const [emailTemplateId, setEmailTemplateId] = useState('');
+    const [senderOptions, setSenderOptions] = useState([]);
+    const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('');
+    const [cc, setCc] = useState('');
+    const [bcc, setBcc] = useState('');
+    const [customFields, setCustomFields] = useState([]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -35,6 +42,11 @@ const MassInterviewScheduleModal = ({
         setScheduledDate('');
         setPhase(activePhase || 1);
         setInterviewerSearch('');
+        setEmailTemplateId('');
+        setSelectedEmailAccountId('');
+        setCc('');
+        setBcc('');
+        setCustomFields([]);
     }, [isOpen, initialSelectedIds, activePhase]);
 
     useEffect(() => {
@@ -44,16 +56,34 @@ const MassInterviewScheduleModal = ({
         const fetchInterviewers = async () => {
             try {
                 setLoadingInterviewers(true);
-                const response = await api.get('/admin/users');
-                const users = response.data?.success
-                    ? (response.data.data || [])
-                    : (Array.isArray(response.data) ? response.data : []);
+                const [usersRes, tmplRes, senderRes] = await Promise.all([
+                    api.get('/admin/users'),
+                    api.get('/ta/email-templates').catch(() => ({ data: [] })),
+                    api.get('/company/email-settings/senders').catch(() => ({ data: {} }))
+                ]);
+                const users = usersRes.data?.success
+                    ? (usersRes.data.data || [])
+                    : (Array.isArray(usersRes.data) ? usersRes.data : []);
+                const tmpls = tmplRes.data?.data || (Array.isArray(tmplRes.data) ? tmplRes.data : []);
+
+                const senderData = senderRes.data || {};
+                const nextSenderOptions = [
+                    senderData.platformOption,
+                    ...((senderData.accounts || []).filter((a) => a.ready))
+                ].filter(Boolean);
 
                 if (active) {
                     setInterviewers(users.filter((u) => u.isActive !== false));
+                    setEmailTemplates(tmpls);
+                    setSenderOptions(nextSenderOptions);
+                    setSelectedEmailAccountId(
+                        nextSenderOptions.some((o) => o._id === senderData.defaultAccountId)
+                            ? senderData.defaultAccountId
+                            : (nextSenderOptions[0]?._id || '')
+                    );
                 }
             } catch (error) {
-                console.error('Failed to load interviewers:', error);
+                console.error('Failed to load interviewers/templates:', error);
             } finally {
                 if (active) setLoadingInterviewers(false);
             }
@@ -133,7 +163,12 @@ const MassInterviewScheduleModal = ({
                 levelName: levelName.trim(),
                 assignedTo,
                 scheduledDate: scheduledDate || undefined,
-                phase
+                phase,
+                emailTemplateId: emailTemplateId || undefined,
+                emailAccountId: selectedEmailAccountId || undefined,
+                cc: cc ? cc.trim() : undefined,
+                bcc: bcc ? bcc.trim() : undefined,
+                customFields: customFields.filter(f => f.key && f.key.trim())
             };
 
             const response = await api.post('/ta/candidates/bulk-schedule-interview', payload);
@@ -314,6 +349,128 @@ const MassInterviewScheduleModal = ({
                                         onChange={(e) => setPhase(Number(e.target.value) || 1)}
                                         className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                     />
+                                </div>
+
+                                {/* Email Template & CC / BCC Settings */}
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+                                    <div>
+                                        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Email Template (Optional)
+                                        </label>
+                                        <select
+                                            value={emailTemplateId}
+                                            onChange={(e) => setEmailTemplateId(e.target.value)}
+                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">Default System Email</option>
+                                            {emailTemplates.map((t) => (
+                                                <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Sender Account */}
+                                    {senderOptions.length > 0 && (
+                                        <div>
+                                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                Sender Account
+                                            </label>
+                                            <select
+                                                value={selectedEmailAccountId}
+                                                onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                {senderOptions.map((option) => (
+                                                    <option key={option._id} value={option._id}>
+                                                        {option.name} – {option.fromAddress}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                CC Emails
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={cc}
+                                                onChange={(e) => setCc(e.target.value)}
+                                                placeholder="e.g. hr@company.com"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                BCC Emails
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={bcc}
+                                                onChange={(e) => setBcc(e.target.value)}
+                                                placeholder="e.g. audit@company.com"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Custom Key-Value Fields */}
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Additional Details (Key-Value)
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCustomFields([...customFields, { key: '', value: '' }])}
+                                            className="text-xs text-blue-600 hover:text-blue-800 font-bold"
+                                        >
+                                            + Add Field
+                                        </button>
+                                    </div>
+
+                                    {customFields.length === 0 ? (
+                                        <p className="text-xs text-slate-400 italic">No custom fields added yet. (e.g. Meeting Link, Mode)</p>
+                                    ) : (
+                                        <div className="space-y-2 max-h-36 overflow-y-auto">
+                                            {customFields.map((field, idx) => (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Key (e.g. Meeting Link)"
+                                                        value={field.key}
+                                                        onChange={(e) => {
+                                                            const next = [...customFields];
+                                                            next[idx].key = e.target.value;
+                                                            setCustomFields(next);
+                                                        }}
+                                                        className="w-1/2 rounded border border-slate-300 px-2 py-1 text-xs"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Value (e.g. https://...)"
+                                                        value={field.value}
+                                                        onChange={(e) => {
+                                                            const next = [...customFields];
+                                                            next[idx].value = e.target.value;
+                                                            setCustomFields(next);
+                                                        }}
+                                                        className="w-1/2 rounded border border-slate-300 px-2 py-1 text-xs"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCustomFields(customFields.filter((_, i) => i !== idx))}
+                                                        className="text-red-500 hover:text-red-700 text-xs px-1 font-bold"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

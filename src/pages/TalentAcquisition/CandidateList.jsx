@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search, Calendar } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search, Calendar, BarChart3, ChevronDown } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -440,7 +440,7 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
 };
 
 const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
-    const itemsPerPage = 30;
+    const [itemsPerPage, setItemsPerPage] = useState(50);
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
@@ -491,6 +491,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [showMassInterviewModal, setShowMassInterviewModal] = useState(false);
     const [pendingDecisionChange, setPendingDecisionChange] = useState(null);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
+    const [showDecisionSubmenu, setShowDecisionSubmenu] = useState(false);
     const [showCreatedDateSortMenu, setShowCreatedDateSortMenu] = useState(false);
     const [openMultiFilter, setOpenMultiFilter] = useState(null);
 
@@ -534,6 +535,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.candidate.make_decision')
         || user?.permissions?.includes('ta.interview.evaluate');
     const canManagePhase3Decisions = canMakeDecisions;
+    const decisionOptions = useMemo(() => {
+        if (activePhase === 2) {
+            return ['Shortlisted', 'Selected', 'Rejected', 'On Hold', 'Did Not Turn Up', 'Left in between'];
+        }
+        if (activePhase === 3) {
+            return ['Offer Sent', 'Offer Accepted', 'Joined', 'Offer Declined', 'No Show', 'Rejected', 'Left in between'];
+        }
+        return ['Shortlisted', 'Rejected', 'On Hold', 'Did Not Turn Up', 'Left in between'];
+    }, [activePhase]);
     const canTransferCandidates = isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
@@ -591,27 +601,34 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     useEffect(() => {
         const handleClose = (event) => {
             const target = event?.target;
-            const clickedMenuTrigger = target?.closest?.('[data-legacy-action-menu-trigger="true"]');
-            const clickedMenuContent = target?.closest?.('[data-legacy-action-menu-content="true"]');
-            const clickedMultiFilterTrigger = target?.closest?.('[data-multi-filter-trigger="true"]');
-            const clickedMultiFilterPanel = target?.closest?.('[data-multi-filter-panel="true"]');
-            const clickedSortTrigger = target?.closest?.('[data-created-sort-trigger="true"]');
-            const clickedSortPanel = target?.closest?.('[data-created-sort-panel="true"]');
+            if (target instanceof Element) {
+                const clickedMenuTrigger = target?.closest?.('[data-legacy-action-menu-trigger="true"]') || target?.closest?.('[data-dynamic-action-menu-trigger="true"]');
+                const clickedMenuContent = target?.closest?.('[data-legacy-action-menu-content="true"]') || target?.closest?.('[data-dynamic-action-menu-content="true"]');
+                const clickedToolbarTrigger = target?.closest?.('[data-toolbar-menu-trigger="true"]');
+                const clickedToolbarContent = target?.closest?.('[data-toolbar-menu-content="true"]');
+                const clickedMultiFilterTrigger = target?.closest?.('[data-multi-filter-trigger="true"]');
+                const clickedMultiFilterPanel = target?.closest?.('[data-multi-filter-panel="true"]');
+                const clickedSortTrigger = target?.closest?.('[data-created-sort-trigger="true"]');
+                const clickedSortPanel = target?.closest?.('[data-created-sort-panel="true"]');
 
-            if (clickedMenuTrigger || clickedMenuContent) {
-                return;
+                if (clickedMenuTrigger || clickedMenuContent) {
+                    return;
+                }
+
+                if (!clickedToolbarTrigger && !clickedToolbarContent) {
+                    setShowToolbarMenu(false);
+                }
+
+                if (!clickedMultiFilterTrigger && !clickedMultiFilterPanel) {
+                    setOpenMultiFilter(null);
+                }
+
+                if (!clickedSortTrigger && !clickedSortPanel) {
+                    setShowCreatedDateSortMenu(false);
+                }
+
+                setActiveMenu(null);
             }
-
-            if (!clickedMultiFilterTrigger && !clickedMultiFilterPanel) {
-                setOpenMultiFilter(null);
-            }
-
-            if (!clickedSortTrigger && !clickedSortPanel) {
-                setShowCreatedDateSortMenu(false);
-            }
-
-            setActiveMenu(null);
-            setShowToolbarMenu(false);
         };
         document.addEventListener('click', handleClose);
         window.addEventListener('scroll', handleClose, true);
@@ -697,7 +714,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         if (usesBackendPagination) {
             params.paginate = paginate;
             params.page = pageOverride;
-            params.limit = isFilterActive ? 20 : limitOverride;
+            params.limit = limitOverride;
             params.activePhase = activePhase;
             params.search = debouncedCandidateNameSearch.trim();
             params.filterPreference = filterPreference;
@@ -1174,6 +1191,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const toggleMenu = useCallback((e, candidateId) => {
         e.stopPropagation();
+        e.preventDefault();
         if (activeMenu === candidateId) {
             setActiveMenu(null);
         } else {
@@ -1840,6 +1858,29 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         fetchCandidates(true);
     };
 
+    const handleBulkDecisionChange = async (newDecision) => {
+        if (!selectedCandidateIds.length) {
+            toast.error('Select at least one candidate.');
+            return;
+        }
+
+        try {
+            toast.loading(`Updating decision to "${newDecision}"...`, { id: 'bulk-decision' });
+            await api.post('/ta/candidates/bulk-decision', {
+                candidateIds: selectedCandidateIds,
+                decision: newDecision,
+                phase: activePhase
+            });
+
+            toast.success(`Updated decision to "${newDecision}" for ${selectedCandidateIds.length} candidate(s)`, { id: 'bulk-decision' });
+            setSelectedCandidateIds([]);
+            await fetchCandidates(true);
+        } catch (error) {
+            console.error('Error updating bulk decision:', error);
+            toast.error(error.response?.data?.message || 'Failed to update decision');
+        }
+    };
+
     const handleMoveToNextPhase = async (candidateId) => {
         try {
             await api.put(`/ta/candidates/${candidateId}`, { profileShared: true });
@@ -1848,6 +1889,43 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } catch (error) {
             console.error('Error moving candidate to next phase:', error);
             toast.error(error.response?.data?.message || 'Failed to move candidate to next phase');
+        }
+    };
+
+    const handleBulkMoveToNextPhase = async () => {
+        if (!selectedCandidateIds || selectedCandidateIds.length === 0) return;
+
+        const selectedCandidates = candidates.filter(c => selectedCandidateIds.includes(c._id));
+        const nonShortlisted = selectedCandidates.filter(c => {
+            const phaseNum = Number(activePhase || 1);
+            if (phaseNum === 1) {
+                return c.decision !== 'Shortlisted';
+            } else if (phaseNum === 2) {
+                return c.phase2Decision !== 'Shortlisted' && c.phase2InterviewStatus !== 'Shortlisted' && c.decision !== 'Shortlisted';
+            }
+            return c.decision !== 'Shortlisted';
+        });
+
+        if (nonShortlisted.length > 0) {
+            toast.error(
+                `${nonShortlisted.length} candidate(s) are not Shortlisted. Please shortlist them first before moving to the next phase.`,
+                { id: 'bulk-move-phase-warn', duration: 5000 }
+            );
+            return;
+        }
+
+        try {
+            toast.loading(`Moving ${selectedCandidateIds.length} candidate(s) to next phase...`, { id: 'bulk-move-phase' });
+            await api.post('/ta/candidates/dynamic-phase/bulk-advance', {
+                candidateIds: selectedCandidateIds,
+                targetPhaseOrder: activePhase ? activePhase + 1 : undefined
+            });
+            toast.success(`Moved ${selectedCandidateIds.length} candidate(s) to next phase`, { id: 'bulk-move-phase' });
+            setSelectedCandidateIds([]);
+            await fetchCandidates(true);
+        } catch (error) {
+            console.error('Error moving candidates to next phase:', error);
+            toast.error(error.response?.data?.message || 'Failed to move candidates to next phase', { id: 'bulk-move-phase' });
         }
     };
 
@@ -1893,7 +1971,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             case 'Offer Sent': return 'text-blue-600 font-bold';
             case 'Offer Accepted': return 'text-amber-600 font-bold';
             case 'Joined': return 'text-emerald-600 font-bold';
-            case 'Did Not Turn Up': return 'text-rose-600 font-bold';
+            case 'Did Not Turn Up':
+            case 'Left in between': return 'text-rose-600 font-bold';
             case 'No Show':
             case 'Offer Declined': return 'text-rose-600 font-bold';
             case 'Rejected': return 'text-red-600 font-bold';
@@ -2130,8 +2209,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         </div>
                         <button
                             type="button"
+                            data-toolbar-menu-trigger="true"
                             onClick={(event) => {
                                 event.stopPropagation();
+                                event.preventDefault();
                                 setShowCreatedDateSortMenu(false);
                                 setShowToolbarMenu(prev => !prev);
                             }}
@@ -2144,6 +2225,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         </button>
                         {showToolbarMenu && (
                             <div
+                                data-toolbar-menu-content="true"
                                 className="absolute right-0 top-14 z-30 w-70 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
                                 onClick={(event) => event.stopPropagation()}
                             >
@@ -2151,6 +2233,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     Quick Actions
                                 </div>
                                 <button
+                                    type="button"
                                     onClick={() => {
                                         setShowToolbarMenu(false);
                                         handleExportExcel();
@@ -2166,6 +2249,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 </button>
                                 {canMassMail && !isLegacyView && (
                                     <button
+                                        type="button"
                                         onClick={() => {
                                             setShowToolbarMenu(false);
                                             openMassMailModal();
@@ -2185,6 +2269,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 )}
                                 {canBulkTransfer && !isLegacyView && (
                                     <button
+                                        type="button"
                                         onClick={() => {
                                             setShowToolbarMenu(false);
                                             openTransferModal(selectedCandidateIds);
@@ -2204,6 +2289,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 )}
                                 {canEditCandidates && !isLegacyView && selectedCandidateIds.length >= 2 && (
                                     <button
+                                        type="button"
                                         onClick={() => {
                                             setShowToolbarMenu(false);
                                             openMassInterviewModal();
@@ -2221,8 +2307,73 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
+
+                                {canEditCandidates && selectedCandidateIds.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            handleBulkMoveToNextPhase();
+                                        }}
+                                        className={toolbarMenuItemClass}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                                                <ArrowRight size={15} />
+                                            </span>
+                                            Move to next phase
+                                        </span>
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    </button>
+                                )}
+
+                                {canMakeDecisions && selectedCandidateIds.length > 0 && (
+                                    <div className="border-t border-slate-100 pt-1 mt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDecisionSubmenu(prev => !prev)}
+                                            className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                        >
+                                            <span className="flex items-center gap-3">
+                                                <span className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                                                    <CheckCircle size={15} />
+                                                </span>
+                                                <span>Change Decision</span>
+                                            </span>
+                                            <span className="flex items-center gap-2">
+                                                <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                                                    {selectedCandidateIds.length}
+                                                </span>
+                                                <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${showDecisionSubmenu ? 'rotate-180' : ''}`} />
+                                            </span>
+                                        </button>
+
+                                        {showDecisionSubmenu && (
+                                            <div className="mt-1 space-y-0.5 rounded-xl bg-slate-50 p-1.5 border border-slate-100">
+                                                {decisionOptions.map((decision) => (
+                                                    <button
+                                                        key={decision}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowToolbarMenu(false);
+                                                            setShowDecisionSubmenu(false);
+                                                            handleBulkDecisionChange(decision);
+                                                        }}
+                                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-slate-700 transition hover:bg-white hover:text-emerald-700 hover:shadow-sm"
+                                                    >
+                                                        <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
+                                                        <span>{decision}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 {canManageTemplates && (
                                     <button
+                                        type="button"
                                         onClick={() => {
                                             setShowToolbarMenu(false);
                                             navigate('/ta/email-templates');
@@ -2239,6 +2390,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 )}
                                 {canCreateCandidates && (
                                     <button
+                                        type="button"
                                         onClick={() => {
                                             setShowToolbarMenu(false);
                                             setShowBulkResumeImport(true);
@@ -2255,6 +2407,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 )}
                                 {canImportCandidates && (
                                     <button
+                                        type="button"
                                         onClick={() => {
                                             setShowToolbarMenu(false);
                                             setShowBulkImport(true);
@@ -2269,8 +2422,29 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         </span>
                                     </button>
                                 )}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowToolbarMenu(false);
+                                        const reqId = hiringRequestId || requestMeta?._id || '';
+                                        const params = new URLSearchParams();
+                                        if (reqId) params.set('hiringRequestId', reqId);
+                                        if (activePhase) params.set('phase', activePhase);
+                                        const query = params.toString() ? `?${params.toString()}` : '';
+                                        navigate(`/ta/interview-analytics${query}`);
+                                    }}
+                                    className={toolbarMenuItemClass}
+                                >
+                                    <span className="flex items-center gap-3">
+                                        <span className="rounded-lg bg-teal-50 p-2 text-teal-600">
+                                            <BarChart3 size={15} />
+                                        </span>
+                                        Interview Analytics
+                                    </span>
+                                </button>
                                 {canCreateCandidates && (
                                     <button
+                                        type="button"
                                         onClick={() => {
                                             setShowToolbarMenu(false);
                                             handleAddNew();
@@ -3195,6 +3369,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
                                                                             <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
                                                                             <option value="Did Not Turn Up" className="text-rose-600 font-bold">Did Not Turn Up</option>
+                                                                            <option value="Left in between" className="text-rose-600 font-bold">Left in between</option>
                                                                             <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                                         </select>
                                                                     ) : activePhase === 2 ? (
@@ -3209,6 +3384,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
                                                                             <option value="Selected" className="text-purple-600 font-bold">Selected</option>
                                                                             <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
+                                                                            <option value="Left in between" className="text-rose-600 font-bold">Left in between</option>
                                                                             <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
                                                                         </select>
                                                                     ) : (
@@ -3225,6 +3401,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                                             <option value="Joined" className="text-emerald-600 font-bold">Joined</option>
                                                                             <option value="No Show" className="text-rose-600 font-bold">No Show</option>
                                                                             <option value="Offer Declined" className="text-rose-600 font-bold">Offer Declined</option>
+                                                                            <option value="Left in between" className="text-rose-600 font-bold">Left in between</option>
                                                                         </select>
                                                                     )}
                                                                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
@@ -3423,25 +3600,44 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             </div>
 
                             {/* Pagination Controls */}
-                            {!loading && activeList.length > 0 && (
-                                <div className="flex justify-end items-center mt-6 gap-4 pr-4 pb-4">
-                                    <button
-                                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                                        disabled={page === 1}
-                                        className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                                    >
-                                        Previous
-                                    </button>
-                                    <span className="text-sm font-medium text-slate-600 min-w-25 text-center">
-                                        Page {page} of {totalPages}
-                                    </span>
-                                    <button
-                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={page === totalPages}
-                                        className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                                    >
-                                        Next
-                                    </button>
+                            {!loading && (activeList.length > 0 || (usesBackendPagination && serverResultCount > 0)) && (
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-6 pt-4 border-t border-slate-200/80 text-xs text-slate-500 px-4 pb-4">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span>Show</span>
+                                        <select
+                                            value={itemsPerPage}
+                                            onChange={(e) => {
+                                                const newLimit = parseInt(e.target.value, 10);
+                                                setItemsPerPage(newLimit);
+                                                setPage(1);
+                                            }}
+                                            className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value={50}>50</option>
+                                            <option value={100}>100</option>
+                                            <option value={150}>150</option>
+                                        </select>
+                                        <span>entries per page (Showing <span className="font-bold text-slate-700">{(usesBackendPagination ? serverResultCount : activeList.length) > 0 ? (page - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-bold text-slate-700">{Math.min(page * itemsPerPage, usesBackendPagination ? serverResultCount : activeList.length)}</span> of <span className="font-bold text-slate-700">{usesBackendPagination ? serverResultCount : activeList.length}</span> entries)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                                        <button
+                                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                                            disabled={page === 1}
+                                            className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                                        >
+                                            Previous
+                                        </button>
+                                        <span className="text-xs font-semibold text-slate-600 px-2">
+                                            Page {page} of {totalPages}
+                                        </span>
+                                        <button
+                                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={page >= totalPages}
+                                            className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>

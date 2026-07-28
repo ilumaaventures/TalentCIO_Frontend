@@ -351,7 +351,7 @@ const HiringRequestDetails = () => {
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...((request.status === 'Approved') && (request.isPublic || request.publicApplicationsCount > 0) ? ['public applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
+                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...((request.status === 'Approved' || request.status === 'Closed') && (request.wasEverPublished || request.isPublic || request.isResourceGatewayPublic || (request.publicApplicationsCount > 0)) ? ['public applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -751,7 +751,7 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
-                            {canUpdateRequisition && request.status === 'Approved' && (
+                            {canUpdateRequisition && (request.status === 'Approved' || request.status === 'Closed') && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                     <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">
                                         <div className={`p-1.5 rounded-md ${request.isPublic ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
