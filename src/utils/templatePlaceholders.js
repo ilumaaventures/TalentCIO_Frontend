@@ -25,6 +25,8 @@ export const TEMPLATE_PLACEHOLDERS = [
     'currentStatus',
     'interviewDate',
     'interviewLink',
+    'customFields',
+    'additionalDetails',
     'customNote',
     'employeeCode',
     'exitType',

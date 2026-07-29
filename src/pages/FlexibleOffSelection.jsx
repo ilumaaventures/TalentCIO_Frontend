@@ -20,8 +20,9 @@ import { format, startOfDay } from 'date-fns';
 
 const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     const flexConfig = attendanceSettings?.flexWeeklyOff || {};
+    const allowPastDays = flexConfig.allowPastDays !== false;
     if (flexConfig.enabled === false) {
-        return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: 'Disabled' };
+        return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: 'Disabled' };
     }
 
     const normalizeArray = (obj) => {
@@ -38,6 +39,7 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
         const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
         return {
             enabled: true,
+            allowPastDays,
             count: Math.max(1, Number(emp.flexWeeklyOffCount)),
             allowedDays,
             isCustomChoice,
@@ -63,13 +65,14 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     );
     if (matchedRolePolicy) {
         if (matchedRolePolicy.enabled === false) {
-            return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})` };
+            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})` };
         }
         if (matchedRolePolicy.isCustom) {
             const allowedDays = normalizeArray(matchedRolePolicy);
             const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
             return {
                 enabled: true,
+                allowPastDays,
                 count: matchedRolePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
                 allowedDays,
                 isCustomChoice,
@@ -87,13 +90,14 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     );
     if (matchedEmpTypePolicy) {
         if (matchedEmpTypePolicy.enabled === false) {
-            return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Employment Type (${matchedEmpTypePolicy.employmentType})` };
+            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Employment Type (${matchedEmpTypePolicy.employmentType})` };
         }
         if (matchedEmpTypePolicy.isCustom) {
             const allowedDays = normalizeArray(matchedEmpTypePolicy);
             const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
             return {
                 enabled: true,
+                allowPastDays,
                 count: matchedEmpTypePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
                 allowedDays,
                 isCustomChoice,
@@ -106,6 +110,7 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     const isCustomChoice = defaultAllowedDays.includes('Custom (Employee Chooses)') || defaultAllowedDays.includes('Custom');
     return {
         enabled: true,
+        allowPastDays,
         count: flexConfig.allowedCount ?? 2,
         allowedDays: defaultAllowedDays,
         isCustomChoice,
@@ -193,11 +198,11 @@ const FlexibleOffSelection = () => {
         return { blanks, monthDates };
     }, [viewDate]);
 
-    // Quick Month Selector Shortcuts (Current Month + Next 2 Months)
+    // Quick Month Selector Shortcuts (Previous 2 Months + Current Month + Next 2 Months)
     const monthOptions = useMemo(() => {
         const today = new Date();
         const opts = [];
-        for (let i = 0; i < 3; i++) {
+        for (let i = -2; i <= 2; i++) {
             const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
             opts.push(d);
         }
@@ -206,10 +211,10 @@ const FlexibleOffSelection = () => {
 
     const toggleDateSelection = (dStr, dObj) => {
         const dayStart = startOfDay(dObj);
+        const isPast = dayStart < todayStart;
 
-        // Rule 1: No Past Days
-        if (dayStart < todayStart) {
-            toast.error('You cannot select past days as flexible off.');
+        if (isPast && !effectiveFlexPolicy.allowPastDays) {
+            toast.error('Selecting past days as flexible off is disabled by company policy.');
             return;
         }
 
@@ -305,7 +310,7 @@ const FlexibleOffSelection = () => {
                             Choose Flexible Off Days
                         </h1>
                         <p className="text-xs text-slate-500">
-                            Select your flexible off days for current or upcoming months.
+                            Select your flexible off days for past, current, or upcoming months.
                         </p>
                     </div>
                 </div>
@@ -366,7 +371,7 @@ const FlexibleOffSelection = () => {
                                     <Info size={12} /> Rules & Guidelines:
                                 </div>
                                 <ul className="list-disc list-inside space-y-1 text-slate-500 pl-1">
-                                    <li>Past dates cannot be selected.</li>
+                                    {!effectiveFlexPolicy.allowPastDays && <li>Past dates cannot be selected (Disabled by company setting).</li>}
                                     <li>Max {effectiveFlexPolicy.count} days allowed per month.</li>
                                     <li>Changes reflect on your Attendance Calendar once saved.</li>
                                 </ul>
@@ -511,25 +516,28 @@ const FlexibleOffSelection = () => {
                                     const isWeeklyOff = weeklyOffs.includes(dayName);
                                     const isHoliday = holidays.some(h => new Date(h.date).toDateString() === dObj.toDateString());
 
+                                    const isPastDisabled = isPast && !effectiveFlexPolicy.allowPastDays;
                                     const isAllowedWeekday = effectiveFlexPolicy.isCustomChoice || (Array.isArray(effectiveFlexPolicy.allowedDays) && effectiveFlexPolicy.allowedDays.includes(dayName));
                                     const isRestrictedDay = !isAllowedWeekday && !isSelected;
+
+                                    const isDisabled = isPastDisabled || isRestrictedDay;
 
                                     return (
                                         <button
                                             key={dStr}
                                             type="button"
-                                            disabled={isPast || isRestrictedDay}
+                                            disabled={isDisabled}
                                             onClick={() => toggleDateSelection(dStr, dObj)}
                                             className={`h-16 rounded-xl p-2 flex flex-col justify-between transition-all relative border ${isSelected
                                                 ? 'bg-violet-600 text-white border-violet-600 shadow-md ring-2 ring-violet-300 scale-[1.02] z-10'
-                                                : isPast || isRestrictedDay
+                                                : isDisabled
                                                     ? 'bg-slate-100/60 border-slate-100 text-slate-300 cursor-not-allowed opacity-60'
                                                     : isToday
                                                         ? 'bg-blue-50/60 border-blue-300 text-blue-800 hover:border-blue-400'
                                                         : isWeeklyOff
                                                             ? 'bg-slate-50 border-slate-200 text-slate-500 hover:border-violet-300'
                                                             : 'bg-white border-slate-200 text-slate-700 hover:border-violet-300 hover:bg-violet-50/40'}`}
-                                            title={isPast ? 'Past days cannot be selected' : isRestrictedDay ? `Flexible off choice is restricted to ${effectiveFlexPolicy.allowedDays.join(', ')}` : isSelected ? 'Selected as Flexible Off' : 'Click to select as Flexible Off'}
+                                            title={isPastDisabled ? 'Past days selection is disabled by company policy' : isRestrictedDay ? `Flexible off choice is restricted to ${effectiveFlexPolicy.allowedDays.join(', ')}` : isSelected ? 'Selected as Flexible Off' : 'Click to select as Flexible Off'}
                                         >
                                             <div className="flex items-center justify-between w-full">
                                                 <span className={`text-xs font-bold ${isSelected ? 'text-white' : isToday ? 'text-blue-600' : 'text-slate-700'}`}>
@@ -552,7 +560,7 @@ const FlexibleOffSelection = () => {
                                                         Off
                                                     </span>
                                                 ) : isPast ? (
-                                                    <span className="text-[9px] text-slate-300">
+                                                    <span className="text-[9px] font-medium text-slate-400">
                                                         Past
                                                     </span>
                                                 ) : null}

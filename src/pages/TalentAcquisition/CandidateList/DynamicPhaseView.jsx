@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRightLeft, Calendar, CheckCircle, Clock3, Download, Eye, FileText, Loader, Mail, Menu, MoreVertical, Plus, Search, SlidersHorizontal, ThumbsDown, ThumbsUp, Upload, Users, UserCheck, XCircle } from 'lucide-react';
+import { ArrowRight, ArrowRightLeft, Calendar, CheckCircle, Clock3, Download, Eye, FileText, Loader, Mail, Menu, MoreVertical, Plus, Search, SlidersHorizontal, ThumbsDown, ThumbsUp, Upload, Users, UserCheck, XCircle, BarChart3, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -248,6 +248,8 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [activePhaseOrder, setActivePhaseOrder] = useState(phases[0]?.order || 1);
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(50);
     const [search, setSearch] = useState('');
     const debouncedSearch = useDebouncedValue(search, 2000);
     const [statusFilter, setStatusFilter] = useState('All');
@@ -269,6 +271,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
     const [activeActionMenu, setActiveActionMenu] = useState(null);
+    const [showDecisionSubmenu, setShowDecisionSubmenu] = useState(false);
     const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, right: 0 });
     const [cardVisibilityConfig, setCardVisibilityConfig] = useState(() => cloneCardVisibilityConfig(hiringRequest?.candidateCardVisibility || []));
     const [draftCardVisibilityConfig, setDraftCardVisibilityConfig] = useState([]);
@@ -425,7 +428,12 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         const handleClose = (event) => {
             const target = event?.target;
             if (target instanceof Element) {
-                if (target.closest('[data-dynamic-action-menu-trigger]') || target.closest('[data-dynamic-action-menu-content]')) {
+                if (
+                    target.closest('[data-dynamic-action-menu-trigger]') ||
+                    target.closest('[data-dynamic-action-menu-content]') ||
+                    target.closest('[data-toolbar-menu-trigger]') ||
+                    target.closest('[data-toolbar-menu-content]')
+                ) {
                     return;
                 }
             }
@@ -543,6 +551,16 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             return matchesSearch && matchesStatus && matchesDecision && matchesPulledBy && matchesUploadedBy && matchesUploadType;
         })
     ), [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, statusFilter, uploadedByFilter, uploadTypeFilter]);
+
+    const totalPages = Math.max(Math.ceil(filteredCandidates.length / itemsPerPage) || 1, 1);
+    const paginatedCandidates = useMemo(() => {
+        const startIndex = (page - 1) * itemsPerPage;
+        return filteredCandidates.slice(startIndex, startIndex + itemsPerPage);
+    }, [filteredCandidates, page, itemsPerPage]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [activePhaseOrder, search, statusFilter, decisionFilter, pulledByFilter, uploadedByFilter, uploadTypeFilter, itemsPerPage]);
 
     useEffect(() => {
         const visibleIds = new Set(phaseCandidates.map((candidate) => candidate._id));
@@ -811,14 +829,98 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             } else {
                 toast.success('Decision saved');
             }
-            await fetchCandidates(true);
-        } catch (error) {
-            console.error('Failed to update dynamic decision:', error);
-            toast.error(error.response?.data?.message || 'Failed to save decision');
         } finally {
             setActionLoadingId('');
         }
     };
+
+    const handleBulkDecisionUpdate = async (decisionValue, decisionLabel) => {
+        if (!selectedCandidateIds.length) {
+            toast.error('Select at least one candidate.');
+            return;
+        }
+
+        try {
+            toast.loading(`Updating decision to "${decisionLabel}"...`, { id: 'bulk-decision' });
+            await api.post('/ta/candidates/bulk-decision', {
+                candidateIds: selectedCandidateIds,
+                decision: decisionValue,
+                phaseId: activePhase?._id,
+                phase: activePhaseOrder
+            });
+
+            toast.success(`Updated decision to "${decisionLabel}" for ${selectedCandidateIds.length} candidate(s)`, { id: 'bulk-decision' });
+            setSelectedCandidateIds([]);
+            await fetchCandidates(true);
+        } catch (error) {
+            console.error('Failed to update bulk decision:', error);
+            toast.error(error.response?.data?.message || 'Failed to update decision for selected candidates', { id: 'bulk-decision' });
+        }
+    };
+
+    const handleBulkMoveToNextPhase = async () => {
+        if (!selectedCandidateIds || selectedCandidateIds.length === 0) return;
+
+        const selectedCandidates = candidates.filter(c => selectedCandidateIds.includes(c._id));
+        const nonShortlisted = selectedCandidates.filter(c => {
+            const phaseNum = Number(activePhaseOrder || 1);
+            if (phaseNum === 1) {
+                return c.decision !== 'Shortlisted';
+            } else if (phaseNum === 2) {
+                return c.phase2Decision !== 'Shortlisted' && c.phase2InterviewStatus !== 'Shortlisted' && c.decision !== 'Shortlisted';
+            }
+            return c.decision !== 'Shortlisted';
+        });
+
+        if (nonShortlisted.length > 0) {
+            toast.error(
+                `${nonShortlisted.length} candidate(s) are not Shortlisted. Please shortlist them first before moving to the next phase.`,
+                { id: 'bulk-move-phase-warn', duration: 5000 }
+            );
+            return;
+        }
+
+        try {
+            toast.loading(`Moving ${selectedCandidateIds.length} candidate(s) to next phase...`, { id: 'bulk-move-phase' });
+            await api.post('/ta/candidates/dynamic-phase/bulk-advance', {
+                candidateIds: selectedCandidateIds,
+                targetPhaseOrder: nextPhase?.order,
+                targetPhaseId: nextPhase?.phaseId || nextPhase?._id
+            });
+            toast.success(`Moved ${selectedCandidateIds.length} candidate(s) to next phase`, { id: 'bulk-move-phase' });
+            setSelectedCandidateIds([]);
+            await fetchCandidates(true);
+            if (onRefreshPhases) onRefreshPhases();
+        } catch (error) {
+            console.error('Failed to move candidates to next phase:', error);
+            toast.error(error.response?.data?.message || 'Failed to move candidates to next phase', { id: 'bulk-move-phase' });
+        }
+    };
+
+    const openActionMenu = useCallback((event, candidateId) => {
+        event.stopPropagation();
+        event.preventDefault();
+        if (activeActionMenu === candidateId) {
+            setActiveActionMenu(null);
+        } else {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const menuHeight = 260;
+
+            let positionStyles = {
+                right: window.innerWidth - rect.right
+            };
+
+            if (spaceBelow < menuHeight && rect.top > menuHeight) {
+                positionStyles.bottom = window.innerHeight - rect.top + 5;
+            } else {
+                positionStyles.top = rect.bottom + 5;
+            }
+
+            setActionMenuPosition(positionStyles);
+            setActiveActionMenu(candidateId);
+        }
+    }, [activeActionMenu]);
 
     const handleDirectPhaseMove = useCallback(async (candidate, targetPhase) => {
         if (!targetPhase?.order) {
@@ -1272,8 +1374,10 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                     <div className="relative flex items-center justify-end">
                         <button
                             type="button"
+                            data-toolbar-menu-trigger="true"
                             onClick={(event) => {
                                 event.stopPropagation();
+                                event.preventDefault();
                                 setShowToolbarMenu((prev) => !prev);
                             }}
                             className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
@@ -1285,6 +1389,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
                         {showToolbarMenu && (
                             <div
+                                data-toolbar-menu-content="true"
                                 className="absolute right-0 top-14 z-30 w-[280px] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
                                 onClick={(event) => event.stopPropagation()}
                             >
@@ -1370,6 +1475,79 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     </button>
                                 )}
 
+                                {canEdit && selectedCandidateIds.length > 0 && nextPhase && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            handleBulkMoveToNextPhase();
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                                                <ArrowRight size={15} />
+                                            </span>
+                                            Move to next phase
+                                        </span>
+                                        <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    </button>
+                                )}
+
+                                {canMakeDecisions && selectedCandidateIds.length > 0 && (
+                                    <div className="border-t border-slate-100 pt-1 mt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDecisionSubmenu(prev => !prev)}
+                                            className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                        >
+                                            <span className="flex items-center gap-3">
+                                                <span className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                                                    <CheckCircle size={15} />
+                                                </span>
+                                                <span>Change Decision</span>
+                                            </span>
+                                            <span className="flex items-center gap-2">
+                                                <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                                                    {selectedCandidateIds.length}
+                                                </span>
+                                                <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${showDecisionSubmenu ? 'rotate-180' : ''}`} />
+                                            </span>
+                                        </button>
+
+                                        {showDecisionSubmenu && (
+                                            <div className="mt-1 space-y-0.5 rounded-xl bg-slate-50 p-1.5 border border-slate-100">
+                                                {(activePhase?.decisionOptions?.length > 0
+                                                    ? activePhase.decisionOptions
+                                                    : [
+                                                        { value: 'Shortlisted', label: 'Shortlisted' },
+                                                        { value: 'Rejected', label: 'Rejected' },
+                                                        { value: 'On Hold', label: 'On Hold' },
+                                                        { value: 'Did Not Turn Up', label: 'Did Not Turn Up' },
+                                                        { value: 'Left in between', label: 'Left in between' }
+                                                    ]
+                                                ).map((decisionOption) => (
+                                                    <button
+                                                        key={decisionOption.value}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowToolbarMenu(false);
+                                                            setShowDecisionSubmenu(false);
+                                                            handleBulkDecisionUpdate(decisionOption.value, decisionOption.label);
+                                                        }}
+                                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-slate-700 transition hover:bg-white hover:text-emerald-700 hover:shadow-sm"
+                                                    >
+                                                        <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
+                                                        <span>{decisionOption.label}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {canManageTemplates && (
                                     <button
                                         type="button"
@@ -1441,6 +1619,27 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                         </span>
                                     </button>
                                 )}
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowToolbarMenu(false);
+                                        const reqId = hiringRequest?._id || '';
+                                        const params = new URLSearchParams();
+                                        if (reqId) params.set('hiringRequestId', reqId);
+                                        if (activePhaseOrder) params.set('phase', activePhaseOrder);
+                                        const query = params.toString() ? `?${params.toString()}` : '';
+                                        navigate(`/ta/interview-analytics${query}`);
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                >
+                                    <span className="flex items-center gap-3">
+                                        <span className="rounded-lg bg-teal-50 p-2 text-teal-600">
+                                            <BarChart3 size={15} />
+                                        </span>
+                                        Interview Analytics
+                                    </span>
+                                </button>
 
                                 {canCreate && (
                                     <button
@@ -1857,25 +2056,20 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                                     <span className={`mt-1 w-fit rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                                                         {getCandidateUploadType(candidate)}
                                                     </span>
-                                                    <span className="mt-1 text-[10px] text-slate-600 whitespace-nowrap">
-                                                        {candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'MMM dd, yyyy hh:mm a') : '-'}
-                                                    </span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-2">
+                                            <td className="px-4 py-2 text-right align-top">
+                                                <div className="relative inline-block text-left">
                                                     <button
                                                         type="button"
-                                                        onClick={(event) => toggleActionMenu(event, candidate._id)}
-                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 transition hover:bg-slate-50"
-                                                        aria-label={`Open actions for ${candidate.candidateName}`}
-                                                        title="Candidate actions"
+                                                        onClick={(event) => openActionMenu(event, candidate._id)}
+                                                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
                                                         data-dynamic-action-menu-trigger="true"
                                                     >
                                                         <MoreVertical size={16} />
                                                     </button>
-                                                    {isBusy && <Loader className="animate-spin text-slate-400" size={16} />}
-                                                    {activeActionMenu === candidate._id && typeof document !== 'undefined' && createPortal(
+
+                                                    {activeActionMenu === candidate._id && createPortal(
                                                         <div
                                                             className="fixed z-[9999] w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-2xl shadow-slate-200/80"
                                                             style={actionMenuPosition}
@@ -1959,6 +2153,49 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Pagination Controls */}
+                {!loading && filteredCandidates.length > 0 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-200 text-xs text-slate-500 px-4 pb-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span>Show</span>
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setItemsPerPage(parseInt(e.target.value, 10));
+                                    setPage(1);
+                                }}
+                                className="bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            >
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                                <option value={150}>150</option>
+                            </select>
+                            <span>entries per page (Showing <span className="font-bold text-slate-700">{filteredCandidates.length > 0 ? (page - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-bold text-slate-700">{Math.min(page * itemsPerPage, filteredCandidates.length)}</span> of <span className="font-bold text-slate-700">{filteredCandidates.length}</span> entries)</span>
+                        </div>
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                            <button
+                                type="button"
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page === 1}
+                                className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                Previous
+                            </button>
+                            <span className="text-xs font-semibold text-slate-600 px-2">
+                                Page {page} of {totalPages}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                disabled={page >= totalPages}
+                                className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {showCardVisibilityModal && (

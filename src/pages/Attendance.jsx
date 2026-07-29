@@ -40,8 +40,9 @@ const DEFAULT_ATTENDANCE_SHIFTS = [
 
 const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     const flexConfig = attendanceSettings?.flexWeeklyOff || {};
+    const allowPastDays = flexConfig.allowPastDays !== false;
     if (flexConfig.enabled === false) {
-        return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: 'Disabled' };
+        return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: 'Disabled' };
     }
 
     const normalizeArray = (obj) => {
@@ -58,6 +59,7 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
         const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
         return {
             enabled: true,
+            allowPastDays,
             count: Math.max(1, Number(emp.flexWeeklyOffCount)),
             allowedDays,
             isCustomChoice,
@@ -83,13 +85,14 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     );
     if (matchedRolePolicy) {
         if (matchedRolePolicy.enabled === false) {
-            return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})` };
+            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})` };
         }
         if (matchedRolePolicy.isCustom) {
             const allowedDays = normalizeArray(matchedRolePolicy);
             const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
             return {
                 enabled: true,
+                allowPastDays,
                 count: matchedRolePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
                 allowedDays,
                 isCustomChoice,
@@ -107,13 +110,14 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     );
     if (matchedEmpTypePolicy) {
         if (matchedEmpTypePolicy.enabled === false) {
-            return { enabled: false, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Employment Type (${matchedEmpTypePolicy.employmentType})` };
+            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Employment Type (${matchedEmpTypePolicy.employmentType})` };
         }
         if (matchedEmpTypePolicy.isCustom) {
             const allowedDays = normalizeArray(matchedEmpTypePolicy);
             const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
             return {
                 enabled: true,
+                allowPastDays,
                 count: matchedEmpTypePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
                 allowedDays,
                 isCustomChoice,
@@ -126,6 +130,7 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     const isCustomChoice = defaultAllowedDays.includes('Custom (Employee Chooses)') || defaultAllowedDays.includes('Custom');
     return {
         enabled: true,
+        allowPastDays,
         count: flexConfig.allowedCount ?? 2,
         allowedDays: defaultAllowedDays,
         isCustomChoice,
