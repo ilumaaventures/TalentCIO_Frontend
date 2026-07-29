@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { Loader, ArrowLeft, Download, Plus, CheckCircle, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2, Eye } from 'lucide-react';
+import { Loader, ArrowLeft, Download, Plus, CheckCircle, CheckCircle2, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2, Eye, Mail, Send, X } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 import { ProfileReviewModal } from './PublicApplicationsView';
@@ -52,6 +52,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [editingRoundId, setEditingRoundId] = useState(null);
     const [editingRoundForm, setEditingRoundForm] = useState({ levelName: '', scheduledDate: '', assignedTo: '' });
 
+    // Send Round Mail State
+    const [sendingMailRound, setSendingMailRound] = useState(null);
+    const [viewingMailDetails, setViewingMailDetails] = useState(null);
+    const [sendMailForm, setSendMailForm] = useState({ emailTemplateId: '', emailAccountId: '', cc: '', bcc: '' });
+    const [isSendingMail, setIsSendingMail] = useState(false);
+    const [mailPreview, setMailPreview] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+
     // Workflow State
     const [interviewWorkflows, setInterviewWorkflows] = useState([]);
     const [isApplyingWorkflow, setIsApplyingWorkflow] = useState(false);
@@ -78,6 +86,38 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             setIsResumeFullView(!isResumeFullView);
         }
     };
+
+    const fetchSenderOptions = useCallback(async () => {
+        try {
+            const senderRes = await api.get('/company/email-settings/senders');
+            const senderData = senderRes.data || {};
+            const platformOpt = senderData.platformOption ? {
+                _id: String(senderData.platformOption._id || 'platform'),
+                label: `${senderData.platformOption.fromName || senderData.platformOption.name || 'TalentCIO Platform'} – ${senderData.platformOption.fromAddress || 'no-reply'}`
+            } : { _id: 'platform', label: 'TalentCIO Platform' };
+
+            const accountOpts = (senderData.accounts || []).filter(a => a.ready).map(a => ({
+                _id: String(a._id),
+                label: `${a.fromName || a.name || 'Sender Account'} – ${a.fromAddress || a.email || ''}`
+            }));
+
+            const options = [platformOpt, ...accountOpts];
+            setSenderOptions(options);
+
+            const defaultId = options.some(o => o._id === senderData.defaultAccountId)
+                ? senderData.defaultAccountId
+                : (options[0]?._id || 'platform');
+
+            setSelectedEmailAccountId(defaultId);
+            return { options, defaultId };
+        } catch (e) {
+            console.warn('Could not fetch sender options:', e);
+            const fallback = [{ _id: 'platform', label: 'TalentCIO Platform' }];
+            setSenderOptions(fallback);
+            setSelectedEmailAccountId('platform');
+            return { options: fallback, defaultId: 'platform' };
+        }
+    }, []);
 
     useEffect(() => {
         const initializeData = async () => {
@@ -115,22 +155,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     console.warn('Interviewer user cannot fetch email templates:', e);
                 }
 
-                try {
-                    const senderRes = await api.get('/company/email-settings/senders');
-                    const senderData = senderRes.data || {};
-                    const options = [
-                        senderData.platformOption,
-                        ...((senderData.accounts || []).filter((a) => a.ready))
-                    ].filter(Boolean);
-                    setSenderOptions(options);
-                    setSelectedEmailAccountId(
-                        options.some((o) => o._id === senderData.defaultAccountId)
-                            ? senderData.defaultAccountId
-                            : (options[0]?._id || '')
-                    );
-                } catch (e) {
-                    console.warn('Could not fetch sender options:', e);
-                }
+                await fetchSenderOptions();
             } catch (error) {
                 console.error('Error initializing candidate details:', error);
                 toast.error('Failed to load candidate details correctly.');
@@ -189,22 +214,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 assignedTo: selectedInterviewer && selectedInterviewer.trim() !== '' ? [selectedInterviewer] : [],
                 scheduledDate: newRound.scheduledDate || undefined,
                 phase: currentPhase,
-                customFields: customFields.filter(f => f.key && f.key.trim()),
-                emailTemplateId: selectedTemplateId || undefined,
-                emailAccountId: selectedEmailAccountId || undefined,
-                cc: roundCc.trim() || undefined,
-                bcc: roundBcc.trim() || undefined
+                customFields: customFields.filter(f => f.key && f.key.trim())
             };
 
             await api.post(`/ta/candidates/${candidateId}/rounds`, payload);
-            toast.success('Interview round scheduled & invitation sent');
+            toast.success('Interview round added successfully');
             setIsAddingRound(false);
             setNewRound({ levelName: '', scheduledDate: '' });
             setCustomFields([]);
-            setSelectedTemplateId('');
-            setSelectedEmailAccountId(senderOptions[0]?._id || '');
-            setRoundCc('');
-            setRoundBcc('');
             setSelectedInterviewer('');
             setSelectedRoleForRound('');
             fetchCandidate();
@@ -229,7 +246,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             const payload = {
                 levelName: editingRoundForm.levelName,
                 assignedTo: editingRoundForm.assignedTo && editingRoundForm.assignedTo.trim() !== '' ? [editingRoundForm.assignedTo] : [],
-                scheduledDate: editingRoundForm.scheduledDate || undefined
+                scheduledDate: editingRoundForm.scheduledDate || undefined,
+                customFields: Array.isArray(editingRoundForm.customFields) ? editingRoundForm.customFields.filter(f => f.key && f.key.trim()) : []
             };
 
             await api.put(`/ta/candidates/${candidateId}/rounds/${roundId}`, payload);
@@ -301,6 +319,74 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             setActionLoading(false);
         }
     }, [candidateId, fetchCandidate, onUpdate]);
+
+    const fetchMailPreview = useCallback(async (roundId, templateId, customFieldsOverride = null) => {
+        try {
+            setPreviewLoading(true);
+            const fieldsToPass = customFieldsOverride !== null ? customFieldsOverride : (sendMailForm.customFields || []);
+            const res = await api.post(`/ta/candidates/${candidateId}/rounds/${roundId}/mail-preview`, {
+                emailTemplateId: templateId || undefined,
+                customFields: fieldsToPass.filter(f => f.key && f.key.trim())
+            });
+            setMailPreview(res.data);
+        } catch (error) {
+            console.error('Error fetching mail preview:', error);
+        } finally {
+            setPreviewLoading(false);
+        }
+    }, [candidateId, sendMailForm.customFields]);
+
+    const openSendMailModal = useCallback(async (round) => {
+        setSendingMailRound(round);
+        setMailPreview(null);
+
+        let currentOptions = senderOptions;
+        let defaultId = selectedEmailAccountId;
+
+        if (!currentOptions || currentOptions.length === 0) {
+            const fetched = await fetchSenderOptions();
+            currentOptions = fetched.options;
+            defaultId = fetched.defaultId;
+        }
+
+        const initialTpl = round.emailTemplateId || '';
+        const initialCustomFields = Array.isArray(round.customFields) && round.customFields.length > 0
+            ? round.customFields.map(f => ({ key: f.key || '', value: f.value || '' }))
+            : [];
+
+        const targetAccount = round.emailAccountId || defaultId || (currentOptions[0]?._id || 'platform');
+
+        setSendMailForm({
+            emailTemplateId: initialTpl,
+            emailAccountId: targetAccount,
+            cc: round.cc || '',
+            bcc: round.bcc || '',
+            customFields: initialCustomFields
+        });
+        fetchMailPreview(round._id, initialTpl, initialCustomFields);
+    }, [fetchMailPreview, fetchSenderOptions, selectedEmailAccountId, senderOptions]);
+
+    const handleSendRoundEmail = useCallback(async () => {
+        if (!sendingMailRound) return;
+        try {
+            setIsSendingMail(true);
+            await api.post(`/ta/candidates/${candidateId}/rounds/${sendingMailRound._id}/send-mail`, {
+                emailTemplateId: sendMailForm.emailTemplateId || undefined,
+                emailAccountId: sendMailForm.emailAccountId || undefined,
+                cc: sendMailForm.cc?.trim() || undefined,
+                bcc: sendMailForm.bcc?.trim() || undefined,
+                customFields: Array.isArray(sendMailForm.customFields) ? sendMailForm.customFields.filter(f => f.key && f.key.trim()) : []
+            });
+            toast.success(`Interview email sent for ${sendingMailRound.levelName}`);
+            setSendingMailRound(null);
+            fetchCandidate();
+        } catch (error) {
+            console.error('Error sending interview round email:', error);
+            toast.error(error.response?.data?.message || 'Failed to send email');
+        } finally {
+            setIsSendingMail(false);
+        }
+    }, [candidateId, fetchCandidate, sendMailForm, sendingMailRound]);
 
     const submitEvaluation = useCallback(async (roundId) => {
         if (!evaluationForm.status) {
@@ -629,9 +715,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 </div>
             )}
 
-            <div className={`w-full ${isSidePanel ? 'px-4' : 'px-3 sm:px-4 lg:px-6 mt-6'} ${isSidePanel ? 'flex flex-col' : 'grid grid-cols-1 lg:grid-cols-5'} gap-6`}>
+            <div className={`w-full ${isSidePanel ? 'px-4' : 'px-4 sm:px-6 lg:px-8 xl:px-10 mt-6 max-w-[1920px] mx-auto'} ${isSidePanel ? 'flex flex-col' : 'grid grid-cols-1 lg:grid-cols-12'} gap-6`}>
                 {/* Left Column: Basic Details Summary */}
-                <div className={`${isSidePanel ? 'w-full flex flex-col-reverse space-y-reverse space-y-6' : 'lg:col-span-2 space-y-6'}`}>
+                <div className={`${isSidePanel ? 'w-full flex flex-col-reverse space-y-reverse space-y-6' : 'lg:col-span-4 space-y-6'}`}>
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Profile Summary</h3>
 
@@ -947,7 +1033,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 </div>
 
                 {/* Right Column: Interview Workflow Timeline */}
-                <div className={`${isSidePanel ? 'w-full hidden' : 'lg:col-span-3'} space-y-6`}>
+                <div className={`${isSidePanel ? 'w-full hidden' : 'lg:col-span-8'} space-y-6`}>
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-slate-800">Interview Timeline</h3>
@@ -1028,7 +1114,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                         {roleFilterId && <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">Role: {round.role?.name || 'Assigned'}</span>}
                                                     </div>
 
-                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                         <div>
                                                             <label className="block text-[11px] font-semibold text-slate-600 mb-1">Interviewer</label>
                                                             <select
@@ -1052,63 +1138,13 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                 className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
                                                             />
                                                         </div>
-
-                                                        <div>
-                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Email Template</label>
-                                                            <select
-                                                                value={currentRoundMapping.emailTemplateId || ''}
-                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, emailTemplateId: e.target.value } })}
-                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
-                                                            >
-                                                                <option value="">Standard Invite</option>
-                                                                {emailTemplates.map(t => (
-                                                                    <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                        {senderOptions.length > 0 && (
-                                                            <div>
-                                                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Sender Account</label>
-                                                                <select
-                                                                    value={currentRoundMapping.emailAccountId || selectedEmailAccountId}
-                                                                    onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, emailAccountId: e.target.value } })}
-                                                                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
-                                                                >
-                                                                    {senderOptions.map(option => (
-                                                                        <option key={option._id} value={option._id}>
-                                                                            {option.name} – {option.fromAddress}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        )}
-                                                        <div>
-                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">CC Emails (Optional)</label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="e.g. hr@company.com"
-                                                                value={currentRoundMapping.cc ?? ''}
-                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, cc: e.target.value } })}
-                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">BCC Emails (Optional)</label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="e.g. audit@company.com"
-                                                                value={currentRoundMapping.bcc ?? ''}
-                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, bcc: e.target.value } })}
-                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
-                                                            />
-                                                        </div>
                                                     </div>
 
                                                     {/* Key Value Custom Fields */}
                                                     <div className="border-t border-slate-100 pt-2 mt-1">
                                                         <div className="flex items-center justify-between mb-1.5">
                                                             <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                                                                Custom Fields (Key / Value)
+                                                                Custom Fields (e.g., Meeting Link, Location, Topics)
                                                             </span>
                                                             <button
                                                                 type="button"
@@ -1196,7 +1232,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         {isAddingRound && (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 animate-in fade-in slide-in-from-top-2">
                                 <h4 className="text-sm font-bold text-slate-700 mb-3">Schedule New Round</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
                                         <input
@@ -1242,55 +1278,6 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             type="datetime-local"
                                             value={newRound.scheduledDate}
                                             onChange={(e) => setNewRound({ ...newRound, scheduledDate: e.target.value })}
-                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-500 mb-1">Email Template</label>
-                                        <select
-                                            value={selectedTemplateId}
-                                            onChange={(e) => setSelectedTemplateId(e.target.value)}
-                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                        >
-                                            <option value="">Standard Interview Invite</option>
-                                            {emailTemplates.map(t => (
-                                                <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    {senderOptions.length > 0 && (
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">Sender Account</label>
-                                            <select
-                                                value={selectedEmailAccountId}
-                                                onChange={(e) => setSelectedEmailAccountId(e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                            >
-                                                {senderOptions.map(option => (
-                                                    <option key={option._id} value={option._id}>
-                                                        {option.name} – {option.fromAddress}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-500 mb-1">CC Emails (Optional)</label>
-                                        <input
-                                            type="text"
-                                            placeholder="e.g. hr@company.com"
-                                            value={roundCc}
-                                            onChange={(e) => setRoundCc(e.target.value)}
-                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-500 mb-1">BCC Emails (Optional)</label>
-                                        <input
-                                            type="text"
-                                            placeholder="e.g. audit@company.com"
-                                            value={roundBcc}
-                                            onChange={(e) => setRoundBcc(e.target.value)}
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                         />
                                     </div>
@@ -1434,10 +1421,42 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                 </p>
                                                             )}
                                                         </div>
-                                                        <div className="flex items-center gap-3">
+                                                        <div className="flex flex-wrap items-center gap-2">
                                                             <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(effectiveRoundStatus)}`}>
                                                                 {effectiveRoundStatus}
                                                             </span>
+
+                                                            {(round.mailSent || round.mailSentAt || round.lastMailDetails) && (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                                                        <CheckCircle2 size={13} className="text-emerald-600" /> Mail Sent
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setViewingMailDetails({
+                                                                            ...round.lastMailDetails,
+                                                                            roundName: round.levelName,
+                                                                            sentAt: round.mailSentAt || round.lastMailDetails?.sentAt,
+                                                                            roundRef: round
+                                                                        })}
+                                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors"
+                                                                        title="View Details of Sent Email"
+                                                                    >
+                                                                        <Eye size={13} className="text-slate-600" /> Mail Details
+                                                                    </button>
+                                                                </div>
+                                                            )}
+
+                                                            {canScheduleRounds && !round.isSyntheticPhase2 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openSendMailModal(round)}
+                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                                                                    title={(round.mailSent || round.mailSentAt) ? "Resend or Send New Email for this round" : "Send Email for this interview round"}
+                                                                >
+                                                                    <Mail size={13} /> {(round.mailSent || round.mailSentAt) ? 'Resend Mail' : 'Send Mail'}
+                                                                </button>
+                                                            )}
                                                             {canScheduleRounds && !round.isSyntheticPhase2 && ['Pending', 'Scheduled'].includes(round.status) && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
                                                                     <button
@@ -1451,7 +1470,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 setEditingRoundForm({
                                                                                     levelName: round.levelName,
                                                                                     scheduledDate: formattedDate,
-                                                                                    assignedTo: round.assignedTo?.[0]?._id || ''
+                                                                                    assignedTo: round.assignedTo?.[0]?._id || '',
+                                                                                    customFields: Array.isArray(round.customFields) ? round.customFields.map(f => ({ key: f.key || '', value: f.value || '' })) : []
                                                                                 });
                                                                             }
                                                                         }}
@@ -1631,7 +1651,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 ))}
                                                                             </select>
                                                                         </div>
-                                                                        <div>
+                                                                         <div>
                                                                             <label className="block text-xs font-medium text-slate-500 mb-1">Scheduled Date</label>
                                                                             <input
                                                                                 type="datetime-local"
@@ -1640,6 +1660,67 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                                                             />
                                                                         </div>
+                                                                    </div>
+
+                                                                    {/* Custom Fields Editor for Round Edit */}
+                                                                    <div className="border-t border-slate-200 pt-3">
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <span className="text-xs font-bold text-slate-700">
+                                                                                Custom Fields (Meeting Link, Location, Topics)
+                                                                            </span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setEditingRoundForm(prev => ({
+                                                                                    ...prev,
+                                                                                    customFields: [...(prev.customFields || []), { key: '', value: '' }]
+                                                                                }))}
+                                                                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                                                                            >
+                                                                                <Plus size={13} /> Add Field
+                                                                            </button>
+                                                                        </div>
+                                                                        {(!editingRoundForm.customFields || editingRoundForm.customFields.length === 0) ? (
+                                                                            <p className="text-xs text-slate-400 italic">No custom fields added.</p>
+                                                                        ) : (
+                                                                            <div className="space-y-2">
+                                                                                {editingRoundForm.customFields.map((field, idx) => (
+                                                                                    <div key={idx} className="flex items-center gap-2">
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            placeholder="Key (e.g. Meeting Link)"
+                                                                                            value={field.key}
+                                                                                            onChange={(e) => {
+                                                                                                const updated = [...editingRoundForm.customFields];
+                                                                                                updated[idx].key = e.target.value;
+                                                                                                setEditingRoundForm(prev => ({ ...prev, customFields: updated }));
+                                                                                            }}
+                                                                                            className="w-1/2 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:border-blue-500"
+                                                                                        />
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            placeholder="Value (e.g. https://meet.google.com/xyz)"
+                                                                                            value={field.value}
+                                                                                            onChange={(e) => {
+                                                                                                const updated = [...editingRoundForm.customFields];
+                                                                                                updated[idx].value = e.target.value;
+                                                                                                setEditingRoundForm(prev => ({ ...prev, customFields: updated }));
+                                                                                            }}
+                                                                                            className="w-1/2 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:border-blue-500"
+                                                                                        />
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => {
+                                                                                                const updated = editingRoundForm.customFields.filter((_, i) => i !== idx);
+                                                                                                setEditingRoundForm(prev => ({ ...prev, customFields: updated }));
+                                                                                            }}
+                                                                                            className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
+                                                                                        >
+                                                                                            <X size={14} />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                     <div className="flex justify-end gap-2">
                                                                         <button
@@ -1913,6 +1994,336 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     application={candidate}
                     onClose={() => setIsProfileReviewOpen(false)}
                 />
+            )}
+
+            {/* Send Interview Round Mail Modal */}
+            {sendingMailRound && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl lg:max-w-6xl w-full p-6 space-y-5 my-6">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                    <Mail className="text-indigo-600" size={20} />
+                                    Send Interview Email: {sendingMailRound.levelName}
+                                </h3>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                    Configure sender settings, custom fields, and preview live email content before sending
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setSendingMailRound(null)}
+                                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Expanded 2-Column Desktop Grid Layout */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                            {/* Left Column: Email Configuration Controls */}
+                            <div className="lg:col-span-5 space-y-4 text-xs bg-slate-50/70 p-4 rounded-xl border border-slate-200/80">
+                                <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200 pb-2">
+                                    Mail Configuration
+                                </h4>
+
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">Email Template</label>
+                                    <select
+                                        value={sendMailForm.emailTemplateId}
+                                        onChange={(e) => {
+                                            const tplId = e.target.value;
+                                            setSendMailForm(prev => ({ ...prev, emailTemplateId: tplId }));
+                                            fetchMailPreview(sendingMailRound._id, tplId);
+                                        }}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
+                                    >
+                                        <option value="">Default Interview Schedule Template</option>
+                                        {emailTemplates.map(t => (
+                                            <option key={t._id} value={t._id}>{t.name} ({t.type})</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">Sender Email Account</label>
+                                    <select
+                                        value={sendMailForm.emailAccountId}
+                                        onChange={(e) => setSendMailForm(prev => ({ ...prev, emailAccountId: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
+                                    >
+                                        {senderOptions.map(opt => (
+                                            <option key={opt._id} value={opt._id}>
+                                                {opt.label || `${opt.fromName || opt.name || 'Sender Account'} (${opt.fromAddress || opt.email || ''})`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">CC Email(s)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Comma separated emails (e.g. hr@company.com)"
+                                        value={sendMailForm.cc}
+                                        onChange={(e) => setSendMailForm(prev => ({ ...prev, cc: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">BCC Email(s)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Comma separated emails"
+                                        value={sendMailForm.bcc}
+                                        onChange={(e) => setSendMailForm(prev => ({ ...prev, bcc: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+
+                                {/* Editable Custom Fields inside Send Mail modal */}
+                                <div className="bg-indigo-50/80 border border-indigo-200/80 rounded-xl p-3.5 space-y-2 mt-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                                            Custom Fields (Meeting Link, Location, Topics)
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const updated = [...(sendMailForm.customFields || []), { key: '', value: '' }];
+                                                setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                            }}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-100 border border-indigo-200 rounded-lg transition"
+                                        >
+                                            <Plus size={12} /> Add Field
+                                        </button>
+                                    </div>
+
+                                    {(!sendMailForm.customFields || sendMailForm.customFields.length === 0) ? (
+                                        <p className="text-[11px] text-indigo-700/70 italic">No custom meeting details attached. Click "Add Field" to include links or location.</p>
+                                    ) : (
+                                        <div className="space-y-1.5">
+                                            {sendMailForm.customFields.map((cf, idx) => (
+                                                <div key={idx} className="flex items-center gap-1.5">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Key (e.g. Meeting Link)"
+                                                        value={cf.key}
+                                                        onChange={(e) => {
+                                                            const updated = [...sendMailForm.customFields];
+                                                            updated[idx].key = e.target.value;
+                                                            setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                            fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                        }}
+                                                        className="w-5/12 px-2 py-1 border border-indigo-200/80 rounded-lg text-xs bg-white outline-none focus:border-indigo-500 font-medium"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Value (e.g. Google Meet link)"
+                                                        value={cf.value}
+                                                        onChange={(e) => {
+                                                            const updated = [...sendMailForm.customFields];
+                                                            updated[idx].value = e.target.value;
+                                                            setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                            fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                        }}
+                                                        className="w-6/12 px-2 py-1 border border-indigo-200/80 rounded-lg text-xs bg-white outline-none focus:border-indigo-500 font-medium"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = sendMailForm.customFields.filter((_, i) => i !== idx);
+                                                            setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                            fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                        }}
+                                                        className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Column: Live Email Details & Compiled HTML Preview */}
+                            <div className="lg:col-span-7 border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                                    <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                        <Eye size={15} className="text-indigo-600" /> Live Email Dispatch Preview
+                                    </span>
+                                    {previewLoading && <Loader size={14} className="animate-spin text-indigo-600" />}
+                                </div>
+
+                                {mailPreview ? (
+                                    <div className="space-y-3 text-xs">
+                                        <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs">
+                                            <span className="font-bold text-slate-500">To Candidate:</span>
+                                            <span className="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-lg border border-indigo-100">
+                                                {mailPreview.candidateName} ({mailPreview.candidateEmail || 'No Email'})
+                                            </span>
+                                            {mailPreview.interviewers?.length > 0 && (
+                                                <>
+                                                    <span className="font-bold text-slate-500 ml-2">To Interviewer(s):</span>
+                                                    {mailPreview.interviewers.map(i => (
+                                                        <span key={i.email} className="bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded-md">
+                                                            {i.name} ({i.email})
+                                                        </span>
+                                                    ))}
+                                                </>
+                                            )}
+                                        </div>
+
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs">
+                                            <span className="font-bold text-slate-500 block mb-0.5">Subject Line:</span>
+                                            <p className="font-semibold text-slate-800 text-xs">{mailPreview.subject}</p>
+                                        </div>
+
+                                        {/* Email Body Preview Frame */}
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 max-h-[380px] overflow-y-auto shadow-xs">
+                                            <span className="font-bold text-slate-400 block text-[10px] uppercase tracking-wider mb-2 border-b pb-1">
+                                                Compiled Email Body Preview:
+                                            </span>
+                                            <div
+                                                className="prose prose-xs max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap"
+                                                dangerouslySetInnerHTML={{ __html: mailPreview.htmlBody }}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="text-slate-400 text-xs py-8 text-center">Loading live email preview details...</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button
+                                onClick={() => setSendingMailRound(null)}
+                                disabled={isSendingMail}
+                                className="px-5 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSendRoundEmail}
+                                disabled={isSendingMail}
+                                className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition shadow-sm hover:shadow disabled:opacity-50"
+                            >
+                                {isSendingMail ? <Loader size={16} className="animate-spin" /> : <Send size={16} />}
+                                Send Email Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Sent Email Details View Modal */}
+            {viewingMailDetails && (
+                <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-xs p-4 pt-12 overflow-y-auto">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl lg:max-w-6xl w-full p-6 space-y-4 my-8">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                                    <CheckCircle2 size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-lg">Dispatched Email Record</h3>
+                                    <p className="text-xs text-slate-500">
+                                        Email details for <span className="font-semibold text-slate-700">{viewingMailDetails.roundName || 'Interview Round'}</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setViewingMailDetails(null)}
+                                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 text-xs">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                                <div>
+                                    <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Dispatched At:</span>
+                                    <p className="font-semibold text-slate-800 text-sm">
+                                        {viewingMailDetails.sentAt ? format(new Date(viewingMailDetails.sentAt), 'PPpp') : 'Sent'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Recipient Candidate:</span>
+                                    <p className="font-semibold text-slate-800 text-sm">
+                                        {viewingMailDetails.candidateEmail || candidate?.email || 'N/A'}
+                                    </p>
+                                </div>
+                                {viewingMailDetails.cc && (
+                                    <div>
+                                        <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">CC Emails:</span>
+                                        <p className="font-medium text-slate-700">{viewingMailDetails.cc}</p>
+                                    </div>
+                                )}
+                                {viewingMailDetails.bcc && (
+                                    <div>
+                                        <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">BCC Emails:</span>
+                                        <p className="font-medium text-slate-700">{viewingMailDetails.bcc}</p>
+                                    </div>
+                                )}
+                                {Array.isArray(viewingMailDetails.interviewers) && viewingMailDetails.interviewers.length > 0 && (
+                                    <div className="md:col-span-2">
+                                        <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Assigned Interviewer(s) Notified:</span>
+                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                            {viewingMailDetails.interviewers.map((inv, idx) => (
+                                                <span key={idx} className="bg-white border border-slate-200 px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-700">
+                                                    {inv.name} ({inv.email || 'N/A'})
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+                                <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Subject:</span>
+                                <p className="font-bold text-slate-800 text-sm">{viewingMailDetails.subject || 'Interview Invitation'}</p>
+                            </div>
+
+                            <div className="bg-white p-5 rounded-xl border border-slate-200 min-h-[240px] max-h-[520px] overflow-y-auto shadow-xs">
+                                <span className="text-slate-400 font-bold text-[10px] uppercase block mb-2 border-b pb-1">
+                                    Actual Dispatched Email Content:
+                                </span>
+                                <div
+                                    className="prose prose-xs max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap"
+                                    dangerouslySetInnerHTML={{ __html: viewingMailDetails.htmlBody || '<p className="text-slate-400 italic">No HTML content logged.</p>' }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                            {viewingMailDetails.roundRef && canScheduleRounds && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const targetRound = viewingMailDetails.roundRef;
+                                        setViewingMailDetails(null);
+                                        openSendMailModal(targetRound);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition"
+                                >
+                                    <Mail size={14} /> Resend Email
+                                </button>
+                            )}
+                            <div className="ml-auto">
+                                <button
+                                    onClick={() => setViewingMailDetails(null)}
+                                    className="px-5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
