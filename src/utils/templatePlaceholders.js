@@ -2,43 +2,28 @@ export const TEMPLATE_PLACEHOLDERS = [
     'candidateName',
     'firstName',
     'lastName',
-    'fullName',
     'email',
     'phone',
-    'workEmail',
-    'mobile',
-    'phoneNumber',
     'jobTitle',
     'designation',
-    'client',
+    'clientName',
+    'companyName',
     'department',
-    'offerDate',
-    'dateOfOffer',
-    'workLocation',
-    'employmentDetails',
     'location',
     'managerName',
     'managerEmail',
     'recruiterName',
-    'companyName',
     'requestId',
     'currentStatus',
     'interviewDate',
+    'interviewTime',
+    'roundName',
+    'interviewerName',
     'interviewLink',
     'customFields',
     'additionalDetails',
     'customNote',
-    'employeeCode',
-    'exitType',
-    'lastWorkingDay',
-    'documentList',
-    'documentListBlock',
-    'personalNote',
-    'offboardingStatus',
-    'hrRemarks',
-    'employeeFirstName',
-    'employeeFullName',
-    'employeeId',
+    'offerDate',
     'joiningDate',
     'submissionDeadline',
     'portalLink',
@@ -48,9 +33,36 @@ export const TEMPLATE_PLACEHOLDERS = [
     'sharedFilesBlock',
     'deadlineBlock',
     'portalButton',
+    'employeeCode',
+    'employeeId',
+    'exitType',
+    'lastWorkingDay',
+    'documentList',
+    'documentListBlock',
+    'personalNote',
+    'offboardingStatus',
+    'hrRemarks',
     'currentYear',
     'currentDate',
     'JD'
+];
+
+export const PLACEHOLDER_ALIASES = [
+    ...TEMPLATE_PLACEHOLDERS,
+    'fullName',
+    'candidateEmail',
+    'workEmail',
+    'mobile',
+    'phoneNumber',
+    'roleTitle',
+    'client',
+    'dateOfOffer',
+    'workLocation',
+    'scheduledDate',
+    'interviewRound',
+    'employeeFirstName',
+    'employeeFullName',
+    'customFieldsTable'
 ];
 
 export const GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS = [
@@ -121,7 +133,7 @@ export const OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS = [
 ];
 
 export const getSupportedPlaceholderTokens = (placeholders = TEMPLATE_PLACEHOLDERS) => placeholders.map((placeholder) => `{{${placeholder}}}`);
-const SUPPORTED_PLACEHOLDER_PATTERN = TEMPLATE_PLACEHOLDERS.join('|');
+const SUPPORTED_PLACEHOLDER_PATTERN = PLACEHOLDER_ALIASES.join('|');
 const TRUSTED_HTML_PLACEHOLDERS = new Set([
     'credentialsSection',
     'requestedSectionsBlock',
@@ -204,7 +216,8 @@ export const validateTemplateSyntax = (template, allowedPlaceholders = TEMPLATE_
                 };
             }
 
-            if (Array.isArray(allowedPlaceholders) && allowedPlaceholders.length && !allowedPlaceholders.includes(token)) {
+            const checkList = allowedPlaceholders === TEMPLATE_PLACEHOLDERS ? PLACEHOLDER_ALIASES : allowedPlaceholders;
+            if (Array.isArray(checkList) && checkList.length && !checkList.includes(token)) {
                 const { line, column } = getLineAndColumn(content, index);
                 return {
                     valid: false,

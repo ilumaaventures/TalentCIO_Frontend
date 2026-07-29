@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { format } from 'date-fns';
 import {
     ArrowLeft, RefreshCw, Users, CheckCircle2, XCircle, Clock,
     Calendar, Award, BarChart3, Search, UserCheck, Briefcase, ChevronLeft, ChevronRight
@@ -31,6 +32,9 @@ const InterviewAnalytics = () => {
     const [candidateTrackers, setCandidateTrackers] = useState([]);
     const [updatingDecisionId, setUpdatingDecisionId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [decisionFilter, setDecisionFilter] = useState('');
+    const [resultFilter, setResultFilter] = useState('');
+    const [dynamicRoundFilter, setDynamicRoundFilter] = useState('');
 
     const updateUrlParams = (newReqId, newPhase, newPage, newLimit) => {
         const params = {};
@@ -101,6 +105,12 @@ const InterviewAnalytics = () => {
     };
 
     const handleDecisionChange = async (candidateId, newDecision) => {
+        const previousTrackers = [...candidateTrackers];
+        // Optimistic UI update
+        setCandidateTrackers(prev => prev.map(c =>
+            c._id === candidateId ? { ...c, finalDecision: newDecision } : c
+        ));
+
         try {
             setUpdatingDecisionId(candidateId);
             let endpoint = `/ta/candidates/${candidateId}/decision`;
@@ -113,32 +123,110 @@ const InterviewAnalytics = () => {
 
             await api.patch(endpoint, payload);
             toast.success(`Synced decision to ${newDecision}`);
-
-            setCandidateTrackers(prev => prev.map(c =>
-                c._id === candidateId ? { ...c, finalDecision: newDecision } : c
-            ));
         } catch (error) {
             console.error('Failed to sync decision:', error);
+            // Rollback on failure
+            setCandidateTrackers(previousTrackers);
             toast.error('Failed to update decision in candidate table');
         } finally {
             setUpdatingDecisionId(null);
         }
     };
 
+    const availableRoundNames = useMemo(() => {
+        const namesSet = new Set();
+        (roundStats || []).forEach(r => {
+            if (r.roundName) namesSet.add(r.roundName.trim());
+        });
+        (candidateTrackers || []).forEach(c => {
+            (c.rounds || []).forEach(r => {
+                if (r.levelName) namesSet.add(r.levelName.trim());
+            });
+        });
+        return Array.from(namesSet);
+    }, [roundStats, candidateTrackers]);
+
+    const dynamicRoundFilterOptions = useMemo(() => {
+        const options = [];
+        availableRoundNames.forEach(rName => {
+            options.push({ value: `cleared::${rName}`, label: `Cleared ${rName}` });
+            options.push({ value: `failed::${rName}`, label: `Failed ${rName}` });
+            options.push({ value: `pending::${rName}`, label: `Pending ${rName}` });
+        });
+        return options;
+    }, [availableRoundNames]);
+
     const filteredTrackers = candidateTrackers
         .filter(item => item.totalRounds > 0)
-        .filter(item =>
-            item.candidateName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.roleTitle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.clientName?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+        .filter(item => {
+            if (!searchTerm) return true;
+            const term = searchTerm.toLowerCase();
+            return (
+                item.candidateName?.toLowerCase().includes(term) ||
+                item.roleTitle?.toLowerCase().includes(term) ||
+                item.clientName?.toLowerCase().includes(term)
+            );
+        })
+        .filter(item => {
+            if (!decisionFilter) return true;
+            return (item.finalDecision || 'None') === decisionFilter;
+        })
+        .filter(item => {
+            if (!resultFilter) return true;
+            return item.rounds?.some(r => r.status === resultFilter);
+        })
+        .filter(item => {
+            if (!dynamicRoundFilter) return true;
+            const [action, targetRoundName] = dynamicRoundFilter.split('::');
+            const matchedRound = item.rounds?.find(r => (r.levelName || '').trim() === targetRoundName);
+            if (!matchedRound) return false;
+
+            if (action === 'cleared') return matchedRound.status === 'Pass';
+            if (action === 'failed') return matchedRound.status === 'Fail';
+            if (action === 'pending') return matchedRound.status === 'Pending' || matchedRound.status === 'Scheduled';
+        });
+
+    const dynamicRoundColumns = useMemo(() => {
+        let maxR = 1;
+        (filteredTrackers || []).forEach(item => {
+            if (Array.isArray(item.rounds) && item.rounds.length > maxR) {
+                maxR = item.rounds.length;
+            }
+        });
+        return Array.from({ length: maxR }).map((_, idx) => {
+            const counts = {};
+            (filteredTrackers || []).forEach(item => {
+                const r = item.rounds?.[idx];
+                if (r?.levelName) {
+                    const name = r.levelName.trim();
+                    counts[name] = (counts[name] || 0) + 1;
+                }
+            });
+
+            let topName = '';
+            let maxCount = 0;
+            Object.entries(counts).forEach(([name, count]) => {
+                if (count > maxCount) {
+                    maxCount = count;
+                    topName = name;
+                }
+            });
+
+            const headerText = topName || `Round ${idx + 1}`;
+
+            return {
+                index: idx,
+                title: headerText
+            };
+        });
+    }, [filteredTrackers]);
 
     const selectedReqObj = requisitions.find(r => r._id === selectedRequisitionId);
     const startEntry = pagination.totalCount > 0 ? (pagination.currentPage - 1) * pagination.limit + 1 : 0;
     const endEntry = Math.min(pagination.currentPage * pagination.limit, pagination.totalCount);
 
     return (
-        <div className="min-h-screen bg-slate-50/50 p-6 space-y-6">
+        <div className="min-h-screen bg-slate-50/50 p-4 sm:p-6 lg:p-8 space-y-6 w-full max-w-[1920px] mx-auto">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
                 <div className="flex items-center gap-3">
@@ -188,16 +276,17 @@ const InterviewAnalytics = () => {
                     </div>
 
                     {/* Requisition Dropdown Filter */}
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs" title={selectedReqObj ? `${selectedReqObj.title} (${selectedReqObj.client})` : 'All Requisitions'}>
                         <Briefcase size={14} className="text-slate-400" />
                         <select
                             value={selectedRequisitionId}
                             onChange={(e) => handleRequisitionChange(e.target.value)}
+                            title={selectedReqObj ? `${selectedReqObj.title} (${selectedReqObj.client})` : 'All Requisitions'}
                             className="bg-transparent font-medium text-slate-700 focus:outline-none max-w-[220px] truncate"
                         >
-                            <option value="">All Requisitions</option>
+                            <option value="" title="All Requisitions">All Requisitions</option>
                             {requisitions.map(r => (
-                                <option key={r._id} value={r._id}>
+                                <option key={r._id} value={r._id} title={`${r.title} (${r.client})`}>
                                     {r.title} ({r.client})
                                 </option>
                             ))}
@@ -317,8 +406,8 @@ const InterviewAnalytics = () => {
                             Round details and synchronized final hiring decisions
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="relative w-full sm:w-64">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative w-full sm:w-56">
                             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
@@ -329,39 +418,150 @@ const InterviewAnalytics = () => {
                             />
                         </div>
 
+                        {/* Filter by Final Decision */}
+                        <select
+                            value={decisionFilter}
+                            onChange={(e) => setDecisionFilter(e.target.value)}
+                            className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500"
+                        >
+                            <option value="">All Decisions</option>
+                            {DECISION_OPTIONS.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                        </select>
+
+                        {/* Filter by Round Result */}
+                        <select
+                            value={resultFilter}
+                            onChange={(e) => setResultFilter(e.target.value)}
+                            className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500"
+                        >
+                            <option value="">All Round Results</option>
+                            <option value="Pass">Passed Rounds</option>
+                            <option value="Fail">Failed Rounds</option>
+                            <option value="Pending">Pending Evaluation</option>
+                            <option value="Scheduled">Scheduled</option>
+                        </select>
+
+                        {/* Dynamic Stage Outcome Filter */}
+                        {dynamicRoundFilterOptions.length > 0 && (
+                            <select
+                                value={dynamicRoundFilter}
+                                onChange={(e) => setDynamicRoundFilter(e.target.value)}
+                                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500"
+                            >
+                                <option value="">All Dynamic Stages</option>
+                                {dynamicRoundFilterOptions.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        )}
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse min-w-[900px]">
-                        <thead>
-                            <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 font-semibold uppercase tracking-wider">
-                                <th className="p-3.5 min-w-[160px]">Candidate Name</th>
-                                <th className="p-3.5 text-center min-w-[130px]">Total Interview Rounds</th>
-                                <th className="p-3.5 min-w-[210px]">Round 1 Details</th>
-                                <th className="p-3.5 min-w-[210px]">Round 2 Details</th>
-                                <th className="p-3.5 min-w-[210px]">Round 3 Details</th>
-                                <th className="p-3.5 min-w-[150px]">Final Decision</th>
+                <div className="overflow-x-auto max-h-[680px]">
+                    <table className="w-full text-left text-xs border-collapse min-w-[850px]">
+                        <thead className="sticky top-0 bg-slate-50 z-20 shadow-xs">
+                            <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                                <th className="p-2 px-2.5 w-[20%] min-w-[20%] sticky left-0 bg-slate-50 z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">Candidate Name</th>
+                                <th className="p-2 px-1.5 w-[5%] min-w-[5%] text-center">Total Rounds</th>
+                                {dynamicRoundColumns.map((col) => (
+                                    <th
+                                        key={col.index}
+                                        style={{ width: `${65 / (dynamicRoundColumns.length || 1)}%` }}
+                                        className="p-2 px-2.5 min-w-[140px]"
+                                    >
+                                        {col.title}
+                                    </th>
+                                ))}
+                                <th className="p-2 px-2.5 w-[10%] min-w-[10%]">Final Decision</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-slate-700">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-slate-400">
+                                    <td colSpan={3 + dynamicRoundColumns.length} className="p-5 text-center text-slate-400">
                                         Loading candidate interview tracking data...
                                     </td>
                                 </tr>
                             ) : filteredTrackers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-slate-400">
-                                        No candidates found for the selected requisition.
+                                    <td colSpan={3 + dynamicRoundColumns.length} className="p-6 text-center text-slate-500 space-y-2">
+                                        <div className="text-slate-400 font-medium text-xs">
+                                            {searchTerm || decisionFilter || resultFilter || dynamicRoundFilter ? 'No candidates matching active filters' : 'No candidates found for the selected requisition.'}
+                                        </div>
+                                        {(searchTerm || decisionFilter || resultFilter || dynamicRoundFilter || selectedRequisitionId) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSearchTerm('');
+                                                    setDecisionFilter('');
+                                                    setResultFilter('');
+                                                    setDynamicRoundFilter('');
+                                                    if (selectedRequisitionId) handleRequisitionChange('');
+                                                }}
+                                                className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition inline-flex items-center gap-1"
+                                            >
+                                                Clear All Filters
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ) : (
                                 filteredTrackers.map((candidate) => {
-                                    const r1 = candidate.rounds?.[0];
-                                    const r2 = candidate.rounds?.[1];
-                                    const r3 = candidate.rounds?.[2];
+                                    const renderRoundDetailsCell = (r) => {
+                                        if (!r) return <span className="text-slate-300 text-xs">—</span>;
+
+                                        const formattedDate = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd MMM, hh:mm a') : null;
+
+                                        return (
+                                            <div className="space-y-0.5 text-[10px]">
+                                                <div className="font-bold text-slate-800 text-[11px] flex items-center justify-between gap-1 border-b border-slate-100 pb-0.5 mb-0.5">
+                                                    <span>{r.levelName || 'Interview Round'}</span>
+                                                    {r.mailSent && (
+                                                        <span className="inline-flex items-center gap-0.5 text-[8px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded">
+                                                            <CheckCircle2 size={9} className="text-emerald-600" /> Mail Sent
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div><span className="font-semibold text-slate-600">Interviewer:</span> {r.interviewer}</div>
+                                                {formattedDate && (
+                                                    <div className="text-[10px] text-slate-500 font-medium">
+                                                        <span className="font-semibold text-slate-600">Scheduled:</span> {formattedDate}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <span className="font-semibold text-slate-600">Rating:</span>{' '}
+                                                    <span className={`font-bold ${r.rawRating >= 7 ? 'text-emerald-600' : r.rawRating >= 5 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                                        {r.rating}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-semibold text-slate-600">Result:</span>
+                                                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                                        r.status === 'Pass' ? 'bg-emerald-100 text-emerald-700' :
+                                                        r.status === 'Fail' ? 'bg-rose-100 text-rose-700' :
+                                                        'bg-blue-100 text-blue-700'
+                                                    }`}>
+                                                        {r.status}
+                                                    </span>
+                                                </div>
+                                                {Array.isArray(r.customFields) && r.customFields.length > 0 && (
+                                                    <div className="mt-0.5 bg-slate-50 p-1 rounded border border-slate-200/80 space-y-0.5 text-[9px]">
+                                                        {r.customFields.map((cf, idx) => (
+                                                            <div key={idx} className="flex flex-col gap-0.5">
+                                                                <span className="font-semibold text-slate-500 uppercase text-[8px]">{cf.key}:</span>
+                                                                <span className="font-medium text-slate-800 break-all select-all">{cf.value}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <div className="text-slate-500 italic line-clamp-2">
+                                                    <span className="font-semibold text-slate-600 not-italic">Feedback:</span> {r.feedback}
+                                                </div>
+                                            </div>
+                                        );
+                                    };
 
                                     return (
                                         <tr
@@ -374,91 +574,48 @@ const InterviewAnalytics = () => {
                                             }}
                                             className="hover:bg-indigo-50/50 cursor-pointer transition align-top group"
                                         >
-                                            {/* Candidate Name */}
-                                            <td className="p-3.5">
-                                                <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition">{candidate.candidateName}</div>
-                                                <div className="text-[11px] text-slate-400">{candidate.roleTitle}</div>
-                                                <div className="text-[10px] text-indigo-500 font-medium">{candidate.clientName}</div>
+                                            {/* Candidate Name (Sticky Left Column - 20% Width) */}
+                                            <td className="p-2 px-2.5 w-[20%] min-w-[20%] sticky left-0 bg-white group-hover:bg-indigo-50/90 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
+                                                <div className="font-bold text-slate-800 text-xs group-hover:text-indigo-600 transition">{candidate.candidateName}</div>
+                                                <div className="text-[10px] text-slate-400">{candidate.roleTitle}</div>
+                                                <div className="text-[9px] text-indigo-500 font-medium">{candidate.clientName}</div>
+                                                <div className="flex items-center gap-1 mt-0.5 flex-wrap text-[9px]">
+                                                    {candidate.noticePeriod != null && (
+                                                        <span className="px-1 py-0.2 bg-blue-50 text-blue-700 font-semibold rounded border border-blue-100" title="Notice Period">
+                                                            Notice: {candidate.noticePeriod}d
+                                                        </span>
+                                                    )}
+                                                    {candidate.expectedCTC != null && (
+                                                        <span className="px-1 py-0.2 bg-emerald-50 text-emerald-700 font-semibold rounded border border-emerald-100" title="Expected CTC">
+                                                            Exp: {candidate.expectedCTC} LPA
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
 
-                                            {/* Total Interview Rounds */}
-                                            <td className="p-3.5 text-center">
-                                                <span className="inline-flex min-w-[28px] h-7 items-center justify-center rounded-full bg-slate-100 text-slate-700 font-bold text-xs">
+                                            {/* Total Interview Rounds (5% Width) */}
+                                            <td className="p-2 px-1.5 w-[5%] min-w-[5%] text-center">
+                                                <span className="inline-flex min-w-[22px] h-5 items-center justify-center rounded-full bg-slate-100 text-slate-700 font-bold text-[10px]">
                                                     {candidate.totalRounds}
                                                 </span>
                                             </td>
 
-                                            {/* Round 1 Details */}
-                                            <td className="p-3.5 bg-slate-50/30">
-                                                {r1 ? (
-                                                    <div className="space-y-1 text-[11px]">
-                                                        <div><span className="font-semibold text-slate-600">Interviewer:</span> {r1.interviewer}</div>
-                                                        <div><span className="font-semibold text-slate-600">Rating:</span> <span className="font-bold text-amber-600">{r1.rating}</span></div>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="font-semibold text-slate-600">Result:</span>
-                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                                                r1.status === 'Pass' ? 'bg-emerald-100 text-emerald-700' :
-                                                                r1.status === 'Fail' ? 'bg-rose-100 text-rose-700' :
-                                                                'bg-blue-100 text-blue-700'
-                                                            }`}>
-                                                                {r1.status}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-slate-500 italic line-clamp-2"><span className="font-semibold text-slate-600 not-italic">Feedback:</span> {r1.feedback}</div>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-slate-300 text-xs">—</span>
-                                                )}
-                                            </td>
+                                            {/* Dynamic Round Details Columns (Consumes remaining 65% width) */}
+                                            {dynamicRoundColumns.map((col) => {
+                                                const round = candidate.rounds?.[col.index];
+                                                return (
+                                                    <td
+                                                        key={col.index}
+                                                        style={{ width: `${65 / (dynamicRoundColumns.length || 1)}%` }}
+                                                        className="p-2 px-2.5 bg-slate-50/30 min-w-[140px]"
+                                                    >
+                                                        {renderRoundDetailsCell(round)}
+                                                    </td>
+                                                );
+                                            })}
 
-                                            {/* Round 2 Details */}
-                                            <td className="p-3.5 bg-slate-50/30">
-                                                {r2 ? (
-                                                    <div className="space-y-1 text-[11px]">
-                                                        <div><span className="font-semibold text-slate-600">Interviewer:</span> {r2.interviewer}</div>
-                                                        <div><span className="font-semibold text-slate-600">Rating:</span> <span className="font-bold text-amber-600">{r2.rating}</span></div>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="font-semibold text-slate-600">Result:</span>
-                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                                                r2.status === 'Pass' ? 'bg-emerald-100 text-emerald-700' :
-                                                                r2.status === 'Fail' ? 'bg-rose-100 text-rose-700' :
-                                                                'bg-blue-100 text-blue-700'
-                                                            }`}>
-                                                                {r2.status}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-slate-500 italic line-clamp-2"><span className="font-semibold text-slate-600 not-italic">Feedback:</span> {r2.feedback}</div>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-slate-300 text-xs">—</span>
-                                                )}
-                                            </td>
-
-                                            {/* Round 3 Details */}
-                                            <td className="p-3.5 bg-slate-50/30">
-                                                {r3 ? (
-                                                    <div className="space-y-1 text-[11px]">
-                                                        <div><span className="font-semibold text-slate-600">Interviewer:</span> {r3.interviewer}</div>
-                                                        <div><span className="font-semibold text-slate-600">Rating:</span> <span className="font-bold text-amber-600">{r3.rating}</span></div>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="font-semibold text-slate-600">Result:</span>
-                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                                                r3.status === 'Pass' ? 'bg-emerald-100 text-emerald-700' :
-                                                                r3.status === 'Fail' ? 'bg-rose-100 text-rose-700' :
-                                                                'bg-blue-100 text-blue-700'
-                                                            }`}>
-                                                                {r3.status}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-slate-500 italic line-clamp-2"><span className="font-semibold text-slate-600 not-italic">Feedback:</span> {r3.feedback}</div>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-slate-300 text-xs">—</span>
-                                                )}
-                                            </td>
-
-                                            {/* Final Decision Dropdown */}
-                                            <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
+                                            {/* Final Decision Dropdown (10% Width) */}
+                                            <td className="p-2 px-2.5 w-[10%] min-w-[10%]" onClick={(e) => e.stopPropagation()}>
                                                 <select
                                                     value={candidate.finalDecision || 'None'}
                                                     disabled={updatingDecisionId === candidate._id}

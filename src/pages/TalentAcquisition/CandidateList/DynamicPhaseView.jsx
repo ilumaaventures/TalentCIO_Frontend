@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, ArrowRightLeft, Calendar, CheckCircle, Clock3, Download, Eye, FileText, Loader, Mail, Menu, MoreVertical, Plus, Search, SlidersHorizontal, ThumbsDown, ThumbsUp, Upload, Users, UserCheck, XCircle, BarChart3, ChevronDown } from 'lucide-react';
+import { ArrowRight, ArrowRightLeft, Calendar, CheckCircle, Clock3, Download, Eye, FileText, Loader, Mail, Menu, MoreVertical, Plus, Search, SlidersHorizontal, ThumbsDown, ThumbsUp, Upload, Users, UserCheck, XCircle, BarChart3, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -251,7 +251,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [page, setPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(50);
     const [search, setSearch] = useState('');
-    const debouncedSearch = useDebouncedValue(search, 2000);
+    const debouncedSearch = useDebouncedValue(search, 200);
     const [statusFilter, setStatusFilter] = useState('All');
     const [decisionFilter, setDecisionFilter] = useState('All');
     const [pulledByFilter, setPulledByFilter] = useState('All');
@@ -268,6 +268,33 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [transferPresetIds, setTransferPresetIds] = useState([]);
     const [showMassInterviewModal, setShowMassInterviewModal] = useState(false);
     const [showToolbarMenu, setShowToolbarMenu] = useState(false);
+    const [sortColumn, setSortColumn] = useState(null);
+    const [sortDirection, setSortDirection] = useState('asc');
+
+    const handleHeaderSort = (columnKey) => {
+        if (sortColumn === columnKey) {
+            if (sortDirection === 'asc') {
+                setSortDirection('desc');
+            } else {
+                setSortColumn(null);
+                setSortDirection('asc');
+            }
+        } else {
+            setSortColumn(columnKey);
+            setSortDirection('asc');
+        }
+    };
+
+    const renderSortIcon = (columnKey) => {
+        if (sortColumn !== columnKey) {
+            return <ArrowUpDown size={12} className="opacity-40 hover:opacity-100 transition-opacity ml-1 inline text-slate-400" />;
+        }
+        return sortDirection === 'asc' ? (
+            <ArrowUp size={12} className="text-blue-600 ml-1 inline font-bold" />
+        ) : (
+            <ArrowDown size={12} className="text-blue-600 ml-1 inline font-bold" />
+        );
+    };
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showBulkResumeImport, setShowBulkResumeImport] = useState(false);
     const [activeActionMenu, setActiveActionMenu] = useState(null);
@@ -364,7 +391,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
     const fetchCandidates = useCallback(async (silent = false) => {
         try {
-            if (!silent) setLoading(true);
+            if (!silent && candidates.length === 0) setLoading(true);
             const params = { t: Date.now() };
             if (dateFilterField) params.dateField = dateFilterField;
             if (dateFrom) params.startDate = dateFrom;
@@ -375,9 +402,9 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             console.error('Failed to fetch dynamic candidates:', error);
             toast.error(error.response?.data?.message || 'Failed to load candidates');
         } finally {
-            if (!silent) setLoading(false);
+            setLoading(false);
         }
-    }, [dateFilterField, dateFrom, dateTo, hiringRequest._id]);
+    }, [candidates.length, dateFilterField, dateFrom, dateTo, hiringRequest._id]);
 
     useEffect(() => {
         if (hiringRequest?._id) {
@@ -552,20 +579,64 @@ const DynamicPhaseView = ({ hiringRequest }) => {
         })
     ), [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, statusFilter, uploadedByFilter, uploadTypeFilter]);
 
-    const totalPages = Math.max(Math.ceil(filteredCandidates.length / itemsPerPage) || 1, 1);
+    const sortedCandidates = useMemo(() => {
+        if (!sortColumn) return filteredCandidates;
+        return [...filteredCandidates].sort((a, b) => {
+            let valA = '';
+            let valB = '';
+            switch (sortColumn) {
+                case 'candidate':
+                    valA = (a.candidateName || a.name || `${a.firstName || ''} ${a.lastName || ''}`).trim().toLowerCase();
+                    valB = (b.candidateName || b.name || `${b.firstName || ''} ${b.lastName || ''}`).trim().toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                case 'ctc':
+                    valA = Number(a.currentCTC || a.expectedCTC || a.ctc || 0);
+                    valB = Number(b.currentCTC || b.expectedCTC || b.ctc || 0);
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                case 'status': {
+                    const entryA = getPhaseEntryForOrder(a, activePhase?.order);
+                    const entryB = getPhaseEntryForOrder(b, activePhase?.order);
+                    valA = (entryA?.status || a.status || '').toLowerCase();
+                    valB = (entryB?.status || b.status || '').toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                }
+                case 'decision': {
+                    const entryA = getPhaseEntryForOrder(a, activePhase?.order);
+                    const entryB = getPhaseEntryForOrder(b, activePhase?.order);
+                    valA = (entryA?.decision || a.decision || '').toLowerCase();
+                    valB = (entryB?.decision || b.decision || '').toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                }
+                case 'interviews': {
+                    const rA = getDisplayInterviewRoundsForPhase(a, activePhase?.order);
+                    const rB = getDisplayInterviewRoundsForPhase(b, activePhase?.order);
+                    valA = rA.length;
+                    valB = rB.length;
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                }
+                case 'pulled':
+                    valA = new Date(a.createdAt || a.uploadedAt || a.pulledAt || 0).getTime();
+                    valB = new Date(b.createdAt || b.uploadedAt || b.pulledAt || 0).getTime();
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                default:
+                    return 0;
+            }
+        });
+    }, [filteredCandidates, sortColumn, sortDirection, activePhase?.order]);
+
+    const totalPages = Math.max(Math.ceil(sortedCandidates.length / itemsPerPage) || 1, 1);
     const paginatedCandidates = useMemo(() => {
         const startIndex = (page - 1) * itemsPerPage;
-        return filteredCandidates.slice(startIndex, startIndex + itemsPerPage);
-    }, [filteredCandidates, page, itemsPerPage]);
+        return sortedCandidates.slice(startIndex, startIndex + itemsPerPage);
+    }, [sortedCandidates, page, itemsPerPage]);
 
     useEffect(() => {
         setPage(1);
     }, [activePhaseOrder, search, statusFilter, decisionFilter, pulledByFilter, uploadedByFilter, uploadTypeFilter, itemsPerPage]);
 
     useEffect(() => {
-        const visibleIds = new Set(phaseCandidates.map((candidate) => candidate._id));
-        setSelectedCandidateIds((prev) => prev.filter((id) => visibleIds.has(id)));
-    }, [phaseCandidates]);
+        setSelectedCandidateIds([]);
+    }, [activePhaseOrder]);
 
     const allVisibleSelected = filteredCandidates.length > 0 && filteredCandidates.every((candidate) => selectedCandidateIds.includes(candidate._id));
 
@@ -829,6 +900,10 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             } else {
                 toast.success('Decision saved');
             }
+            await fetchCandidates(true);
+        } catch (error) {
+            console.error('Failed to update decision:', error);
+            toast.error(error.response?.data?.message || 'Failed to update decision');
         } finally {
             setActionLoadingId('');
         }
@@ -1739,6 +1814,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     type="text"
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
+                                    onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
                                     placeholder="Search candidate name"
                                     className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                                 />
@@ -1918,24 +1994,24 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                     />
                                 </th>
-                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Candidate</th>
-                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">CTC Details</th>
-                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Current Status</th>
-                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Decision</th>
-                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Interviews</th>
-                                <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pulled / Uploaded</th>
+                                <th onClick={() => handleHeaderSort('candidate')} className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-slate-800 transition-colors select-none">Candidate {renderSortIcon('candidate')}</th>
+                                <th onClick={() => handleHeaderSort('ctc')} className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-slate-800 transition-colors select-none">CTC Details {renderSortIcon('ctc')}</th>
+                                <th onClick={() => handleHeaderSort('status')} className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-slate-800 transition-colors select-none">Current Status {renderSortIcon('status')}</th>
+                                <th onClick={() => handleHeaderSort('decision')} className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-slate-800 transition-colors select-none">Decision {renderSortIcon('decision')}</th>
+                                <th onClick={() => handleHeaderSort('interviews')} className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-slate-800 transition-colors select-none">Interviews {renderSortIcon('interviews')}</th>
+                                <th onClick={() => handleHeaderSort('pulled')} className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-slate-800 transition-colors select-none">Pulled / Uploaded {renderSortIcon('pulled')}</th>
                                 <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {filteredCandidates.length === 0 ? (
+                            {paginatedCandidates.length === 0 ? (
                                 <tr>
                                     <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
                                         No candidates match this phase and filter combination.
                                     </td>
                                 </tr>
                             ) : (
-                                filteredCandidates.map((candidate) => {
+                                paginatedCandidates.map((candidate) => {
                                     const phaseEntry = getPhaseEntryForOrder(candidate, activePhase?.order);
                                     const isBusy = actionLoadingId === candidate._id;
                                     const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase?.order);
