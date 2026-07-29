@@ -13,6 +13,7 @@ import {
     RotateCcw,
     Save,
     ShieldCheck,
+    SlidersHorizontal,
     Sparkles,
     Trash2,
     UserCheck,
@@ -209,6 +210,7 @@ const AttendanceSettings = () => {
 
     const selfService = attendance.selfService || {};
     const canEditWeeklyOff = selfService.weeklyOff !== false;
+    const canEditFlexWeeklyOff = selfService.weeklyOff !== false && selfService.flexWeeklyOff !== false;
     const canEditWorkingHours = selfService.workingHours !== false;
     const canEditAttendanceMode = selfService.defaultAttendanceMode !== false;
     const canEditShifts = selfService.attendanceShifts !== false;
@@ -331,7 +333,7 @@ const AttendanceSettings = () => {
             roleId: roleIdOrName,
             roleName: roleIdOrName,
             enabled: false,
-            isCustom: false,
+            isCustom: true,
             allowedCount: flexWeeklyOff.allowedCount ?? 2,
             allowedDay: flexWeeklyOff.allowedDay || 'Custom (Employee Chooses)',
             allowedDays: normalizeAllowedDaysArray(flexWeeklyOff)
@@ -345,7 +347,7 @@ const AttendanceSettings = () => {
 
         if (existingIndex >= 0) {
             next = currentPolicies.map((rp, idx) =>
-                idx === existingIndex ? { ...rp, ...patch } : rp
+                idx === existingIndex ? { ...rp, isCustom: patch.isCustom !== undefined ? patch.isCustom : (rp.isCustom ?? true), ...patch } : rp
             );
         } else {
             next = [
@@ -354,7 +356,7 @@ const AttendanceSettings = () => {
                     roleId: roleIdOrName,
                     roleName: roleName || roleIdOrName,
                     enabled: true,
-                    isCustom: false,
+                    isCustom: true,
                     allowedCount: flexWeeklyOff.allowedCount ?? 2,
                     allowedDay: flexWeeklyOff.allowedDay || 'Custom (Employee Chooses)',
                     allowedDays: normalizeAllowedDaysArray(flexWeeklyOff),
@@ -375,7 +377,7 @@ const AttendanceSettings = () => {
         return currentPolicies.find((ep) => cleanEmpType(ep.employmentType) === cleanTarget) || {
             employmentType: empType,
             enabled: false,
-            isCustom: false,
+            isCustom: true,
             allowedCount: flexWeeklyOff.allowedCount ?? 2,
             allowedDay: flexWeeklyOff.allowedDay || 'Custom (Employee Chooses)',
             allowedDays: normalizeAllowedDaysArray(flexWeeklyOff)
@@ -390,7 +392,7 @@ const AttendanceSettings = () => {
 
         if (existingIndex >= 0) {
             next = currentPolicies.map((ep, idx) =>
-                idx === existingIndex ? { ...ep, ...patch } : ep
+                idx === existingIndex ? { ...ep, isCustom: patch.isCustom !== undefined ? patch.isCustom : (ep.isCustom ?? true), ...patch } : ep
             );
         } else {
             next = [
@@ -398,7 +400,7 @@ const AttendanceSettings = () => {
                 {
                     employmentType: empType,
                     enabled: true,
-                    isCustom: false,
+                    isCustom: true,
                     allowedCount: flexWeeklyOff.allowedCount ?? 2,
                     allowedDay: flexWeeklyOff.allowedDay || 'Custom (Employee Chooses)',
                     allowedDays: normalizeAllowedDaysArray(flexWeeklyOff),
@@ -408,6 +410,58 @@ const AttendanceSettings = () => {
         }
 
         updateFlexWeeklyOff({ employmentTypePolicies: next });
+    };
+
+    // Combined (Role + Employment Type) Policy Handlers
+    const getCombinedPolicy = (roleIdOrName, empType) => {
+        const currentPolicies = flexWeeklyOff.combinedPolicies || [];
+        const cleanEmpType = (s) => String(s || '').replace(/[\s\-_]/g, '').toLowerCase();
+        const targetClean = cleanEmpType(empType);
+        return currentPolicies.find(
+            (cp) => (cp.roleId === roleIdOrName || cp.roleName === roleIdOrName) && cleanEmpType(cp.employmentType) === targetClean
+        ) || {
+            roleId: roleIdOrName,
+            roleName: roleIdOrName,
+            employmentType: empType,
+            enabled: false,
+            isCustom: true,
+            allowedCount: flexWeeklyOff.allowedCount ?? 2,
+            allowedDay: flexWeeklyOff.allowedDay || 'Custom (Employee Chooses)',
+            allowedDays: normalizeAllowedDaysArray(flexWeeklyOff)
+        };
+    };
+
+    const updateCombinedPolicy = (roleIdOrName, roleName, empType, patch) => {
+        const currentPolicies = flexWeeklyOff.combinedPolicies || [];
+        const cleanEmpType = (s) => String(s || '').replace(/[\s\-_]/g, '').toLowerCase();
+        const targetClean = cleanEmpType(empType);
+        const existingIndex = currentPolicies.findIndex(
+            (cp) => (cp.roleId === roleIdOrName || cp.roleName === roleIdOrName) && cleanEmpType(cp.employmentType) === targetClean
+        );
+        let next = [];
+
+        if (existingIndex >= 0) {
+            next = currentPolicies.map((cp, idx) =>
+                idx === existingIndex ? { ...cp, isCustom: patch.isCustom !== undefined ? patch.isCustom : (cp.isCustom ?? true), ...patch } : cp
+            );
+        } else {
+            next = [
+                ...currentPolicies,
+                {
+                    roleId: roleIdOrName,
+                    roleName: roleName || roleIdOrName,
+                    employmentType: empType,
+                    enabled: true,
+                    isCustom: true,
+                    allowedCount: flexWeeklyOff.allowedCount ?? 2,
+                    allowedDay: flexWeeklyOff.allowedDay || 'Custom (Employee Chooses)',
+                    allowedDays: normalizeAllowedDaysArray(flexWeeklyOff),
+                    ...patch
+                }
+            ];
+        }
+
+        updateFlexWeeklyOff({ combinedPolicies: next });
     };
 
     // Save individual employee custom flex weekly off override count
@@ -810,11 +864,14 @@ const AttendanceSettings = () => {
                             <label className="flex items-center gap-3">
                                 <input
                                     type="checkbox"
-                                    disabled={!canEditWeeklyOff}
-                                    checked={Boolean(flexWeeklyOff.enabled)}
+                                    disabled={!canEditFlexWeeklyOff}
+                                    checked={Boolean(flexWeeklyOff.enabled) && canEditFlexWeeklyOff}
                                     onChange={(e) => updateFlexWeeklyOff({ enabled: e.target.checked })}
                                 />
                                 <span className="text-sm font-medium text-slate-700">Enable Custom Flexible Off</span>
+                                {!canEditFlexWeeklyOff && (
+                                    <span className="text-xs text-amber-600 font-normal italic">(Disabled by SuperAdmin)</span>
+                                )}
                             </label>
 
                             <label className="flex items-center gap-3">
