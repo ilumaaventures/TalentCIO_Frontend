@@ -251,7 +251,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     const [page, setPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(50);
     const [search, setSearch] = useState('');
-    const debouncedSearch = useDebouncedValue(search, 2000);
+    const debouncedSearch = useDebouncedValue(search, 200);
     const [statusFilter, setStatusFilter] = useState('All');
     const [decisionFilter, setDecisionFilter] = useState('All');
     const [pulledByFilter, setPulledByFilter] = useState('All');
@@ -391,7 +391,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
 
     const fetchCandidates = useCallback(async (silent = false) => {
         try {
-            if (!silent) setLoading(true);
+            if (!silent && candidates.length === 0) setLoading(true);
             const params = { t: Date.now() };
             if (dateFilterField) params.dateField = dateFilterField;
             if (dateFrom) params.startDate = dateFrom;
@@ -402,9 +402,9 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             console.error('Failed to fetch dynamic candidates:', error);
             toast.error(error.response?.data?.message || 'Failed to load candidates');
         } finally {
-            if (!silent) setLoading(false);
+            setLoading(false);
         }
-    }, [dateFilterField, dateFrom, dateTo, hiringRequest._id]);
+    }, [candidates.length, dateFilterField, dateFrom, dateTo, hiringRequest._id]);
 
     useEffect(() => {
         if (hiringRequest?._id) {
@@ -635,9 +635,8 @@ const DynamicPhaseView = ({ hiringRequest }) => {
     }, [activePhaseOrder, search, statusFilter, decisionFilter, pulledByFilter, uploadedByFilter, uploadTypeFilter, itemsPerPage]);
 
     useEffect(() => {
-        const visibleIds = new Set(phaseCandidates.map((candidate) => candidate._id));
-        setSelectedCandidateIds((prev) => prev.filter((id) => visibleIds.has(id)));
-    }, [phaseCandidates]);
+        setSelectedCandidateIds([]);
+    }, [activePhaseOrder]);
 
     const allVisibleSelected = filteredCandidates.length > 0 && filteredCandidates.every((candidate) => selectedCandidateIds.includes(candidate._id));
 
@@ -901,6 +900,10 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             } else {
                 toast.success('Decision saved');
             }
+            await fetchCandidates(true);
+        } catch (error) {
+            console.error('Failed to update decision:', error);
+            toast.error(error.response?.data?.message || 'Failed to update decision');
         } finally {
             setActionLoadingId('');
         }
@@ -1811,6 +1814,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     type="text"
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
+                                    onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
                                     placeholder="Search candidate name"
                                     className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                                 />

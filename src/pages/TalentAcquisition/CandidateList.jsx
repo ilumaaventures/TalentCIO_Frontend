@@ -471,7 +471,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterProfileShared, setFilterProfileShared] = useState(false);
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
     const [users, setUsers] = useState([]);
-    const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 2000);
+    const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 200);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCandidateId = searchParams.get('candidateId');
@@ -1100,7 +1100,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const fetchCandidates = useCallback(async (silent = false) => {
         try {
-            if (!silent) setLoading(true);
+            if (!silent && candidates.length === 0) setLoading(true);
             const endpoint = isLegacyView
                 ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
                 : `/ta/candidates/${hiringRequestId}`;
@@ -1129,9 +1129,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             console.error('Error fetching candidates:', error);
             toast.error('Failed to load candidates');
         } finally {
-            if (!silent) setLoading(false);
+            setLoading(false);
         }
-    }, [buildCandidateRequestParams, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics]);
+    }, [buildCandidateRequestParams, candidates.length, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics]);
 
     const fetchAllMatchingCandidates = useCallback(async () => {
         const endpoint = isLegacyView
@@ -1249,9 +1249,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const allVisibleSelected = sortedActiveList.length > 0 && sortedActiveList.every((candidate) => selectedCandidateIds.includes(candidate._id));
 
     useEffect(() => {
-        const visibleIds = new Set(activeList.map((candidate) => candidate._id));
-        setSelectedCandidateIds((prev) => prev.filter((id) => visibleIds.has(id)));
-    }, [activeList]);
+        setSelectedCandidateIds([]);
+    }, [activePhase]);
 
     useEffect(() => {
         if (hiringRequestId) {
