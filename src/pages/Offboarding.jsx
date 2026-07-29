@@ -249,6 +249,8 @@ const Offboarding = () => {
   const [sendersLoading, setSendersLoading] = useState(false);
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('platform');
   const [recipientEmail, setRecipientEmail] = useState('');
+  const [emailCc, setEmailCc] = useState('');
+  const [emailBcc, setEmailBcc] = useState('');
   const [attachmentFiles, setAttachmentFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [statusDraft, setStatusDraft] = useState('Initiated');
@@ -548,6 +550,8 @@ const Offboarding = () => {
 
     const formData = new FormData();
     formData.append('recipientEmail', recipientEmail.trim());
+    if (emailCc.trim()) formData.append('cc', emailCc.trim());
+    if (emailBcc.trim()) formData.append('bcc', emailBcc.trim());
     formData.append('emailAccountId', selectedEmailAccountId);
     if (selectedTemplate && selectedTemplateId !== NO_TEMPLATE_OPTION) {
       formData.append('emailTemplateId', selectedTemplateId);
@@ -723,9 +727,34 @@ const Offboarding = () => {
               style={inputStyle}
               disabled={!canUpdate}
             />
-            <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: '13px' }}>
+            <p style={{ margin: '8px 0 14px', color: '#64748b', fontSize: '13px' }}>
               This is where the email will be delivered.
             </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px' }}>
+              <div>
+                <label style={fieldLabelStyle}>CC (Optional)</label>
+                <input
+                  type="text"
+                  value={emailCc}
+                  onChange={(event) => setEmailCc(event.target.value)}
+                  placeholder="hr@company.com"
+                  style={inputStyle}
+                  disabled={!canUpdate}
+                />
+              </div>
+              <div>
+                <label style={fieldLabelStyle}>BCC (Optional)</label>
+                <input
+                  type="text"
+                  value={emailBcc}
+                  onChange={(event) => setEmailBcc(event.target.value)}
+                  placeholder="audit@company.com"
+                  style={inputStyle}
+                  disabled={!canUpdate}
+                />
+              </div>
+            </div>
           </div>
 
           <div style={{ ...cardStyle, padding: '18px', borderRadius: '18px', boxShadow: 'none' }}>

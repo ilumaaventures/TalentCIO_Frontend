@@ -75,7 +75,8 @@ const Users = () => {
         duration: true,
         leaves: true,
         documents: false,
-        hrisProfiles: false
+        hrisProfiles: false,
+        userDocuments: false
     });
     const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
     const [searchTerm, setSearchTerm] = useState('');
@@ -138,15 +139,109 @@ const Users = () => {
         return normalized || 'user';
     };
 
-    const sanitizeZipFileName = (value, fallback = 'document') => {
-        const original = String(value || fallback).trim();
-        const extensionIndex = original.lastIndexOf('.');
-        const hasExtension = extensionIndex > 0 && extensionIndex < original.length - 1;
-        const baseName = hasExtension ? original.slice(0, extensionIndex) : original;
-        const extension = hasExtension ? original.slice(extensionIndex) : '';
-        const safeBaseName = sanitizeFileNamePart(baseName || fallback);
+    const getMimeExtension = (mimeType = '') => {
+        if (!mimeType) return '';
+        const lower = String(mimeType).toLowerCase();
+        if (lower.includes('image/jpeg') || lower.includes('image/jpg') || lower.includes('jpeg')) return '.jpg';
+        if (lower.includes('image/png') || lower.includes('png')) return '.png';
+        if (lower.includes('image/webp') || lower.includes('webp')) return '.webp';
+        if (lower.includes('image/gif') || lower.includes('gif')) return '.gif';
+        if (lower.includes('image/bmp') || lower.includes('bmp')) return '.bmp';
+        if (lower.includes('image/svg') || lower.includes('svg')) return '.svg';
+        if (lower.includes('image/heic') || lower.includes('heic')) return '.heic';
+        if (lower.includes('image/heif') || lower.includes('heif')) return '.heif';
+        if (lower.includes('application/pdf') || lower.includes('pdf')) return '.pdf';
+        if (lower.includes('wordprocessingml') || lower.includes('docx')) return '.docx';
+        if (lower.includes('msword') || lower.includes('doc')) return '.doc';
+        if (lower.includes('spreadsheetml') || lower.includes('xlsx')) return '.xlsx';
+        if (lower.includes('excel') || lower.includes('xls')) return '.xls';
+        if (lower.includes('text/plain') || lower.includes('txt')) return '.txt';
+        if (lower.includes('text/csv') || lower.includes('csv')) return '.csv';
+        if (lower.includes('zip')) return '.zip';
+        return '';
+    };
 
+    const getFileExtension = (fileName = '', url = '', mimeType = '') => {
+        const mimeExt = getMimeExtension(mimeType);
+        if (mimeExt) return mimeExt;
+
+        if (fileName && fileName.includes('.')) {
+            const ext = fileName.split('.').pop().trim().toLowerCase();
+            if (ext && ext.length <= 5 && /^[a-z0-9]+$/.test(ext)) {
+                return `.${ext}`;
+            }
+        }
+        if (url) {
+            const cleanUrl = url.split('?')[0].split('#')[0];
+            const parts = cleanUrl.split('/');
+            const lastPart = parts[parts.length - 1];
+            if (lastPart && lastPart.includes('.')) {
+                const ext = lastPart.split('.').pop().trim().toLowerCase();
+                if (ext && ext.length <= 5 && /^[a-z0-9]+$/.test(ext)) {
+                    return `.${ext}`;
+                }
+            }
+        }
+        return '';
+    };
+
+    const sanitizeZipFileName = (value, url = '', mimeType = '', fallback = 'document') => {
+        const original = String(value || fallback).trim();
+        let baseName = original;
+        let existingExt = '';
+        const extensionIndex = original.lastIndexOf('.');
+
+        if (extensionIndex > 0 && extensionIndex < original.length - 1) {
+            const potentialExt = original.slice(extensionIndex + 1).toLowerCase();
+            if (potentialExt.length <= 5 && /^[a-z0-9]+$/.test(potentialExt)) {
+                baseName = original.slice(0, extensionIndex);
+                existingExt = `.${potentialExt}`;
+            }
+        }
+
+        const extension = getFileExtension(original, url, mimeType) || existingExt;
+        const safeBaseName = sanitizeFileNamePart(baseName || fallback);
         return `${safeBaseName}${extension}`;
+    };
+
+    const fetchFileBlob = async (targetUrl) => {
+        if (!targetUrl) throw new Error('Missing file URL');
+
+        // 1. Try backend Cloudinary proxy if it's a Cloudinary URL or external HTTP/HTTPS URL
+        if (targetUrl.includes('cloudinary') || targetUrl.startsWith('http')) {
+            try {
+                const res = await api.get('/dossier/proxy-pdf', {
+                    params: { url: targetUrl, download: true },
+                    responseType: 'blob'
+                });
+                if (res.data && res.data.size > 0 && !res.data.type?.includes('text/html')) {
+                    return res.data;
+                }
+            } catch (proxyErr) {
+                console.warn('Proxy fetch failed, trying direct api.get...', proxyErr);
+            }
+        }
+
+        // 2. Fallback to direct api.get with responseType blob
+        try {
+            const res = await api.get(targetUrl, { responseType: 'blob' });
+            if (res.data && res.data.size > 0 && !res.data.type?.includes('text/html')) {
+                return res.data;
+            }
+        } catch (apiErr) {
+            console.warn('Direct api.get failed, trying window.fetch...', apiErr);
+        }
+
+        // 3. Fallback to native window.fetch
+        const response = await fetch(targetUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+        const blob = await response.blob();
+        if (blob.type?.includes('text/html')) {
+            throw new Error('Received HTML error response instead of file');
+        }
+        return blob;
     };
 
     const isAttendanceApproved = (record) =>
@@ -292,13 +387,8 @@ const Users = () => {
                             continue;
                         }
 
-                        const response = await fetch(file.url);
-                        if (!response.ok) {
-                            throw new Error(`Unable to download ${file.name || 'document'}`);
-                        }
-
-                        const blob = await response.blob();
-                        const fileName = sanitizeZipFileName(file.name, `document_${index + 1}`);
+                        const blob = await fetchFileBlob(file.url);
+                        const fileName = sanitizeZipFileName(file.name, file.url, blob?.type, `document_${index + 1}`);
                         zip.file(`${userFolder}/${String(index + 1).padStart(2, '0')}_${fileName}`, blob);
                         addedFilesCount += 1;
                     }
@@ -330,6 +420,155 @@ const Users = () => {
         }
     };
 
+    const handleDownloadEmployeeDocumentsZip = async (targetUsersOverride = null) => {
+        const toastId = toast.loading('Preparing employee documents ZIP...');
+        try {
+            let selectedUsers = [];
+            if (Array.isArray(targetUsersOverride) && targetUsersOverride.length > 0) {
+                selectedUsers = targetUsersOverride;
+            } else if (targetUsersOverride && typeof targetUsersOverride === 'object' && targetUsersOverride._id) {
+                selectedUsers = [targetUsersOverride];
+            } else {
+                if (selectedEmployeeIds.length === 0) {
+                    toast.error('Select at least one employee to download documents.', { id: toastId });
+                    return;
+                }
+                selectedUsers = users.filter((listedUser) => selectedEmployeeIds.includes(listedUser._id));
+            }
+
+            if (selectedUsers.length === 0) {
+                toast.error('Selected users are not available for document download.', { id: toastId });
+                return;
+            }
+
+            const masterZip = new JSZip();
+            let totalFilesAdded = 0;
+            let usersWithDocsCount = 0;
+            const failedUsers = [];
+            const emptyUsers = [];
+
+            for (let uIdx = 0; uIdx < selectedUsers.length; uIdx++) {
+                const targetUser = selectedUsers[uIdx];
+                try {
+                    const dossierRes = await api.get(`/dossier/${targetUser._id}`);
+                    const profile = dossierRes.data || {};
+
+                    const rawDocs = Array.isArray(profile.documents)
+                        ? profile.documents.filter(d => !d.isDeleted && d.url)
+                        : [];
+
+                    const filesToZip = [];
+
+                    rawDocs.forEach(doc => {
+                        filesToZip.push({
+                            url: doc.url,
+                            name: doc.fileName || doc.title || doc.label || 'document',
+                            category: doc.category || doc.type || 'Documents'
+                        });
+                    });
+
+                    if (profile.personal?.photo) {
+                        filesToZip.push({
+                            url: profile.personal.photo,
+                            name: 'Profile_Photo',
+                            category: 'Personal'
+                        });
+                    }
+
+                    if (profile.offerLetterUrl) {
+                        filesToZip.push({
+                            url: profile.offerLetterUrl,
+                            name: 'Offer_Letter',
+                            category: 'Offer Letter'
+                        });
+                    }
+
+                    try {
+                        const monthKey = exportMonth;
+                        const attachmentRes = await api.get(`/attendance/attachments/${targetUser._id}/${monthKey}`);
+                        const attFiles = Array.isArray(attachmentRes.data?.files) ? attachmentRes.data.files : [];
+                        attFiles.forEach(attFile => {
+                            if (attFile?.url) {
+                                filesToZip.push({
+                                    url: attFile.url,
+                                    name: attFile.name || 'attendance_support_doc',
+                                    category: 'Attendance'
+                                });
+                            }
+                        });
+                    } catch (e) {
+                        // Ignore if attendance attachments API fails or has no docs
+                    }
+
+                    if (filesToZip.length === 0) {
+                        emptyUsers.push(`${targetUser.firstName} ${targetUser.lastName || ''}`.trim() || targetUser.email);
+                        continue;
+                    }
+
+                    const userFolder = sanitizeFileNamePart(
+                        [targetUser.firstName, targetUser.lastName, targetUser.employeeCode].filter(Boolean).join('_') || targetUser.email || 'Employee'
+                    );
+
+                    let userAddedCount = 0;
+                    for (let index = 0; index < filesToZip.length; index++) {
+                        const fileObj = filesToZip[index];
+                        try {
+                            const blob = await fetchFileBlob(fileObj.url);
+                            const safeFileName = sanitizeZipFileName(fileObj.name, fileObj.url, blob?.type, `document_${index + 1}`);
+                            const zipPath = `${userFolder}/${String(index + 1).padStart(2, '0')}_${safeFileName}`;
+
+                            masterZip.file(zipPath, blob);
+                            userAddedCount++;
+                            totalFilesAdded++;
+                        } catch (err) {
+                            console.error(`Failed to fetch file ${fileObj.name} for ${targetUser.email}`, err);
+                        }
+                    }
+
+                    if (userAddedCount > 0) {
+                        usersWithDocsCount++;
+                    } else {
+                        emptyUsers.push(`${targetUser.firstName} ${targetUser.lastName || ''}`.trim() || targetUser.email);
+                    }
+
+                } catch (error) {
+                    console.error(`Failed to fetch documents for user ${targetUser.email}`, error);
+                    failedUsers.push(`${targetUser.firstName} ${targetUser.lastName || ''}`.trim() || targetUser.email);
+                }
+            }
+
+            if (totalFilesAdded === 0) {
+                toast.error('No uploaded documents were found for the selected user(s).', { id: toastId });
+                return;
+            }
+
+            const zipBlob = await masterZip.generateAsync({ type: 'blob' });
+            let zipFileName = 'Employee_Documents.zip';
+            
+            if (selectedUsers.length === 1) {
+                const singleUser = selectedUsers[0];
+                const singleUserFolder = sanitizeFileNamePart(
+                    `${singleUser.firstName || ''}_${singleUser.lastName || ''}_${singleUser.employeeCode || singleUser._id}`
+                );
+                zipFileName = `${singleUserFolder}_Documents.zip`;
+            } else {
+                zipFileName = `Employees_Documents_${usersWithDocsCount}_users.zip`;
+            }
+
+            saveAs(zipBlob, zipFileName);
+
+            if (failedUsers.length > 0 || emptyUsers.length > 0) {
+                toast.success(`Downloaded 1 consolidated ZIP file for ${usersWithDocsCount} employee(s). (${emptyUsers.length + failedUsers.length} user(s) had no documents or failed)`, { id: toastId });
+                return;
+            }
+
+            toast.success(`Downloaded consolidated ZIP file with documents for ${usersWithDocsCount} employee(s) successfully!`, { id: toastId });
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to download employee documents ZIP.', { id: toastId });
+        }
+    };
+
     const handleExportDownload = async () => {
         const hasAttendanceSelection = exportOptions.status
             || exportOptions.checkInOut
@@ -337,8 +576,9 @@ const Users = () => {
             || exportOptions.leaves;
         const shouldDownloadDocuments = hasAttendanceDocumentFeature && exportOptions.documents;
         const shouldDownloadHRIS = canExportHRIS && exportOptions.hrisProfiles;
+        const shouldDownloadUserDocuments = exportOptions.userDocuments;
 
-        if (!hasAttendanceSelection && !shouldDownloadDocuments && !shouldDownloadHRIS) {
+        if (!hasAttendanceSelection && !shouldDownloadDocuments && !shouldDownloadHRIS && !shouldDownloadUserDocuments) {
             toast.error('Select at least one export option before downloading.');
             return;
         }
@@ -353,6 +593,10 @@ const Users = () => {
 
         if (shouldDownloadHRIS) {
             await exportCandidateHRIS(selectedEmployeeIds);
+        }
+
+        if (shouldDownloadUserDocuments) {
+            await handleDownloadEmployeeDocumentsZip();
         }
 
         setShowExportModal(false);
@@ -1410,6 +1654,18 @@ const Users = () => {
                                             </label>
                                         </>
                                     )}
+
+                                    <div className="h-px bg-slate-100 my-2"></div>
+                                    <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Employee Documents:</p>
+                                    <label className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportOptions.userDocuments}
+                                            onChange={e => setExportOptions({ ...exportOptions, userDocuments: e.target.checked })}
+                                            className="h-4 w-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">Download Document</span>
+                                    </label>
                                 </div>
                                 <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end space-x-2 rounded-b-lg">
                                     <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800">Close</button>
@@ -1437,8 +1693,6 @@ const Users = () => {
                         )}
                     </div>
                 </div>
-
-                {/* Removed Global Modal */}
 
                 {/* Users List */}
                 <div className="zoho-card overflow-hidden">
