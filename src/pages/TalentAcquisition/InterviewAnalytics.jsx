@@ -466,7 +466,13 @@ const InterviewAnalytics = () => {
                                 <th className="p-2 px-2.5 w-[20%] min-w-[20%] sticky left-0 bg-slate-50 z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">Candidate Name</th>
                                 <th className="p-2 px-1.5 w-[5%] min-w-[5%] text-center">Total Rounds</th>
                                 {dynamicRoundColumns.map((col) => (
-                                    <th key={col.index} className="p-2 px-2.5 min-w-[140px]">{col.title}</th>
+                                    <th
+                                        key={col.index}
+                                        style={{ width: `${65 / (dynamicRoundColumns.length || 1)}%` }}
+                                        className="p-2 px-2.5 min-w-[140px]"
+                                    >
+                                        {col.title}
+                                    </th>
                                 ))}
                                 <th className="p-2 px-2.5 w-[10%] min-w-[10%]">Final Decision</th>
                             </tr>
@@ -594,11 +600,15 @@ const InterviewAnalytics = () => {
                                                 </span>
                                             </td>
 
-                                            {/* Dynamic Round Details Columns */}
+                                            {/* Dynamic Round Details Columns (Consumes remaining 65% width) */}
                                             {dynamicRoundColumns.map((col) => {
                                                 const round = candidate.rounds?.[col.index];
                                                 return (
-                                                    <td key={col.index} className="p-2 px-2.5 bg-slate-50/30">
+                                                    <td
+                                                        key={col.index}
+                                                        style={{ width: `${65 / (dynamicRoundColumns.length || 1)}%` }}
+                                                        className="p-2 px-2.5 bg-slate-50/30 min-w-[140px]"
+                                                    >
                                                         {renderRoundDetailsCell(round)}
                                                     </td>
                                                 );

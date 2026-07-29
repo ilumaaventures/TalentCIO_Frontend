@@ -1426,37 +1426,44 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                 {effectiveRoundStatus}
                                                             </span>
 
-                                                            {(round.mailSent || round.mailSentAt || round.lastMailDetails) && (
-                                                                <div className="flex items-center gap-1">
-                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
-                                                                        <CheckCircle2 size={11} className="text-emerald-600" /> Mail Sent
-                                                                    </span>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setViewingMailDetails({
-                                                                            ...round.lastMailDetails,
-                                                                            roundName: round.levelName,
-                                                                            sentAt: round.mailSentAt || round.lastMailDetails?.sentAt,
-                                                                            roundRef: round
-                                                                        })}
-                                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors"
-                                                                        title="View Details of Sent Email"
-                                                                    >
-                                                                        <Eye size={11} className="text-slate-600" /> Mail Details
-                                                                    </button>
-                                                                </div>
-                                                            )}
+                                                            {(() => {
+                                                                const isMailSentForRound = Boolean(round.mailSent || round.mailSentAt || round.lastMailDetails?.sentAt || round.lastMailDetails?.subject);
+                                                                return (
+                                                                    <>
+                                                                        {isMailSentForRound && (
+                                                                            <div className="flex items-center gap-1">
+                                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                                                                    <CheckCircle2 size={11} className="text-emerald-600" /> Mail Sent
+                                                                                </span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setViewingMailDetails({
+                                                                                        ...round.lastMailDetails,
+                                                                                        roundName: round.levelName,
+                                                                                        sentAt: round.mailSentAt || round.lastMailDetails?.sentAt,
+                                                                                        roundRef: round
+                                                                                    })}
+                                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors"
+                                                                                    title="View Details of Sent Email"
+                                                                                >
+                                                                                    <Eye size={11} className="text-slate-600" /> Mail Details
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
 
-                                                            {canScheduleRounds && !round.isSyntheticPhase2 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => openSendMailModal(round)}
-                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
-                                                                    title={(round.mailSent || round.mailSentAt) ? "Resend or Send New Email for this round" : "Send Email for this interview round"}
-                                                                >
-                                                                    <Mail size={11} /> {(round.mailSent || round.mailSentAt) ? 'Resend Mail' : 'Send Mail'}
-                                                                </button>
-                                                            )}
+                                                                        {canScheduleRounds && !round.isSyntheticPhase2 && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => openSendMailModal(round)}
+                                                                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                                                                                title={isMailSentForRound ? "Resend or Send New Email for this round" : "Send Email for this interview round"}
+                                                                            >
+                                                                                <Mail size={11} /> {isMailSentForRound ? 'Resend Mail' : 'Send Mail'}
+                                                                            </button>
+                                                                        )}
+                                                                    </>
+                                                                );
+                                                            })()}
                                                             {canScheduleRounds && !round.isSyntheticPhase2 && ['Pending', 'Scheduled'].includes(round.status) && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-2 ml-1">
                                                                     <button
