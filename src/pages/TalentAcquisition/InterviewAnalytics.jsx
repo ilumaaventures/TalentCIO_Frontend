@@ -480,6 +480,14 @@ const InterviewAnalytics = () => {
 
                                         return (
                                             <div className="space-y-1 text-[11px]">
+                                                <div className="font-bold text-slate-800 text-xs flex items-center justify-between gap-1 border-b border-slate-100 pb-1">
+                                                    <span>{r.levelName || 'Interview Round'}</span>
+                                                    {r.mailSent && (
+                                                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                                            <CheckCircle2 size={10} className="text-emerald-600" /> Mail Sent
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div><span className="font-semibold text-slate-600">Interviewer:</span> {r.interviewer}</div>
                                                 {formattedDate && (
                                                     <div className="text-[10px] text-slate-500 font-medium">
@@ -488,7 +496,7 @@ const InterviewAnalytics = () => {
                                                 )}
                                                 <div>
                                                     <span className="font-semibold text-slate-600">Rating:</span>{' '}
-                                                    <span className={`font-bold ${r.rawRating >= 4 ? 'text-emerald-600' : r.rawRating >= 3 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                                    <span className={`font-bold ${r.rawRating >= 7 ? 'text-emerald-600' : r.rawRating >= 5 ? 'text-amber-600' : 'text-slate-700'}`}>
                                                         {r.rating}
                                                     </span>
                                                 </div>
@@ -502,6 +510,16 @@ const InterviewAnalytics = () => {
                                                         {r.status}
                                                     </span>
                                                 </div>
+                                                {Array.isArray(r.customFields) && r.customFields.length > 0 && (
+                                                    <div className="mt-1 bg-slate-50 p-1.5 rounded border border-slate-200/80 space-y-0.5 text-[10px]">
+                                                        {r.customFields.map((cf, idx) => (
+                                                            <div key={idx} className="flex flex-col gap-0.5">
+                                                                <span className="font-semibold text-slate-500 uppercase text-[9px]">{cf.key}:</span>
+                                                                <span className="font-medium text-slate-800 break-all select-all">{cf.value}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 <div className="text-slate-500 italic line-clamp-2">
                                                     <span className="font-semibold text-slate-600 not-italic">Feedback:</span> {r.feedback}
                                                 </div>

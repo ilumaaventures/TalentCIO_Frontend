@@ -1035,21 +1035,21 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 {/* Right Column: Interview Workflow Timeline */}
                 <div className={`${isSidePanel ? 'w-full hidden' : 'lg:col-span-8'} space-y-6`}>
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold text-slate-800">Interview Timeline</h3>
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-base font-bold text-slate-800">Interview Timeline</h3>
                             {canScheduleRounds && (
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => { setIsApplyingWorkflow(true); setIsAddingRound(false); }}
-                                        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-medium transition-colors"
+                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-medium transition-colors"
                                     >
-                                        <Plus size={16} /> Apply Workflow
+                                        <Plus size={14} /> Apply Workflow
                                     </button>
                                     <button
                                         onClick={() => { setIsAddingRound(!isAddingRound); setIsApplyingWorkflow(false); }}
-                                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors"
+                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-medium transition-colors"
                                     >
-                                        <Plus size={16} /> Add Custom Round
+                                        <Plus size={14} /> Add Custom Round
                                     </button>
                                 </div>
                             )}
@@ -1406,30 +1406,30 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                                                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                                     {/* Round Header */}
-                                                    <div className={`px-5 py-4 border-b flex justify-between items-center ${['Passed', 'Shortlisted'].includes(effectiveRoundStatus) ? 'bg-emerald-50/50 border-emerald-100' :
+                                                    <div className={`px-4 py-3 border-b flex justify-between items-center ${['Passed', 'Shortlisted'].includes(effectiveRoundStatus) ? 'bg-emerald-50/50 border-emerald-100' :
                                                         ['Failed', 'Rejected'].includes(effectiveRoundStatus) ? 'bg-red-50/50 border-red-100' :
                                                             'bg-slate-50/50 border-slate-100'
                                                         }`}>
                                                         <div>
-                                                            <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                                            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                                                 {round.levelName}
                                                                 {getStatusIcon(effectiveRoundStatus)}
                                                             </h4>
                                                             {round.scheduledDate && (
-                                                                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                                                                    <Calendar size={12} /> Scheduled: {format(new Date(round.scheduledDate), 'PPp')}
+                                                                <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                                                                    <Calendar size={11} /> Scheduled: {format(new Date(round.scheduledDate), 'PPp')}
                                                                 </p>
                                                             )}
                                                         </div>
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadgeColor(effectiveRoundStatus)}`}>
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeColor(effectiveRoundStatus)}`}>
                                                                 {effectiveRoundStatus}
                                                             </span>
 
                                                             {(round.mailSent || round.mailSentAt || round.lastMailDetails) && (
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
-                                                                        <CheckCircle2 size={13} className="text-emerald-600" /> Mail Sent
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                                                        <CheckCircle2 size={11} className="text-emerald-600" /> Mail Sent
                                                                     </span>
                                                                     <button
                                                                         type="button"
@@ -1439,10 +1439,10 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                             sentAt: round.mailSentAt || round.lastMailDetails?.sentAt,
                                                                             roundRef: round
                                                                         })}
-                                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors"
+                                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors"
                                                                         title="View Details of Sent Email"
                                                                     >
-                                                                        <Eye size={13} className="text-slate-600" /> Mail Details
+                                                                        <Eye size={11} className="text-slate-600" /> Mail Details
                                                                     </button>
                                                                 </div>
                                                             )}
@@ -1451,14 +1451,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => openSendMailModal(round)}
-                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
                                                                     title={(round.mailSent || round.mailSentAt) ? "Resend or Send New Email for this round" : "Send Email for this interview round"}
                                                                 >
-                                                                    <Mail size={13} /> {(round.mailSent || round.mailSentAt) ? 'Resend Mail' : 'Send Mail'}
+                                                                    <Mail size={11} /> {(round.mailSent || round.mailSentAt) ? 'Resend Mail' : 'Send Mail'}
                                                                 </button>
                                                             )}
                                                             {canScheduleRounds && !round.isSyntheticPhase2 && ['Pending', 'Scheduled'].includes(round.status) && (
-                                                                <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
+                                                                <div className="flex items-center gap-2 border-l border-slate-200 pl-2 ml-1">
                                                                     <button
                                                                         onClick={() => {
                                                                             if (editingRoundId === round._id) {
@@ -1478,14 +1478,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                         className={`transition-colors ${isEditingRound ? 'text-blue-500' : 'text-slate-400 hover:text-blue-500'}`}
                                                                         title="Edit Round"
                                                                     >
-                                                                        <Edit2 size={16} />
+                                                                        <Edit2 size={15} />
                                                                     </button>
                                                                     <button
                                                                         onClick={() => handleDeleteRound(round._id)}
                                                                         className="text-slate-400 hover:text-red-500 transition-colors"
                                                                         title="Delete Round"
                                                                     >
-                                                                        <Trash2 size={16} />
+                                                                        <Trash2 size={15} />
                                                                     </button>
                                                                 </div>
                                                             )}
@@ -1493,36 +1493,36 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                     </div>
 
                                                     {/* Round Details */}
-                                                    <div className="px-5 py-4">
-                                                        <div className="flex items-start gap-2 mb-4">
-                                                            <User size={16} className="text-slate-400 mt-0.5" />
+                                                    <div className="px-4 py-3 text-xs">
+                                                        <div className="flex items-start gap-2 mb-3">
+                                                            <User size={15} className="text-slate-400 mt-0.5" />
                                                             <div>
-                                                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Assigned Evaluator</p>
+                                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Assigned Evaluator</p>
                                                                 {round.assignedTo?.length > 0 ? (
-                                                                    <p className="text-sm font-medium text-slate-800">
+                                                                    <p className="text-xs font-semibold text-slate-800">
                                                                         {round.assignedTo.map(u =>
                                                                             u.firstName ? `${u.firstName} ${u.lastName}` : (u.email || 'Assigned User')
                                                                         ).join(', ')}
                                                                     </p>
                                                                 ) : round.evaluatedBy ? (
-                                                                    <p className="text-sm font-medium text-slate-800">
+                                                                    <p className="text-xs font-semibold text-slate-800">
                                                                         {round.evaluatedBy.firstName ? `${round.evaluatedBy.firstName} ${round.evaluatedBy.lastName}` : (round.evaluatedBy.email || 'Evaluator')}
                                                                     </p>
                                                                 ) : (
-                                                                    <p className="text-sm text-slate-400 italic">Unassigned</p>
+                                                                    <p className="text-xs text-slate-400 italic">Unassigned</p>
                                                                 )}
                                                             </div>
                                                         </div>
 
                                                         {/* Custom Round Fields */}
                                                         {Array.isArray(round.customFields) && round.customFields.length > 0 && (
-                                                            <div className="mt-3 mb-4 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-                                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Custom Round Details</span>
-                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                                            <div className="mt-2.5 mb-3 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Custom Round Details</span>
+                                                                <div className="grid grid-cols-1 gap-2 text-xs">
                                                                     {round.customFields.map((cf, i) => (
-                                                                        <div key={i} className="flex items-center justify-between gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200/60 shadow-sm">
-                                                                            <span className="font-semibold text-slate-600">{cf.key}:</span>
-                                                                            <span className="font-bold text-slate-800 truncate" title={cf.value}>{cf.value || '—'}</span>
+                                                                        <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 bg-white px-3 py-1.5 rounded-lg border border-slate-200/60 shadow-xs">
+                                                                            <span className="font-bold text-[10px] text-slate-500 uppercase tracking-wider shrink-0">{cf.key}:</span>
+                                                                            <span className="font-medium text-xs text-slate-800 break-all select-all hover:text-indigo-600" title={cf.value}>{cf.value || '—'}</span>
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -1998,8 +1998,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
             {/* Send Interview Round Mail Modal */}
             {sendingMailRound && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl lg:max-w-6xl w-full p-6 space-y-5 my-6">
+                <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-xs p-4 pt-12 overflow-y-auto">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl lg:max-w-6xl w-full p-6 space-y-5 my-8">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <div>
                                 <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
