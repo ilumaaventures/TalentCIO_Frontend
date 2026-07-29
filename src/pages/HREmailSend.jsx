@@ -74,6 +74,8 @@ const HREmailSend = () => {
     const [selectedAccountId, setSelectedAccountId] = useState('platform');
     const [subject, setSubject] = useState('');
     const [htmlBody, setHtmlBody] = useState('');
+    const [cc, setCc] = useState('');
+    const [bcc, setBcc] = useState('');
     const [attachmentFiles, setAttachmentFiles] = useState([]);
     const [dossierSave, setDossierSave] = useState(true);
     const [dossierCategory, setDossierCategory] = useState('Other');
@@ -328,6 +330,8 @@ const HREmailSend = () => {
         }
         formData.append('subject', subject);
         formData.append('htmlBody', htmlBody);
+        if (cc.trim()) formData.append('cc', cc.trim());
+        if (bcc.trim()) formData.append('bcc', bcc.trim());
         formData.append('dossierSave', String(dossierSave));
         formData.append('dossierCategory', dossierCategory);
         formData.append('notes', notes);
@@ -711,6 +715,27 @@ const HREmailSend = () => {
                                 placeholder="Use placeholders like {{firstName}} and {{companyName}}"
                                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
                             />
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">CC (Optional)</label>
+                                <input
+                                    value={cc}
+                                    onChange={(event) => setCc(event.target.value)}
+                                    placeholder="Comma-separated emails (e.g. hr@company.com)"
+                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">BCC (Optional)</label>
+                                <input
+                                    value={bcc}
+                                    onChange={(event) => setBcc(event.target.value)}
+                                    placeholder="Comma-separated emails (e.g. audit@company.com)"
+                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-300 focus:bg-white"
+                                />
+                            </div>
                         </div>
 
                         <div className="mt-4">

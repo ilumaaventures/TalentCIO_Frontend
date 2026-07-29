@@ -170,6 +170,8 @@ const Onboarding = () => {
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('platform');
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState('');
+  const [emailCc, setEmailCc] = useState('');
+  const [emailBcc, setEmailBcc] = useState('');
   const [customEmailSubject, setCustomEmailSubject] = useState(DEFAULT_ONBOARDING_EMAIL_SUBJECT);
   const [customEmailBody, setCustomEmailBody] = useState(DEFAULT_ONBOARDING_EMAIL_BODY);
   const [showEmailTemplateEditor, setShowEmailTemplateEditor] = useState(false);
@@ -497,7 +499,9 @@ const Onboarding = () => {
         emailAccountId: selectedEmailAccountId,
         emailTemplateId: selectedEmailTemplateId || '',
         emailSubject: customEmailSubject,
-        emailHtmlBody: customEmailBody
+        emailHtmlBody: customEmailBody,
+        cc: emailCc.trim(),
+        bcc: emailBcc.trim()
       });
       toast.success('Pre-onboarding email sent successfully!');
       setCheckedSections(new Set());
@@ -526,7 +530,9 @@ const Onboarding = () => {
           documents: [...checkedDocuments],
           emailTemplateId: selectedEmailTemplateId || '',
           emailSubject: customEmailSubject,
-          emailHtmlBody: customEmailBody
+          emailHtmlBody: customEmailBody,
+          cc: emailCc.trim(),
+          bcc: emailBcc.trim()
         },
         documentDeadline: emailDeadline || null
       });
@@ -1449,6 +1455,10 @@ const Onboarding = () => {
       const draftEmailTemplateId = res.data.selectionDraft?.emailTemplateId || '';
       const draftEmailSubject = res.data.selectionDraft?.emailSubject || '';
       const draftEmailBody = res.data.selectionDraft?.emailHtmlBody || '';
+      const draftEmailCc = res.data.selectionDraft?.cc || '';
+      const draftEmailBcc = res.data.selectionDraft?.bcc || '';
+      setEmailCc(draftEmailCc);
+      setEmailBcc(draftEmailBcc);
       const requestedSectionLabels = (hasSavedDraft ? draftSections : (res.data.requestedSections || []).map((item) => getRequestedLabel(item))).filter(Boolean);
       const requestedDocumentLabels = (hasSavedDraft ? draftDocuments : (res.data.requestedDocuments || []).map((item) => getRequestedLabel(item))).filter(Boolean);
       setCheckedSections(new Set(requestedSectionLabels));
@@ -2979,6 +2989,33 @@ const Onboarding = () => {
                 </div>
 
                 <div style={{ marginTop: '16px', padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+                    <div>
+                      <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                        CC (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={emailCc}
+                        onChange={(e) => setEmailCc(e.target.value)}
+                        placeholder="e.g. hr@company.com"
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                        BCC (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={emailBcc}
+                        onChange={(e) => setEmailBcc(e.target.value)}
+                        placeholder="e.g. audit@company.com"
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+
                   <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Mail size={16} style={{ color: '#3b82f6' }} /> Sender Account
                   </label>
