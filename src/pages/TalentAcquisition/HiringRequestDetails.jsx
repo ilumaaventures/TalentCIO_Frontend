@@ -77,7 +77,9 @@ const HiringRequestDetails = () => {
     const [actionLoading, setActionLoading] = useState(false);
     const [togglingVisibility, setTogglingVisibility] = useState(false);
     const [togglingResourceGateway, setTogglingResourceGateway] = useState(false);
+    const [togglingPreviousVisibility, setTogglingPreviousVisibility] = useState(false);
     const [showCloseModal, setShowCloseModal] = useState(false);
+    const [showUnpublishPrompt, setShowUnpublishPrompt] = useState(false);
     const [closeMode, setCloseMode] = useState('all');
     const [partialCloseCount, setPartialCloseCount] = useState(1);
     const [activeTab, setActiveTab] = useState('overview'); // overview, applications, reviews
@@ -118,6 +120,9 @@ const HiringRequestDetails = () => {
         || user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.hiring_request.manage');
     const canUpdateRequisition = user?.roles?.includes('Admin')
+        || user?.permissions?.includes('*')
+        || user?.permissions?.includes('ta.manage')
+        || user?.permissions?.includes('ta.hiring_request.manage')
         || user?.permissions?.includes('ta.requisition.update')
         || user?.permissions?.includes('ta.requisition.manage.assigned')
         || user?.permissions?.includes('ta.requisition.manage.all')
@@ -125,6 +130,9 @@ const HiringRequestDetails = () => {
     const resourceGatewayEnabledForCompany = Boolean(user?.company?.settings?.careers?.enableResourceGatewayPublishing);
     const positionSummary = getHiringPositionSummary(request);
     const canPartialClose = positionSummary.open > 1;
+
+    const isJobBoardLive = Boolean(request?.isPublic || (request?.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isPublic));
+    const isResourceGatewayLive = Boolean(request?.isResourceGatewayPublic || (request?.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isResourceGatewayPublic));
 
     const canApprove = request && isDynamic
         ? (
@@ -139,7 +147,6 @@ const HiringRequestDetails = () => {
         : request && (request.status === 'Pending_L1' || request.status === 'Pending_Final');
 
     const handleApproval = async (action) => {
-        // Only require comment for rejection
         if (action === 'REJECT' && !approvalComment.trim()) {
             return toast.error('Please add a comment for rejection');
         }
@@ -179,7 +186,7 @@ const HiringRequestDetails = () => {
         }
     };
 
-    const handleClose = async () => {
+    const handleCloseSubmit = () => {
         const closeCount = closeMode === 'partial' ? Number(partialCloseCount) : positionSummary.open;
         if (!Number.isFinite(closeCount) || closeCount <= 0) {
             return toast.error('No open positions are available to close.');
@@ -187,18 +194,37 @@ const HiringRequestDetails = () => {
         if (closeMode === 'partial' && closeCount > positionSummary.open) {
             return toast.error(`You can close at most ${positionSummary.open} positions.`);
         }
+
+        if (request?.isPublic) {
+            setShowUnpublishPrompt(true);
+        } else {
+            executeClose({ unpublishFromJobBoard: false });
+        }
+    };
+
+    const executeClose = async ({ unpublishFromJobBoard = false } = {}) => {
+        const closeCount = closeMode === 'partial' ? Number(partialCloseCount) : positionSummary.open;
         try {
             setActionLoading(true);
-            const response = await api.patch(`/ta/hiring-request/${id}/close`, closeMode === 'partial'
-                ? { mode: 'partial', closeCount }
-                : { mode: 'all' });
+            const response = await api.patch(`/ta/hiring-request/${id}/close`, {
+                mode: closeMode,
+                closeCount,
+                unpublishFromJobBoard
+            });
             const updatedRequest = response.data;
             setRequest(updatedRequest);
             setShowCloseModal(false);
+            setShowUnpublishPrompt(false);
             setCloseMode('all');
             setPartialCloseCount(1);
             if (updatedRequest.status === 'Closed') {
-                toast.success('Request closed successfully');
+                if (unpublishFromJobBoard) {
+                    toast.success('Request closed and unpublished from job board successfully.');
+                } else if (request?.isPublic) {
+                    toast.success('Request closed. It remains active on the job board.');
+                } else {
+                    toast.success('Request closed successfully');
+                }
             } else {
                 const remainingOpenPositions = Math.max(Number(updatedRequest?.hiringDetails?.openPositions) || 0, 0);
                 toast.success(`${closeCount} position${closeCount === 1 ? '' : 's'} closed. ${remainingOpenPositions} still open.`);
@@ -231,16 +257,30 @@ const HiringRequestDetails = () => {
 
     const handleTogglePublic = async () => {
         if (!request) return;
-        const newValue = !request.isPublic;
+
+        const newValue = !isJobBoardLive;
         const confirmMsg = newValue
             ? 'Publish this job to talentcio.in/jobs? It will be visible to the public.'
             : 'Unpublish this job? It will no longer appear on talentcio.in/jobs.';
+
         if (!window.confirm(confirmMsg)) return;
 
         try {
             setTogglingVisibility(true);
+
+            if (!newValue && request.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isPublic) {
+                const prevId = request.previousRequestId._id || request.previousRequestId;
+                await api.patch(`/ta/hiring-request/${prevId}/visibility`, { isPublic: false });
+            }
+
             const res = await api.patch(`/ta/hiring-request/${id}/visibility`, { isPublic: newValue });
-            setRequest((prev) => ({ ...prev, ...res.data.job }));
+            setRequest((prev) => ({
+                ...prev,
+                ...res.data.job,
+                previousRequestId: typeof prev?.previousRequestId === 'object'
+                    ? { ...prev.previousRequestId, isPublic: false, isResourceGatewayPublic: false }
+                    : prev?.previousRequestId
+            }));
             toast.success(res.data.message);
             invalidateTACaches({ requestId: id, client: res.data?.job?.client || request?.client });
         } catch (err) {
@@ -258,12 +298,12 @@ const HiringRequestDetails = () => {
             return;
         }
 
-        if (!request.isPublic) {
+        if (!isJobBoardLive) {
             toast.error('Publish the job to the main job board first.');
             return;
         }
 
-        const newValue = !request.isResourceGatewayPublic;
+        const newValue = !isResourceGatewayLive;
         const confirmMsg = newValue
             ? 'Publish this job on resourcegateway.in/careers as well?'
             : 'Remove this job from resourcegateway.in/careers?';
@@ -272,10 +312,22 @@ const HiringRequestDetails = () => {
 
         try {
             setTogglingResourceGateway(true);
+
+            if (!newValue && request.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isResourceGatewayPublic) {
+                const prevId = request.previousRequestId._id || request.previousRequestId;
+                await api.patch(`/ta/hiring-request/${prevId}/visibility`, { isResourceGatewayPublic: false });
+            }
+
             const res = await api.patch(`/ta/hiring-request/${id}/visibility`, {
                 isResourceGatewayPublic: newValue
             });
-            setRequest((prev) => ({ ...prev, ...res.data.job }));
+            setRequest((prev) => ({
+                ...prev,
+                ...res.data.job,
+                previousRequestId: typeof prev?.previousRequestId === 'object'
+                    ? { ...prev.previousRequestId, isResourceGatewayPublic: false }
+                    : prev?.previousRequestId
+            }));
             toast.success(res.data.message);
             invalidateTACaches({ requestId: id, client: res.data?.job?.client || request?.client });
         } catch (err) {
@@ -751,56 +803,64 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
-                            {canUpdateRequisition && (request.status === 'Approved' || request.status === 'Closed') && (
+                            {canUpdateRequisition && (request.status === 'Approved' || request.status === 'Closed' || isJobBoardLive) && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                     <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">
-                                        <div className={`p-1.5 rounded-md ${request.isPublic ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
+                                        <div className={`p-1.5 rounded-md ${isJobBoardLive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
                                             <Globe size={14} />
                                         </div>
                                         Job Board Visibility
                                     </h3>
                                     <div className="space-y-3">
-                                        <div className={`rounded-xl border px-3 py-3 ${request.isPublic ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
-                                            <p className={`text-xs font-bold uppercase tracking-wider ${request.isPublic ? 'text-emerald-700' : 'text-slate-600'}`}>
-                                                {request.isPublic ? 'Public on Job Board ✓' : 'Private (not listed)'}
+                                        <div className={`rounded-xl border px-3 py-3 ${isJobBoardLive ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                                            <p className={`text-xs font-bold uppercase tracking-wider ${isJobBoardLive ? 'text-emerald-700' : 'text-slate-600'}`}>
+                                                {isJobBoardLive ? 'Public on Job Board ✓' : 'Private (not listed)'}
                                             </p>
                                             <p className="mt-1 text-xs text-slate-500">
-                                                Public jobs appear on `talentcio.in/jobs` once the requisition is approved.
+                                                Public jobs appear on talentcio.in/jobs once the requisition is approved.
                                             </p>
                                         </div>
 
-                                        <button
-                                            onClick={handleTogglePublic}
-                                            disabled={togglingVisibility}
-                                            className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${request.isPublic
-                                                ? 'bg-white border border-slate-200 text-slate-700 hover:border-red-200 hover:text-red-600 hover:bg-red-50'
-                                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
-                                                }`}
-                                        >
-                                            {togglingVisibility ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
-                                            {request.isPublic ? 'Unpublish from Job Board' : 'Publish to Job Board'}
-                                        </button>
+                                        {isJobBoardLive ? (
+                                            <button
+                                                onClick={handleTogglePublic}
+                                                disabled={togglingVisibility}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all border border-slate-200 bg-white text-slate-700 hover:border-red-200 hover:text-red-600 hover:bg-red-50 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {togglingVisibility ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
+                                                Unpublish from Job Board
+                                            </button>
+                                        ) : request.status === 'Approved' ? (
+                                            <button
+                                                onClick={handleTogglePublic}
+                                                disabled={togglingVisibility}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {togglingVisibility ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
+                                                Publish to Job Board
+                                            </button>
+                                        ) : null}
 
-                                        {resourceGatewayEnabledForCompany && (
+                                        {resourceGatewayEnabledForCompany && (isJobBoardLive || request.status === 'Approved') && (
                                             <div className="space-y-2">
                                                 <button
                                                     onClick={handleToggleResourceGateway}
-                                                    disabled={togglingResourceGateway || !request.isPublic}
+                                                    disabled={togglingResourceGateway || !isJobBoardLive}
                                                     className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border shadow-sm ${
-                                                        request.isResourceGatewayPublic
+                                                        isResourceGatewayLive
                                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                                                             : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                                                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                                                 >
                                                     {togglingResourceGateway
                                                         ? <Loader size={14} className="animate-spin" />
-                                                        : request.isResourceGatewayPublic
+                                                        : isResourceGatewayLive
                                                             ? <><Globe size={14} /> Posted on Resource Gateway</>
                                                             : <><Globe size={14} /> Post on Resource Gateway</>
                                                     }
                                                 </button>
 
-                                                {!request.isPublic && (
+                                                {!isJobBoardLive && (
                                                     <p className="text-[11px] leading-4 text-slate-500">
                                                         Publish to the main job board first, then this role can also go live on Resource Gateway.
                                                     </p>
@@ -994,11 +1054,58 @@ const HiringRequestDetails = () => {
                             </button>
                             <button
                                 type="button"
-                                onClick={handleClose}
+                                onClick={handleCloseSubmit}
                                 disabled={actionLoading}
                                 className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {actionLoading ? 'Saving...' : closeMode === 'partial' ? 'Close Selected Positions' : 'Close All Positions'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showUnpublishPrompt && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                                <Globe size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-slate-900">Unpublish from Job Board?</h3>
+                                <p className="text-xs text-slate-500">Requisition is currently live on the public job board.</p>
+                            </div>
+                        </div>
+
+                        <p className="mt-4 text-sm text-slate-600 leading-relaxed">
+                            This requisition is published on the job board. Would you like to unpublish it from the job board?
+                        </p>
+
+                        <div className="mt-6 flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5">
+                            <button
+                                type="button"
+                                onClick={() => setShowUnpublishPrompt(false)}
+                                disabled={actionLoading}
+                                className="w-full sm:w-auto rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => executeClose({ unpublishFromJobBoard: false })}
+                                disabled={actionLoading}
+                                className="w-full sm:w-auto rounded-xl bg-slate-100 border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-200 transition disabled:opacity-50"
+                            >
+                                {actionLoading ? 'Saving...' : 'No (Keep Published)'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => executeClose({ unpublishFromJobBoard: true })}
+                                disabled={actionLoading}
+                                className="w-full sm:w-auto rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 transition disabled:opacity-50 shadow-sm"
+                            >
+                                {actionLoading ? 'Saving...' : 'Yes (Unpublish)'}
                             </button>
                         </div>
                     </div>

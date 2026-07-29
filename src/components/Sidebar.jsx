@@ -17,6 +17,7 @@ import {
   Clock,
   FileText,
   FolderKanban,
+  History,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
@@ -267,6 +268,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: Mail,
       visible: isAdmin || user?.permissions?.includes('ta.email_template.manage') || user?.permissions?.includes('*'),
       isActive: location.pathname === '/ta/email-templates'
+    },
+    {
+      label: 'Email History',
+      to: '/ta/email-history',
+      icon: History,
+      visible: canAccessTA,
+      isActive: location.pathname === '/ta/email-history'
     }
   ].filter((item) => item.visible);
 

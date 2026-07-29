@@ -39,6 +39,7 @@ const CreateHiringRequest      = lazy(() => import('./pages/TalentAcquisition/Cr
 const HiringRequestDetails     = lazy(() => import('./pages/TalentAcquisition/HiringRequestDetails'));
 const WorkflowSettings         = lazy(() => import('./pages/TalentAcquisition/WorkflowSettings'));
 const EmailTemplates           = lazy(() => import('./pages/TalentAcquisition/EmailTemplates'));
+const TAEmailHistory           = lazy(() => import('./pages/TalentAcquisition/TAEmailHistory'));
 const PhaseTemplates           = lazy(() => import('./pages/TalentAcquisition/Settings/PhaseTemplates'));
 const TAAccessSettings         = lazy(() => import('./pages/TalentAcquisition/TAAccessSettings'));
 const CandidateForm            = lazy(() => import('./pages/TalentAcquisition/CandidateForm'));
@@ -211,6 +212,7 @@ function App() {
                         <EmailTemplates />
                       </ProtectedRoute>
                     )} />
+                    <Route path="/ta/email-history" element={<TAEmailHistory />} />
                     <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                     <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
                     <Route path="/ta/view/:id" element={<HiringRequestDetails />} />

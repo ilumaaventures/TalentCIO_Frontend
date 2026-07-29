@@ -236,14 +236,8 @@ const MassMailModal = ({
             return;
         }
 
-        if (templateMode === 'saved' && !templateId) {
-            toast.error('Select an email template.');
-            setStep(2);
-            return;
-        }
-
         if (!customSubject.trim() || !customHtmlBody.trim()) {
-            toast.error('Subject and HTML body are required.');
+            toast.error('Subject and email body are required.');
             setStep(2);
             return;
         }
@@ -421,10 +415,18 @@ const MassMailModal = ({
                                         <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Template</label>
                                         <select
                                             value={templateId}
-                                            onChange={(e) => setTemplateId(e.target.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setTemplateId(val);
+                                                if (!val) {
+                                                    setTemplateMode('custom');
+                                                } else {
+                                                    setTemplateMode('saved');
+                                                }
+                                            }}
                                             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                         >
-                                            <option value="">{loadingTemplates ? 'Loading templates...' : 'Select template'}</option>
+                                            <option value="">{loadingTemplates ? 'Loading templates...' : 'Custom Email (Write your own)'}</option>
                                             {templates.map((template) => (
                                                 <option key={template._id} value={template._id}>
                                                     {template.name} · {template.category}
