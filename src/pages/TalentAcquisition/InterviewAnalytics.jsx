@@ -184,8 +184,42 @@ const InterviewAnalytics = () => {
             if (action === 'cleared') return matchedRound.status === 'Pass';
             if (action === 'failed') return matchedRound.status === 'Fail';
             if (action === 'pending') return matchedRound.status === 'Pending' || matchedRound.status === 'Scheduled';
-            return true;
         });
+
+    const dynamicRoundColumns = useMemo(() => {
+        let maxR = 1;
+        (filteredTrackers || []).forEach(item => {
+            if (Array.isArray(item.rounds) && item.rounds.length > maxR) {
+                maxR = item.rounds.length;
+            }
+        });
+        return Array.from({ length: maxR }).map((_, idx) => {
+            const counts = {};
+            (filteredTrackers || []).forEach(item => {
+                const r = item.rounds?.[idx];
+                if (r?.levelName) {
+                    const name = r.levelName.trim();
+                    counts[name] = (counts[name] || 0) + 1;
+                }
+            });
+
+            let topName = '';
+            let maxCount = 0;
+            Object.entries(counts).forEach(([name, count]) => {
+                if (count > maxCount) {
+                    maxCount = count;
+                    topName = name;
+                }
+            });
+
+            const headerText = topName || `Round ${idx + 1}`;
+
+            return {
+                index: idx,
+                title: headerText
+            };
+        });
+    }, [filteredTrackers]);
 
     const selectedReqObj = requisitions.find(r => r._id === selectedRequisitionId);
     const startEntry = pagination.totalCount > 0 ? (pagination.currentPage - 1) * pagination.limit + 1 : 0;
@@ -426,28 +460,28 @@ const InterviewAnalytics = () => {
                 </div>
 
                 <div className="overflow-x-auto max-h-[680px]">
-                    <table className="w-full text-left text-xs border-collapse min-w-[1250px]">
+                    <table className="w-full text-left text-xs border-collapse min-w-[850px]">
                         <thead className="sticky top-0 bg-slate-50 z-20 shadow-xs">
-                            <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
-                                <th className="p-3.5 min-w-[160px] sticky left-0 bg-slate-50 z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">Candidate Name</th>
-                                <th className="p-3.5 text-center min-w-[130px]">Total Interview Rounds</th>
-                                <th className="p-3.5 min-w-[210px]">Round 1 Details</th>
-                                <th className="p-3.5 min-w-[210px]">Round 2 Details</th>
-                                <th className="p-3.5 min-w-[210px]">Round 3 Details</th>
-                                <th className="p-3.5 min-w-[150px]">Final Decision</th>
+                            <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                                <th className="p-2 px-2.5 w-[20%] min-w-[20%] sticky left-0 bg-slate-50 z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">Candidate Name</th>
+                                <th className="p-2 px-1.5 w-[5%] min-w-[5%] text-center">Total Rounds</th>
+                                {dynamicRoundColumns.map((col) => (
+                                    <th key={col.index} className="p-2 px-2.5 min-w-[140px]">{col.title}</th>
+                                ))}
+                                <th className="p-2 px-2.5 w-[10%] min-w-[10%]">Final Decision</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-slate-700">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-slate-400">
+                                    <td colSpan={3 + dynamicRoundColumns.length} className="p-5 text-center text-slate-400">
                                         Loading candidate interview tracking data...
                                     </td>
                                 </tr>
                             ) : filteredTrackers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="p-10 text-center text-slate-500 space-y-3">
-                                        <div className="text-slate-400 font-medium">
+                                    <td colSpan={3 + dynamicRoundColumns.length} className="p-6 text-center text-slate-500 space-y-2">
+                                        <div className="text-slate-400 font-medium text-xs">
                                             {searchTerm || decisionFilter || resultFilter || dynamicRoundFilter ? 'No candidates matching active filters' : 'No candidates found for the selected requisition.'}
                                         </div>
                                         {(searchTerm || decisionFilter || resultFilter || dynamicRoundFilter || selectedRequisitionId) && (
@@ -460,7 +494,7 @@ const InterviewAnalytics = () => {
                                                     setDynamicRoundFilter('');
                                                     if (selectedRequisitionId) handleRequisitionChange('');
                                                 }}
-                                                className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition inline-flex items-center gap-1.5"
+                                                className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition inline-flex items-center gap-1"
                                             >
                                                 Clear All Filters
                                             </button>
@@ -469,22 +503,18 @@ const InterviewAnalytics = () => {
                                 </tr>
                             ) : (
                                 filteredTrackers.map((candidate) => {
-                                    const r1 = candidate.rounds?.[0];
-                                    const r2 = candidate.rounds?.[1];
-                                    const r3 = candidate.rounds?.[2];
-
                                     const renderRoundDetailsCell = (r) => {
                                         if (!r) return <span className="text-slate-300 text-xs">—</span>;
 
                                         const formattedDate = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd MMM, hh:mm a') : null;
 
                                         return (
-                                            <div className="space-y-1 text-[11px]">
-                                                <div className="font-bold text-slate-800 text-xs flex items-center justify-between gap-1 border-b border-slate-100 pb-1">
+                                            <div className="space-y-0.5 text-[10px]">
+                                                <div className="font-bold text-slate-800 text-[11px] flex items-center justify-between gap-1 border-b border-slate-100 pb-0.5 mb-0.5">
                                                     <span>{r.levelName || 'Interview Round'}</span>
                                                     {r.mailSent && (
-                                                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                                                            <CheckCircle2 size={10} className="text-emerald-600" /> Mail Sent
+                                                        <span className="inline-flex items-center gap-0.5 text-[8px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded">
+                                                            <CheckCircle2 size={9} className="text-emerald-600" /> Mail Sent
                                                         </span>
                                                     )}
                                                 </div>
@@ -500,9 +530,9 @@ const InterviewAnalytics = () => {
                                                         {r.rating}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center gap-1">
                                                     <span className="font-semibold text-slate-600">Result:</span>
-                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
                                                         r.status === 'Pass' ? 'bg-emerald-100 text-emerald-700' :
                                                         r.status === 'Fail' ? 'bg-rose-100 text-rose-700' :
                                                         'bg-blue-100 text-blue-700'
@@ -511,10 +541,10 @@ const InterviewAnalytics = () => {
                                                     </span>
                                                 </div>
                                                 {Array.isArray(r.customFields) && r.customFields.length > 0 && (
-                                                    <div className="mt-1 bg-slate-50 p-1.5 rounded border border-slate-200/80 space-y-0.5 text-[10px]">
+                                                    <div className="mt-0.5 bg-slate-50 p-1 rounded border border-slate-200/80 space-y-0.5 text-[9px]">
                                                         {r.customFields.map((cf, idx) => (
                                                             <div key={idx} className="flex flex-col gap-0.5">
-                                                                <span className="font-semibold text-slate-500 uppercase text-[9px]">{cf.key}:</span>
+                                                                <span className="font-semibold text-slate-500 uppercase text-[8px]">{cf.key}:</span>
                                                                 <span className="font-medium text-slate-800 break-all select-all">{cf.value}</span>
                                                             </div>
                                                         ))}
@@ -538,49 +568,44 @@ const InterviewAnalytics = () => {
                                             }}
                                             className="hover:bg-indigo-50/50 cursor-pointer transition align-top group"
                                         >
-                                            {/* Candidate Name (Sticky Left Column) */}
-                                            <td className="p-3.5 sticky left-0 bg-white group-hover:bg-indigo-50/90 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
-                                                <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition">{candidate.candidateName}</div>
-                                                <div className="text-[11px] text-slate-400">{candidate.roleTitle}</div>
-                                                <div className="text-[10px] text-indigo-500 font-medium">{candidate.clientName}</div>
-                                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-[10px]">
+                                            {/* Candidate Name (Sticky Left Column - 20% Width) */}
+                                            <td className="p-2 px-2.5 w-[20%] min-w-[20%] sticky left-0 bg-white group-hover:bg-indigo-50/90 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]">
+                                                <div className="font-bold text-slate-800 text-xs group-hover:text-indigo-600 transition">{candidate.candidateName}</div>
+                                                <div className="text-[10px] text-slate-400">{candidate.roleTitle}</div>
+                                                <div className="text-[9px] text-indigo-500 font-medium">{candidate.clientName}</div>
+                                                <div className="flex items-center gap-1 mt-0.5 flex-wrap text-[9px]">
                                                     {candidate.noticePeriod != null && (
-                                                        <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 font-semibold rounded border border-blue-100" title="Notice Period">
+                                                        <span className="px-1 py-0.2 bg-blue-50 text-blue-700 font-semibold rounded border border-blue-100" title="Notice Period">
                                                             Notice: {candidate.noticePeriod}d
                                                         </span>
                                                     )}
                                                     {candidate.expectedCTC != null && (
-                                                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 font-semibold rounded border border-emerald-100" title="Expected CTC">
+                                                        <span className="px-1 py-0.2 bg-emerald-50 text-emerald-700 font-semibold rounded border border-emerald-100" title="Expected CTC">
                                                             Exp: {candidate.expectedCTC} LPA
                                                         </span>
                                                     )}
                                                 </div>
                                             </td>
 
-                                            {/* Total Interview Rounds */}
-                                            <td className="p-3.5 text-center">
-                                                <span className="inline-flex min-w-[28px] h-7 items-center justify-center rounded-full bg-slate-100 text-slate-700 font-bold text-xs">
+                                            {/* Total Interview Rounds (5% Width) */}
+                                            <td className="p-2 px-1.5 w-[5%] min-w-[5%] text-center">
+                                                <span className="inline-flex min-w-[22px] h-5 items-center justify-center rounded-full bg-slate-100 text-slate-700 font-bold text-[10px]">
                                                     {candidate.totalRounds}
                                                 </span>
                                             </td>
 
-                                            {/* Round 1 Details */}
-                                            <td className="p-3.5 bg-slate-50/30">
-                                                {renderRoundDetailsCell(r1)}
-                                            </td>
+                                            {/* Dynamic Round Details Columns */}
+                                            {dynamicRoundColumns.map((col) => {
+                                                const round = candidate.rounds?.[col.index];
+                                                return (
+                                                    <td key={col.index} className="p-2 px-2.5 bg-slate-50/30">
+                                                        {renderRoundDetailsCell(round)}
+                                                    </td>
+                                                );
+                                            })}
 
-                                            {/* Round 2 Details */}
-                                            <td className="p-3.5 bg-slate-50/30">
-                                                {renderRoundDetailsCell(r2)}
-                                            </td>
-
-                                            {/* Round 3 Details */}
-                                            <td className="p-3.5 bg-slate-50/30">
-                                                {renderRoundDetailsCell(r3)}
-                                            </td>
-
-                                            {/* Final Decision Dropdown */}
-                                            <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
+                                            {/* Final Decision Dropdown (10% Width) */}
+                                            <td className="p-2 px-2.5 w-[10%] min-w-[10%]" onClick={(e) => e.stopPropagation()}>
                                                 <select
                                                     value={candidate.finalDecision || 'None'}
                                                     disabled={updatingDecisionId === candidate._id}
