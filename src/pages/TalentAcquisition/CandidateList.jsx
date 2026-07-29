@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search, Calendar, BarChart3, ChevronDown } from 'lucide-react';
+import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search, Calendar, BarChart3, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -1164,16 +1164,89 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         serverResultCount
     ]);
 
+    const [sortColumn, setSortColumn] = useState(null);
+    const [sortDirection, setSortDirection] = useState('asc');
+
+    const handleHeaderSort = (columnKey) => {
+        if (sortColumn === columnKey) {
+            if (sortDirection === 'asc') {
+                setSortDirection('desc');
+            } else {
+                setSortColumn(null);
+                setSortDirection('asc');
+            }
+        } else {
+            setSortColumn(columnKey);
+            setSortDirection('asc');
+        }
+    };
+
+    const renderSortIcon = (columnKey) => {
+        if (sortColumn !== columnKey) {
+            return <ArrowUpDown size={12} className="opacity-40 hover:opacity-100 transition-opacity ml-1 inline text-slate-400" />;
+        }
+        return sortDirection === 'asc' ? (
+            <ArrowUp size={12} className="text-blue-600 ml-1 inline font-bold" />
+        ) : (
+            <ArrowDown size={12} className="text-blue-600 ml-1 inline font-bold" />
+        );
+    };
+
     const activeList = usesBackendPagination
         ? candidates
         : (activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered);
+
+    const sortedActiveList = useMemo(() => {
+        if (!sortColumn) return activeList;
+        return [...activeList].sort((a, b) => {
+            let valA = '';
+            let valB = '';
+            switch (sortColumn) {
+                case 'candidate':
+                    valA = (a.candidateName || a.name || `${a.firstName || ''} ${a.lastName || ''}`).trim().toLowerCase();
+                    valB = (b.candidateName || b.name || `${b.firstName || ''} ${b.lastName || ''}`).trim().toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                case 'contact':
+                    valA = (a.email || a.phone || a.mobile || '').toLowerCase();
+                    valB = (b.email || b.phone || b.mobile || '').toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                case 'experience':
+                    valA = Number(a.totalExperience || a.experience || 0);
+                    valB = Number(b.totalExperience || b.experience || 0);
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                case 'ctc':
+                    valA = Number(a.currentCTC || a.expectedCTC || a.ctc || 0);
+                    valB = Number(b.currentCTC || b.expectedCTC || b.ctc || 0);
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                case 'interviews':
+                    valA = Array.isArray(a.interviewRounds) ? a.interviewRounds.length : (a.rounds ? a.rounds.length : 0);
+                    valB = Array.isArray(b.interviewRounds) ? b.interviewRounds.length : (b.rounds ? b.rounds.length : 0);
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                case 'decision':
+                    valA = (a.finalDecision || a.decision || a.phase2Decision || a.phase3Decision || '').toLowerCase();
+                    valB = (b.finalDecision || b.decision || b.phase2Decision || b.phase3Decision || '').toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                case 'pulled':
+                    valA = new Date(a.createdAt || a.pulledAt || a.uploadedAt || 0).getTime();
+                    valB = new Date(b.createdAt || b.pulledAt || b.uploadedAt || 0).getTime();
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                case 'status':
+                    valA = (a.status || a.candidateStatus || '').toLowerCase();
+                    valB = (b.status || b.candidateStatus || '').toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                default:
+                    return 0;
+            }
+        });
+    }, [activeList, sortColumn, sortDirection]);
+
     const totalPages = usesBackendPagination
         ? serverTotalPages
-        : (Math.ceil(activeList.length / itemsPerPage) || 1);
+        : (Math.ceil(sortedActiveList.length / itemsPerPage) || 1);
     const paginatedCandidates = usesBackendPagination
-        ? candidates
-        : activeList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
-    const allVisibleSelected = activeList.length > 0 && activeList.every((candidate) => selectedCandidateIds.includes(candidate._id));
+        ? sortedActiveList
+        : sortedActiveList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+    const allVisibleSelected = sortedActiveList.length > 0 && sortedActiveList.every((candidate) => selectedCandidateIds.includes(candidate._id));
 
     useEffect(() => {
         const visibleIds = new Set(activeList.map((candidate) => candidate._id));
@@ -3199,14 +3272,42 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                         />
                                                     </th>
                                                 )}
-                                                <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Candidate</th>
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Experience</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">CTC Details</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Interviews</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Decision</th>}
-                                                {!selectedCandidateId && <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pulled / Uploaded</th>}
-                                                <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                                                <th onClick={() => handleHeaderSort('candidate')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                    Candidate {renderSortIcon('candidate')}
+                                                </th>
+                                                {!selectedCandidateId && (
+                                                    <th onClick={() => handleHeaderSort('contact')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                        Contact {renderSortIcon('contact')}
+                                                    </th>
+                                                )}
+                                                {!selectedCandidateId && (
+                                                    <th onClick={() => handleHeaderSort('experience')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                        Experience {renderSortIcon('experience')}
+                                                    </th>
+                                                )}
+                                                {!selectedCandidateId && (
+                                                    <th onClick={() => handleHeaderSort('ctc')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                        CTC Details {renderSortIcon('ctc')}
+                                                    </th>
+                                                )}
+                                                {!selectedCandidateId && (
+                                                    <th onClick={() => handleHeaderSort('interviews')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                        Interviews {renderSortIcon('interviews')}
+                                                    </th>
+                                                )}
+                                                {!selectedCandidateId && (
+                                                    <th onClick={() => handleHeaderSort('decision')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                        Decision {renderSortIcon('decision')}
+                                                    </th>
+                                                )}
+                                                {!selectedCandidateId && (
+                                                    <th onClick={() => handleHeaderSort('pulled')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                        Pulled / Uploaded {renderSortIcon('pulled')}
+                                                    </th>
+                                                )}
+                                                <th onClick={() => handleHeaderSort('status')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
+                                                    Status {renderSortIcon('status')}
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-200">
