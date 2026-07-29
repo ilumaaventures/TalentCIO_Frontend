@@ -2243,38 +2243,38 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             </button>
                         </div>
 
-                        <div className="space-y-4 text-xs">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                        <div className="space-y-3 text-[11px]">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
                                 <div>
-                                    <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Dispatched At:</span>
-                                    <p className="font-semibold text-slate-800 text-sm">
+                                    <span className="text-slate-400 font-bold text-[9px] uppercase tracking-wider block mb-0.5">Dispatched At:</span>
+                                    <p className="font-semibold text-slate-800 text-xs">
                                         {viewingMailDetails.sentAt ? format(new Date(viewingMailDetails.sentAt), 'PPpp') : 'Sent'}
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Recipient Candidate:</span>
-                                    <p className="font-semibold text-slate-800 text-sm">
+                                    <span className="text-slate-400 font-bold text-[9px] uppercase tracking-wider block mb-0.5">Recipient Candidate:</span>
+                                    <p className="font-semibold text-slate-800 text-xs">
                                         {viewingMailDetails.candidateEmail || candidate?.email || 'N/A'}
                                     </p>
                                 </div>
                                 {viewingMailDetails.cc && (
                                     <div>
-                                        <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">CC Emails:</span>
-                                        <p className="font-medium text-slate-700">{viewingMailDetails.cc}</p>
+                                        <span className="text-slate-400 font-bold text-[9px] uppercase tracking-wider block mb-0.5">CC Emails:</span>
+                                        <p className="font-medium text-slate-700 text-xs">{viewingMailDetails.cc}</p>
                                     </div>
                                 )}
                                 {viewingMailDetails.bcc && (
                                     <div>
-                                        <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">BCC Emails:</span>
-                                        <p className="font-medium text-slate-700">{viewingMailDetails.bcc}</p>
+                                        <span className="text-slate-400 font-bold text-[9px] uppercase tracking-wider block mb-0.5">BCC Emails:</span>
+                                        <p className="font-medium text-slate-700 text-xs">{viewingMailDetails.bcc}</p>
                                     </div>
                                 )}
                                 {Array.isArray(viewingMailDetails.interviewers) && viewingMailDetails.interviewers.length > 0 && (
                                     <div className="md:col-span-2">
-                                        <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Assigned Interviewer(s) Notified:</span>
-                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                        <span className="text-slate-400 font-bold text-[9px] uppercase tracking-wider block mb-0.5">Assigned Interviewer(s) Notified:</span>
+                                        <div className="flex flex-wrap gap-1 mt-0.5">
                                             {viewingMailDetails.interviewers.map((inv, idx) => (
-                                                <span key={idx} className="bg-white border border-slate-200 px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-700">
+                                                <span key={idx} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] font-medium text-slate-700">
                                                     {inv.name} ({inv.email || 'N/A'})
                                                 </span>
                                             ))}
@@ -2283,17 +2283,17 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 )}
                             </div>
 
-                            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-                                <span className="text-slate-400 font-bold text-[10px] uppercase block mb-0.5">Subject:</span>
-                                <p className="font-bold text-slate-800 text-sm">{viewingMailDetails.subject || 'Interview Invitation'}</p>
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                                <span className="text-slate-400 font-bold text-[9px] uppercase tracking-wider block mb-0.5">Subject:</span>
+                                <p className="font-bold text-slate-800 text-xs">{viewingMailDetails.subject || 'Interview Invitation'}</p>
                             </div>
 
-                            <div className="bg-white p-5 rounded-xl border border-slate-200 min-h-[240px] max-h-[520px] overflow-y-auto shadow-xs">
-                                <span className="text-slate-400 font-bold text-[10px] uppercase block mb-2 border-b pb-1">
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 min-h-[220px] max-h-[500px] overflow-y-auto shadow-xs">
+                                <span className="text-slate-400 font-bold text-[9px] uppercase tracking-wider block mb-2 border-b pb-1">
                                     Actual Dispatched Email Content:
                                 </span>
                                 <div
-                                    className="prose prose-xs max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap"
+                                    className="text-xs text-slate-700 leading-normal whitespace-pre-wrap font-normal"
                                     dangerouslySetInnerHTML={{ __html: viewingMailDetails.htmlBody || '<p className="text-slate-400 italic">No HTML content logged.</p>' }}
                                 />
                             </div>
