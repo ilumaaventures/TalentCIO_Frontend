@@ -87,7 +87,8 @@ const monthLabel = (value) => {
 const getInitials = (...parts) => parts
     .filter(Boolean)
     .join(' ')
-    .split(' ')
+    .trim()
+    .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
@@ -302,6 +303,12 @@ const TalentAcquisitionDashboard = () => {
     const [publicAppPagination, setPublicAppPagination] = useState({ currentPage: 1, totalPages: 1, count: 0, limit: 15 });
 
     // Applied states used for search execution
+    const defaultAppliedFilters = useMemo(() => ({
+        search: '', sources: [], minExp: '', maxExp: '', skills: [], client: '',
+        location: '', maxNoticePeriod: '', minCurrentCTC: '', maxCurrentCTC: '',
+        minExpectedCTC: '', maxExpectedCTC: '', inHandOffer: '', decision: '', publicAppReviewStatus: ''
+    }), []);
+
     const [appliedFilters, setAppliedFilters] = useState(() => {
         try {
             const saved = sessionStorage.getItem('ta_candidate_filters');
@@ -330,21 +337,9 @@ const TalentAcquisitionDashboard = () => {
             console.error(e);
         }
         return {
-            search: '',
-            sources: [],
-            minExp: '',
-            maxExp: '',
-            skills: [],
-            client: '',
-            location: '',
-            maxNoticePeriod: '',
-            minCurrentCTC: '',
-            maxCurrentCTC: '',
-            minExpectedCTC: '',
-            maxExpectedCTC: '',
-            inHandOffer: '',
-            decision: '',
-            publicAppReviewStatus: ''
+            search: '', sources: [], minExp: '', maxExp: '', skills: [], client: '',
+            location: '', maxNoticePeriod: '', minCurrentCTC: '', maxCurrentCTC: '',
+            minExpectedCTC: '', maxExpectedCTC: '', inHandOffer: '', decision: '', publicAppReviewStatus: ''
         };
     });
 
@@ -1215,7 +1210,7 @@ const TalentAcquisitionDashboard = () => {
                                 type="text"
                                 value={candidateSearchText}
                                 onChange={(e) => setCandidateSearchText(e.target.value)}
-                                placeholder={showPublicApps ? 'Search public applications by name, email or phone...' : 'Search candidates by name, email, phone, location or company...'}
+                                placeholder={showPublicApps ? 'Search public applications by name, email, phone or cover note...' : 'Search candidates by name, email, phone, location, company, skill or keyword...'}
                                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
                             />
                         </div>
