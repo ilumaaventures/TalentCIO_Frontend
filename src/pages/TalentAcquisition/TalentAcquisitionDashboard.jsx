@@ -1703,6 +1703,7 @@ const TalentAcquisitionDashboard = () => {
                                 </thead>
                                 <tbody>
                                     {candidateResults.map((candidate) => {
+                                        const isFilterActive = activeFiltersCount > 0 || Boolean(candidateSearchText?.trim()) || Boolean(appliedFilters.search?.trim());
                                         const allSkills = [
                                             ...(candidate.mustHaveSkills || []).map(s => typeof s?.skill === 'object' ? s.skill?.name : s?.skill),
                                             ...(candidate.niceToHaveSkills || []).map(s => typeof s?.skill === 'object' ? s.skill?.name : s?.skill)
