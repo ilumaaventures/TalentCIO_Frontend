@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, Mail, Send, X } from 'lucide-react';
+import { Eye, Mail, Paperclip, Send, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -35,12 +35,13 @@ const buildPreviewData = (candidate, requestMeta, customNote = '') => {
         jobTitle: requestMeta?.roleDetails?.title || requestMeta?.positionName || '',
         designation: requestMeta?.roleDetails?.title || requestMeta?.positionName || '',
         client: requestMeta?.client || '',
+        clientName: requestMeta?.client || '',
         department: requestMeta?.roleDetails?.department || '',
         location: requestMeta?.location || '',
         managerName: '',
         managerEmail: '',
         recruiterName: taContactName,
-        companyName: requestMeta?.companyName || 'TalentCIO',
+        companyName: requestMeta?.client || candidate?.companyName || requestMeta?.companyName || 'TalentCIO',
         requestId: requestMeta?.requestId || '',
         currentStatus: candidate?.status || '',
         interviewDate: '',
@@ -111,6 +112,9 @@ const MassMailModal = ({
     const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
     const [senderOptions, setSenderOptions] = useState([]);
     const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('platform');
+    const [cc, setCc] = useState('');
+    const [bcc, setBcc] = useState('');
+    const [attachments, setAttachments] = useState([]);
     const [filters, setFilters] = useState({
         status: [],
         decision: [],
@@ -126,6 +130,9 @@ const MassMailModal = ({
         setCustomSubject('');
         setCustomHtmlBody('');
         setCustomNote('');
+        setCc('');
+        setBcc('');
+        setAttachments([]);
         setSenderOptions([]);
         setSelectedEmailAccountId('platform');
         setSelectedIds(initialSelectedIds);
@@ -229,14 +236,8 @@ const MassMailModal = ({
             return;
         }
 
-        if (templateMode === 'saved' && !templateId) {
-            toast.error('Select an email template.');
-            setStep(2);
-            return;
-        }
-
         if (!customSubject.trim() || !customHtmlBody.trim()) {
-            toast.error('Subject and HTML body are required.');
+            toast.error('Subject and email body are required.');
             setStep(2);
             return;
         }
@@ -257,17 +258,47 @@ const MassMailModal = ({
 
         try {
             setSending(true);
-            const payload = {
-                templateId: templateMode === 'saved' ? templateId : undefined,
-                emailAccountId: selectedEmailAccountId,
-                customSubject,
-                customHtmlBody,
-                candidateIds: sendToAllMatching ? [] : selectedIds,
-                filters: sendToAllMatching ? normalizeFiltersForRequest(filters) : undefined,
-                customNote
-            };
+            let response;
 
-            const response = await api.post(`/ta/hiring-request/${hiringRequestId}/send-mass-mail`, payload);
+            if (attachments.length > 0) {
+                const formData = new FormData();
+                if (templateMode === 'saved' && templateId) formData.append('templateId', templateId);
+                formData.append('emailAccountId', selectedEmailAccountId);
+                formData.append('customSubject', customSubject);
+                formData.append('customHtmlBody', customHtmlBody);
+                if (customNote) formData.append('customNote', customNote);
+                if (cc.trim()) formData.append('cc', cc.trim());
+                if (bcc.trim()) formData.append('bcc', bcc.trim());
+
+                if (sendToAllMatching) {
+                    formData.append('filters', JSON.stringify(normalizeFiltersForRequest(filters)));
+                } else {
+                    formData.append('candidateIds', JSON.stringify(selectedIds));
+                }
+
+                attachments.forEach((file) => {
+                    formData.append('attachments', file);
+                });
+
+                response = await api.post(`/ta/hiring-request/${hiringRequestId}/send-mass-mail`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } else {
+                const payload = {
+                    templateId: templateMode === 'saved' ? templateId : undefined,
+                    emailAccountId: selectedEmailAccountId,
+                    customSubject,
+                    customHtmlBody,
+                    candidateIds: sendToAllMatching ? [] : selectedIds,
+                    filters: sendToAllMatching ? normalizeFiltersForRequest(filters) : undefined,
+                    customNote,
+                    cc: cc.trim() || undefined,
+                    bcc: bcc.trim() || undefined
+                };
+
+                response = await api.post(`/ta/hiring-request/${hiringRequestId}/send-mass-mail`, payload);
+            }
+
             toast.success(`Mail sent to ${response.data.sent} candidates`);
             onSent?.(response.data);
             onClose();
@@ -384,10 +415,18 @@ const MassMailModal = ({
                                         <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Template</label>
                                         <select
                                             value={templateId}
-                                            onChange={(e) => setTemplateId(e.target.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setTemplateId(val);
+                                                if (!val) {
+                                                    setTemplateMode('custom');
+                                                } else {
+                                                    setTemplateMode('saved');
+                                                }
+                                            }}
                                             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                         >
-                                            <option value="">{loadingTemplates ? 'Loading templates...' : 'Select template'}</option>
+                                            <option value="">{loadingTemplates ? 'Loading templates...' : 'Custom Email (Write your own)'}</option>
                                             {templates.map((template) => (
                                                 <option key={template._id} value={template._id}>
                                                     {template.name} · {template.category}
@@ -421,6 +460,86 @@ const MassMailModal = ({
                                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                         placeholder="Enter email subject"
                                     />
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">CC Emails (Optional)</label>
+                                            <input
+                                                type="text"
+                                                value={cc}
+                                                onChange={(e) => setCc(e.target.value)}
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                                placeholder="e.g. hr@company.com, manager@company.com"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">BCC Emails (Optional)</label>
+                                            <input
+                                                type="text"
+                                                value={bcc}
+                                                onChange={(e) => setBcc(e.target.value)}
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                                placeholder="e.g. audit@company.com"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Attachments (Optional)</label>
+                                        <span className="text-[11px] text-slate-400">Max 10 files (15MB total)</span>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-100">
+                                            <Paperclip size={15} />
+                                            <span>Attach Files</span>
+                                            <input
+                                                type="file"
+                                                multiple
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const newFiles = Array.from(e.target.files || []);
+                                                    if (newFiles.length + attachments.length > 10) {
+                                                        toast.error('Maximum 10 attachments allowed.');
+                                                        return;
+                                                    }
+                                                    setAttachments((prev) => [...prev, ...newFiles]);
+                                                    e.target.value = '';
+                                                }}
+                                            />
+                                        </label>
+                                        {attachments.length > 0 && (
+                                            <span className="text-xs font-semibold text-slate-600">
+                                                {attachments.length} file(s) attached
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {attachments.length > 0 && (
+                                        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 max-h-40 overflow-y-auto">
+                                            {attachments.map((file, idx) => (
+                                                <div key={idx} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <Paperclip size={14} className="text-slate-400 shrink-0" />
+                                                        <span className="truncate font-medium text-slate-700">{file.name}</span>
+                                                        <span className="text-[10px] text-slate-400">({(file.size / 1024).toFixed(1)} KB)</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                                                        className="rounded-full p-1 text-slate-400 transition hover:bg-slate-200 hover:text-rose-600"
+                                                        title="Remove attachment"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -483,6 +602,9 @@ const MassMailModal = ({
                                     <p>Template mode: <span className="font-bold text-slate-900">{templateMode === 'saved' ? 'Saved template' : 'Custom'}</span></p>
                                     <p>Template: <span className="font-bold text-slate-900">{activeTemplate?.name || 'Custom email'}</span></p>
                                     <p>Sender: <span className="font-bold text-slate-900">{senderOptions.find((option) => option._id === selectedEmailAccountId)?.name || 'TalentCIO Platform'}</span></p>
+                                    {cc && <p>CC: <span className="font-semibold text-slate-800">{cc}</span></p>}
+                                    {bcc && <p>BCC: <span className="font-semibold text-slate-800">{bcc}</span></p>}
+                                    {attachments.length > 0 && <p>Attachments: <span className="font-bold text-blue-700">{attachments.length} file(s) attached</span></p>}
                                 </div>
                                 <div className="rounded-xl bg-slate-50 p-4">
                                     <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Subject</p>

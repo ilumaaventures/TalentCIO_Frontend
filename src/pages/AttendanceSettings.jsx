@@ -46,6 +46,7 @@ const DEFAULT_ATTENDANCE_SETTINGS = {
     allowedIps: [],
     flexWeeklyOff: {
         enabled: false,
+        allowPastDays: true,
         allowedDay: 'Custom (Employee Chooses)',
         allowedDays: ['Custom (Employee Chooses)'],
         allowedCount: 2,
@@ -170,6 +171,7 @@ const AttendanceSettings = () => {
                         },
                         flexWeeklyOff: {
                             enabled: false,
+                            allowPastDays: true,
                             allowedDay: 'Custom (Employee Chooses)',
                             allowedDays: ['Custom (Employee Chooses)'],
                             allowedCount: 2,
@@ -1031,6 +1033,26 @@ const AttendanceSettings = () => {
                                     <p className="mt-1.5 text-xs text-slate-500">
                                         Select all the days of the week employees can pick as flexible off days.
                                     </p>
+                                </div>
+
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                                    <label className="flex items-start gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                                            disabled={!canEditWeeklyOff}
+                                            checked={flexWeeklyOff.allowPastDays !== false}
+                                            onChange={(e) => updateFlexWeeklyOff({ allowPastDays: e.target.checked })}
+                                        />
+                                        <div>
+                                            <span className="text-sm font-bold text-slate-800">
+                                                Allow Past Days Selection
+                                            </span>
+                                            <p className="text-xs text-slate-500 mt-0.5">
+                                                When enabled, employees are allowed to pick past calendar dates as flexible off. When disabled, employees can only pick current or future dates.
+                                            </p>
+                                        </div>
+                                    </label>
                                 </div>
                             </div>
                         )}

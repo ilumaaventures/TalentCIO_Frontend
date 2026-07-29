@@ -39,6 +39,7 @@ const CreateHiringRequest      = lazy(() => import('./pages/TalentAcquisition/Cr
 const HiringRequestDetails     = lazy(() => import('./pages/TalentAcquisition/HiringRequestDetails'));
 const WorkflowSettings         = lazy(() => import('./pages/TalentAcquisition/WorkflowSettings'));
 const EmailTemplates           = lazy(() => import('./pages/TalentAcquisition/EmailTemplates'));
+const TAEmailHistory           = lazy(() => import('./pages/TalentAcquisition/TAEmailHistory'));
 const PhaseTemplates           = lazy(() => import('./pages/TalentAcquisition/Settings/PhaseTemplates'));
 const TAAccessSettings         = lazy(() => import('./pages/TalentAcquisition/TAAccessSettings'));
 const CandidateForm            = lazy(() => import('./pages/TalentAcquisition/CandidateForm'));
@@ -54,6 +55,7 @@ const QueryDetails             = lazy(() => import('./pages/QueryDetails'));
 const Discussions              = lazy(() => import('./pages/Discussions'));
 const Announcements            = lazy(() => import('./pages/Announcements'));
 const GlobalTADashboard        = lazy(() => import('./pages/TalentAcquisition/GlobalTADashboard'));
+const InterviewAnalytics       = lazy(() => import('./pages/TalentAcquisition/InterviewAnalytics'));
 const Onboarding               = lazy(() => import('./pages/Onboarding'));
 const Offboarding              = lazy(() => import('./pages/Offboarding'));
 const HREmailSend              = lazy(() => import('./pages/HREmailSend'));
@@ -210,6 +212,7 @@ function App() {
                         <EmailTemplates />
                       </ProtectedRoute>
                     )} />
+                    <Route path="/ta/email-history" element={<TAEmailHistory />} />
                     <Route path="/ta/create-request" element={<CreateHiringRequest />} />
                     <Route path="/ta/edit-request/:id" element={<CreateHiringRequest />} />
                     <Route path="/ta/view/:id" element={<HiringRequestDetails />} />
@@ -223,6 +226,7 @@ function App() {
                         <GlobalTADashboard />
                       </ProtectedRoute>
                     )} />
+                    <Route path="/ta/interview-analytics" element={<InterviewAnalytics />} />
                   </Route>
                   
                   <Route path="/profile" element={<Profile />} />

@@ -26,7 +26,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const phaseParam = searchParams.get('phase');
-    const currentPhase = phaseParam ? parseInt(phaseParam, 10) : 2;
+    const currentPhase = phaseParam ? parseInt(phaseParam, 10) : 1;
     const canViewCandidateDetails = useMemo(() => canViewTACandidateDetails(user), [user]);
 
     const [candidate, setCandidate] = useState(null);
@@ -36,6 +36,13 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     // Round Management State
     const [isAddingRound, setIsAddingRound] = useState(false);
     const [newRound, setNewRound] = useState({ levelName: '', scheduledDate: '' });
+    const [customFields, setCustomFields] = useState([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState('');
+    const [emailTemplates, setEmailTemplates] = useState([]);
+    const [senderOptions, setSenderOptions] = useState([]);
+    const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('');
+    const [roundCc, setRoundCc] = useState('');
+    const [roundBcc, setRoundBcc] = useState('');
 
     // Evaluation State
     const [evaluatingRoundId, setEvaluatingRoundId] = useState(null);
@@ -100,6 +107,30 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 } catch (e) {
                     console.warn('Interviewer user cannot fetch interview workflows:', e);
                 }
+
+                try {
+                    const templatesRes = await api.get('/ta/email-templates');
+                    setEmailTemplates(Array.isArray(templatesRes.data) ? templatesRes.data : []);
+                } catch (e) {
+                    console.warn('Interviewer user cannot fetch email templates:', e);
+                }
+
+                try {
+                    const senderRes = await api.get('/company/email-settings/senders');
+                    const senderData = senderRes.data || {};
+                    const options = [
+                        senderData.platformOption,
+                        ...((senderData.accounts || []).filter((a) => a.ready))
+                    ].filter(Boolean);
+                    setSenderOptions(options);
+                    setSelectedEmailAccountId(
+                        options.some((o) => o._id === senderData.defaultAccountId)
+                            ? senderData.defaultAccountId
+                            : (options[0]?._id || '')
+                    );
+                } catch (e) {
+                    console.warn('Could not fetch sender options:', e);
+                }
             } catch (error) {
                 console.error('Error initializing candidate details:', error);
                 toast.error('Failed to load candidate details correctly.');
@@ -117,6 +148,22 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             initializeData();
         }
     }, [candidateId, canViewCandidateDetails]);
+
+    const handleAddCustomFieldRow = () => {
+        setCustomFields(prev => [...prev, { key: '', value: '' }]);
+    };
+
+    const handleRemoveCustomFieldRow = (index) => {
+        setCustomFields(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleCustomFieldChange = (index, field, value) => {
+        setCustomFields(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: value };
+            return updated;
+        });
+    };
 
     const fetchCandidate = useCallback(async () => {
         try {
@@ -141,13 +188,23 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 levelName: newRound.levelName,
                 assignedTo: selectedInterviewer && selectedInterviewer.trim() !== '' ? [selectedInterviewer] : [],
                 scheduledDate: newRound.scheduledDate || undefined,
-                phase: currentPhase
+                phase: currentPhase,
+                customFields: customFields.filter(f => f.key && f.key.trim()),
+                emailTemplateId: selectedTemplateId || undefined,
+                emailAccountId: selectedEmailAccountId || undefined,
+                cc: roundCc.trim() || undefined,
+                bcc: roundBcc.trim() || undefined
             };
 
             await api.post(`/ta/candidates/${candidateId}/rounds`, payload);
-            toast.success('Interview round added');
+            toast.success('Interview round scheduled & invitation sent');
             setIsAddingRound(false);
             setNewRound({ levelName: '', scheduledDate: '' });
+            setCustomFields([]);
+            setSelectedTemplateId('');
+            setSelectedEmailAccountId(senderOptions[0]?._id || '');
+            setRoundCc('');
+            setRoundBcc('');
             setSelectedInterviewer('');
             setSelectedRoleForRound('');
             fetchCandidate();
@@ -159,7 +216,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         } finally {
             setActionLoading(false);
         }
-    }, [candidateId, currentPhase, fetchCandidate, newRound, onUpdate, selectedInterviewer]);
+    }, [candidateId, currentPhase, customFields, fetchCandidate, newRound, onUpdate, roundBcc, roundCc, selectedEmailAccountId, selectedInterviewer, selectedTemplateId, senderOptions]);
 
     const handleEditRound = useCallback(async (roundId) => {
         if (!editingRoundForm.levelName) {
@@ -205,7 +262,12 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                     levelName: r.levelName,
                     assignedTo: mapping.assignedTo && mapping.assignedTo.trim() !== '' ? [mapping.assignedTo] : [],
                     scheduledDate: mapping.scheduledDate || undefined,
-                    phase: currentPhase
+                    phase: currentPhase,
+                    emailTemplateId: mapping.emailTemplateId || undefined,
+                    emailAccountId: mapping.emailAccountId || selectedEmailAccountId || undefined,
+                    cc: mapping.cc?.trim() || r.cc?.trim() || undefined,
+                    bcc: mapping.bcc?.trim() || r.bcc?.trim() || undefined,
+                    customFields: Array.isArray(mapping.customFields) ? mapping.customFields.filter(f => f.key && f.key.trim()) : []
                 };
                 await api.post(`/ta/candidates/${candidateId}/rounds`, payload);
             }
@@ -637,6 +699,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                         <option value="Hired">Hired</option>
                                                         <option value="Rejected">Rejected</option>
                                                         <option value="Did Not Turn Up">Did Not Turn Up</option>
+                                                        <option value="Left in between">Left in between</option>
                                                         <option value="On Hold">On Hold</option>
                                                     </select>
                                                 ) : currentPhase === 2 ? (
@@ -910,7 +973,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         {isApplyingWorkflow && (
                             <div className="bg-slate-50 p-5 rounded-xl border border-indigo-100 mb-8 animate-in fade-in slide-in-from-top-2">
                                 <h4 className="text-sm font-bold text-slate-700 mb-4">Apply Interview Template Sequence</h4>
-                                <div className="mb-4">
+                                 <div className="mb-4">
                                     <label className="block text-xs font-medium text-slate-500 mb-1">Select Template</label>
                                     <select
                                         value={selectedWorkflow}
@@ -921,14 +984,19 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             if (template) {
                                                 const mapping = {};
                                                 template.rounds.forEach((r, i) => {
-                                                    if (r.user) mapping[i] = { assignedTo: r.user?._id || r.user };
+                                                    mapping[i] = {
+                                                        assignedTo: r.user ? (r.user._id || r.user) : '',
+                                                        scheduledDate: '',
+                                                        emailTemplateId: r.emailTemplateId ? (r.emailTemplateId._id || r.emailTemplateId) : '',
+                                                        customFields: Array.isArray(r.customFields) ? r.customFields.map(cf => ({ key: cf.key || '', value: cf.value || '' })) : []
+                                                    };
                                                 });
                                                 setWorkflowMapping(mapping);
                                             } else {
                                                 setWorkflowMapping({});
                                             }
                                         }}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-indigo-500"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-indigo-500 font-medium"
                                     >
                                         <option value="">-- Select an Interview Workflow --</option>
                                         {interviewWorkflows.map(wf => (
@@ -938,40 +1006,176 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 </div>
 
                                 {selectedWorkflow && (
-                                    <div className="space-y-3 mb-5 border-t border-slate-200 pt-4">
+                                    <div className="space-y-4 mb-5 border-t border-slate-200 pt-4">
                                         <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wider">Configure Rounds</p>
                                         {interviewWorkflows.find(w => w._id === selectedWorkflow)?.rounds.map((round, index) => {
-                                            // Filter users visually if the protocol specifies a target role
                                             const roleFilterId = round.role?._id || round.role;
                                             const roleUsers = roleFilterId
                                                 ? users.filter(u => u.roles?.some(r => r._id === roleFilterId || r === roleFilterId))
                                                 : users;
 
+                                            const currentRoundMapping = workflowMapping[index] || {};
+
                                             return (
-                                                <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-3 bg-white rounded-lg border border-slate-200 items-center">
-                                                    <div className="md:col-span-1 border-r border-slate-100">
-                                                        <div className="font-semibold text-indigo-700 text-sm">{round.levelName}</div>
-                                                        {roleFilterId && <div className="text-[10px] text-slate-500 uppercase mt-0.5 font-medium">Req Role: {round.role?.name || 'Assigned'}</div>}
+                                                <div key={index} className="flex flex-col gap-3 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                                                                {index + 1}
+                                                            </span>
+                                                            <span className="font-bold text-indigo-900 text-sm">{round.levelName}</span>
+                                                        </div>
+                                                        {roleFilterId && <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">Role: {round.role?.name || 'Assigned'}</span>}
                                                     </div>
-                                                    <div className="md:col-span-2">
-                                                        <select
-                                                            value={workflowMapping[index]?.assignedTo || ''}
-                                                            onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...workflowMapping[index], assignedTo: e.target.value } })}
-                                                            className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm outline-none focus:border-indigo-500"
-                                                        >
-                                                            <option value="">-- Assign Interviewer --</option>
-                                                            {roleUsers.map(u => (
-                                                                <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
-                                                            ))}
-                                                        </select>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                        <div>
+                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Interviewer</label>
+                                                            <select
+                                                                value={currentRoundMapping.assignedTo || ''}
+                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, assignedTo: e.target.value } })}
+                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
+                                                            >
+                                                                <option value="">-- Select Interviewer --</option>
+                                                                {roleUsers.map(u => (
+                                                                    <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Schedule Date & Time</label>
+                                                            <input
+                                                                type="datetime-local"
+                                                                value={currentRoundMapping.scheduledDate || ''}
+                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, scheduledDate: e.target.value } })}
+                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Email Template</label>
+                                                            <select
+                                                                value={currentRoundMapping.emailTemplateId || ''}
+                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, emailTemplateId: e.target.value } })}
+                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
+                                                            >
+                                                                <option value="">Standard Invite</option>
+                                                                {emailTemplates.map(t => (
+                                                                    <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        {senderOptions.length > 0 && (
+                                                            <div>
+                                                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Sender Account</label>
+                                                                <select
+                                                                    value={currentRoundMapping.emailAccountId || selectedEmailAccountId}
+                                                                    onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, emailAccountId: e.target.value } })}
+                                                                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
+                                                                >
+                                                                    {senderOptions.map(option => (
+                                                                        <option key={option._id} value={option._id}>
+                                                                            {option.name} – {option.fromAddress}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">CC Emails (Optional)</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="e.g. hr@company.com"
+                                                                value={currentRoundMapping.cc ?? ''}
+                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, cc: e.target.value } })}
+                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">BCC Emails (Optional)</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="e.g. audit@company.com"
+                                                                value={currentRoundMapping.bcc ?? ''}
+                                                                onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...currentRoundMapping, bcc: e.target.value } })}
+                                                                className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:border-indigo-500"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div className="md:col-span-1">
-                                                        <input
-                                                            type="datetime-local"
-                                                            value={workflowMapping[index]?.scheduledDate || ''}
-                                                            onChange={(e) => setWorkflowMapping({ ...workflowMapping, [index]: { ...workflowMapping[index], scheduledDate: e.target.value } })}
-                                                            className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm outline-none focus:border-indigo-500"
-                                                        />
+
+                                                    {/* Key Value Custom Fields */}
+                                                    <div className="border-t border-slate-100 pt-2 mt-1">
+                                                        <div className="flex items-center justify-between mb-1.5">
+                                                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                                                Custom Fields (Key / Value)
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const fields = currentRoundMapping.customFields || [];
+                                                                    setWorkflowMapping({
+                                                                        ...workflowMapping,
+                                                                        [index]: { ...currentRoundMapping, customFields: [...fields, { key: '', value: '' }] }
+                                                                    });
+                                                                }}
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
+                                                            >
+                                                                <Plus size={12} /> Add Field
+                                                            </button>
+                                                        </div>
+                                                        {(!currentRoundMapping.customFields || currentRoundMapping.customFields.length === 0) ? (
+                                                            <p className="text-[11px] text-slate-400 italic">No custom fields for this round.</p>
+                                                        ) : (
+                                                            <div className="space-y-1.5">
+                                                                {currentRoundMapping.customFields.map((field, fieldIdx) => (
+                                                                    <div key={fieldIdx} className="flex items-center gap-2">
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Key (e.g. Meeting Link)"
+                                                                            value={field.key || ''}
+                                                                            onChange={(e) => {
+                                                                                const fields = [...(currentRoundMapping.customFields || [])];
+                                                                                fields[fieldIdx] = { ...fields[fieldIdx], key: e.target.value };
+                                                                                setWorkflowMapping({
+                                                                                    ...workflowMapping,
+                                                                                    [index]: { ...currentRoundMapping, customFields: fields }
+                                                                                });
+                                                                            }}
+                                                                            className="w-1/3 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
+                                                                        />
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Value (e.g. https://zoom.us/...)"
+                                                                            value={field.value || ''}
+                                                                            onChange={(e) => {
+                                                                                const fields = [...(currentRoundMapping.customFields || [])];
+                                                                                fields[fieldIdx] = { ...fields[fieldIdx], value: e.target.value };
+                                                                                setWorkflowMapping({
+                                                                                    ...workflowMapping,
+                                                                                    [index]: { ...currentRoundMapping, customFields: fields }
+                                                                                });
+                                                                            }}
+                                                                            className="flex-1 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const fields = (currentRoundMapping.customFields || []).filter((_, fIdx) => fIdx !== fieldIdx);
+                                                                                setWorkflowMapping({
+                                                                                    ...workflowMapping,
+                                                                                    [index]: { ...currentRoundMapping, customFields: fields }
+                                                                                });
+                                                                            }}
+                                                                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                                            title="Remove field"
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )
@@ -992,7 +1196,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         {isAddingRound && (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 animate-in fade-in slide-in-from-top-2">
                                 <h4 className="text-sm font-bold text-slate-700 mb-3">Schedule New Round</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
                                         <input
@@ -1041,9 +1245,107 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                         />
                                     </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Email Template</label>
+                                        <select
+                                            value={selectedTemplateId}
+                                            onChange={(e) => setSelectedTemplateId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                        >
+                                            <option value="">Standard Interview Invite</option>
+                                            {emailTemplates.map(t => (
+                                                <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {senderOptions.length > 0 && (
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">Sender Account</label>
+                                            <select
+                                                value={selectedEmailAccountId}
+                                                onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                            >
+                                                {senderOptions.map(option => (
+                                                    <option key={option._id} value={option._id}>
+                                                        {option.name} – {option.fromAddress}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">CC Emails (Optional)</label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. hr@company.com"
+                                            value={roundCc}
+                                            onChange={(e) => setRoundCc(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">BCC Emails (Optional)</label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. audit@company.com"
+                                            value={roundBcc}
+                                            onChange={(e) => setRoundBcc(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    </div>
                                 </div>
+
+                                {/* Custom Fields Section */}
+                                <div className="mt-4 border-t border-slate-200 pt-3 mb-4">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs font-bold text-slate-700">
+                                            Custom Fields (e.g., Meeting Link, Location, Topics)
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={handleAddCustomFieldRow}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                                        >
+                                            <Plus size={14} /> Add Field
+                                        </button>
+                                    </div>
+                                    {customFields.length === 0 ? (
+                                        <p className="text-xs text-slate-400 italic">No custom fields added. Click "+ Add Field" to include details like Zoom link, location, or instructions.</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {customFields.map((field, idx) => (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Key (e.g. Meeting Link)"
+                                                        value={field.key}
+                                                        onChange={(e) => handleCustomFieldChange(idx, 'key', e.target.value)}
+                                                        className="w-1/3 px-3 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:border-blue-500"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Value (e.g. https://meet.google.com/xyz)"
+                                                        value={field.value}
+                                                        onChange={(e) => handleCustomFieldChange(idx, 'value', e.target.value)}
+                                                        className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:border-blue-500"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveCustomFieldRow(idx)}
+                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        title="Remove field"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
                                 <div className="flex justify-end gap-2">
-                                    <button onClick={() => { setIsAddingRound(false); setSelectedInterviewer(''); setSelectedRoleForRound(''); }} className="px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+                                    <button onClick={() => { setIsAddingRound(false); setSelectedInterviewer(''); setSelectedRoleForRound(''); setCustomFields([]); setSelectedTemplateId(''); }} className="px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
                                     <button onClick={handleAddRound} disabled={actionLoading} className="px-4 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2">
                                         {actionLoading && <Loader size={14} className="animate-spin" />} Save Round
                                     </button>
@@ -1191,6 +1493,21 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                 )}
                                                             </div>
                                                         </div>
+
+                                                        {/* Custom Round Fields */}
+                                                        {Array.isArray(round.customFields) && round.customFields.length > 0 && (
+                                                            <div className="mt-3 mb-4 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Custom Round Details</span>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                                                    {round.customFields.map((cf, i) => (
+                                                                        <div key={i} className="flex items-center justify-between gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200/60 shadow-sm">
+                                                                            <span className="font-semibold text-slate-600">{cf.key}:</span>
+                                                                            <span className="font-bold text-slate-800 truncate" title={cf.value}>{cf.value || '—'}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
 
                                                         {/* Evaluation Results Overlay */}
                                                         {hasVisibleFeedback && !isEvaluating && (
@@ -1364,6 +1681,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                     <option value="Passed">Shortlisted</option>
                                                                                     <option value="Failed">Rejected</option>
                                                                                     <option value="Skipped">Did not turn up</option>
+                                                                                    <option value="Left in between">Left in between</option>
                                                                                 </select>
                                                                             </div>
                                                                         </div>

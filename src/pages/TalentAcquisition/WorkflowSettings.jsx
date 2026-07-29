@@ -42,14 +42,17 @@ const WorkflowSettings = () => {
     // Create/Edit Interview State
     const [newInterviewName, setNewInterviewName] = useState('');
     const [newInterviewDesc, setNewInterviewDesc] = useState('');
-    const [interviewRounds, setInterviewRounds] = useState([{ levelCheck: 1, levelName: '', role: '' }]);
+    const [interviewRounds, setInterviewRounds] = useState([{ levelCheck: 1, levelName: '', role: '', user: '', emailTemplateId: '', emailAccountId: '', customFields: [] }]);
     const [editingInterviewId, setEditingInterviewId] = useState(null);
-
+    const [emailTemplates, setEmailTemplates] = useState([]);
+    const [senderOptions, setSenderOptions] = useState([]);
 
     // Init
     useEffect(() => {
         fetchWorkflows();
         fetchInterviewWorkflows();
+        fetchEmailTemplates();
+        fetchSenderOptions();
         if (canConfigEdit) {
             fetchUsers();
             fetchRoles();
@@ -71,6 +74,29 @@ const WorkflowSettings = () => {
             setRoles(res.data);
         } catch (error) {
             console.error('Failed to fetch roles', error);
+        }
+    };
+
+    const fetchEmailTemplates = async () => {
+        try {
+            const res = await api.get('/ta/email-templates');
+            setEmailTemplates(Array.isArray(res.data) ? res.data : []);
+        } catch (error) {
+            console.error('Failed to fetch email templates', error);
+        }
+    };
+
+    const fetchSenderOptions = async () => {
+        try {
+            const res = await api.get('/company/email-settings/senders');
+            const senderData = res.data || {};
+            const options = [
+                senderData.platformOption,
+                ...((senderData.accounts || []).filter((a) => a.ready))
+            ].filter(Boolean);
+            setSenderOptions(options);
+        } catch (error) {
+            console.error('Failed to fetch sender options', error);
         }
     };
 
@@ -172,7 +198,7 @@ const WorkflowSettings = () => {
         }
     };
 
-    const handleAddInterviewRound = () => setInterviewRounds([...interviewRounds, { levelCheck: interviewRounds.length + 1, levelName: '', role: '', user: '' }]);
+    const handleAddInterviewRound = () => setInterviewRounds([...interviewRounds, { levelCheck: interviewRounds.length + 1, levelName: '', role: '', user: '', emailTemplateId: '', customFields: [] }]);
     const handleRemoveInterviewRound = (index) => {
         const newRounds = interviewRounds.filter((_, i) => i !== index);
         setInterviewRounds(newRounds.map((r, i) => ({ ...r, levelCheck: i + 1 })));
@@ -180,6 +206,27 @@ const WorkflowSettings = () => {
     const handleInterviewRoundChange = (index, field, value) => {
         const newRounds = [...interviewRounds];
         newRounds[index][field] = value;
+        setInterviewRounds(newRounds);
+    };
+
+    const handleAddRoundCustomField = (roundIndex) => {
+        const newRounds = [...interviewRounds];
+        const fields = newRounds[roundIndex].customFields || [];
+        newRounds[roundIndex].customFields = [...fields, { key: '', value: '' }];
+        setInterviewRounds(newRounds);
+    };
+
+    const handleRemoveRoundCustomField = (roundIndex, fieldIndex) => {
+        const newRounds = [...interviewRounds];
+        newRounds[roundIndex].customFields = (newRounds[roundIndex].customFields || []).filter((_, i) => i !== fieldIndex);
+        setInterviewRounds(newRounds);
+    };
+
+    const handleRoundCustomFieldChange = (roundIndex, fieldIndex, keyOrValue, text) => {
+        const newRounds = [...interviewRounds];
+        const fields = [...(newRounds[roundIndex].customFields || [])];
+        fields[fieldIndex] = { ...fields[fieldIndex], [keyOrValue]: text };
+        newRounds[roundIndex].customFields = fields;
         setInterviewRounds(newRounds);
     };
 
@@ -191,18 +238,22 @@ const WorkflowSettings = () => {
 
         try {
             setActionLoadingInterview(true);
+            const cleanedRounds = interviewRounds.map(r => ({
+                ...r,
+                customFields: (r.customFields || []).filter(cf => cf.key && cf.key.trim())
+            }));
             if (editingInterviewId) {
-                await api.put(`/ta/interview-workflows/${editingInterviewId}`, { name: newInterviewName, description: newInterviewDesc, rounds: interviewRounds });
+                await api.put(`/ta/interview-workflows/${editingInterviewId}`, { name: newInterviewName, description: newInterviewDesc, rounds: cleanedRounds });
                 toast.success('Interview Workflow updated');
             } else {
-                await api.post('/ta/interview-workflows', { name: newInterviewName, description: newInterviewDesc, rounds: interviewRounds });
+                await api.post('/ta/interview-workflows', { name: newInterviewName, description: newInterviewDesc, rounds: cleanedRounds });
                 toast.success('Interview Workflow created');
             }
             setShowCreateInterview(false);
             setEditingInterviewId(null);
             setNewInterviewName('');
             setNewInterviewDesc('');
-            setInterviewRounds([{ levelCheck: 1, levelName: '', role: '', user: '' }]);
+            setInterviewRounds([{ levelCheck: 1, levelName: '', role: '', user: '', emailTemplateId: '', emailAccountId: '', cc: '', bcc: '', customFields: [] }]);
             fetchInterviewWorkflows();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to save');
@@ -219,7 +270,12 @@ const WorkflowSettings = () => {
             levelCheck: r.levelCheck,
             levelName: r.levelName,
             role: r.role ? (r.role._id || r.role) : '',
-            user: r.user ? (r.user._id || r.user) : ''
+            user: r.user ? (r.user._id || r.user) : '',
+            emailTemplateId: r.emailTemplateId ? (r.emailTemplateId._id || r.emailTemplateId) : '',
+            emailAccountId: r.emailAccountId || '',
+            cc: r.cc || '',
+            bcc: r.bcc || '',
+            customFields: Array.isArray(r.customFields) ? r.customFields.map(cf => ({ key: cf.key || '', value: cf.value || '' })) : []
         })));
         setShowCreateInterview(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -395,10 +451,7 @@ const WorkflowSettings = () => {
                                                                 <div className="bg-white border border-slate-200 rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm flex items-center gap-1.5" title={lvl.approvers?.map(a => `${a.firstName} ${a.lastName}`).join(', ')}>
                                                                     <span className="font-semibold text-blue-600">L{lvl.levelCheck}</span>
                                                                     <div className="h-3 w-px bg-slate-300"></div>
-                                                                    <span className="text-slate-700 font-medium">
-                                                                        {lvl.role?.name || 'Unknown Role'}
-                                                                        <span className="text-slate-400 font-normal ml-1 flex-shrink-0">({lvl.approvers?.length || 'Any'})</span>
-                                                                    </span>
+                                                                    <span className="text-slate-700 font-medium">{lvl.role?.name || 'Role'}</span>
                                                                 </div>
                                                                 {i < wf.levels.length - 1 && <ArrowRight size={14} className="text-slate-300 flex-shrink-0" />}
                                                             </React.Fragment>
@@ -429,7 +482,6 @@ const WorkflowSettings = () => {
                 </>
             )}
 
-
             {/* =========================================================================
                                 INTERVIEW TAB CONTENT
             ========================================================================== */}
@@ -441,7 +493,7 @@ const WorkflowSettings = () => {
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="font-semibold text-lg">{editingInterviewId ? 'Edit Interview Workflow' : 'New Interview Workflow'}</h3>
                                 {editingInterviewId && (
-                                    <button onClick={() => { setEditingInterviewId(null); setNewInterviewName(''); setNewInterviewDesc(''); setInterviewRounds([{ levelCheck: 1, levelName: '', role: '' }]); setShowCreateInterview(false); }} className="text-slate-400 hover:text-slate-600">
+                                    <button onClick={() => { setEditingInterviewId(null); setNewInterviewName(''); setNewInterviewDesc(''); setInterviewRounds([{ levelCheck: 1, levelName: '', role: '', user: '', emailTemplateId: '', customFields: [] }]); setShowCreateInterview(false); }} className="text-slate-400 hover:text-slate-600">
                                         <X size={20} />
                                     </button>
                                 )}
@@ -460,9 +512,9 @@ const WorkflowSettings = () => {
 
                             <div className="mb-4">
                                 <label className="block text-sm font-medium text-slate-700 mb-2">Sequential Interview Rounds</label>
-                                <div className="space-y-3">
+                                <div className="space-y-4">
                                     {interviewRounds.map((round, index) => (
-                                        <div key={index} className="flex flex-col gap-3 bg-slate-50 p-4 rounded-md border border-slate-200">
+                                        <div key={index} className="flex flex-col gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">{round.levelCheck}</div>
@@ -471,7 +523,7 @@ const WorkflowSettings = () => {
                                                 {index > 0 && <button onClick={() => handleRemoveInterviewRound(index)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>}
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                                 <div>
                                                     <label className="block text-xs font-medium text-slate-500 mb-1">Round Title</label>
                                                     <input type="text" value={round.levelName} onChange={(e) => handleInterviewRoundChange(index, 'levelName', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" placeholder="e.g., L1 Technical" />
@@ -492,6 +544,84 @@ const WorkflowSettings = () => {
                                                         ))}
                                                     </select>
                                                 </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Default Email Template</label>
+                                                    <select value={round.emailTemplateId || ''} onChange={(e) => handleInterviewRoundChange(index, 'emailTemplateId', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
+                                                        <option value="">Standard Invite</option>
+                                                        {emailTemplates.map(t => (
+                                                            <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                {senderOptions.length > 0 && (
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Default Sender Account</label>
+                                                        <select value={round.emailAccountId || ''} onChange={(e) => handleInterviewRoundChange(index, 'emailAccountId', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
+                                                            <option value="">Company Default</option>
+                                                            {senderOptions.map(option => (
+                                                                <option key={option._id} value={option._id}>
+                                                                    {option.name} – {option.fromAddress}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Default CC Emails (Optional)</label>
+                                                    <input type="text" placeholder="e.g. hr@company.com" value={round.cc || ''} onChange={(e) => handleInterviewRoundChange(index, 'cc', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Default BCC Emails (Optional)</label>
+                                                    <input type="text" placeholder="e.g. audit@company.com" value={round.bcc || ''} onChange={(e) => handleInterviewRoundChange(index, 'bcc', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" />
+                                                </div>
+                                            </div>
+
+                                            {/* Round Custom Fields */}
+                                            <div className="border-t border-slate-200/80 pt-2.5 mt-1">
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                                        Default Custom Fields (Key / Value)
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAddRoundCustomField(index)}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
+                                                    >
+                                                        <Plus size={12} /> Add Field
+                                                    </button>
+                                                </div>
+                                                {(!round.customFields || round.customFields.length === 0) ? (
+                                                    <p className="text-[11px] text-slate-400 italic">No custom fields configured for this round.</p>
+                                                ) : (
+                                                    <div className="space-y-1.5">
+                                                        {round.customFields.map((field, fieldIdx) => (
+                                                            <div key={fieldIdx} className="flex items-center gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Key (e.g. Meeting Link)"
+                                                                    value={field.key || ''}
+                                                                    onChange={(e) => handleRoundCustomFieldChange(index, fieldIdx, 'key', e.target.value)}
+                                                                    className="w-1/3 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
+                                                                />
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Default Value (e.g. https://meet.google.com/xyz)"
+                                                                    value={field.value || ''}
+                                                                    onChange={(e) => handleRoundCustomFieldChange(index, fieldIdx, 'value', e.target.value)}
+                                                                    className="flex-1 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveRoundCustomField(index, fieldIdx)}
+                                                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                                    title="Remove field"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
