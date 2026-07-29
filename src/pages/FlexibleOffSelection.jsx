@@ -21,6 +21,8 @@ import { format, startOfDay } from 'date-fns';
 const resolveUserFlexPolicy = (emp, attendanceSettings) => {
     const flexConfig = attendanceSettings?.flexWeeklyOff || {};
     const allowPastDays = flexConfig.allowPastDays !== false;
+
+    // 0. Master switch check
     if (flexConfig.enabled === false) {
         return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: 'Disabled' };
     }
@@ -35,14 +37,12 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
 
     // 1. Per-user override
     if (emp?.flexWeeklyOffCount !== undefined && emp?.flexWeeklyOffCount !== null && emp?.flexWeeklyOffCount !== '' && Number(emp?.flexWeeklyOffCount) > 0) {
-        const allowedDays = defaultAllowedDays;
-        const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
         return {
             enabled: true,
             allowPastDays,
             count: Math.max(1, Number(emp.flexWeeklyOffCount)),
-            allowedDays,
-            isCustomChoice,
+            allowedDays: defaultAllowedDays,
+            isCustomChoice: true,
             source: 'Employee Override'
         };
     }
@@ -55,65 +55,122 @@ const resolveUserFlexPolicy = (emp, attendanceSettings) => {
         ? emp.roles.map((r) => (typeof r === 'string' ? r : r?._id ? String(r._id) : null)).filter(Boolean)
         : [];
 
-    // 2. Role policy override
+    const cleanEmpType = (s) => String(s || '').replace(/[\s\-_]/g, '').toLowerCase();
+    const userEmpTypeClean = cleanEmpType(emp?.employmentType || 'Full-Time');
+
     const activeRolePolicies = flexConfig.rolePolicies || [];
+    const hasConfiguredRolePolicies = activeRolePolicies.some(rp => Boolean(rp.enabled));
+
+    const activeEmpTypePolicies = flexConfig.employmentTypePolicies || [];
+    const hasConfiguredEmpTypePolicies = activeEmpTypePolicies.some(ep => Boolean(ep.enabled));
+
+    // Matched Role policy
     const matchedRolePolicy = activeRolePolicies.find(
-        (rp) => userRoleNames.includes(rp.roleName) ||
+        (rp) => Boolean(rp.enabled) && (userRoleNames.includes(rp.roleName) ||
             userRoleNames.includes(rp.roleId) ||
             userRoleIds.includes(rp.roleId) ||
-            userRoleIds.includes(rp.roleName)
+            userRoleIds.includes(rp.roleName))
     );
-    if (matchedRolePolicy) {
-        if (matchedRolePolicy.enabled === false) {
-            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})` };
+
+    // Matched Employment Type policy
+    const matchedEmpTypePolicy = activeEmpTypePolicies.find(
+        (ep) => Boolean(ep.enabled) && cleanEmpType(ep.employmentType) === userEmpTypeClean
+    );
+
+    // 2. If BOTH Role Policies AND Employment Type Policies are configured/enabled:
+    if (hasConfiguredRolePolicies && hasConfiguredEmpTypePolicies) {
+        if (matchedRolePolicy && matchedEmpTypePolicy) {
+            const allowedDays = normalizeArray(matchedRolePolicy.allowedDays?.length ? matchedRolePolicy : matchedEmpTypePolicy);
+            const count = matchedRolePolicy.allowedCount ?? matchedEmpTypePolicy.allowedCount ?? flexConfig.allowedCount ?? 2;
+            return {
+                enabled: true,
+                allowPastDays,
+                count,
+                allowedDays,
+                isCustomChoice: true,
+                source: `Combined (${matchedRolePolicy.roleName || matchedRolePolicy.roleId} + ${matchedEmpTypePolicy.employmentType})`
+            };
         }
-        if (matchedRolePolicy.isCustom) {
+        return {
+            enabled: false,
+            allowPastDays,
+            count: 0,
+            allowedDays: [],
+            isCustomChoice: false,
+            source: 'Not Eligible (Does not match both Role and Employment Type criteria)'
+        };
+    }
+
+    // 3. If ONLY Role Policies are configured/enabled:
+    if (hasConfiguredRolePolicies) {
+        if (matchedRolePolicy) {
             const allowedDays = normalizeArray(matchedRolePolicy);
-            const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
             return {
                 enabled: true,
                 allowPastDays,
                 count: matchedRolePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
                 allowedDays,
-                isCustomChoice,
+                isCustomChoice: true,
                 source: `Role (${matchedRolePolicy.roleName || matchedRolePolicy.roleId})`
             };
         }
+        return {
+            enabled: false,
+            allowPastDays,
+            count: 0,
+            allowedDays: [],
+            isCustomChoice: false,
+            source: 'Not Eligible (Role criteria mismatch)'
+        };
     }
 
-    // 3. Employment Type policy override
-    const activeEmpTypePolicies = flexConfig.employmentTypePolicies || [];
-    const cleanEmpType = (s) => String(s || '').replace(/[\s\-_]/g, '').toLowerCase();
-    const userEmpTypeClean = cleanEmpType(emp?.employmentType || 'Full-Time');
-    const matchedEmpTypePolicy = activeEmpTypePolicies.find(
-        (ep) => cleanEmpType(ep.employmentType) === userEmpTypeClean
-    );
-    if (matchedEmpTypePolicy) {
-        if (matchedEmpTypePolicy.enabled === false) {
-            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: `Disabled for Employment Type (${matchedEmpTypePolicy.employmentType})` };
-        }
-        if (matchedEmpTypePolicy.isCustom) {
+    // 4. If ONLY Employment Type Policies are configured/enabled:
+    if (hasConfiguredEmpTypePolicies) {
+        if (matchedEmpTypePolicy) {
             const allowedDays = normalizeArray(matchedEmpTypePolicy);
-            const isCustomChoice = allowedDays.includes('Custom (Employee Chooses)') || allowedDays.includes('Custom');
             return {
                 enabled: true,
                 allowPastDays,
                 count: matchedEmpTypePolicy.allowedCount ?? flexConfig.allowedCount ?? 2,
                 allowedDays,
-                isCustomChoice,
+                isCustomChoice: true,
                 source: `Employment Type (${matchedEmpTypePolicy.employmentType})`
             };
         }
+        return {
+            enabled: false,
+            allowPastDays,
+            count: 0,
+            allowedDays: [],
+            isCustomChoice: false,
+            source: 'Not Eligible (Employment Type criteria mismatch)'
+        };
     }
 
-    // 4. Company Default
-    const isCustomChoice = defaultAllowedDays.includes('Custom (Employee Chooses)') || defaultAllowedDays.includes('Custom');
+    // 5. Target Roles or Target Employment Types check on baseline
+    const targetRoles = flexConfig.targetRoles || [];
+    if (targetRoles.length > 0) {
+        const matchesRole = targetRoles.some(tr => userRoleNames.includes(tr) || userRoleIds.includes(tr));
+        if (!matchesRole) {
+            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: 'Not Eligible (Role criteria mismatch)' };
+        }
+    }
+
+    const targetEmpTypes = flexConfig.targetEmploymentTypes || [];
+    if (targetEmpTypes.length > 0) {
+        const matchesEmpType = targetEmpTypes.some(te => cleanEmpType(te) === userEmpTypeClean);
+        if (!matchesEmpType) {
+            return { enabled: false, allowPastDays, count: 0, allowedDays: [], isCustomChoice: false, source: 'Not Eligible (Employment Type criteria mismatch)' };
+        }
+    }
+
+    // 6. Company Default Baseline
     return {
         enabled: true,
         allowPastDays,
         count: flexConfig.allowedCount ?? 2,
         allowedDays: defaultAllowedDays,
-        isCustomChoice,
+        isCustomChoice: true,
         source: 'Company Default'
     };
 };
