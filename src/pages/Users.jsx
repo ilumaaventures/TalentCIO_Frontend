@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight, Eye, EyeOff, Settings2, HelpCircle, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight, Eye, EyeOff, Settings2, HelpCircle, Check, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -54,6 +54,7 @@ const Users = () => {
     const [_holidays, _setHolidays] = useState([]);
     const [payrollConfig, setPayrollConfig] = useState(null);
     const [showSalarySection, setShowSalarySection] = useState(false);
+    const [ctcPeriod, setCtcPeriod] = useState('monthly');
 
     useEffect(() => {
         const fetchPayrollConfig = async () => {
@@ -1153,7 +1154,8 @@ const Users = () => {
     const calculateSalaryBreakdown = (updatedSalaryFields) => {
         setFormData(prev => {
             const mergedSalary = { ...prev.salary, ...updatedSalaryFields };
-            const payType = mergedSalary.payType || 'salaried';
+            const compType = mergedSalary.compensationType || mergedSalary.payType || 'monthly_salary';
+            const payType = (compType === 'hourly') ? 'hourly' : (compType === 'flat_project') ? 'flat' : 'salaried';
             
             let annualCTC = parseFloat(String(mergedSalary.annualCTC).replace(/[^0-9.]/g, '')) || 0;
             let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
@@ -1169,7 +1171,12 @@ const Users = () => {
             let specialVal = '';
             let grossVal = '';
 
-            if (payType === 'hourly') {
+            const customAllowancesList = mergedSalary.customAllowances || [];
+            const customDeductionsList = mergedSalary.customDeductions || [];
+            const customAllowancesSum = customAllowancesList.reduce((acc, item) => acc + (parseFloat(item.amount) || 0), 0);
+            const customDeductionsSum = customDeductionsList.reduce((acc, item) => acc + (parseFloat(item.amount) || 0), 0);
+
+            if (payType === 'hourly' || compType === 'hourly') {
                 const hourlyRate = parseFloat(String(mergedSalary.hourlyRate).replace(/[^0-9.]/g, '')) || 0;
                 const hoursWorked = parseFloat(String(mergedSalary.hoursWorked || 160).replace(/[^0-9.]/g, '')) || 160;
                 monthlyCTC = Math.round(hourlyRate * hoursWorked);
@@ -1177,33 +1184,41 @@ const Users = () => {
                 basicVal = String(monthlyCTC);
                 hraVal = '0';
                 specialVal = '0';
-                grossVal = String(monthlyCTC);
-            } else if (payType === 'flat') {
-                const flatSalary = parseFloat(String(mergedSalary.flatSalary || monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+                grossVal = String(monthlyCTC + customAllowancesSum);
+            } else if (payType === 'flat' || compType === 'flat_project') {
+                const flatSalary = parseFloat(String(mergedSalary.projectFee || mergedSalary.flatSalary || monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
                 monthlyCTC = flatSalary;
                 annualCTC = flatSalary * 12;
                 basicVal = String(flatSalary);
                 hraVal = '0';
                 specialVal = '0';
-                grossVal = String(flatSalary);
+                grossVal = String(flatSalary + customAllowancesSum);
             } else {
                 if (payrollConfig) {
                     const source = {
                         monthlyCTC,
+                        compensationType: compType,
                         payType,
-                        useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
+                        attendanceMode: mergedSalary.attendanceMode || 'attendance',
+                        useSalaryComponents: payType !== 'flat' && compType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
                         pfEnabled: parseBool(mergedSalary.pfEnabled, true),
                         esiEnabled: parseBool(mergedSalary.esiEnabled, true),
                         ptEnabled: parseBool(mergedSalary.ptEnabled, true),
                         lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
                         gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+                        tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
                         includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
                         includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                         basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
                         hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
+                        vpfPercent: mergedSalary.vpfPercent !== undefined && mergedSalary.vpfPercent !== null ? Number(mergedSalary.vpfPercent) : null,
                         insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
                         employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
                         ptState: mergedSalary.ptState || '',
+                        customAllowances: customAllowancesList,
+                        customDeductions: customDeductionsList,
+                        otherAllowances: customAllowancesList,
+                        otherDeductions: customDeductionsList,
                         deductions: {
                             professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
                         }
@@ -1232,7 +1247,8 @@ const Users = () => {
                         mergedSalary.esiEmployee = String(master.esiEmployee || 0);
                         mergedSalary.professionalTax = String(master.professionalTax || 0);
                         mergedSalary.tds = String(master.tds || 0);
-                        mergedSalary.netTakeHome = String(master.netTakeHome || 0);
+                        const estNet = Math.max(0, (master.netTakeHome || 0) - customDeductionsSum);
+                        mergedSalary.netTakeHome = String(estNet);
                         
                         if (master.earningsMap) {
                             Object.entries(master.earningsMap).forEach(([id, val]) => {
@@ -1243,11 +1259,11 @@ const Users = () => {
                 } else {
                     const basic = Math.round(monthlyCTC * 0.5);
                     const hra = Math.round(basic * 0.5);
-                    const special = monthlyCTC - basic - hra;
+                    const special = Math.max(0, monthlyCTC - basic - hra);
                     basicVal = String(basic);
                     hraVal = String(hra);
                     specialVal = String(special);
-                    grossVal = String(monthlyCTC);
+                    grossVal = String(monthlyCTC + customAllowancesSum);
                 }
             }
 
@@ -1255,6 +1271,8 @@ const Users = () => {
                 ...prev,
                 salary: {
                     ...mergedSalary,
+                    payType,
+                    compensationType: compType,
                     annualCTC: String(annualCTC),
                     monthlyCTC: String(monthlyCTC),
                     basic: basicVal,
@@ -1269,27 +1287,41 @@ const Users = () => {
     const _handleEdit = async (user) => {
         setEditingUser(user);
         setShowPassword(false);
+        setCtcPeriod('monthly');
         // Find users who currently report to this user
         const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);
 
         let salaryData = {
             annualCTC: '',
             monthlyCTC: '',
+            compensationType: 'monthly_salary',
+            attendanceMode: 'attendance',
             payType: 'salaried',
             pfEnabled: true,
             esiEnabled: true,
             ptEnabled: true,
             lwfEnabled: true,
             gratuityEnabled: true,
+            tdsEnabled: true,
             includePfInCTC: false,
             includeGratuityInCTC: true,
-            basicPercent: null,
-            hraPercent: null,
+            basicPercent: 50,
+            hraPercent: 50,
+            vpfPercent: 0,
             useSalaryComponents: true,
             ptState: 'MH',
             professionalTax: '0',
             insuranceAmount: 0,
             employerNPS: 0,
+            joiningBonus: 0,
+            customAllowances: [],
+            customDeductions: [],
+            rateCard: [],
+            dailyRate: 0,
+            weeklyRate: 0,
+            projectFee: 0,
+            milestoneAmount: 0,
+            commissionNotes: ''
         };
 
         try {
@@ -1301,21 +1333,36 @@ const Users = () => {
             salaryData = {
                 annualCTC: comp.ctc ? String(comp.ctc * 12) : '',
                 monthlyCTC: comp.ctc ? String(comp.ctc) : '',
+                compensationType: breakup.compensationType || breakup.payType || 'monthly_salary',
+                attendanceMode: user.attendanceMode || breakup.attendanceMode || 'attendance',
                 payType: breakup.payType || 'salaried',
                 pfEnabled: parseBool(breakup.pfEnabled, true),
                 esiEnabled: parseBool(breakup.esiEnabled, true),
                 ptEnabled: parseBool(breakup.ptEnabled, true),
                 lwfEnabled: parseBool(breakup.lwfEnabled, true),
                 gratuityEnabled: parseBool(breakup.gratuityEnabled, true),
+                tdsEnabled: parseBool(breakup.tdsEnabled, true),
                 includePfInCTC: parseBool(breakup.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
-                basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : null,
-                hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : null,
+                basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : 50,
+                hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : 50,
+                vpfPercent: breakup.vpfPercent !== undefined && breakup.vpfPercent !== null ? breakup.vpfPercent : 0,
                 useSalaryComponents: parseBool(breakup.useSalaryComponents, true),
                 ptState: breakup.ptState || 'MH',
                 professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
-                insuranceAmount: comp.insuranceAmount || 0,
-                employerNPS: comp.employerNPS || 0,
+                insuranceAmount: comp.insuranceAmount || breakup.insuranceAmount || 0,
+                employerNPS: comp.employerNPS || breakup.employerNPS || 0,
+                joiningBonus: breakup.joiningBonus || 0,
+                customAllowances: Array.isArray(breakup.customAllowances) ? breakup.customAllowances : (Array.isArray(breakup.otherAllowances) ? breakup.otherAllowances : []),
+                customDeductions: Array.isArray(breakup.customDeductions) ? breakup.customDeductions : (Array.isArray(breakup.otherDeductions) ? breakup.otherDeductions : []),
+                rateCard: Array.isArray(breakup.rateCard) ? breakup.rateCard : [],
+                dailyRate: breakup.dailyRate || 0,
+                weeklyRate: breakup.weeklyRate || 0,
+                projectFee: breakup.projectFee || 0,
+                milestoneAmount: breakup.milestoneAmount || 0,
+                commissionNotes: breakup.commissionNotes || '',
+                hourlyRate: comp.hourlyRate || breakup.hourlyRate || 0,
+                hoursWorked: breakup.hoursWorked || 160,
                 basic: breakup.basic || '',
                 hra: breakup.hra || '',
                 specialAllowance: breakup.specialAllowance || '',
@@ -1357,21 +1404,29 @@ const Users = () => {
         if (payrollConfig && (annualCTC > 0 || monthlyCTC > 0)) {
             const source = {
                 monthlyCTC,
+                compensationType: salaryData.compensationType || 'monthly_salary',
                 payType: salaryData.payType,
+                attendanceMode: salaryData.attendanceMode || 'attendance',
                 pfEnabled: parseBool(salaryData.pfEnabled, true),
                 esiEnabled: parseBool(salaryData.esiEnabled, true),
                 ptEnabled: parseBool(salaryData.ptEnabled, true),
                 lwfEnabled: parseBool(salaryData.lwfEnabled, true),
                 gratuityEnabled: parseBool(salaryData.gratuityEnabled, true),
+                tdsEnabled: parseBool(salaryData.tdsEnabled, true),
                 includePfInCTC: parseBool(salaryData.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
-                basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
-                hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
+                basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : 50,
+                hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : 50,
+                vpfPercent: salaryData.vpfPercent !== undefined && salaryData.vpfPercent !== null ? Number(salaryData.vpfPercent) : 0,
                 useSalaryComponents: salaryData.payType !== 'flat' && salaryData.payType !== 'hourly' && parseBool(salaryData.useSalaryComponents, true),
                 insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
                 employerNPS: parseFloat(salaryData.employerNPS) || 0,
                 flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
                 ptState: salaryData.ptState || '',
+                customAllowances: salaryData.customAllowances || [],
+                customDeductions: salaryData.customDeductions || [],
+                otherAllowances: salaryData.customAllowances || [],
+                otherDeductions: salaryData.customDeductions || [],
                 deductions: {
                     professionalTax: salaryData.ptState === 'custom' ? (parseFloat(salaryData.professionalTax) || 0) : 0,
                 }
@@ -1402,7 +1457,8 @@ const Users = () => {
                 salaryData.esiEmployee = String(master.esiEmployee || 0);
                 salaryData.professionalTax = String(master.professionalTax || 0);
                 salaryData.tds = String(master.tds || 0);
-                salaryData.netTakeHome = String(master.netTakeHome || 0);
+                const customDedSum = (salaryData.customDeductions || []).reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
+                salaryData.netTakeHome = String(Math.max(0, (master.netTakeHome || 0) - customDedSum));
                 
                 if (master.earningsMap) {
                     Object.entries(master.earningsMap).forEach(([id, val]) => {
@@ -1423,7 +1479,7 @@ const Users = () => {
             joiningDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split('T')[0] : '',
             employmentType: user.employmentType || 'Full Time',
             workLocation: user.workLocation || '',
-            attendanceMode: user.attendanceMode || 'clock_in_out',
+            attendanceMode: user.attendanceMode || salaryData.attendanceMode || 'clock_in_out',
             attendanceShiftCode: user.attendanceShiftCode || 'general',
             directReports: currentReports,
             reportingManagers: user.reportingManagers?.map(rm => rm._id) || [],
@@ -1436,24 +1492,38 @@ const Users = () => {
     const handleAdd = () => {
         setEditingUser(null);
         setShowPassword(false);
+        setCtcPeriod('monthly');
         const salaryData = {
             annualCTC: '',
             monthlyCTC: '',
+            compensationType: 'monthly_salary',
+            attendanceMode: 'attendance',
             payType: 'salaried',
             pfEnabled: true,
             esiEnabled: true,
             ptEnabled: true,
             lwfEnabled: true,
             gratuityEnabled: true,
+            tdsEnabled: true,
             includePfInCTC: false,
             includeGratuityInCTC: true,
-            basicPercent: null,
-            hraPercent: null,
+            basicPercent: 50,
+            hraPercent: 50,
+            vpfPercent: 0,
             useSalaryComponents: true,
             ptState: 'MH',
             professionalTax: '0',
             insuranceAmount: 0,
             employerNPS: 0,
+            joiningBonus: 0,
+            customAllowances: [],
+            customDeductions: [],
+            rateCard: [],
+            dailyRate: 0,
+            weeklyRate: 0,
+            projectFee: 0,
+            milestoneAmount: 0,
+            commissionNotes: ''
         };
         if (payrollConfig?.salaryComponents) {
             payrollConfig.salaryComponents.forEach(c => {
@@ -2176,380 +2246,703 @@ const Users = () => {
 
                                 {showSalarySection && formData.salary && (
                                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 rounded-xl p-4 border border-slate-100">
-                                        {/* Left Side: Inputs */}
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Pay Type</label>
-                                                <select
-                                                    value={formData.salary.payType || 'salaried'}
-                                                    onChange={(e) => calculateSalaryBreakdown({ payType: e.target.value })}
-                                                    className="zoho-input"
-                                                >
-                                                    <option value="salaried">Salaried (Monthly Base)</option>
-                                                    <option value="hourly">Hourly Contractor</option>
-                                                    <option value="flat">Flat Salary — No Component Breakdown</option>
-                                                </select>
+                                        {/* Left Side: Strategy Engine Inputs */}
+                                        <div className="space-y-5">
+                                            {/* Section: Strategy Engine */}
+                                            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Compensation Configuration</span>
+                                                    <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold">Strategy Engine</span>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Compensation Type *</label>
+                                                        <select
+                                                            value={formData.salary.compensationType || 'monthly_salary'}
+                                                            onChange={(e) => {
+                                                                const newType = e.target.value;
+                                                                const defaultAttMode = newType === 'hourly' ? 'timesheet' : newType === 'piece_rate' ? 'unit_count' : newType === 'flat_project' || newType === 'milestone' || newType === 'commission_only' ? 'none' : 'attendance';
+                                                                calculateSalaryBreakdown({ compensationType: newType, attendanceMode: defaultAttMode });
+                                                            }}
+                                                            className="zoho-input"
+                                                        >
+                                                            <option value="monthly_salary">Monthly Salary</option>
+                                                            <option value="hourly">Hourly Contractor</option>
+                                                            <option value="daily_wage">Daily Wage Rate</option>
+                                                            <option value="weekly_wage">Weekly Salary</option>
+                                                            <option value="piece_rate">Piece Rate / Deliverables</option>
+                                                            <option value="flat_project">Flat Project Fee</option>
+                                                            <option value="milestone">Milestone / Project</option>
+                                                            <option value="commission_only">Commission Only</option>
+                                                            <option value="stipend_intern">Intern Stipend</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Attendance Mode *</label>
+                                                        <select
+                                                            value={formData.salary.attendanceMode || 'attendance'}
+                                                            onChange={(e) => calculateSalaryBreakdown({ attendanceMode: e.target.value })}
+                                                            className="zoho-input"
+                                                        >
+                                                            <option value="attendance">Attendance Based (paidDays / workingDays)</option>
+                                                            <option value="timesheet">Timesheet (hours logged)</option>
+                                                            <option value="shift">Shift Based (shifts worked)</option>
+                                                            <option value="unit_count">Unit Count (piece rate / deliverables)</option>
+                                                            <option value="fixed">Fixed (always full month / no proration)</option>
+                                                            <option value="none">None (milestone / project / commission)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
                                             </div>
 
-                                            {formData.salary.payType === 'hourly' ? (
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hourly Rate (INR)</label>
-                                                        <input
-                                                            value={formData.salary.hourlyRate || ''}
-                                                            onChange={(e) => calculateSalaryBreakdown({ hourlyRate: e.target.value })}
-                                                            placeholder="e.g. 500"
-                                                            className="zoho-input"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Estimated Hours</label>
-                                                        <input
-                                                            value={formData.salary.hoursWorked || '160'}
-                                                            onChange={(e) => calculateSalaryBreakdown({ hoursWorked: e.target.value })}
-                                                            placeholder="e.g. 160"
-                                                            className="zoho-input"
-                                                        />
-                                                    </div>
+                                            {/* Section: Compensation Parameters */}
+                                            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                                                        Compensation Parameters ({formData.salary.compensationType || 'monthly_salary'})
+                                                    </span>
+                                                    {(formData.salary.compensationType === 'monthly_salary' || !formData.salary.compensationType || formData.salary.compensationType === 'stipend_intern') && (
+                                                        <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCtcPeriod('monthly')}
+                                                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${ctcPeriod === 'monthly' ? 'bg-white text-slate-800 shadow-2xs font-extrabold' : 'text-slate-500'}`}
+                                                            >
+                                                                Monthly
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCtcPeriod('annual')}
+                                                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${ctcPeriod === 'annual' ? 'bg-white text-slate-800 shadow-2xs font-extrabold' : 'text-slate-500'}`}
+                                                            >
+                                                                Annually
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ) : formData.salary.payType === 'flat' ? (
-                                                <div>
-                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Flat Monthly Salary</label>
-                                                    <input
-                                                        value={formData.salary.flatSalary || formData.salary.monthlyCTC || ''}
-                                                        onChange={(e) => calculateSalaryBreakdown({ flatSalary: e.target.value, monthlyCTC: e.target.value })}
-                                                        placeholder="e.g. 50,000"
-                                                        className="zoho-input"
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <div className="grid grid-cols-2 gap-4">
+
+                                                {formData.salary.compensationType === 'hourly' ? (
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hourly Rate (₹/hr) *</label>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={formData.salary.hourlyRate || ''}
+                                                                onChange={(e) => calculateSalaryBreakdown({ hourlyRate: e.target.value })}
+                                                                placeholder="e.g. 500"
+                                                                className="zoho-input"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Standard Hours/Month</label>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={formData.salary.hoursWorked || '160'}
+                                                                onChange={(e) => calculateSalaryBreakdown({ hoursWorked: e.target.value })}
+                                                                placeholder="e.g. 160"
+                                                                className="zoho-input"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ) : formData.salary.compensationType === 'daily_wage' ? (
                                                     <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Annual CTC</label>
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Daily Wage Rate (₹/day) *</label>
                                                         <input
-                                                            value={formData.salary.annualCTC}
-                                                            onChange={(e) => calculateSalaryBreakdown({ annualCTC: e.target.value })}
-                                                            placeholder="e.g. 6,00,000"
+                                                            type="number"
+                                                            min="0"
+                                                            value={formData.salary.dailyRate || ''}
+                                                            onChange={(e) => calculateSalaryBreakdown({ dailyRate: e.target.value })}
+                                                            placeholder="e.g. 1,000"
                                                             className="zoho-input"
                                                         />
                                                     </div>
+                                                ) : formData.salary.compensationType === 'weekly_wage' ? (
                                                     <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monthly CTC</label>
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Weekly Salary (₹/week) *</label>
                                                         <input
-                                                            value={formData.salary.monthlyCTC}
-                                                            onChange={(e) => calculateSalaryBreakdown({ monthlyCTC: e.target.value })}
+                                                            type="number"
+                                                            min="0"
+                                                            value={formData.salary.weeklyRate || ''}
+                                                            onChange={(e) => calculateSalaryBreakdown({ weeklyRate: e.target.value })}
+                                                            placeholder="e.g. 7,500"
+                                                            className="zoho-input"
+                                                        />
+                                                    </div>
+                                                ) : formData.salary.compensationType === 'flat_project' ? (
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Flat Project Fee (₹) *</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={formData.salary.projectFee || ''}
+                                                            onChange={(e) => calculateSalaryBreakdown({ projectFee: e.target.value })}
                                                             placeholder="e.g. 50,000"
                                                             className="zoho-input"
                                                         />
                                                     </div>
-                                                </div>
-                                            )}
-
-                                            {formData.salary.payType === 'salaried' && (
-                                                <>
-                                                    {/* Statutory Toggles */}
-                                                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Statutory Toggles</div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            {/* PF Card */}
-                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-xs font-semibold text-slate-700">Provident Fund (PF)</span>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={parseBool(formData.salary.pfEnabled, true)}
-                                                                        onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
-                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                    />
-                                                                </div>
-                                                                {parseBool(formData.salary.pfEnabled, true) && (
-                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
-                                                                        <span className="text-[11px] text-slate-500">Include Employer PF in CTC</span>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={!!formData.salary.includePfInCTC}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
-                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                        />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Gratuity Card */}
-                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-xs font-semibold text-slate-700">Gratuity Accrual</span>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={parseBool(formData.salary.gratuityEnabled, true)}
-                                                                        onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
-                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                    />
-                                                                </div>
-                                                                {parseBool(formData.salary.gratuityEnabled, true) && (
-                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
-                                                                        <span className="text-[11px] text-slate-500">Include Gratuity in CTC</span>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={parseBool(formData.salary.includeGratuityInCTC, true)}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
-                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                        />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* ESI Card */}
-                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <span className="text-xs font-semibold text-slate-700">ESI Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.esiEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                />
-                                                            </div>
-
-                                                            {/* LWF Card */}
-                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <span className="text-xs font-semibold text-slate-700">LWF Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.lwfEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        {/* PT Card */}
-                                                        <div className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-xs font-semibold text-slate-700">Professional Tax (PT)</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.ptEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                />
-                                                            </div>
-                                                            {parseBool(formData.salary.ptEnabled, true) && (
-                                                                <div className="flex gap-2 items-center border-t border-slate-100 pt-2 mt-1">
-                                                                    <div className="flex-1">
-                                                                        <select
-                                                                            value={formData.salary.ptState || 'MH'}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
-                                                                            className="w-full p-2 border border-slate-300 rounded-lg text-xs outline-none bg-white text-slate-700"
-                                                                        >
-                                                                            <optgroup label="── No PT / Manual">
-                                                                                <option value="">None — use manual override below</option>
-                                                                                <option value="custom">Custom Override</option>
-                                                                            </optgroup>
-                                                                            <optgroup label="── States that levy PT">
-                                                                                {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
-                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
-                                                                                ))}
-                                                                            </optgroup>
-                                                                            <optgroup label="── States with no PT">
-                                                                                {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
-                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
-                                                                                ))}
-                                                                            </optgroup>
-                                                                        </select>
-                                                                    </div>
-                                                                    {formData.salary.ptState === 'custom' && (
-                                                                        <div className="w-[100px] flex items-center gap-1">
-                                                                            <span className="text-[11px] text-slate-500">₹</span>
-                                                                            <input
-                                                                                type="number"
-                                                                                value={formData.salary.professionalTax || 0}
-                                                                                onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
-                                                                                className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none text-slate-700"
-                                                                                placeholder="Amount"
-                                                                            />
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                ) : formData.salary.compensationType === 'milestone' ? (
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Default Milestone Amount (₹)</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={formData.salary.milestoneAmount || ''}
+                                                            onChange={(e) => calculateSalaryBreakdown({ milestoneAmount: e.target.value })}
+                                                            placeholder="e.g. 25,000"
+                                                            className="zoho-input"
+                                                        />
                                                     </div>
-
-                                                    {/* Dynamic Salary Components Breakup */}
-                                                    {payrollConfig?.salaryComponents && payrollConfig.salaryComponents.length > 0 && (
-                                                        <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Salary Components Breakup</div>
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                {payrollConfig.salaryComponents
-                                                                    .filter(c => c.type === 'earning')
-                                                                    .map(c => {
-                                                                        const isFixed = c.linkedTo === 'fixed';
-                                                                        const isRemainder = c.linkedTo === 'remainder';
-
-                                                                        if (isFixed) {
-                                                                            const val = formData.salary[c.id] !== undefined ? formData.salary[c.id] : (c.linkValue || '0');
-                                                                            return (
-                                                                                <div key={c.id}>
-                                                                                    <label className="block text-[10px] text-slate-500 font-medium mb-1">{c.name}</label>
-                                                                                    <input
-                                                                                        type="text"
-                                                                                        value={val}
-                                                                                        onChange={(e) => calculateSalaryBreakdown({ [c.id]: e.target.value })}
-                                                                                        className="zoho-input"
-                                                                                    />
-                                                                                </div>
-                                                                            );
-                                                                        }
-
-                                                                        const badge = isRemainder ? 'Remainder'
-                                                                            : c.linkedTo === 'ctc_percent' ? `${Math.round((c.linkValue || 0) * 100)}% of CTC`
-                                                                            : c.linkedTo === 'basic_percent' ? `${Math.round((c.linkValue || 0) * 100)}% of Basic`
-                                                                            : '';
-                                                                        const val = formData.salary[c.id] || '0';
-
-                                                                        return (
-                                                                            <div key={c.id}>
-                                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">{c.name}</label>
-                                                                                <div className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50/50 h-[32px] box-border">
-                                                                                    <span className="text-xs font-semibold text-slate-700">₹{parseFloat(val).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                                                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 rounded-full px-1.5 py-0.5">{badge}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })
+                                                ) : (
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                                            {ctcPeriod === 'monthly' ? 'Monthly CTC *' : 'Annual CTC *'}
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={
+                                                                ctcPeriod === 'monthly'
+                                                                    ? (formData.salary.monthlyCTC || '')
+                                                                    : (formData.salary.annualCTC || '')
+                                                            }
+                                                            onChange={(e) => {
+                                                                const inputVal = e.target.value;
+                                                                if (ctcPeriod === 'annual') {
+                                                                    calculateSalaryBreakdown({ annualCTC: inputVal });
+                                                                } else {
+                                                                    calculateSalaryBreakdown({ monthlyCTC: inputVal });
                                                                 }
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Ratio Overrides */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ratio Overrides</div>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">Basic Override (%)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    min="1"
-                                                                    max="100"
-                                                                    value={formData.salary.basicPercent !== undefined ? formData.salary.basicPercent : '50'}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ basicPercent: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">HRA Override (% of Basic)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    min="1"
-                                                                    max="100"
-                                                                    value={formData.salary.hraPercent !== undefined ? formData.salary.hraPercent : '50'}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ hraPercent: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                        </div>
+                                                            }}
+                                                            placeholder={ctcPeriod === 'monthly' ? 'e.g. 50,000' : 'e.g. 6,00,000'}
+                                                            className="zoho-input"
+                                                        />
                                                     </div>
+                                                )}
 
-                                                    {/* Other Fields */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Additional Components</div>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">Medical Ins. (Monthly)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={formData.salary.insuranceAmount || 0}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ insuranceAmount: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">Employer NPS (Monthly)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={formData.salary.employerNPS || 0}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ employerNPS: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                        </div>
+                                                {formData.salary.compensationType === 'commission_only' && (
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Commission Structure Notes</label>
+                                                        <textarea
+                                                            rows={2}
+                                                            value={formData.salary.commissionNotes || ''}
+                                                            onChange={(e) => calculateSalaryBreakdown({ commissionNotes: e.target.value })}
+                                                            placeholder="Describe commission terms, target thresholds, percentage tiers..."
+                                                            className="zoho-input"
+                                                        />
                                                     </div>
-                                                </>
-                                            )}
-                                        </div>
+                                                )}
 
-                                        {/* Right Side: Preview */}
-                                        <div className="border border-slate-200/60 rounded-xl bg-white p-4 shadow-sm h-fit space-y-4">
-                                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 pb-2">
-                                                Salary Structure Preview (Monthly)
+                                                {formData.salary.compensationType === 'piece_rate' && (
+                                                    <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-[10px] font-bold text-slate-600 uppercase">Rate Card Items</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const list = [...(formData.salary.rateCard || []), { paymentType: 'per_unit', rate: 0, unit: 'unit' }];
+                                                                    calculateSalaryBreakdown({ rateCard: list });
+                                                                }}
+                                                                className="px-2 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-100 flex items-center gap-1"
+                                                            >
+                                                                <Plus size={10} /> Add Item
+                                                            </button>
+                                                        </div>
+                                                        {(!formData.salary.rateCard || formData.salary.rateCard.length === 0) ? (
+                                                            <div className="text-center py-2 text-slate-400 text-xs font-medium">No rate card items added.</div>
+                                                        ) : (
+                                                            <div className="space-y-2">
+                                                                {formData.salary.rateCard.map((item, idx) => (
+                                                                    <div key={idx} className="flex gap-2 items-center bg-white p-2 rounded border border-slate-200">
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Type"
+                                                                            value={item.paymentType || ''}
+                                                                            onChange={(e) => {
+                                                                                const list = [...formData.salary.rateCard];
+                                                                                list[idx] = { ...list[idx], paymentType: e.target.value };
+                                                                                calculateSalaryBreakdown({ rateCard: list });
+                                                                            }}
+                                                                            className="zoho-input flex-1 text-xs"
+                                                                        />
+                                                                        <input
+                                                                            type="number"
+                                                                            placeholder="Rate"
+                                                                            value={item.rate || 0}
+                                                                            onChange={(e) => {
+                                                                                const list = [...formData.salary.rateCard];
+                                                                                list[idx] = { ...list[idx], rate: e.target.value === '' ? '' : Number(e.target.value) };
+                                                                                calculateSalaryBreakdown({ rateCard: list });
+                                                                            }}
+                                                                            className="zoho-input w-20 text-xs"
+                                                                        />
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Unit"
+                                                                            value={item.unit || ''}
+                                                                            onChange={(e) => {
+                                                                                const list = [...formData.salary.rateCard];
+                                                                                list[idx] = { ...list[idx], unit: e.target.value };
+                                                                                calculateSalaryBreakdown({ rateCard: list });
+                                                                            }}
+                                                                            className="zoho-input w-20 text-xs"
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const list = formData.salary.rateCard.filter((_, i) => i !== idx);
+                                                                                calculateSalaryBreakdown({ rateCard: list });
+                                                                            }}
+                                                                            className="p-1 text-rose-600 hover:bg-rose-50 rounded"
+                                                                        >
+                                                                            <Trash2 size={12} />
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
 
-                                            {formData.salary.payType === 'salaried' ? (
-                                                <div className="space-y-2 text-sm">
-                                                    {payrollConfig?.salaryComponents && payrollConfig.salaryComponents.length > 0 ? (
-                                                        payrollConfig.salaryComponents
-                                                            .filter(c => c.type === 'earning')
-                                                            .map(c => (
-                                                                <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                    <span className="text-slate-500">{c.name}</span>
-                                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary[c.id] || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                                </div>
-                                                            ))
-                                                    ) : (
-                                                        <>
-                                                            <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                <span className="text-slate-500">Basic Salary</span>
-                                                                <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.basic || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                <span className="text-slate-500">HRA</span>
-                                                                <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.hra || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                            </div>
-                                                            {payrollConfig?.salaryComponents?.some(c => c.id === 'special') && (
-                                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                    <span className="text-slate-500">Special Allowance</span>
-                                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    )}
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                        <span className="text-slate-500">PF Employer Cost</span>
-                                                        <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.pfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                            {/* Section: Employee Salary Ratios (Overrides) */}
+                                            {(formData.salary.compensationType === 'monthly_salary' || !formData.salary.compensationType || formData.salary.compensationType === 'stipend_intern') && (
+                                                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                                                    <div className="border-b border-slate-100 pb-2">
+                                                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Employee Salary Ratios (Overrides)</span>
+                                                        <p className="text-[10px] text-slate-400">Set employee-specific ratio overrides. Defaults apply when left empty.</p>
                                                     </div>
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                        <span className="text-slate-500">Gratuity Accrual</span>
-                                                        <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.gratuity || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                        <span className="text-slate-500">Professional Tax (PT)</span>
-                                                        <span className="font-semibold text-slate-800 text-rose-600">₹{parseFloat(formData.salary.professionalTax || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                        <span className="text-slate-500">Employee PF</span>
-                                                        <span className="font-semibold text-slate-800 text-rose-600">₹{parseFloat(formData.salary.pfEmployee || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-2 bg-emerald-50/50 rounded-lg px-2 text-emerald-800 border border-emerald-100">
-                                                        <span className="font-semibold text-xs uppercase">Gross Salary</span>
-                                                        <span className="font-bold text-base">₹{parseFloat(formData.salary.monthlyGross || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-2 bg-blue-50/50 rounded-lg px-2 text-blue-800 border border-blue-100">
-                                                        <span className="font-semibold text-xs uppercase">Est. Net Take-Home</span>
-                                                        <span className="font-bold text-base">₹{parseFloat(formData.salary.netTakeHome || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <div className="flex justify-between items-center bg-blue-50/50 rounded-lg p-2.5 text-blue-800 border border-blue-100">
-                                                        <span className="text-xs font-semibold uppercase">Total Monthly CTC</span>
-                                                        <span className="font-bold text-lg">₹{parseFloat(formData.salary.monthlyCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center bg-emerald-50/50 rounded-lg p-2.5 text-emerald-800 border border-emerald-100">
-                                                        <span className="text-xs font-semibold uppercase">Monthly Gross Salary</span>
-                                                        <span className="font-bold text-lg">₹{parseFloat(formData.salary.monthlyGross || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                    <div className="grid grid-cols-3 gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-slate-600 mb-1">Basic Salary %</label>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max="100"
+                                                                value={formData.salary.basicPercent !== undefined && formData.salary.basicPercent !== null ? formData.salary.basicPercent : '50'}
+                                                                onChange={(e) => calculateSalaryBreakdown({ basicPercent: e.target.value })}
+                                                                className="zoho-input"
+                                                                placeholder="50"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-slate-600 mb-1">HRA % (of Basic)</label>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max="100"
+                                                                value={formData.salary.hraPercent !== undefined && formData.salary.hraPercent !== null ? formData.salary.hraPercent : '50'}
+                                                                onChange={(e) => calculateSalaryBreakdown({ hraPercent: e.target.value })}
+                                                                className="zoho-input"
+                                                                placeholder="50"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-slate-600 mb-1">VPF % (of Basic)</label>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max="100"
+                                                                value={formData.salary.vpfPercent !== undefined && formData.salary.vpfPercent !== null ? formData.salary.vpfPercent : '0'}
+                                                                onChange={(e) => calculateSalaryBreakdown({ vpfPercent: e.target.value })}
+                                                                className="zoho-input"
+                                                                placeholder="0"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
+
+                                            {/* Section: Statutory Components & Contribution Toggles */}
+                                            {(formData.salary.compensationType === 'monthly_salary' || !formData.salary.compensationType || formData.salary.compensationType === 'stipend_intern') && (
+                                                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-4">
+                                                    <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
+                                                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Statutory Components & Contribution Toggles</span>
+                                                        <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">Statutory Toggles</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        {/* PF Card */}
+                                                        <div className="flex flex-col gap-2 p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-semibold text-slate-800">Provident Fund (PF)</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.pfEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                            {parseBool(formData.salary.pfEnabled, true) && (
+                                                                <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
+                                                                    <span className="text-[10px] text-slate-500">Include Employer PF in CTC</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={!!formData.salary.includePfInCTC}
+                                                                        onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
+                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Gratuity Card */}
+                                                        <div className="flex flex-col gap-2 p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-semibold text-slate-800">Gratuity Accrual</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={parseBool(formData.salary.gratuityEnabled, true)}
+                                                                    onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
+                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                            {parseBool(formData.salary.gratuityEnabled, true) && (
+                                                                <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
+                                                                    <span className="text-[10px] text-slate-500">Include Gratuity in CTC</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={parseBool(formData.salary.includeGratuityInCTC, true)}
+                                                                        onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
+                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* ESI Card */}
+                                                        <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                                            <span className="text-xs font-semibold text-slate-800">State Insurance (ESI)</span>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={parseBool(formData.salary.esiEnabled, true)}
+                                                                onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
+                                                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                        </div>
+
+                                                        {/* LWF Card */}
+                                                        <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                                            <span className="text-xs font-semibold text-slate-800">Labour Welfare Fund (LWF)</span>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={parseBool(formData.salary.lwfEnabled, true)}
+                                                                onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
+                                                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* PT Card */}
+                                                    <div className="flex flex-col gap-3 p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-semibold text-slate-800">Professional Tax (PT)</span>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={parseBool(formData.salary.ptEnabled, true)}
+                                                                onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
+                                                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                        </div>
+                                                        {parseBool(formData.salary.ptEnabled, true) && (
+                                                            <div className="flex gap-2 items-center border-t border-slate-200 pt-2 mt-1">
+                                                                <div className="flex-1">
+                                                                    <select
+                                                                        value={formData.salary.ptState || 'MH'}
+                                                                        onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
+                                                                        className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none bg-white text-slate-700"
+                                                                    >
+                                                                        <optgroup label="── No PT / Manual">
+                                                                            <option value="">None — use manual override below</option>
+                                                                            <option value="custom">Custom Override</option>
+                                                                        </optgroup>
+                                                                        <optgroup label="── States that levy PT">
+                                                                            {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
+                                                                                <option key={s.code} value={s.code}>{s.name}</option>
+                                                                            ))}
+                                                                        </optgroup>
+                                                                        <optgroup label="── States with no PT">
+                                                                            {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
+                                                                                <option key={s.code} value={s.code}>{s.name}</option>
+                                                                            ))}
+                                                                        </optgroup>
+                                                                    </select>
+                                                                </div>
+                                                                {formData.salary.ptState === 'custom' && (
+                                                                    <div className="w-[100px] flex items-center gap-1">
+                                                                        <span className="text-[11px] text-slate-500">₹</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            value={formData.salary.professionalTax || 0}
+                                                                            onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
+                                                                            className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none text-slate-700"
+                                                                            placeholder="Amount"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Income Tax (TDS) Card */}
+                                                    <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
+                                                        <div>
+                                                            <span className="text-xs font-semibold text-slate-800">Income Tax (TDS)</span>
+                                                            <span className="block text-[10px] text-slate-400">Enable Income Tax TDS deductions</span>
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={parseBool(formData.salary.tdsEnabled, true)}
+                                                            onChange={(e) => calculateSalaryBreakdown({ tdsEnabled: e.target.checked })}
+                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Section: Custom Allowances (Other Earnings) */}
+                                            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                                    <div>
+                                                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Custom Allowances</span>
+                                                        <span className="block text-[10px] text-slate-400">Other Earnings (e.g. Children Education, Uniform)</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const list = [...(formData.salary.customAllowances || []), { name: '', amount: 0 }];
+                                                            calculateSalaryBreakdown({ customAllowances: list });
+                                                        }}
+                                                        className="px-2.5 py-1 text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 flex items-center gap-1"
+                                                    >
+                                                        <Plus size={12} /> Add
+                                                    </button>
+                                                </div>
+                                                {(!formData.salary.customAllowances || formData.salary.customAllowances.length === 0) ? (
+                                                    <div className="text-center py-2 text-slate-400 text-xs font-medium border border-dashed border-slate-200 rounded-lg">
+                                                        No custom allowances defined. Click "+ Add" above to add one.
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {formData.salary.customAllowances.map((item, idx) => (
+                                                            <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Allowance Name"
+                                                                    value={item.name || ''}
+                                                                    onChange={(e) => {
+                                                                        const list = [...formData.salary.customAllowances];
+                                                                        list[idx] = { ...list[idx], name: e.target.value };
+                                                                        calculateSalaryBreakdown({ customAllowances: list });
+                                                                    }}
+                                                                    className="zoho-input flex-1 text-xs"
+                                                                />
+                                                                <input
+                                                                    type="number"
+                                                                    placeholder="Monthly ₹"
+                                                                    value={item.amount || ''}
+                                                                    onChange={(e) => {
+                                                                        const list = [...formData.salary.customAllowances];
+                                                                        list[idx] = { ...list[idx], amount: e.target.value === '' ? '' : Number(e.target.value) };
+                                                                        calculateSalaryBreakdown({ customAllowances: list });
+                                                                    }}
+                                                                    className="zoho-input w-28 text-xs"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const list = formData.salary.customAllowances.filter((_, i) => i !== idx);
+                                                                        calculateSalaryBreakdown({ customAllowances: list });
+                                                                    }}
+                                                                    className="p-1 text-rose-600 hover:bg-rose-50 rounded"
+                                                                >
+                                                                    <Trash2 size={12} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Section: Custom Deductions (Other Deductions) */}
+                                            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                                    <div>
+                                                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Custom Deductions</span>
+                                                        <span className="block text-[10px] text-slate-400">Other Deductions (e.g. Car Lease, Corporate Accommodation)</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const list = [...(formData.salary.customDeductions || []), { name: '', amount: 0 }];
+                                                            calculateSalaryBreakdown({ customDeductions: list });
+                                                        }}
+                                                        className="px-2.5 py-1 text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 flex items-center gap-1"
+                                                    >
+                                                        <Plus size={12} /> Add
+                                                    </button>
+                                                </div>
+                                                {(!formData.salary.customDeductions || formData.salary.customDeductions.length === 0) ? (
+                                                    <div className="text-center py-2 text-slate-400 text-xs font-medium border border-dashed border-slate-200 rounded-lg">
+                                                        No custom deductions defined. Click "+ Add" above to add one.
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {formData.salary.customDeductions.map((item, idx) => (
+                                                            <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Deduction Name"
+                                                                    value={item.name || ''}
+                                                                    onChange={(e) => {
+                                                                        const list = [...formData.salary.customDeductions];
+                                                                        list[idx] = { ...list[idx], name: e.target.value };
+                                                                        calculateSalaryBreakdown({ customDeductions: list });
+                                                                    }}
+                                                                    className="zoho-input flex-1 text-xs"
+                                                                />
+                                                                <input
+                                                                    type="number"
+                                                                    placeholder="Monthly ₹"
+                                                                    value={item.amount || ''}
+                                                                    onChange={(e) => {
+                                                                        const list = [...formData.salary.customDeductions];
+                                                                        list[idx] = { ...list[idx], amount: e.target.value === '' ? '' : Number(e.target.value) };
+                                                                        calculateSalaryBreakdown({ customDeductions: list });
+                                                                    }}
+                                                                    className="zoho-input w-28 text-xs"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const list = formData.salary.customDeductions.filter((_, i) => i !== idx);
+                                                                        calculateSalaryBreakdown({ customDeductions: list });
+                                                                    }}
+                                                                    className="p-1 text-rose-600 hover:bg-rose-50 rounded"
+                                                                >
+                                                                    <Trash2 size={12} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Section: Additional Benefits & One-Time Pay */}
+                                            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                                                <div className="border-b border-slate-100 pb-2">
+                                                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Additional Benefits & One-Time Pay</span>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-600 mb-1">Medical Ins. (Monthly)</label>
+                                                        <input
+                                                            type="number"
+                                                            value={formData.salary.insuranceAmount || 0}
+                                                            onChange={(e) => calculateSalaryBreakdown({ insuranceAmount: e.target.value })}
+                                                            className="zoho-input"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-600 mb-1">Employer NPS (Monthly)</label>
+                                                        <input
+                                                            type="number"
+                                                            value={formData.salary.employerNPS || 0}
+                                                            onChange={(e) => calculateSalaryBreakdown({ employerNPS: e.target.value })}
+                                                            className="zoho-input"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-600 mb-1">Joining Bonus (One-Time)</label>
+                                                        <input
+                                                            type="number"
+                                                            value={formData.salary.joiningBonus || 0}
+                                                            onChange={(e) => calculateSalaryBreakdown({ joiningBonus: e.target.value })}
+                                                            className="zoho-input"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Right Side: Live Salary Structure Preview */}
+                                        <div className="border border-slate-200/80 rounded-xl bg-white p-5 shadow-sm h-fit space-y-4 sticky top-4">
+                                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Salary Structure Preview</span>
+                                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">Live Estimate</span>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 mb-2">
+                                                <div>
+                                                    <span className="text-[10px] text-slate-500 font-bold block uppercase">Annual CTC</span>
+                                                    <span className="text-sm font-extrabold text-slate-800">₹{parseFloat(formData.salary.annualCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-slate-500 font-bold block uppercase">Monthly CTC</span>
+                                                    <span className="text-sm font-extrabold text-slate-800">₹{parseFloat(formData.salary.monthlyCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2 text-xs">
+                                                <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-1">Earnings Component Breakdown</div>
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">Basic Salary</span>
+                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.basic || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">HRA</span>
+                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.hra || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                                {parseFloat(formData.salary.specialAllowance || 0) > 0 && (
+                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                        <span className="text-slate-600">Flexi / Special Allowance</span>
+                                                        <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                    </div>
+                                                )}
+                                                {(formData.salary.customAllowances || []).map((item, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                        <span className="text-slate-600">{item.name || 'Custom Allowance'}</span>
+                                                        <span className="font-semibold text-slate-800">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                    </div>
+                                                ))}
+
+                                                <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-2">Employer Statutory & Benefits</div>
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">PF Employer Cost</span>
+                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.pfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">Gratuity Accrual</span>
+                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.gratuity || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+
+                                                <div className="font-bold text-slate-400 uppercase tracking-wider text-[10px] pt-2">Employee Statutory & Deductions</div>
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">Employee PF</span>
+                                                    <span className="font-semibold text-rose-600">₹{parseFloat(formData.salary.pfEmployee || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                    <span className="text-slate-600">Professional Tax (PT)</span>
+                                                    <span className="font-semibold text-rose-600">₹{parseFloat(formData.salary.professionalTax || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                                {(formData.salary.customDeductions || []).map((item, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                                        <span className="text-slate-600">{item.name || 'Custom Deduction'}</span>
+                                                        <span className="font-semibold text-rose-600">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                    </div>
+                                                ))}
+
+                                                <div className="pt-2 space-y-2">
+                                                    <div className="flex justify-between items-center py-2 bg-emerald-50 rounded-xl px-3 text-emerald-800 border border-emerald-200/80">
+                                                        <span className="font-bold text-xs uppercase">Gross Salary</span>
+                                                        <span className="font-extrabold text-base">₹{parseFloat(formData.salary.monthlyGross || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center py-2.5 bg-blue-50 rounded-xl px-3 text-blue-900 border border-blue-200/80 shadow-2xs">
+                                                        <span className="font-bold text-xs uppercase">Est. Net Take-Home</span>
+                                                        <span className="font-black text-lg">₹{parseFloat(formData.salary.netTakeHome || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
