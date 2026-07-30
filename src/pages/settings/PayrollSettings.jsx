@@ -4,6 +4,45 @@ import { Save, Loader2, Info, Settings, Shield, RotateCcw } from 'lucide-react';
 import api from '../../api/axios';
 import { DEFAULT_PAYROLL_CONFIG } from '../../utils/payroll';
 
+const COMPENSATION_TYPES = [
+  { id: 'monthly_salary', name: 'Monthly Fixed Salary' },
+  { id: 'hourly', name: 'Hourly Wage' },
+  { id: 'daily_wage', name: 'Daily Wage' },
+  { id: 'weekly_salary', name: 'Weekly Salary' },
+  { id: 'piece_rate', name: 'Piece-Rate Pay' },
+  { id: 'project_based', name: 'Project-Based Payment' },
+  { id: 'milestone_based', name: 'Milestone-Based Payment' },
+  { id: 'attendance_based', name: 'Attendance-Based Salary' },
+  { id: 'timesheet_based', name: 'Timesheet-Based Salary' },
+  { id: 'commission_only', name: 'Commission Only' },
+  { id: 'salary_plus_commission', name: 'Salary + Commission' },
+  { id: 'retainer', name: 'Retainer/Consultant Payment' },
+];
+
+const STATUTORY_FLAGS = [
+  { key: 'pfEligible', name: 'Provident Fund (PF)' },
+  { key: 'esiEligible', name: 'ESI Scheme' },
+  { key: 'ptApplicable', name: 'Professional Tax (PT)' },
+  { key: 'gratuityEligible', name: 'Gratuity' },
+  { key: 'lwfApplicable', name: 'LWF' },
+];
+
+const STRATEGY_DEFAULTS = {
+  monthly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  attendance_based: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  salary_plus_commission: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  weekly_salary: { pfEligible: true, esiEligible: true, ptApplicable: true, gratuityEligible: true, lwfApplicable: true },
+  
+  hourly: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  daily_wage: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  piece_rate: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  project_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  milestone_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  timesheet_based: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  commission_only: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+  retainer: { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false },
+};
+
 const getBaselineComponents = (config) => [
   { id: 'basic',                    name: 'Basic Salary',                  type: 'earning',   taxable: true,  linkedTo: 'ctc_percent',   linkValue: config.basicPercent ?? 0.5,           frequency: 'monthly' },
   { id: 'hra',                      name: 'HRA',                           type: 'earning',   taxable: false, linkedTo: 'basic_percent', linkValue: config.hraPercent ?? 0.5,             frequency: 'monthly' },
@@ -12,8 +51,8 @@ const getBaselineComponents = (config) => [
 const mergeSalaryComponents = (loadedComponents, config) => {
   const baselines = getBaselineComponents(config);
   const others = [
-    { id: 'special',          name: 'Special Allowance',  type: 'earning',   taxable: true,  linkedTo: 'remainder',   linkValue: 0, frequency: 'monthly' },
-    { id: 'flexi',            name: 'Flexi Allowance',    type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
+    { id: 'special',          name: 'Special Allowance',  type: 'earning',   taxable: true,  linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
+    { id: 'flexi',            name: 'Flexi Allowance',    type: 'earning',   taxable: false, linkedTo: 'remainder',   linkValue: 0, frequency: 'monthly' },
     { id: 'broadband',        name: 'Broadband',          type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
     { id: 'petrol',           name: 'Petrol',             type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
     { id: 'lta',              name: 'LTA',                type: 'earning',   taxable: false, linkedTo: 'fixed',       linkValue: 0, frequency: 'monthly' },
@@ -107,6 +146,30 @@ const PayrollSettings = ({ embed = false, onSave }) => {
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleOverrideChange = (compensationType, flagKey, overrideValue) => {
+    setForm((prev) => {
+      const currentDefaults = { ...(prev.compensationTypeDefaults || {}) };
+      const currentTypeOverrides = { ...(currentDefaults[compensationType] || {}) };
+      
+      if (overrideValue === 'default') {
+        delete currentTypeOverrides[flagKey];
+      } else {
+        currentTypeOverrides[flagKey] = overrideValue === 'true';
+      }
+      
+      if (Object.keys(currentTypeOverrides).length === 0) {
+        delete currentDefaults[compensationType];
+      } else {
+        currentDefaults[compensationType] = currentTypeOverrides;
+      }
+      
+      return {
+        ...prev,
+        compensationTypeDefaults: currentDefaults
+      };
+    });
   };
 
   const addComponent = () => {
@@ -726,6 +789,68 @@ const PayrollSettings = ({ embed = false, onSave }) => {
                   className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Standard Monthly Hours</label>
+                <input
+                  type="number"
+                  value={form.standardMonthlyHours ?? 160}
+                  onChange={(e) => handleFieldChange('standardMonthlyHours', Number(e.target.value))}
+                  className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Compensation Type Defaults & Overrides Section */}
+          <div className="mt-6 pt-5 border-t border-slate-200">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-1">Compensation Type Statutory Defaults Overrides</h4>
+            <p className="text-xs text-slate-500 mb-4">
+              Configure statutory defaults for each compensation type. Regular salaried types are eligible for statutory contributions by default, while freelance or contractual types are exempt. Use this table to override defaults.
+            </p>
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                    <th className="px-3 py-2">Compensation Type</th>
+                    <th className="px-3 py-2 text-center">Provident Fund (PF)</th>
+                    <th className="px-3 py-2 text-center">ESI Scheme</th>
+                    <th className="px-3 py-2 text-center">Professional Tax (PT)</th>
+                    <th className="px-3 py-2 text-center">Gratuity</th>
+                    <th className="px-3 py-2 text-center">LWF</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {COMPENSATION_TYPES.map((type) => {
+                    const overrides = (form.compensationTypeDefaults || {})[type.id] || {};
+                    const baseDefaults = STRATEGY_DEFAULTS[type.id] || { pfEligible: false, esiEligible: false, ptApplicable: false, gratuityEligible: false, lwfApplicable: false };
+                    
+                    return (
+                      <tr key={type.id} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2 font-medium text-slate-700">{type.name}</td>
+                        {STATUTORY_FLAGS.map((flag) => {
+                          const val = overrides[flag.key];
+                          const baseVal = baseDefaults[flag.key];
+                          const selectValue = val === undefined ? 'default' : String(val);
+                          
+                          return (
+                            <td key={flag.key} className="px-3 py-1.5 text-center">
+                              <select
+                                value={selectValue}
+                                onChange={(e) => handleOverrideChange(type.id, flag.key, e.target.value)}
+                                className="border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700"
+                              >
+                                <option value="default">Default ({baseVal ? 'Eligible' : 'Exempt'})</option>
+                                <option value="true">Force Eligible</option>
+                                <option value="false">Force Exempt</option>
+                              </select>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 

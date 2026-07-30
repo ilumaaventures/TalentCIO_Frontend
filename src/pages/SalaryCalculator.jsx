@@ -299,8 +299,8 @@ const SalaryCalculator = () => {
       : [
           { id: 'basic', name: 'Basic Salary', type: 'earning' },
           { id: 'hra', name: 'House Rent Allowance (HRA)', type: 'earning' },
-          { id: 'special', name: 'Special Allowance (Balancing Component)', type: 'earning' },
-          { id: 'flexi', name: 'Flexi Benefits Wallet', type: 'earning' },
+          { id: 'special', name: 'Special Allowance', type: 'earning' },
+          { id: 'flexi', name: 'Flexi Benefits Wallet (Balancing Component)', type: 'earning' },
           { id: 'broadband', name: 'Broadband Allowance', type: 'earning' },
           { id: 'petrol', name: 'Petrol Reimbursement', type: 'earning' },
           { id: 'lta', name: 'Leave Travel Allowance (LTA)', type: 'earning' },
@@ -501,8 +501,8 @@ const SalaryCalculator = () => {
       : [
           { id: 'basic', name: 'Basic Salary', type: 'earning' },
           { id: 'hra', name: 'House Rent Allowance (HRA)', type: 'earning' },
-          { id: 'special', name: 'Special Allowance (Balancing Component)', type: 'earning' },
-          { id: 'flexi', name: 'Flexi Benefits Wallet', type: 'earning' },
+          { id: 'special', name: 'Special Allowance', type: 'earning' },
+          { id: 'flexi', name: 'Flexi Benefits Wallet (Balancing Component)', type: 'earning' },
           { id: 'broadband', name: 'Broadband Allowance', type: 'earning' },
           { id: 'petrol', name: 'Petrol Reimbursement', type: 'earning' },
           { id: 'lta', name: 'Leave Travel Allowance (LTA)', type: 'earning' },
