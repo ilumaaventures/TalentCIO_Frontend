@@ -1491,7 +1491,7 @@ const Users = () => {
 
     if (loading) return (
         <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 md:p-10">
-            <div className="w-full mx-auto space-y-6">
+            <div className="max-w-7xl w-full mx-auto space-y-6">
                 <div className="flex justify-between items-center">
                     <div>
                         <Skeleton className="h-8 w-48 mb-2" />
@@ -1528,7 +1528,7 @@ const Users = () => {
 
     return (
         <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 md:p-10">
-            <div className="w-full mx-auto space-y-6">
+            <div className="max-w-7xl w-full mx-auto space-y-6">
 
                 {/* Header */}
                 <div className="flex justify-between items-center">
@@ -1999,7 +1999,7 @@ const Users = () => {
             {/* Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-5">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-[1600px] max-w-[98vw] overflow-hidden animate-blob max-h-[94vh] overflow-y-auto">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden animate-blob max-h-[94vh] overflow-y-auto">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                             <h3 className="font-bold text-slate-800">{editingUser ? 'Edit Employee' : 'Add New Employee'}</h3>
                             <button
