@@ -74,7 +74,8 @@ const Discussions = () => {
         supervisor: [],
         visibleToUserIds: [],
         project: '',
-        priority: 'Medium'
+        priority: 'Medium',
+        hours: ''
     });
 
     // Pagination state
@@ -133,7 +134,7 @@ const Discussions = () => {
                 totalPages: res.data.totalPages || 1,
                 currentPage: res.data.currentPage || page
             };
-            const newFingerprint = (freshData.discussions || []).map(d => `${d._id}-${d.status}-${d.discussion}-${d.dueDate}`).join('|');
+            const newFingerprint = (freshData.discussions || []).map(d => `${d._id}-${d.status}-${d.discussion}-${d.dueDate}-${d.hours}`).join('|');
             const cachedValue = readSessionCache(CACHE_KEY);
             const oldFingerprint = cachedValue?.fingerprint || '';
 
@@ -157,6 +158,8 @@ const Discussions = () => {
                     visibleToUsers: Array.isArray(d.visibleToUsers) ? d.visibleToUsers.map((u) => ({ _id: u._id, firstName: u.firstName, lastName: u.lastName, profilePicture: u.profilePicture })) : [],
                     project: d.project ? { _id: d.project._id, name: d.project.name } : null,
                     priority: d.priority,
+                    hours: d.hours,
+                    totalLoggedHours: d.totalLoggedHours,
                     canEdit: d.canEdit,
                     canDelete: d.canDelete,
                     canChangeRestrictedStatus: d.canChangeRestrictedStatus,
@@ -370,7 +373,8 @@ const Discussions = () => {
             supervisor: [],
             visibleToUserIds: [],
             project: '',
-            priority: 'Medium'
+            priority: 'Medium',
+            hours: ''
         });
         setCreateVisibleSearchVal('');
         setCreateSupervisorSearchVal('');
@@ -433,6 +437,7 @@ const Discussions = () => {
                 { header: 'Supervisor', key: 'supervisor', width: 24 },
                 { header: 'Visible To', key: 'visibleTo', width: 36 },
                 { header: 'Project', key: 'project', width: 24 },
+                { header: 'Hours', key: 'hours', width: 12 },
                 { header: 'Priority', key: 'priority', width: 15 },
                 { header: 'Created Date', key: 'createdDate', width: 20 },
                 { header: 'Due Date', key: 'dueDate', width: 20 },
@@ -450,6 +455,7 @@ const Discussions = () => {
                     supervisor: formatPersonName(item.supervisor) || '-',
                     visibleTo: formatVisibleUsers(item.visibleToUsers) || '-',
                     project: item.project?.name || '-',
+                    hours: item.hours !== undefined && item.hours !== null ? item.hours : '-',
                     priority: item.priority || 'Medium',
                     createdDate: item.createdAt ? format(new Date(item.createdAt), 'dd MMM yyyy') : '-',
                     dueDate: item.dueDate ? format(new Date(item.dueDate), 'dd MMM yyyy') : 'No due date',
@@ -613,7 +619,8 @@ const Discussions = () => {
             supervisor: rawSupervisors.map(extractId).filter(Boolean),
             visibleToUserIds: rawVisible.map(extractId).filter(Boolean),
             project: discussion.project?._id || discussion.project || '',
-            priority: discussion.priority || 'Medium'
+            priority: discussion.priority || 'Medium',
+            hours: discussion.hours !== undefined && discussion.hours !== null ? discussion.hours : ''
         });
         setEditVisibleSearchVal('');
         setEditSupervisorSearchVal('');
@@ -748,9 +755,19 @@ const Discussions = () => {
         setActiveMenuId(prev => prev === discussionId ? null : discussionId);
     };
 
-    const openDiscussionDetails = (discussion) => {
+    const openDiscussionDetails = async (discussion) => {
         setDetailsDiscussion(discussion);
         setActiveMenuId(null);
+        if (discussion?._id) {
+            try {
+                const res = await api.get(`/discussions/${discussion._id}`);
+                if (res.data) {
+                    setDetailsDiscussion(res.data);
+                }
+            } catch (err) {
+                console.error("Error fetching single discussion details:", err);
+            }
+        }
     };
 
     const handleCreateButtonClick = () => {
@@ -949,6 +966,22 @@ const Discussions = () => {
                                 <option value="Medium">Medium</option>
                                 <option value="Low">Low</option>
                             </select>
+                        </div>
+
+                        <div className="space-y-2 lg:col-span-2">
+                            <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Hours</label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={isEdit ? editData?.hours ?? '' : newDiscussion.hours}
+                                onChange={(event) => isEdit
+                                    ? setEditData({ ...editData, hours: event.target.value })
+                                    : setNewDiscussion({ ...newDiscussion, hours: event.target.value })}
+                                onWheel={(e) => e.target.blur()}
+                                placeholder="e.g. 5"
+                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
                         </div>
 
                         <div className="space-y-2">
@@ -1313,7 +1346,14 @@ const Discussions = () => {
                         ) : (
                             sortedDiscussions.map((discussion, index) => (
                                 <React.Fragment key={discussion._id}>
-                                    <div className="p-4 space-y-2 hover:bg-slate-50 transition-colors">
+                                    <div
+                                        onClick={(e) => {
+                                            if (!e.target.closest('select, button, input, a, [data-discussion-menu]')) {
+                                                openDiscussionDetails(discussion);
+                                            }
+                                        }}
+                                        className="p-4 space-y-2 hover:bg-slate-50 transition-colors cursor-pointer"
+                                    >
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="flex-1 min-w-0">
                                                 <span className="text-xs font-semibold text-slate-400 mr-1">#{(currentPage - 1) * limit + index + 1}</span>
@@ -1338,6 +1378,11 @@ const Discussions = () => {
                                             {discussion.project && (
                                                 <span className="px-2 py-0.5 text-xs font-medium bg-slate-200/80 text-slate-700 rounded border border-slate-300 truncate max-w-[150px]">
                                                     {discussion.project.name}
+                                                </span>
+                                            )}
+                                            {discussion.hours !== undefined && discussion.hours !== null && discussion.hours !== '' && (
+                                                <span className="px-2 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 rounded border border-indigo-200">
+                                                    {discussion.hours} hrs
                                                 </span>
                                             )}
                                             {discussion.dueDate ? (
@@ -1369,10 +1414,10 @@ const Discussions = () => {
                         <table className="min-w-full text-xs table-fixed">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[6%]">S.No</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[26%]">Description</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[5%]">S.No</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[22%]">Description</th>
                                     <th 
-                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[12%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
+                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
                                         onClick={() => handleSortClick('createdAt')}
                                     >
                                         <div className="flex items-center gap-1">
@@ -1381,7 +1426,7 @@ const Discussions = () => {
                                         </div>
                                     </th>
                                     <th 
-                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[12%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
+                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
                                         onClick={() => handleSortClick('dueDate')}
                                     >
                                         <div className="flex items-center gap-1">
@@ -1389,19 +1434,20 @@ const Discussions = () => {
                                             {renderSortArrow('dueDate')}
                                         </div>
                                     </th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[12%]">Project</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[12%]">Priority</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%]">Project</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[9%]">Hours</th>
+                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%]">Priority</th>
                                     <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[12%]">Status</th>
                                     <th className="px-6 py-4 text-right font-semibold text-slate-600 w-[8%]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {loading ? (
-                                    <tr><td colSpan="8" className="px-6 py-8">
+                                    <tr><td colSpan="9" className="px-6 py-8">
                                         <div className="flex justify-center"><Skeleton className="h-8 w-8 rounded-full" /></div>
                                     </td></tr>
                                 ) : discussions.length === 0 && !isCreating ? (
-                                    <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-500 font-medium">
+                                    <tr><td colSpan="9" className="px-6 py-12 text-center text-slate-500 font-medium">
                                         <div className="flex flex-col items-center justify-center">
                                             <MessageSquare size={48} className="text-slate-200 mb-4" />
                                             <p className="text-sm font-medium text-slate-600">No discussions found</p>
@@ -1411,7 +1457,14 @@ const Discussions = () => {
                                 ) : (
                                     sortedDiscussions.map((discussion, index) => (
                                         <React.Fragment key={discussion._id}>
-                                            <tr className="hover:bg-slate-50 transition-colors group">
+                                            <tr
+                                                onClick={(e) => {
+                                                    if (!e.target.closest('select, button, input, a, [data-discussion-menu]')) {
+                                                        openDiscussionDetails(discussion);
+                                                    }
+                                                }}
+                                                className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                                            >
                                                 <td className="px-6 py-4 text-xs font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center justify-between gap-2 max-w-xl text-xs text-slate-600 leading-relaxed min-w-0">
@@ -1447,6 +1500,9 @@ const Discussions = () => {
                                                 <td className="px-6 py-4 text-slate-700 text-xs break-all whitespace-normal">
                                                     {discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}
                                                 </td>
+                                                <td className="px-6 py-4 text-slate-700 text-xs whitespace-nowrap">
+                                                    {discussion.hours !== undefined && discussion.hours !== null && discussion.hours !== '' ? `${discussion.hours} hrs` : '-'}
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <select value={discussion.priority || 'Medium'}
                                                         onChange={(e) => handlePriorityChange(discussion._id, e.target.value)}
@@ -1477,7 +1533,7 @@ const Discussions = () => {
                                             </tr>
                                             {editingId === discussion._id && (
                                                 <tr>
-                                                    <td colSpan="8" className="px-6 py-4 bg-slate-50/30">
+                                                    <td colSpan="9" className="px-6 py-4 bg-slate-50/30">
                                                         {renderDiscussionForm(true)}
                                                     </td>
                                                 </tr>
@@ -1544,8 +1600,14 @@ const Discussions = () => {
                 </div>
 
                 {detailsDiscussion && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-                        <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+                    <div
+                        onClick={() => setDetailsDiscussion(null)}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4 backdrop-blur-[2px]"
+                    >
+                        <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl"
+                        >
                             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
                                 <div>
                                     <h2 className="text-lg font-semibold text-slate-800">Discussion Details</h2>
@@ -1576,6 +1638,20 @@ const Discussions = () => {
                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project</p>
                                         <p className="mt-2 text-sm font-medium text-slate-700">
                                             {detailsDiscussion.project?.name || 'No Project'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estimated Hours</p>
+                                        <p className="mt-2 text-sm font-medium text-slate-700">
+                                            {detailsDiscussion.hours !== undefined && detailsDiscussion.hours !== null && detailsDiscussion.hours !== '' ? `${detailsDiscussion.hours} hrs` : '-'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Total Time Spent</p>
+                                        <p className="mt-2 text-base font-bold text-indigo-900">
+                                            {detailsDiscussion.totalLoggedHours !== undefined && detailsDiscussion.totalLoggedHours !== null
+                                                ? `${Number(detailsDiscussion.totalLoggedHours).toFixed(2)} hrs`
+                                                : '0 hrs'}
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
