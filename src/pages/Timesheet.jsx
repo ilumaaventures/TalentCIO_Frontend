@@ -1836,26 +1836,26 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     return (
         <>
-        <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-6 md:p-10'} font-sans overflow-x-hidden`}>
-            <div className={`w-full ${isEmbedded ? '' : 'max-w-7xl mx-auto space-y-6'} overflow-x-hidden rounded-xl`}>
+        <div className={`${isEmbedded ? 'w-full' : 'min-h-screen bg-slate-100 p-4 sm:p-6 md:p-10'} font-sans overflow-x-hidden`}>
+            <div className={`w-full ${isEmbedded ? '' : 'max-w-7xl mx-auto space-y-4 sm:space-y-6'} overflow-x-hidden rounded-xl`}>
 
                 {/* Tabs & Header */}
                 <div className="flex flex-col space-y-4">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 sm:gap-4">
                         {!isEmbedded && (
-                            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
+                            <div className="flex flex-wrap sm:flex-nowrap gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-sm w-full sm:w-auto">
                                 <button
                                     onClick={() => setActiveTab('timesheet')}
-                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'timesheet' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all text-center ${activeTab === 'timesheet' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Timesheet View
                                 </button>
                                 {(canApprove) && (
                                     <button
                                         onClick={() => setActiveTab('approvals')}
-                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'approvals' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all flex items-center justify-center space-x-1.5 ${activeTab === 'approvals' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                     >
-                                        <span>Pending Approvals</span>
+                                        <span>Pending</span>
                                         {pendingApprovals.length > 0 && (
                                             <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                                                 {pendingApprovals.length}
@@ -1866,10 +1866,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 {canViewAttendance && (
                                     <button
                                         onClick={() => setActiveTab('attendance')}
-                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center space-x-2 ${activeTab === 'attendance' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all flex items-center justify-center space-x-1.5 ${activeTab === 'attendance' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                     >
-                                        <FileText size={16} />
-                                        <span>Attendance View</span>
+                                        <FileText size={15} />
+                                        <span>Attendance</span>
                                     </button>
                                 )}
                             </div>
@@ -1877,12 +1877,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
                         {/* User Picker — visible to Admin, Manager, or timesheet.view permission */}
                         {!isEmbedded && (canViewTimesheets || user?.roles?.includes('Manager')) && usersList.length > 0 && (
-                            <div className="flex items-center space-x-2">
+                            <div className="flex flex-wrap items-center space-x-2 w-full sm:w-auto justify-between sm:justify-start">
                                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Viewing:</label>
                                 <select
                                     onChange={handleUserChange}
                                     value={targetUserId || ''}
-                                    className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                                    className="text-xs sm:text-sm border border-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 bg-white text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-400 outline-none flex-1 sm:flex-initial min-w-[140px]"
                                 >
                                     <option value="">— Select User —</option>
                                     {usersList.map(u => (
@@ -1894,7 +1894,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 {targetUserId && (
                                     <button
                                         onClick={() => updateRouteContext({ userId: '', name: '' })}
-                                        className="text-xs text-blue-600 hover:underline"
+                                        className="text-xs text-blue-600 hover:underline font-medium"
                                     >
                                         View Own
                                     </button>
@@ -1904,7 +1904,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     </div>
 
                     {activeTab === 'timesheet' && (
-                        <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+                        <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-slate-200">
                             {loading ? (
                                 <div className="space-y-6">
                                     <div className="flex justify-between items-center">
@@ -1921,12 +1921,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 </div>
                             ) : (
                                 <>
-                                    <div className="flex justify-between items-center mb-4">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 mb-4">
                                         <div>
-                                            <h1 className="text-2xl font-bold text-slate-800">
+                                            <h1 className="text-xl sm:text-2xl font-bold text-slate-800">
                                                 {targetUserName ? `${targetUserName}'s Timesheet` : 'Timesheet'}
                                             </h1>
-                                            <div className="flex items-center space-x-2 text-sm text-slate-500">
+                                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-500 mt-0.5">
                                                 <span>
                                                     {(() => {
                                                         const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
@@ -1946,11 +1946,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         (Submitted: {format(new Date(timesheet.submittedAt), 'dd MMM, hh:mm a')})
                                                     </span>
                                                 )}
-                                                {targetUserName && <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-bold">Manager View</span>}
+                                                {targetUserName && <span className="bg-blue-100 text-blue-800 text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-bold">Manager View</span>}
                                             </div>
                                         </div>
 
-                                        <div className="flex space-x-3 items-center">
+                                        <div className="flex flex-wrap items-center gap-2 sm:space-x-3 w-full md:w-auto justify-start md:justify-end">
                                             <Button
                                                 onClick={() => {
                                                     const cycle = getNormalizedTimesheetCycle(user?.company?.settings?.timesheet?.approvalCycle || 'Monthly');
@@ -1960,7 +1960,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     else setViewDate(d => subMonths(d, 1));
                                                 }}
                                                 variant="secondary"
-                                                className="flex items-center space-x-2"
+                                                className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2"
                                             >
                                                 <ChevronLeft size={16} /> <span>Prev</span>
                                             </Button>
@@ -1973,25 +1973,25 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     else setViewDate(d => addMonths(d, 1));
                                                 }}
                                                 variant="secondary"
-                                                className="flex items-center space-x-2"
+                                                className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2"
                                             >
                                                 <span>Next</span> <ChevronRight size={16} />
                                             </Button>
                                             {(timesheet?.status === 'DRAFT' || timesheet?.status === 'REJECTED') && !targetUserId && canSubmitTimesheet && (
                                                 <Button
                                                     onClick={handleSubmit}
-                                                    className="flex items-center space-x-2"
+                                                    className="flex items-center space-x-1.5 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                                                 >
-                                                    <Send size={16} /> <span>{timesheet?.status === 'REJECTED' ? 'Resubmit' : 'Submit'} for Approval</span>
+                                                    <Send size={15} /> <span>{timesheet?.status === 'REJECTED' ? 'Resubmit' : 'Submit'}</span>
                                                 </Button>
                                             )}
                                             {(user?.role === 'Admin' || user?.permissions?.includes('timesheet.export')) && (
                                                 <Button
                                                     onClick={handleExport}
                                                     variant="secondary"
-                                                    className="flex items-center space-x-2 bg-white text-green-700 border-green-200 hover:bg-green-50"
+                                                    className="flex items-center space-x-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2 bg-white text-green-700 border-green-200 hover:bg-green-50"
                                                 >
-                                                    <Save size={16} /> <span>Export Excel</span>
+                                                    <Save size={15} /> <span>Export</span>
                                                 </Button>
                                             )}
                                         </div>
@@ -2095,7 +2095,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 align-middle">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                    <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
                                                         <button
                                                             onClick={() => {
                                                                 updateRouteContext({
@@ -2141,50 +2141,50 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     <>
                         {/* Inline Detail View */}
                         <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden mb-6">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left border-collapse">
+                            <div className="overflow-x-auto scrollbar-thin">
+                                <table className="w-full text-xs sm:text-sm text-left border-collapse">
                                     <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                                            <th className="p-4 border-r border-slate-200 min-w-[250px] sticky left-0 z-30 bg-slate-50 font-bold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                Project / Task
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] sm:text-xs uppercase tracking-wider text-slate-500">
+                                            <th className="px-2.5 py-2 sm:px-3 sm:py-3 border-r border-slate-200 min-w-[100px] sm:min-w-[140px] md:min-w-[170px] sticky left-0 z-30 bg-slate-50 font-bold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                <span className="truncate block">Project / Task</span>
                                             </th>
                                             {visibleDays.map(day => {
                                                 const { holiday, leave, isWeeklyOff } = getDayContext(day);
                                                 return (
-                                                    <th key={day.toString()} className={`p-2 border-r border-slate-200 min-w-[60px] text-center ${holiday ? 'bg-green-50' : leave ? 'bg-purple-50' : isWeeklyOff ? 'bg-slate-100/50' : ''}`}>
-                                                        <div className="text-[10px] text-slate-400">{format(day, 'EEE')}</div>
+                                                    <th key={day.toString()} className={`p-1 sm:p-2 border-r border-slate-200 min-w-[44px] sm:min-w-[60px] text-center ${holiday ? 'bg-green-50' : leave ? 'bg-purple-50' : isWeeklyOff ? 'bg-slate-100/50' : ''}`}>
+                                                        <div className="text-[9px] sm:text-[10px] text-slate-400">{format(day, 'EEE')}</div>
                                                         <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
                                                         {holiday && (
-                                                            <div className="text-[8px] text-green-600 font-bold truncate max-w-12.5 mt-1" title={holiday.name}>
+                                                            <div className="text-[7px] sm:text-[8px] text-green-600 font-bold truncate max-w-10 sm:max-w-12.5 mt-0.5" title={holiday.name}>
                                                                 {holiday.name}
                                                             </div>
                                                         )}
                                                         {!holiday && leave && (
-                                                            <div className="text-[8px] text-purple-600 font-bold truncate max-w-12.5 mt-1" title={getLeaveLabel(leave)}>
+                                                            <div className="text-[7px] sm:text-[8px] text-purple-600 font-bold truncate max-w-10 sm:max-w-12.5 mt-0.5" title={getLeaveLabel(leave)}>
                                                                 {getLeaveLabel(leave)}
                                                             </div>
                                                         )}
                                                         {!holiday && !leave && isWeeklyOff && (
-                                                            <div className="text-[8px] text-slate-500 font-bold truncate max-w-12.5 mt-1" title="Weekoff">
+                                                            <div className="text-[7px] sm:text-[8px] text-slate-500 font-bold truncate max-w-10 sm:max-w-12.5 mt-0.5" title="Weekoff">
                                                                 WO
                                                             </div>
                                                         )}
                                                     </th>
                                                 );
                                             })}
-                                            <th className="p-4 border-l border-slate-200 min-w-[100px] font-bold text-center bg-slate-50 sticky right-0 z-30 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                            <th className="p-2 sm:p-4 border-l border-slate-200 min-w-[65px] sm:min-w-[85px] md:min-w-[100px] font-bold text-center bg-slate-50 sticky right-0 z-30 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 Total
                                             </th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
+                                    <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
                                         {/* Attendance Row */}
                                         <tr className="bg-slate-50/80 border-b border-slate-200">
-                                            <td className="p-4 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                            <td className="px-2.5 py-2 sm:px-3 sm:py-3 border-r border-slate-200 font-bold text-slate-700 sticky left-0 bg-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 <div className="flex flex-col">
-                                                    <span>Attendance</span>
-                                                    <span className="text-[10px] text-slate-400 font-normal uppercase">
-                                                        {isPresentOnlyUser ? 'Present Only' : 'Check-in / Out'}
+                                                    <span className="truncate max-w-[90px] sm:max-w-[130px] md:max-w-none block">Attendance</span>
+                                                    <span className="text-[8px] sm:text-[9px] text-slate-400 font-normal uppercase truncate max-w-[90px] sm:max-w-[130px] md:max-w-none block">
+                                                        {isPresentOnlyUser ? 'Present Only' : 'Check-in/Out'}
                                                     </span>
                                                 </div>
                                             </td>
@@ -2221,11 +2221,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         ) : log ? (
                                                             <div className="flex flex-col items-center justify-center">
                                                                 {isPresentOnlyAttendance(log) ? (
-                                                                    <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-emerald-100 text-emerald-700">
+                                                                    <span className="font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[8px] sm:text-[9px] min-w-[28px] bg-emerald-100 text-emerald-700">
                                                                         Present
                                                                     </span>
                                                                 ) : (
-                                                                    <span className={`font-bold px-2 py-1 rounded text-[10px] min-w-[32px] ${getAttendanceStatusMeta(log).chipClass}`}>
+                                                                    <span className={`font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[9px] sm:text-[10px] min-w-[28px] ${getAttendanceStatusMeta(log).chipClass}`}>
                                                                         {getAttendanceHoursValue(log) > 0
                                                                             ? getAttendanceHoursValue(log).toFixed(1)
                                                                             : '-'}
@@ -2233,15 +2233,15 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 )}
                                                             </div>
                                                         ) : holiday ? (
-                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-teal-100 text-teal-700" title={holiday.name}>
+                                                            <span className="font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[8px] sm:text-[9px] min-w-[28px] bg-teal-100 text-teal-700" title={holiday.name}>
                                                                 HOL
                                                             </span>
                                                         ) : leave ? (
-                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-purple-100 text-purple-700" title={getLeaveLabel(leave)}>
+                                                            <span className="font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[8px] sm:text-[9px] min-w-[28px] bg-purple-100 text-purple-700" title={getLeaveLabel(leave)}>
                                                                 {leave.isHalfDay ? 'HDL' : 'LEV'}
                                                             </span>
                                                         ) : isWeeklyOff ? (
-                                                            <span className="font-bold px-2 py-1 rounded text-[9px] min-w-[32px] bg-slate-100 text-slate-500">
+                                                            <span className="font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[8px] sm:text-[9px] min-w-[28px] bg-slate-100 text-slate-500">
                                                                 WO
                                                             </span>
                                                         ) : (
@@ -2250,7 +2250,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     </td>
                                                 );
                                             })}
-                                            <td className="p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                            <td className="p-2 sm:p-4 border-l border-slate-200 font-bold text-center bg-slate-50 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 {isPresentOnlyUser
                                                     ? attendanceLogs.filter((log) => isPresentOnlyAttendance(log)).length
                                                     : (attendanceLogs.reduce((acc, log) => {
@@ -2263,10 +2263,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 const projectTotal = Object.values(group.hours).reduce((a, b) => a + b, 0);
                                                 return (
                                                     <tr key={group.project._id || idx} className="hover:bg-blue-50/30 transition-colors group">
-                                                        <td className="p-4 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                        <td className="px-2.5 py-2 sm:px-3 sm:py-3 border-r border-slate-200 font-medium text-slate-700 sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                             <div className="flex flex-col">
-                                                                <span className="text-sm text-slate-800">{group.project.name || 'Unknown Project'}</span>
-                                                                <span className="text-xs text-slate-400 font-normal">{group.project.client?.name || 'Internal'}</span>
+                                                                <span className="text-xs sm:text-sm text-slate-800 truncate max-w-[90px] sm:max-w-[130px] md:max-w-none block">{group.project.name || 'Unknown Project'}</span>
+                                                                <span className="text-[9px] sm:text-xs text-slate-400 font-normal truncate max-w-[90px] sm:max-w-[130px] md:max-w-none block">{group.project.client?.name || 'Internal'}</span>
                                                             </div>
                                                         </td>
                                                         {visibleDays.map(day => {
@@ -2306,11 +2306,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 >
                                                                     {holiday ? (
                                                                         <div className="flex justify-center items-center h-full">
-                                                                            <span className="text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
+                                                                            <span className="text-[9px] sm:text-[10px] font-bold text-green-300 select-none" title={holiday.name}>HOL</span>
                                                                         </div>
                                                                     ) : leave ? (
                                                                         <div className="flex justify-center items-center h-full">
-                                                                            <span className="text-[10px] font-bold text-purple-500 select-none" title={getLeaveLabel(leave)}>
+                                                                            <span className="text-[9px] sm:text-[10px] font-bold text-purple-500 select-none" title={getLeaveLabel(leave)}>
                                                                                 {leave.isHalfDay ? 'HDL' : 'LEV'}
                                                                             </span>
                                                                         </div>
@@ -2320,12 +2320,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                         <div className="flex flex-col items-center justify-center group/cell relative">
                                                                             <span
                                                                                 title={dayStatusMeta.label}
-                                                                                className={`inline-flex items-center justify-center h-8 w-8 rounded-full font-bold text-xs shadow-sm transition-all ${dayStatusMeta.badgeClass}`}
+                                                                                className={`inline-flex items-center justify-center h-6 w-6 sm:h-8 sm:w-8 rounded-full font-bold text-[10px] sm:text-xs shadow-sm transition-all ${dayStatusMeta.badgeClass}`}
                                                                             >
                                                                                 {hours}
                                                                             </span>
                                                                             {logs.length > 1 && (
-                                                                                <div className="absolute -top-1 -right-1 h-3 w-3 bg-sky-500 rounded-full border-2 border-white"></div>
+                                                                                <div className="absolute -top-1 -right-1 h-2.5 w-2.5 sm:h-3 sm:w-3 bg-sky-500 rounded-full border-2 border-white"></div>
                                                                             )}
                                                                         </div>
                                                                     ) : (
@@ -2334,7 +2334,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 </td>
                                                             );
                                                         })}
-                                                        <td className="p-4 border-l border-slate-200 font-bold text-center bg-white sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                        <td className="p-2 sm:p-4 border-l border-slate-200 font-bold text-center bg-white sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                             <span className={projectTotal > 0 ? 'text-slate-800' : 'text-slate-300'}>{projectTotal.toFixed(1)}</span>
                                                         </td>
                                                     </tr>
@@ -2342,32 +2342,32 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             })
                                         ) : (
                                             <tr>
-                                                <td colSpan={visibleDays.length + 2} className="p-12 text-center text-slate-500 bg-slate-50/50">
+                                                <td colSpan={visibleDays.length + 2} className="p-8 sm:p-12 text-center text-slate-500 bg-slate-50/50">
                                                     <div className="flex flex-col items-center">
-                                                        <Calendar size={48} className="text-slate-300 mb-3" />
-                                                        <p className="font-medium">No timesheet entries found</p>
-                                                        <p className="text-xs mt-1">Clock in or log work to see data here</p>
+                                                        <Calendar size={40} className="text-slate-300 mb-2 sm:mb-3" />
+                                                        <p className="font-medium text-xs sm:text-sm">No timesheet entries found</p>
+                                                        <p className="text-[11px] sm:text-xs mt-1">Clock in or log work to see data here</p>
                                                     </div>
                                                 </td>
                                             </tr>
                                         )}
 
                                         {/* Daily Totals Row */}
-                                        <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs uppercase text-slate-700">
-                                            <td className="p-3 border-r border-slate-300 sticky left-0 bg-slate-100 z-20">Daily Total</td>
+                                        <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-[10px] sm:text-xs uppercase text-slate-700">
+                                            <td className="px-2.5 py-2 sm:px-3 sm:py-3 border-r border-slate-300 sticky left-0 bg-slate-100 z-20 text-[10px] sm:text-xs">Daily Total</td>
                                             {visibleDays.map(day => {
                                                 const total = getTotalPerDay(day);
                                                 return (
                                                     <td key={day.toString()} className="p-1 border-r border-slate-300 text-center">
                                                         {total > 0 && (
-                                                            <span className={`block py-1 rounded ${total > 9 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-800'}`}>
+                                                            <span className={`block py-1 rounded text-[10px] sm:text-xs ${total > 9 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-800'}`}>
                                                                 {total.toFixed(1)}
                                                             </span>
                                                         )}
                                                     </td>
                                                 );
                                             })}
-                                            <td className="p-4 border-l border-slate-200 font-bold text-center text-white bg-slate-600 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                            <td className="p-2 sm:p-4 border-l border-slate-200 font-bold text-center text-white bg-slate-600 sticky right-0 z-20 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 {visibleDays.reduce((acc, day) => acc + getTotalPerDay(day), 0).toFixed(1)}
                                             </td>
                                         </tr>
@@ -2597,9 +2597,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         &times;
                                                     </button>
                                                     <h4 className="text-xs font-bold text-blue-600 uppercase mb-3">New Work Log</h4>
-
                                                     <div className="space-y-3">
-                                                        <div className="grid grid-cols-2 gap-3">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                             <div>
                                                                 <label className="block text-xs font-bold text-slate-500 mb-1">Project <span className="text-red-500">*</span></label>
                                                                 <select
@@ -2630,7 +2629,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             </div>
                                                         </div>
 
-                                                        <div className="grid grid-cols-2 gap-3">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                             <div>
                                                                 <label className="block text-xs font-bold text-slate-500 mb-1">Task</label>
                                                                 <select
@@ -2664,7 +2663,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         </div>
 
                                                         <div className="grid grid-cols-2 gap-3">
-                                                            <div className="flex space-x-2">
+                                                            <div className="flex space-x-2 col-span-2 sm:col-span-1">
                                                                 <div className="flex-1">
                                                                     <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
                                                                     <input
@@ -2773,8 +2772,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             {entryToEdit && entryToEdit._id === log._id ? (
                                                 // INLINE EDIT FORM
                                                 <div className="bg-white border border-blue-200 rounded-lg p-3 shadow-sm animate-in fade-in zoom-in-95 duration-150">
-                                                    <div className="grid grid-cols-4 gap-3 mb-3">
-                                                        <div className="col-span-4 grid grid-cols-3 gap-2">
+                                                    <div className="flex flex-col gap-3 mb-3">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                                             <div>
                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project</label>
                                                                 <select
@@ -2818,38 +2817,40 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 </select>
                                                             </div>
                                                         </div>
-                                                        <div className="col-span-1 grid grid-cols-2 gap-1">
-                                                            <div>
-                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hrs</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={editHours}
-                                                                    onChange={e => setEditHours(e.target.value)}
+                                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                                                            <div className="col-span-1 grid grid-cols-2 gap-1">
+                                                                <div>
+                                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hrs</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={editHours}
+                                                                        onChange={e => setEditHours(e.target.value)}
+                                                                        disabled={isSaving || isDeleting}
+                                                                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                                                                        min="0"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={editMinutes}
+                                                                        onChange={e => setEditMinutes(e.target.value)}
+                                                                        disabled={isSaving || isDeleting}
+                                                                        className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                                                                        min="0" max="59"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div className="col-span-1 sm:col-span-3">
+                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+                                                                <textarea
+                                                                    value={editDescription}
+                                                                    onChange={e => setEditDescription(e.target.value)}
                                                                     disabled={isSaving || isDeleting}
-                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                                                                    min="0"
+                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none h-9.5 min-h-9.5 resize-none text-sm leading-tight disabled:bg-slate-100 disabled:text-slate-400"
                                                                 />
                                                             </div>
-                                                            <div>
-                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={editMinutes}
-                                                                    onChange={e => setEditMinutes(e.target.value)}
-                                                                    disabled={isSaving || isDeleting}
-                                                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                                                                    min="0" max="59"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div className="col-span-3">
-                                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
-                                                            <textarea
-                                                                value={editDescription}
-                                                                onChange={e => setEditDescription(e.target.value)}
-                                                                disabled={isSaving || isDeleting}
-                                                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none h-9.5 min-h-9.5 resize-none text-sm leading-tight disabled:bg-slate-100 disabled:text-slate-400"
-                                                            />
                                                         </div>
                                                     </div>
                                                     <div className="flex justify-end space-x-2">
@@ -3051,13 +3052,13 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
                 {activeTab === 'attendance' && (
                     <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <h3 className="font-bold text-slate-700">Attendance Log</h3>
+                        <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div className="flex items-center gap-3">
+                                <h3 className="font-bold text-slate-700 text-sm sm:text-base">Attendance Log</h3>
                                 {user?.company?.settings?.timesheet?.requireAttachment && (
                                     <button
                                         onClick={() => setActiveTab('attendance_documents')}
-                                        className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors"
+                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-colors"
                                     >
                                         <Paperclip size={14} /> Documents
                                     </button>
@@ -3065,7 +3066,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                             </div>
                             <Button
                                 onClick={handleExportAttendance}
-                                className="flex items-center space-x-2 text-sm bg-green-600 hover:bg-green-700 active:bg-green-800 px-4 py-2 rounded-lg shadow-sm transition-all text-white border-transparent"
+                                className="flex items-center space-x-1.5 text-xs sm:text-sm bg-green-600 hover:bg-green-700 active:bg-green-800 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg shadow-sm transition-all text-white border-transparent"
                             >
                                 <Download size={14} />
                                 <span className="font-semibold">Download Report</span>
@@ -3122,9 +3123,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 {/* Reject Modal */}
                 {
                     showRejectModal && (
-                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                                <div className="p-6">
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+                            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto mx-2 sm:mx-auto">
+                                <div className="p-4 sm:p-6">
                                     <h3 className="text-lg font-bold text-slate-800 mb-4">Reject Timesheet</h3>
 
                                     <div className="flex space-x-4 mb-4">

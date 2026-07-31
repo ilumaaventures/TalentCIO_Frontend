@@ -82,11 +82,11 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
     return (
         <div className="zoho-card overflow-hidden">
             {/* Header */}
-            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 bg-white">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 bg-white gap-2">
                 <h3 className="font-semibold text-slate-800 text-[14px]">
                     {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </h3>
-                <div className="flex space-x-2">
+                <div className="flex space-x-2 self-end sm:self-auto">
                     <button onClick={prevMonth} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors">
                         <ChevronLeft size={20} />
                     </button>
@@ -97,7 +97,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
             </div>
 
             {/* Grid Header */}
-            <div className="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50/60 text-[11px] font-semibold text-slate-500 uppercase tracking-wide py-3">
+            <div className="grid grid-cols-7 text-center border-b border-slate-200 bg-slate-50/60 text-[10px] sm:text-[11px] font-semibold text-slate-500 uppercase tracking-wide py-2 sm:py-3">
                 <div>Sun</div>
                 <div>Mon</div>
                 <div>Tue</div>
@@ -110,7 +110,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
             {/* Calendar Rows */}
             <div className="grid grid-cols-7 text-xs">
                 {blanks.map((b) => (
-                    <div key={`blank-${b}`} className="min-h-25 border-b border-r border-slate-100 bg-white"></div>
+                    <div key={`blank-${b}`} className="min-h-[56px] sm:min-h-[80px] md:min-h-25 border-b border-r border-slate-100 bg-white"></div>
                 ))}
 
                 {days.map((day) => {
@@ -146,7 +146,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                     return (
                         <div
                             key={day.toISOString()}
-                            className={`min-h-25 border-b border-r border-slate-100 px-2 py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : (isFlexOffDay && !isWeeklyOff ? 'bg-violet-50/40' : (isWeeklyOff ? 'bg-slate-50/40' : 'bg-white'))}`}
+                            className={`min-h-[56px] sm:min-h-[80px] md:min-h-25 border-b border-r border-slate-100 p-1 sm:px-2 sm:py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : (isFlexOffDay && !isWeeklyOff ? 'bg-violet-50/40' : (isWeeklyOff ? 'bg-slate-50/40' : 'bg-white'))}`}
                         >
                             <div className={`text-right mb-2 font-medium text-[11px] ${isToday ? 'text-blue-600' : (isFlexOffDay && !isWeeklyOff ? 'text-violet-600 font-bold' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400'))}`}>
                                 {day.getDate()}
