@@ -8,7 +8,38 @@ import {
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
-const DECISION_OPTIONS = ['None', 'Shortlisted', 'Selected', 'On Hold', 'Rejected'];
+const getDecisionOptionsByPhase = (phase) => {
+    if (phase === 2) {
+        return ['None', 'Shortlisted', 'Selected', 'On Hold', 'Did Not Turn Up', 'Left in between', 'Rejected'];
+    }
+    if (phase === 3) {
+        return ['None', 'Offer Sent', 'Offer Accepted', 'Joined', 'Offer Declined', 'No Show', 'Left in between', 'Rejected'];
+    }
+    return ['None', 'Shortlisted', 'On Hold', 'Did Not Turn Up', 'Left in between', 'Rejected'];
+};
+
+const getDecisionBadgeStyle = (decision) => {
+    switch (decision) {
+        case 'Shortlisted':
+        case 'Selected':
+        case 'Joined':
+        case 'Offer Accepted':
+            return 'bg-emerald-50 border-emerald-300 text-emerald-700';
+        case 'Rejected':
+        case 'Left in between':
+        case 'Offer Declined':
+            return 'bg-rose-50 border-rose-300 text-rose-700';
+        case 'On Hold':
+        case 'Did Not Turn Up':
+        case 'No Show':
+            return 'bg-amber-50 border-amber-300 text-amber-700';
+        case 'Offer Sent':
+            return 'bg-blue-50 border-blue-300 text-blue-700';
+        default:
+            return 'bg-slate-50 border-slate-200 text-slate-700';
+    }
+};
+
 const PAGE_LIMIT_OPTIONS = [50, 100, 150];
 
 const InterviewAnalytics = () => {
@@ -104,6 +135,10 @@ const InterviewAnalytics = () => {
         }
     };
 
+    const decisionOptions = useMemo(() => {
+        return getDecisionOptionsByPhase(selectedPhase);
+    }, [selectedPhase]);
+
     const handleDecisionChange = async (candidateId, newDecision) => {
         const previousTrackers = [...candidateTrackers];
         // Optimistic UI update
@@ -116,7 +151,10 @@ const InterviewAnalytics = () => {
             let endpoint = `/ta/candidates/${candidateId}/decision`;
             let payload = { decision: newDecision };
 
-            if (selectedPhase === 2 || newDecision === 'Selected') {
+            if (selectedPhase === 3) {
+                endpoint = `/ta/candidates/${candidateId}/phase3-decision`;
+                payload = { phase3Decision: newDecision };
+            } else if (selectedPhase === 2 || newDecision === 'Selected') {
                 endpoint = `/ta/candidates/${candidateId}/phase2-decision`;
                 payload = { phase2Decision: newDecision };
             }
@@ -425,7 +463,7 @@ const InterviewAnalytics = () => {
                             className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500"
                         >
                             <option value="">All Decisions</option>
-                            {DECISION_OPTIONS.map(opt => (
+                            {decisionOptions.map(opt => (
                                 <option key={opt} value={opt}>{opt}</option>
                             ))}
                         </select>
@@ -616,25 +654,29 @@ const InterviewAnalytics = () => {
 
                                             {/* Final Decision Dropdown (10% Width) */}
                                             <td className="p-2 px-2.5 w-[10%] min-w-[10%]" onClick={(e) => e.stopPropagation()}>
-                                                <select
-                                                    value={candidate.finalDecision || 'None'}
-                                                    disabled={updatingDecisionId === candidate._id}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    onChange={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDecisionChange(candidate._id, e.target.value);
-                                                    }}
-                                                    className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition focus:outline-none ${
-                                                        candidate.finalDecision === 'Shortlisted' || candidate.finalDecision === 'Selected' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' :
-                                                        candidate.finalDecision === 'Rejected' ? 'bg-rose-50 border-rose-300 text-rose-700' :
-                                                        candidate.finalDecision === 'On Hold' ? 'bg-amber-50 border-amber-300 text-amber-700' :
-                                                        'bg-slate-50 border-slate-200 text-slate-700'
-                                                    }`}
-                                                >
-                                                    {DECISION_OPTIONS.map(opt => (
-                                                        <option key={opt} value={opt}>{opt}</option>
-                                                    ))}
-                                                </select>
+                                                {(() => {
+                                                    const currentDecision = candidate.finalDecision || 'None';
+                                                    const rowOptions = (currentDecision && !decisionOptions.includes(currentDecision))
+                                                        ? [...decisionOptions, currentDecision]
+                                                        : decisionOptions;
+
+                                                    return (
+                                                        <select
+                                                            value={currentDecision}
+                                                            disabled={updatingDecisionId === candidate._id}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDecisionChange(candidate._id, e.target.value);
+                                                            }}
+                                                            className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition focus:outline-none ${getDecisionBadgeStyle(currentDecision)}`}
+                                                        >
+                                                            {rowOptions.map(opt => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                    );
+                                                })()}
                                             </td>
                                         </tr>
                                     );

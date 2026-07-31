@@ -17,6 +17,7 @@ const HiringRequestList = () => {
     const [filterStatus, setFilterStatus] = useState('Approved'); // Default to Approved
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalRequests, setTotalRequests] = useState(0);
     const navigate = useNavigate();
     const canCreateRequisition = user?.roles?.includes('Admin')
         || user?.permissions?.includes('*')
@@ -34,18 +35,24 @@ const HiringRequestList = () => {
                     ...createNoCacheRequestConfig({
                         status: filterStatus === 'All' ? '' : filterStatus,
                         page,
-                        limit: 10,
+                        limit: 30,
                         client: clientName ? decodeURIComponent(clientName) : ''
                     })
                 }),
                 api.get('/projects/clients', createNoCacheRequestConfig())
             ]);
-            // Backend now returns an object with requests and totalPages
-            setRequests(reqRes.data.requests ? reqRes.data.requests : reqRes.data);
+            // Backend now returns an object with requests, totalPages, totalRequests
+            const reqList = reqRes.data.requests ? reqRes.data.requests : reqRes.data;
+            setRequests(Array.isArray(reqList) ? reqList : []);
             if (reqRes.data.totalPages) {
                 setTotalPages(reqRes.data.totalPages);
             } else {
                 setTotalPages(1); // Fallback if backend hasn't updated immediately
+            }
+            if (reqRes.data.totalRequests !== undefined) {
+                setTotalRequests(reqRes.data.totalRequests);
+            } else {
+                setTotalRequests(Array.isArray(reqList) ? reqList.length : 0);
             }
             setClients(clientRes.data);
         } catch (error) {
@@ -333,26 +340,41 @@ const HiringRequestList = () => {
                     </table>
                 </div>
 
-                {/* Pagination Controls */}
+                {/* Pagination Controls & Total Requisitions Count */}
                 {!loading && (
-                    <div className="flex justify-end items-center mt-6 gap-4 pr-4">
-                        <button
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={page === 1}
-                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                        >
-                            Previous
-                        </button>
-                        <span className="text-sm font-medium text-slate-600 min-w-[100px] text-center">
-                            Page {page} of {totalPages}
-                        </span>
-                        <button
-                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                            disabled={page === totalPages}
-                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                        >
-                            Next
-                        </button>
+                    <div className="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4 px-2">
+                        <div className="text-sm font-medium text-slate-600">
+                            {totalRequests > 0 ? (
+                                <>
+                                    Showing <span className="font-semibold text-slate-800">{((page - 1) * 30) + 1}</span> to{' '}
+                                    <span className="font-semibold text-slate-800">{Math.min(page * 30, totalRequests)}</span> of{' '}
+                                    <span className="font-semibold text-slate-800">{totalRequests}</span> total requisitions
+                                </>
+                            ) : (
+                                <span>Total Requisitions: <span className="font-semibold text-slate-800">0</span></span>
+                            )}
+                        </div>
+                        {totalPages > 1 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page === 1}
+                                    className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors shadow-sm"
+                                >
+                                    Previous
+                                </button>
+                                <span className="text-sm font-medium text-slate-600 px-2 min-w-[90px] text-center">
+                                    Page {page} of {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={page === totalPages}
+                                    className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors shadow-sm"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
