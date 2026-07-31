@@ -45,6 +45,7 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
     basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : 50,
     hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : 50,
     vpfPercent: breakup.vpfPercent !== undefined && breakup.vpfPercent !== null ? breakup.vpfPercent : 0,
+    componentFrequencies: breakup.componentFrequencies || {},
     useSalaryComponents: parseBool(breakup.useSalaryComponents, true),
     ptState: breakup.ptState || 'MH',
     professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
