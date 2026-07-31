@@ -52,8 +52,16 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
     insuranceAmount: comp.insuranceAmount || breakup.insuranceAmount || 0,
     employerNPS: comp.employerNPS || breakup.employerNPS || 0,
     joiningBonus: breakup.joiningBonus || 0,
-    customAllowances: Array.isArray(breakup.customAllowances) ? breakup.customAllowances : (Array.isArray(breakup.otherAllowances) ? breakup.otherAllowances : []),
-    customDeductions: Array.isArray(breakup.customDeductions) ? breakup.customDeductions : (Array.isArray(breakup.otherDeductions) ? breakup.otherDeductions : []),
+    customAllowances: (Array.isArray(breakup.customAllowances) ? breakup.customAllowances : (Array.isArray(breakup.otherAllowances) ? breakup.otherAllowances : [])).map(item => ({
+      name: item.name || '',
+      amount: item.amount || 0,
+      frequency: item.frequency || 'monthly',
+    })),
+    customDeductions: (Array.isArray(breakup.customDeductions) ? breakup.customDeductions : (Array.isArray(breakup.otherDeductions) ? breakup.otherDeductions : [])).map(item => ({
+      name: item.name || '',
+      amount: item.amount || 0,
+      frequency: item.frequency || 'monthly',
+    })),
     rateCard: Array.isArray(breakup.rateCard) && breakup.rateCard.length > 0 ? breakup.rateCard : ((breakup.compensationType === 'piece_rate' || comp.compensationType === 'piece_rate') ? [{ paymentType: 'per_unit', rate: 0, unit: 'Per Deliverable' }] : []),
     dailyRate: breakup.dailyRate || 0,
     weeklyRate: breakup.weeklyRate || 0,
