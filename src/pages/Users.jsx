@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight, Eye, EyeOff, Settings2, HelpCircle, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight, Eye, EyeOff, Settings2, HelpCircle, Check, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -11,14 +11,9 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { createCachePayload, readSessionCache } from '../utils/cache';
 import { exportCandidateHRIS } from '../utils/hrisExporter';
-import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT } from '../utils/payroll';
+import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData, parseBool } from '../utils/payroll';
+import CompensationFormSection from '../components/compensation/CompensationFormSection';
 
-// Safely parse a boolean that may arrive as boolean false OR string "false" from a Mongoose Map.
-const parseBool = (val, defaultVal = true) => {
-    if (val === false || val === 'false') return false;
-    if (val === true || val === 'true') return true;
-    return defaultVal;
-};
 
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
@@ -54,6 +49,7 @@ const Users = () => {
     const [_holidays, _setHolidays] = useState([]);
     const [payrollConfig, setPayrollConfig] = useState(null);
     const [showSalarySection, setShowSalarySection] = useState(false);
+    const [ctcPeriod, setCtcPeriod] = useState('monthly');
 
     useEffect(() => {
         const fetchPayrollConfig = async () => {
@@ -1153,15 +1149,73 @@ const Users = () => {
     const calculateSalaryBreakdown = (updatedSalaryFields) => {
         setFormData(prev => {
             const mergedSalary = { ...prev.salary, ...updatedSalaryFields };
-            const payType = mergedSalary.payType || 'salaried';
+            const compType = mergedSalary.compensationType || mergedSalary.payType || 'monthly_salary';
+            const payType = (compType === 'hourly') ? 'hourly' : (compType === 'flat_project' || compType === 'project_based') ? 'flat' : 'salaried';
             
             let annualCTC = parseFloat(String(mergedSalary.annualCTC).replace(/[^0-9.]/g, '')) || 0;
             let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
             
-            if (updatedSalaryFields.annualCTC !== undefined) {
-                monthlyCTC = Math.round(annualCTC / 12);
-            } else if (updatedSalaryFields.monthlyCTC !== undefined) {
-                annualCTC = monthlyCTC * 12;
+            switch (compType) {
+                case 'hourly': {
+                    const hourlyRate = parseFloat(String(mergedSalary.hourlyRate).replace(/[^0-9.]/g, '')) || 0;
+                    const hoursWorked = parseFloat(String(mergedSalary.hoursWorked || 160).replace(/[^0-9.]/g, '')) || 160;
+                    monthlyCTC = Math.round(hourlyRate * hoursWorked);
+                    annualCTC = monthlyCTC * 12;
+                    break;
+                }
+                case 'daily_wage': {
+                    const dailyRate = parseFloat(String(mergedSalary.dailyRate).replace(/[^0-9.]/g, '')) || 0;
+                    monthlyCTC = Math.round(dailyRate * 26);
+                    annualCTC = monthlyCTC * 12;
+                    break;
+                }
+                case 'weekly_wage':
+                case 'weekly_salary': {
+                    const weeklyRate = parseFloat(String(mergedSalary.weeklyRate).replace(/[^0-9.]/g, '')) || 0;
+                    monthlyCTC = Math.round(weeklyRate * 4);
+                    annualCTC = monthlyCTC * 12;
+                    break;
+                }
+                case 'flat_project':
+                case 'project_based': {
+                    const flatFee = parseFloat(String(mergedSalary.projectFee || monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+                    monthlyCTC = flatFee;
+                    annualCTC = flatFee * 12;
+                    break;
+                }
+                case 'milestone':
+                case 'milestone_based': {
+                    const milestoneAmt = parseFloat(String(mergedSalary.milestoneAmount || monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+                    monthlyCTC = milestoneAmt;
+                    annualCTC = milestoneAmt * 12;
+                    break;
+                }
+                case 'piece_rate': {
+                    const rateCardItem = (mergedSalary.rateCard || []).find(r => r.paymentType === 'per_unit' || r.paymentType === 'UNIT') || (mergedSalary.rateCard || [])[0];
+                    const itemRate = rateCardItem ? (parseFloat(String(rateCardItem.rate).replace(/[^0-9.]/g, '')) || 0) : 0;
+                    if (updatedSalaryFields.monthlyCTC === undefined && itemRate > 0) {
+                        monthlyCTC = itemRate;
+                        annualCTC = monthlyCTC * 12;
+                    } else if (updatedSalaryFields.annualCTC !== undefined) {
+                        monthlyCTC = Math.round(annualCTC / 12);
+                    } else if (updatedSalaryFields.monthlyCTC !== undefined) {
+                        annualCTC = monthlyCTC * 12;
+                    }
+                    break;
+                }
+                case 'monthly_salary':
+                case 'attendance_based':
+                case 'salary_plus_commission':
+                case 'commission_only':
+                case 'stipend_intern':
+                default: {
+                    if (updatedSalaryFields.annualCTC !== undefined) {
+                        monthlyCTC = Math.round(annualCTC / 12);
+                    } else if (updatedSalaryFields.monthlyCTC !== undefined) {
+                        annualCTC = monthlyCTC * 12;
+                    }
+                    break;
+                }
             }
 
             let basicVal = '';
@@ -1169,92 +1223,96 @@ const Users = () => {
             let specialVal = '';
             let grossVal = '';
 
-            if (payType === 'hourly') {
-                const hourlyRate = parseFloat(String(mergedSalary.hourlyRate).replace(/[^0-9.]/g, '')) || 0;
-                const hoursWorked = parseFloat(String(mergedSalary.hoursWorked || 160).replace(/[^0-9.]/g, '')) || 160;
-                monthlyCTC = Math.round(hourlyRate * hoursWorked);
-                annualCTC = monthlyCTC * 12;
-                basicVal = String(monthlyCTC);
-                hraVal = '0';
-                specialVal = '0';
-                grossVal = String(monthlyCTC);
-            } else if (payType === 'flat') {
-                const flatSalary = parseFloat(String(mergedSalary.flatSalary || monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
-                monthlyCTC = flatSalary;
-                annualCTC = flatSalary * 12;
-                basicVal = String(flatSalary);
-                hraVal = '0';
-                specialVal = '0';
-                grossVal = String(flatSalary);
-            } else {
-                if (payrollConfig) {
-                    const source = {
-                        monthlyCTC,
-                        payType,
-                        useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
-                        pfEnabled: parseBool(mergedSalary.pfEnabled, true),
-                        esiEnabled: parseBool(mergedSalary.esiEnabled, true),
-                        ptEnabled: parseBool(mergedSalary.ptEnabled, true),
-                        lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
-                        gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
-                        includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
-                        includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
-                        basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
-                        hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
-                        insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
-                        employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
-                        ptState: mergedSalary.ptState || '',
-                        deductions: {
-                            professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
-                        }
-                    };
-                    if (payrollConfig.salaryComponents) {
-                        payrollConfig.salaryComponents.forEach(c => {
-                            if (c.linkedTo === 'fixed') {
-                                const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
-                                source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
-                            }
-                        });
-                    }
-                    const master = buildMasterSalaryStructure(source, payrollConfig);
-                    if (master) {
-                        basicVal = String(master.basicMaster);
-                        hraVal = String(master.hraMaster);
-                        specialVal = String(master.specialAllowance);
-                        grossVal = String(master.totalEarnings);
-                        
-                        mergedSalary.pfEmployer = String(master.pfEmployer || 0);
-                        mergedSalary.pfEmployee = String(master.pfEmployee || 0);
-                        mergedSalary.gratuity = String(master.gratuity || 0);
-                        mergedSalary.lwfEmployer = String(master.lwfEmployer || 0);
-                        mergedSalary.lwfEmployee = String(master.lwfEmployee || 0);
-                        mergedSalary.esiEmployer = String(master.esiEmployer || 0);
-                        mergedSalary.esiEmployee = String(master.esiEmployee || 0);
-                        mergedSalary.professionalTax = String(master.professionalTax || 0);
-                        mergedSalary.tds = String(master.tds || 0);
-                        mergedSalary.netTakeHome = String(master.netTakeHome || 0);
-                        
-                        if (master.earningsMap) {
-                            Object.entries(master.earningsMap).forEach(([id, val]) => {
-                                mergedSalary[id] = String(val);
-                            });
-                        }
-                    }
-                } else {
-                    const basic = Math.round(monthlyCTC * 0.5);
-                    const hra = Math.round(basic * 0.5);
-                    const special = monthlyCTC - basic - hra;
-                    basicVal = String(basic);
-                    hraVal = String(hra);
-                    specialVal = String(special);
-                    grossVal = String(monthlyCTC);
+            const customAllowancesList = mergedSalary.customAllowances || [];
+            const customDeductionsList = mergedSalary.customDeductions || [];
+            const customAllowancesSum = customAllowancesList.reduce((acc, item) => acc + (parseFloat(item.amount) || 0), 0);
+            const customDeductionsSum = customDeductionsList.reduce((acc, item) => acc + (parseFloat(item.amount) || 0), 0);
+
+            const source = {
+                monthlyCTC,
+                compensationType: compType,
+                payType,
+                attendanceMode: mergedSalary.attendanceMode || 'attendance',
+                useSalaryComponents: parseBool(mergedSalary.useSalaryComponents, true),
+                pfEnabled: parseBool(mergedSalary.pfEnabled, true),
+                esiEnabled: parseBool(mergedSalary.esiEnabled, true),
+                ptEnabled: parseBool(mergedSalary.ptEnabled, true),
+                lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
+                gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+                tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
+                includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
+                includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
+                basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
+                hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
+                vpfPercent: mergedSalary.vpfPercent !== undefined && mergedSalary.vpfPercent !== null ? Number(mergedSalary.vpfPercent) : null,
+                insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
+                employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
+                hourlyRate: parseFloat(mergedSalary.hourlyRate) || 0,
+                hoursWorked: parseFloat(mergedSalary.hoursWorked) || 160,
+                dailyRate: parseFloat(mergedSalary.dailyRate) || 0,
+                weeklyRate: parseFloat(mergedSalary.weeklyRate) || 0,
+                projectFee: parseFloat(mergedSalary.projectFee) || 0,
+                milestoneAmount: parseFloat(mergedSalary.milestoneAmount) || 0,
+                rateCard: mergedSalary.rateCard || [],
+                ptState: mergedSalary.ptState || '',
+                customAllowances: customAllowancesList,
+                customDeductions: customDeductionsList,
+                otherAllowances: customAllowancesList,
+                otherDeductions: customDeductionsList,
+                deductions: {
+                    professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
                 }
+            };
+
+            if (payrollConfig?.salaryComponents) {
+                payrollConfig.salaryComponents.forEach(c => {
+                    if (c.linkedTo === 'fixed') {
+                        const val = mergedSalary[c.id] !== undefined ? mergedSalary[c.id] : (c.linkValue || 0);
+                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                    }
+                });
+            }
+
+            const master = buildMasterSalaryStructure(source, payrollConfig || {});
+            if (master) {
+                basicVal = String(master.basicMaster || 0);
+                hraVal = String(master.hraMaster || 0);
+                specialVal = String(master.specialAllowance || 0);
+                grossVal = String(master.totalEarnings || (monthlyCTC + customAllowancesSum));
+                
+                mergedSalary.pfEmployer = String(master.pfEmployer || 0);
+                mergedSalary.pfEmployee = String(master.pfEmployee || 0);
+                mergedSalary.gratuity = String(master.gratuity || 0);
+                mergedSalary.lwfEmployer = String(master.lwfEmployer || 0);
+                mergedSalary.lwfEmployee = String(master.lwfEmployee || 0);
+                mergedSalary.esiEmployer = String(master.esiEmployer || 0);
+                mergedSalary.esiEmployee = String(master.esiEmployee || 0);
+                mergedSalary.professionalTax = String(master.professionalTax || 0);
+                mergedSalary.tds = String(master.tds || 0);
+                const estNet = Math.max(0, (master.netTakeHome || 0) - customDeductionsSum);
+                mergedSalary.netTakeHome = String(estNet);
+                
+                if (master.earningsMap) {
+                    Object.entries(master.earningsMap).forEach(([id, val]) => {
+                        mergedSalary[id] = String(val);
+                    });
+                }
+            } else {
+                const basic = Math.round(monthlyCTC * 0.5);
+                const hra = Math.round(basic * 0.5);
+                const special = Math.max(0, monthlyCTC - basic - hra);
+                basicVal = String(basic);
+                hraVal = String(hra);
+                specialVal = String(special);
+                grossVal = String(monthlyCTC + customAllowancesSum);
             }
 
             return {
                 ...prev,
                 salary: {
                     ...mergedSalary,
+                    payType,
+                    compensationType: compType,
                     annualCTC: String(annualCTC),
                     monthlyCTC: String(monthlyCTC),
                     basic: basicVal,
@@ -1269,77 +1327,19 @@ const Users = () => {
     const _handleEdit = async (user) => {
         setEditingUser(user);
         setShowPassword(false);
+        setCtcPeriod('monthly');
         // Find users who currently report to this user
         const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);
 
-        let salaryData = {
-            annualCTC: '',
-            monthlyCTC: '',
-            payType: 'salaried',
-            pfEnabled: true,
-            esiEnabled: true,
-            ptEnabled: true,
-            lwfEnabled: true,
-            gratuityEnabled: true,
-            includePfInCTC: false,
-            includeGratuityInCTC: true,
-            basicPercent: null,
-            hraPercent: null,
-            useSalaryComponents: true,
-            ptState: 'MH',
-            professionalTax: '0',
-            insuranceAmount: 0,
-            employerNPS: 0,
-        };
+        let salaryData = createDefaultSalaryData({}, {}, user, payrollConfig);
 
         try {
             const dossierRes = await api.get(`/dossier/${user._id}`);
             const comp = dossierRes.data?.compensation || {};
             const breakup = comp.salaryBreakup || {};
             
-            // Map breakup fields
-            salaryData = {
-                annualCTC: comp.ctc ? String(comp.ctc * 12) : '',
-                monthlyCTC: comp.ctc ? String(comp.ctc) : '',
-                payType: breakup.payType || 'salaried',
-                pfEnabled: parseBool(breakup.pfEnabled, true),
-                esiEnabled: parseBool(breakup.esiEnabled, true),
-                ptEnabled: parseBool(breakup.ptEnabled, true),
-                lwfEnabled: parseBool(breakup.lwfEnabled, true),
-                gratuityEnabled: parseBool(breakup.gratuityEnabled, true),
-                includePfInCTC: parseBool(breakup.includePfInCTC, false),
-                includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
-                basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : null,
-                hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : null,
-                useSalaryComponents: parseBool(breakup.useSalaryComponents, true),
-                ptState: breakup.ptState || 'MH',
-                professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
-                insuranceAmount: comp.insuranceAmount || 0,
-                employerNPS: comp.employerNPS || 0,
-                basic: breakup.basic || '',
-                hra: breakup.hra || '',
-                specialAllowance: breakup.specialAllowance || '',
-                monthlyGross: breakup.monthlyGross || '',
-                pfEmployer: breakup.pfEmployer || '0',
-                pfEmployee: breakup.pfEmployee || '0',
-                gratuity: breakup.gratuity || '0',
-                lwfEmployer: breakup.lwfEmployer || '0',
-                lwfEmployee: breakup.lwfEmployee || '0',
-                esiEmployer: breakup.esiEmployer || '0',
-                esiEmployee: breakup.esiEmployee || '0',
-                professionalTaxVal: breakup.professionalTax || '0',
-                tds: breakup.tds || '0',
-                netTakeHome: breakup.netTakeHome || '0',
-            };
-            if (payrollConfig?.salaryComponents) {
-                payrollConfig.salaryComponents.forEach(c => {
-                    if (breakup[c.id] !== undefined) {
-                        salaryData[c.id] = String(breakup[c.id]);
-                    } else if (c.linkedTo === 'fixed') {
-                        salaryData[c.id] = String(c.linkValue || 0);
-                    }
-                });
-            }
+            // Map breakup fields cleanly via canonical factory
+            salaryData = createDefaultSalaryData(breakup, comp, user, payrollConfig);
         } catch (err) {
             console.error('Failed to fetch user dossier compensation:', err);
         }
@@ -1357,21 +1357,29 @@ const Users = () => {
         if (payrollConfig && (annualCTC > 0 || monthlyCTC > 0)) {
             const source = {
                 monthlyCTC,
+                compensationType: salaryData.compensationType || 'monthly_salary',
                 payType: salaryData.payType,
+                attendanceMode: salaryData.attendanceMode || 'attendance',
                 pfEnabled: parseBool(salaryData.pfEnabled, true),
                 esiEnabled: parseBool(salaryData.esiEnabled, true),
                 ptEnabled: parseBool(salaryData.ptEnabled, true),
                 lwfEnabled: parseBool(salaryData.lwfEnabled, true),
                 gratuityEnabled: parseBool(salaryData.gratuityEnabled, true),
+                tdsEnabled: parseBool(salaryData.tdsEnabled, true),
                 includePfInCTC: parseBool(salaryData.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
-                basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
-                hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
+                basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : 50,
+                hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : 50,
+                vpfPercent: salaryData.vpfPercent !== undefined && salaryData.vpfPercent !== null ? Number(salaryData.vpfPercent) : 0,
                 useSalaryComponents: salaryData.payType !== 'flat' && salaryData.payType !== 'hourly' && parseBool(salaryData.useSalaryComponents, true),
                 insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
                 employerNPS: parseFloat(salaryData.employerNPS) || 0,
                 flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
                 ptState: salaryData.ptState || '',
+                customAllowances: salaryData.customAllowances || [],
+                customDeductions: salaryData.customDeductions || [],
+                otherAllowances: salaryData.customAllowances || [],
+                otherDeductions: salaryData.customDeductions || [],
                 deductions: {
                     professionalTax: salaryData.ptState === 'custom' ? (parseFloat(salaryData.professionalTax) || 0) : 0,
                 }
@@ -1402,7 +1410,8 @@ const Users = () => {
                 salaryData.esiEmployee = String(master.esiEmployee || 0);
                 salaryData.professionalTax = String(master.professionalTax || 0);
                 salaryData.tds = String(master.tds || 0);
-                salaryData.netTakeHome = String(master.netTakeHome || 0);
+                const customDedSum = (salaryData.customDeductions || []).reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
+                salaryData.netTakeHome = String(Math.max(0, (master.netTakeHome || 0) - customDedSum));
                 
                 if (master.earningsMap) {
                     Object.entries(master.earningsMap).forEach(([id, val]) => {
@@ -1423,7 +1432,7 @@ const Users = () => {
             joiningDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split('T')[0] : '',
             employmentType: user.employmentType || 'Full Time',
             workLocation: user.workLocation || '',
-            attendanceMode: user.attendanceMode || 'clock_in_out',
+            attendanceMode: user.attendanceMode || salaryData.attendanceMode || 'clock_in_out',
             attendanceShiftCode: user.attendanceShiftCode || 'general',
             directReports: currentReports,
             reportingManagers: user.reportingManagers?.map(rm => rm._id) || [],
@@ -1436,32 +1445,8 @@ const Users = () => {
     const handleAdd = () => {
         setEditingUser(null);
         setShowPassword(false);
-        const salaryData = {
-            annualCTC: '',
-            monthlyCTC: '',
-            payType: 'salaried',
-            pfEnabled: true,
-            esiEnabled: true,
-            ptEnabled: true,
-            lwfEnabled: true,
-            gratuityEnabled: true,
-            includePfInCTC: false,
-            includeGratuityInCTC: true,
-            basicPercent: null,
-            hraPercent: null,
-            useSalaryComponents: true,
-            ptState: 'MH',
-            professionalTax: '0',
-            insuranceAmount: 0,
-            employerNPS: 0,
-        };
-        if (payrollConfig?.salaryComponents) {
-            payrollConfig.salaryComponents.forEach(c => {
-                if (c.linkedTo === 'fixed') {
-                    salaryData[c.id] = String(c.linkValue || 0);
-                }
-            });
-        }
+        setCtcPeriod('monthly');
+        const salaryData = createDefaultSalaryData({}, {}, null, payrollConfig);
         setFormData({
             firstName: '',
             lastName: '',
@@ -2175,382 +2160,11 @@ const Users = () => {
                                 </button>
 
                                 {showSalarySection && formData.salary && (
-                                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 rounded-xl p-4 border border-slate-100">
-                                        {/* Left Side: Inputs */}
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Pay Type</label>
-                                                <select
-                                                    value={formData.salary.payType || 'salaried'}
-                                                    onChange={(e) => calculateSalaryBreakdown({ payType: e.target.value })}
-                                                    className="zoho-input"
-                                                >
-                                                    <option value="salaried">Salaried (Monthly Base)</option>
-                                                    <option value="hourly">Hourly Contractor</option>
-                                                    <option value="flat">Flat Salary — No Component Breakdown</option>
-                                                </select>
-                                            </div>
-
-                                            {formData.salary.payType === 'hourly' ? (
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hourly Rate (INR)</label>
-                                                        <input
-                                                            value={formData.salary.hourlyRate || ''}
-                                                            onChange={(e) => calculateSalaryBreakdown({ hourlyRate: e.target.value })}
-                                                            placeholder="e.g. 500"
-                                                            className="zoho-input"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Estimated Hours</label>
-                                                        <input
-                                                            value={formData.salary.hoursWorked || '160'}
-                                                            onChange={(e) => calculateSalaryBreakdown({ hoursWorked: e.target.value })}
-                                                            placeholder="e.g. 160"
-                                                            className="zoho-input"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            ) : formData.salary.payType === 'flat' ? (
-                                                <div>
-                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Flat Monthly Salary</label>
-                                                    <input
-                                                        value={formData.salary.flatSalary || formData.salary.monthlyCTC || ''}
-                                                        onChange={(e) => calculateSalaryBreakdown({ flatSalary: e.target.value, monthlyCTC: e.target.value })}
-                                                        placeholder="e.g. 50,000"
-                                                        className="zoho-input"
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Annual CTC</label>
-                                                        <input
-                                                            value={formData.salary.annualCTC}
-                                                            onChange={(e) => calculateSalaryBreakdown({ annualCTC: e.target.value })}
-                                                            placeholder="e.g. 6,00,000"
-                                                            className="zoho-input"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monthly CTC</label>
-                                                        <input
-                                                            value={formData.salary.monthlyCTC}
-                                                            onChange={(e) => calculateSalaryBreakdown({ monthlyCTC: e.target.value })}
-                                                            placeholder="e.g. 50,000"
-                                                            className="zoho-input"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {formData.salary.payType === 'salaried' && (
-                                                <>
-                                                    {/* Statutory Toggles */}
-                                                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Statutory Toggles</div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            {/* PF Card */}
-                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-xs font-semibold text-slate-700">Provident Fund (PF)</span>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={parseBool(formData.salary.pfEnabled, true)}
-                                                                        onChange={(e) => calculateSalaryBreakdown({ pfEnabled: e.target.checked })}
-                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                    />
-                                                                </div>
-                                                                {parseBool(formData.salary.pfEnabled, true) && (
-                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
-                                                                        <span className="text-[11px] text-slate-500">Include Employer PF in CTC</span>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={!!formData.salary.includePfInCTC}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ includePfInCTC: e.target.checked })}
-                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                        />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Gratuity Card */}
-                                                            <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-xs font-semibold text-slate-700">Gratuity Accrual</span>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={parseBool(formData.salary.gratuityEnabled, true)}
-                                                                        onChange={(e) => calculateSalaryBreakdown({ gratuityEnabled: e.target.checked })}
-                                                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                    />
-                                                                </div>
-                                                                {parseBool(formData.salary.gratuityEnabled, true) && (
-                                                                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
-                                                                        <span className="text-[11px] text-slate-500">Include Gratuity in CTC</span>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={parseBool(formData.salary.includeGratuityInCTC, true)}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ includeGratuityInCTC: e.target.checked })}
-                                                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                        />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* ESI Card */}
-                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <span className="text-xs font-semibold text-slate-700">ESI Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.esiEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ esiEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                />
-                                                            </div>
-
-                                                            {/* LWF Card */}
-                                                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <span className="text-xs font-semibold text-slate-700">LWF Applicable</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.lwfEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ lwfEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        {/* PT Card */}
-                                                        <div className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-xs font-semibold text-slate-700">Professional Tax (PT)</span>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={parseBool(formData.salary.ptEnabled, true)}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ ptEnabled: e.target.checked })}
-                                                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                                                                />
-                                                            </div>
-                                                            {parseBool(formData.salary.ptEnabled, true) && (
-                                                                <div className="flex gap-2 items-center border-t border-slate-100 pt-2 mt-1">
-                                                                    <div className="flex-1">
-                                                                        <select
-                                                                            value={formData.salary.ptState || 'MH'}
-                                                                            onChange={(e) => calculateSalaryBreakdown({ ptState: e.target.value })}
-                                                                            className="w-full p-2 border border-slate-300 rounded-lg text-xs outline-none bg-white text-slate-700"
-                                                                        >
-                                                                            <optgroup label="── No PT / Manual">
-                                                                                <option value="">None — use manual override below</option>
-                                                                                <option value="custom">Custom Override</option>
-                                                                            </optgroup>
-                                                                            <optgroup label="── States that levy PT">
-                                                                                {PT_STATE_LIST.filter(s => s.leviesPT).map(s => (
-                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
-                                                                                ))}
-                                                                            </optgroup>
-                                                                            <optgroup label="── States with no PT">
-                                                                                {PT_STATE_LIST.filter(s => s.code && !s.leviesPT).map(s => (
-                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
-                                                                                ))}
-                                                                            </optgroup>
-                                                                        </select>
-                                                                    </div>
-                                                                    {formData.salary.ptState === 'custom' && (
-                                                                        <div className="w-[100px] flex items-center gap-1">
-                                                                            <span className="text-[11px] text-slate-500">₹</span>
-                                                                            <input
-                                                                                type="number"
-                                                                                value={formData.salary.professionalTax || 0}
-                                                                                onChange={(e) => calculateSalaryBreakdown({ professionalTax: e.target.value })}
-                                                                                className="w-full p-1.5 border border-slate-300 rounded-lg text-xs outline-none text-slate-700"
-                                                                                placeholder="Amount"
-                                                                            />
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Dynamic Salary Components Breakup */}
-                                                    {payrollConfig?.salaryComponents && payrollConfig.salaryComponents.length > 0 && (
-                                                        <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Salary Components Breakup</div>
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                {payrollConfig.salaryComponents
-                                                                    .filter(c => c.type === 'earning')
-                                                                    .map(c => {
-                                                                        const isFixed = c.linkedTo === 'fixed';
-                                                                        const isRemainder = c.linkedTo === 'remainder';
-
-                                                                        if (isFixed) {
-                                                                            const val = formData.salary[c.id] !== undefined ? formData.salary[c.id] : (c.linkValue || '0');
-                                                                            return (
-                                                                                <div key={c.id}>
-                                                                                    <label className="block text-[10px] text-slate-500 font-medium mb-1">{c.name}</label>
-                                                                                    <input
-                                                                                        type="text"
-                                                                                        value={val}
-                                                                                        onChange={(e) => calculateSalaryBreakdown({ [c.id]: e.target.value })}
-                                                                                        className="zoho-input"
-                                                                                    />
-                                                                                </div>
-                                                                            );
-                                                                        }
-
-                                                                        const badge = isRemainder ? 'Remainder'
-                                                                            : c.linkedTo === 'ctc_percent' ? `${Math.round((c.linkValue || 0) * 100)}% of CTC`
-                                                                            : c.linkedTo === 'basic_percent' ? `${Math.round((c.linkValue || 0) * 100)}% of Basic`
-                                                                            : '';
-                                                                        const val = formData.salary[c.id] || '0';
-
-                                                                        return (
-                                                                            <div key={c.id}>
-                                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">{c.name}</label>
-                                                                                <div className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50/50 h-[32px] box-border">
-                                                                                    <span className="text-xs font-semibold text-slate-700">₹{parseFloat(val).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                                                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 rounded-full px-1.5 py-0.5">{badge}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Ratio Overrides */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ratio Overrides</div>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">Basic Override (%)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    min="1"
-                                                                    max="100"
-                                                                    value={formData.salary.basicPercent !== undefined ? formData.salary.basicPercent : '50'}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ basicPercent: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">HRA Override (% of Basic)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    min="1"
-                                                                    max="100"
-                                                                    value={formData.salary.hraPercent !== undefined ? formData.salary.hraPercent : '50'}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ hraPercent: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Other Fields */}
-                                                    <div className="border border-slate-100 rounded-xl p-3 bg-white space-y-3 shadow-sm">
-                                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Additional Components</div>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">Medical Ins. (Monthly)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={formData.salary.insuranceAmount || 0}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ insuranceAmount: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-[10px] text-slate-500 font-medium mb-1">Employer NPS (Monthly)</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={formData.salary.employerNPS || 0}
-                                                                    onChange={(e) => calculateSalaryBreakdown({ employerNPS: e.target.value })}
-                                                                    className="zoho-input"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-
-                                        {/* Right Side: Preview */}
-                                        <div className="border border-slate-200/60 rounded-xl bg-white p-4 shadow-sm h-fit space-y-4">
-                                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 pb-2">
-                                                Salary Structure Preview (Monthly)
-                                            </div>
-
-                                            {formData.salary.payType === 'salaried' ? (
-                                                <div className="space-y-2 text-sm">
-                                                    {payrollConfig?.salaryComponents && payrollConfig.salaryComponents.length > 0 ? (
-                                                        payrollConfig.salaryComponents
-                                                            .filter(c => c.type === 'earning')
-                                                            .map(c => (
-                                                                <div key={c.id} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                    <span className="text-slate-500">{c.name}</span>
-                                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary[c.id] || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                                </div>
-                                                            ))
-                                                    ) : (
-                                                        <>
-                                                            <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                <span className="text-slate-500">Basic Salary</span>
-                                                                <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.basic || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                <span className="text-slate-500">HRA</span>
-                                                                <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.hra || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                            </div>
-                                                            {payrollConfig?.salaryComponents?.some(c => c.id === 'special') && (
-                                                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                                    <span className="text-slate-500">Special Allowance</span>
-                                                                    <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.specialAllowance || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    )}
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                        <span className="text-slate-500">PF Employer Cost</span>
-                                                        <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.pfEmployer || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                        <span className="text-slate-500">Gratuity Accrual</span>
-                                                        <span className="font-semibold text-slate-800">₹{parseFloat(formData.salary.gratuity || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                                                        <span className="text-slate-500">Professional Tax (PT)</span>
-                                                        <span className="font-semibold text-slate-800 text-rose-600">₹{parseFloat(formData.salary.professionalTax || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                                                        <span className="text-slate-500">Employee PF</span>
-                                                        <span className="font-semibold text-slate-800 text-rose-600">₹{parseFloat(formData.salary.pfEmployee || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-2 bg-emerald-50/50 rounded-lg px-2 text-emerald-800 border border-emerald-100">
-                                                        <span className="font-semibold text-xs uppercase">Gross Salary</span>
-                                                        <span className="font-bold text-base">₹{parseFloat(formData.salary.monthlyGross || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center py-2 bg-blue-50/50 rounded-lg px-2 text-blue-800 border border-blue-100">
-                                                        <span className="font-semibold text-xs uppercase">Est. Net Take-Home</span>
-                                                        <span className="font-bold text-base">₹{parseFloat(formData.salary.netTakeHome || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <div className="flex justify-between items-center bg-blue-50/50 rounded-lg p-2.5 text-blue-800 border border-blue-100">
-                                                        <span className="text-xs font-semibold uppercase">Total Monthly CTC</span>
-                                                        <span className="font-bold text-lg">₹{parseFloat(formData.salary.monthlyCTC || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center bg-emerald-50/50 rounded-lg p-2.5 text-emerald-800 border border-emerald-100">
-                                                        <span className="text-xs font-semibold uppercase">Monthly Gross Salary</span>
-                                                        <span className="font-bold text-lg">₹{parseFloat(formData.salary.monthlyGross || '0').toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                    <div className="mt-4">
+                                        <CompensationFormSection
+                                            formData={formData}
+                                            calculateSalaryBreakdown={calculateSalaryBreakdown}
+                                        />
                                     </div>
                                 )}
                             </div>
