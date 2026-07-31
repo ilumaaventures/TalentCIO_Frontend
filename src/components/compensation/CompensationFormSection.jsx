@@ -287,7 +287,8 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                 onChange={(e) => {
                                     const val = e.target.value;
                                     const monthly = ctcPeriod === 'monthly' ? val : Math.round((parseFloat(val || 0) / 12) * 100) / 100;
-                                    calculateSalaryBreakdown({ monthlyCTC: monthly });
+                                    const annual = ctcPeriod === 'monthly' ? (val !== '' ? Math.round(parseFloat(val || 0) * 12) : '') : val;
+                                    calculateSalaryBreakdown({ monthlyCTC: monthly, annualCTC: annual });
                                 }}
                                 placeholder="e.g. 50,000"
                                 className="zoho-input"
