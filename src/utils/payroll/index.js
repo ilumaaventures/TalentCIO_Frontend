@@ -992,7 +992,7 @@ export const buildPayrollSnapshot = (employee, configInput, attendance, adjustme
     workingDays,
     paidDays,
     lopDays: Math.max(0, workingDays - paidDays),
-    prorationRatio: roundAmount(prorate),
+    prorationRatio: roundAmount(workingDays > 0 ? paidDays / workingDays : 1.0),
     earnings,
     deductions,
     employerContributions,
