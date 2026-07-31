@@ -605,8 +605,23 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                         {/* Income Tax (TDS) Card */}
                         <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
                             <div>
-                                <span className="text-xs font-semibold text-slate-800 block">Income Tax (TDS)</span>
-                                <span className="text-[10px] text-slate-500">Enable Income Tax TDS deductions</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-semibold text-slate-800">Income Tax (TDS)</span>
+                                    {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0 ? (
+                                        <span className="text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-100 rounded-full px-1.5 py-0.5">
+                                            {fmtMoney(salary.tds)} / mo
+                                        </span>
+                                    ) : (
+                                        <span className="text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-1.5 py-0.5">
+                                            Disabled (₹0)
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-[10px] text-slate-500">
+                                    {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0
+                                        ? `Subject to TDS deductions — Est. TDS: ${fmtMoney(salary.tds)}/mo (${fmtMoney(parseFloat(salary.tds) * 12)}/yr)`
+                                        : 'TDS deduction is disabled'}
+                                </span>
                             </div>
                             <input
                                 type="checkbox"
@@ -627,8 +642,23 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                         </div>
                         <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-xl">
                             <div>
-                                <span className="text-xs font-semibold text-slate-800 block">Income Tax (TDS)</span>
-                                <span className="text-[10px] text-slate-500">Subject to TDS deductions (Section 194J / 192)</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-semibold text-slate-800">Income Tax (TDS)</span>
+                                    {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0 ? (
+                                        <span className="text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-100 rounded-full px-1.5 py-0.5">
+                                            {fmtMoney(salary.tds)} / mo
+                                        </span>
+                                    ) : (
+                                        <span className="text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-1.5 py-0.5">
+                                            Disabled (₹0)
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-[10px] text-slate-500">
+                                    {parseBool(salary.tdsEnabled, true) && parseFloat(salary.tds || 0) > 0
+                                        ? `Subject to TDS deductions (Section 194J / 192) — Est. TDS: ${fmtMoney(salary.tds)}/mo (${fmtMoney(parseFloat(salary.tds) * 12)}/yr)`
+                                        : 'Disabled — No TDS will be deducted from employee payout'}
+                                </span>
                             </div>
                             <input
                                 type="checkbox"

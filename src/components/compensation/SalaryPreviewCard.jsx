@@ -309,13 +309,33 @@ const SalaryPreviewCard = ({ formData }) => {
                             </div>
                             {(salary.customAllowances || []).map((item, idx) => (
                                 <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                    <span className="text-slate-600">{item.name || 'Custom Allowance'}</span>
+                                    <span className="text-slate-600 flex items-center gap-1.5">
+                                        {item.name || 'Custom Allowance'}
+                                        {item.frequency && item.frequency !== 'monthly' && (
+                                            <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
+                                                {item.frequency.replace('_', '-')}
+                                            </span>
+                                        )}
+                                    </span>
                                     <span className="font-semibold text-slate-800">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                 </div>
                             ))}
+                            {parseFloat(salary.tds || 0) > 0 && (
+                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                    <span className="text-slate-600 font-medium">Income Tax (TDS)</span>
+                                    <span className="font-semibold text-rose-600">-₹{parseFloat(salary.tds || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            )}
                             {(salary.customDeductions || []).map((item, idx) => (
                                 <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                    <span className="text-slate-600">{item.name || 'Custom Deduction'}</span>
+                                    <span className="text-slate-600 flex items-center gap-1.5">
+                                        {item.name || 'Custom Deduction'}
+                                        {item.frequency && item.frequency !== 'monthly' && (
+                                            <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded uppercase border border-rose-200">
+                                                {item.frequency.replace('_', '-')}
+                                            </span>
+                                        )}
+                                    </span>
                                     <span className="font-semibold text-rose-600">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                                 </div>
                             ))}
