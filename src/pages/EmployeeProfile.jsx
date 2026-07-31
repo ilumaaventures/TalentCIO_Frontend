@@ -500,8 +500,8 @@ const EmployeeProfile = () => {
     if (!profile) return null;
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 md:p-10">
-            <div className="max-w-7xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-100 font-sans p-3 sm:p-5 md:p-6">
+            <div className="max-w-[1600px] w-full mx-auto space-y-6">
 
                 {/* Back Button & Header */}
                 <div className="flex items-center gap-4 mb-2">
@@ -779,7 +779,7 @@ const EmployeeProfile = () => {
 
                     {/* EDIT TAB */}
                     {activeTab === 'edit' && isAuthorizedForEdit && (
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-4xl mx-auto">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8 w-full">
                             <div className="mb-6 border-b border-slate-100 pb-4">
                                 <h3 className="text-lg font-bold text-slate-800">Edit Employee Details</h3>
                                 <p className="text-sm text-slate-500">Update system records and access for this user.</p>

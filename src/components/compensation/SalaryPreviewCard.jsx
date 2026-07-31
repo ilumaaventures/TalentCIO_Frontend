@@ -277,6 +277,82 @@ const SalaryPreviewCard = ({ formData }) => {
         case 'weekly_wage':
         case 'weekly_salary':
         default: {
+            const useComponents = salary.useSalaryComponents !== false && salary.useSalaryComponents !== 'false';
+
+            if (!useComponents) {
+                const monthlyGross = parseFloat(salary.monthlyGross || salary.monthlyCTC || '0');
+                const annualCTC = parseFloat(salary.annualCTC || (monthlyGross * 12) || '0');
+                const netTakeHome = parseFloat(salary.netTakeHome || monthlyGross || '0');
+
+                return (
+                    <div className="border border-slate-200/80 rounded-xl bg-white p-5 shadow-sm h-fit space-y-4 sticky top-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Flat Salary Preview</span>
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">Non-Structured</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 mb-2">
+                            <div>
+                                <span className="text-[10px] text-slate-500 font-bold block uppercase">Annual CTC</span>
+                                <span className="text-sm font-extrabold text-slate-800">₹{annualCTC.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] text-slate-500 font-bold block uppercase">Monthly Gross</span>
+                                <span className="text-sm font-extrabold text-slate-800">₹{monthlyGross.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                            <div className="flex justify-between items-center py-2 bg-emerald-50 rounded-xl px-3 text-emerald-800 border border-emerald-200/80">
+                                <span className="font-bold text-xs uppercase">Flat Monthly Salary</span>
+                                <span className="font-extrabold text-base">₹{monthlyGross.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                            </div>
+                            {(salary.customAllowances || []).map((item, idx) => (
+                                <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                    <span className="text-slate-600 flex items-center gap-1.5">
+                                        {item.name || 'Custom Allowance'}
+                                        {item.frequency && item.frequency !== 'monthly' && (
+                                            <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
+                                                {item.frequency.replace('_', '-')}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="font-semibold text-slate-800">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            ))}
+                            {parseFloat(salary.tds || 0) > 0 && (
+                                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                                    <span className="text-slate-600 font-medium">Income Tax (TDS)</span>
+                                    <span className="font-semibold text-rose-600">-₹{parseFloat(salary.tds || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            )}
+                            {(salary.customDeductions || []).map((item, idx) => (
+                                <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
+                                    <span className="text-slate-600 flex items-center gap-1.5">
+                                        {item.name || 'Custom Deduction'}
+                                        {item.frequency && item.frequency !== 'monthly' && (
+                                            <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded uppercase border border-rose-200">
+                                                {item.frequency.replace('_', '-')}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="font-semibold text-rose-600">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            ))}
+                            <div className="flex justify-between items-center py-2.5 bg-blue-50 rounded-xl px-3 text-blue-900 border border-blue-200/80 shadow-2xs mt-2">
+                                <span className="font-bold text-xs uppercase">Est. Net Take-Home</span>
+                                <span className="font-black text-lg">₹{netTakeHome.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                            </div>
+                        </div>
+
+                        <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 font-medium leading-relaxed flex items-start gap-2">
+                            <span>💼</span>
+                            <span><strong>Non-Structured Flat Pay:</strong> Consolidated wages (100% Flat Salary) without statutory component splitting (PF, ESI, PT, LWF, Gratuity).</span>
+                        </div>
+                    </div>
+                );
+            }
+
             return (
                 <div className="border border-slate-200/80 rounded-xl bg-white p-5 shadow-sm h-fit space-y-4 sticky top-4">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -313,7 +389,14 @@ const SalaryPreviewCard = ({ formData }) => {
                         )}
                         {(salary.customAllowances || []).map((item, idx) => (
                             <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span className="text-slate-600">{item.name || 'Custom Allowance'}</span>
+                                <span className="text-slate-600 flex items-center gap-1.5">
+                                    {item.name || 'Custom Allowance'}
+                                    {item.frequency && item.frequency !== 'monthly' && (
+                                        <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded uppercase border border-blue-200">
+                                            {item.frequency.replace('_', '-')}
+                                        </span>
+                                    )}
+                                </span>
                                 <span className="font-semibold text-slate-800">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                             </div>
                         ))}
@@ -339,7 +422,14 @@ const SalaryPreviewCard = ({ formData }) => {
                         </div>
                         {(salary.customDeductions || []).map((item, idx) => (
                             <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span className="text-slate-600">{item.name || 'Custom Deduction'}</span>
+                                <span className="text-slate-600 flex items-center gap-1.5">
+                                    {item.name || 'Custom Deduction'}
+                                    {item.frequency && item.frequency !== 'monthly' && (
+                                        <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded uppercase border border-rose-200">
+                                            {item.frequency.replace('_', '-')}
+                                        </span>
+                                    )}
+                                </span>
                                 <span className="font-semibold text-rose-600">₹{parseFloat(item.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                             </div>
                         ))}

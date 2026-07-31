@@ -45,14 +45,23 @@ export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, co
     basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : 50,
     hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : 50,
     vpfPercent: breakup.vpfPercent !== undefined && breakup.vpfPercent !== null ? breakup.vpfPercent : 0,
+    componentFrequencies: breakup.componentFrequencies || {},
     useSalaryComponents: parseBool(breakup.useSalaryComponents, true),
     ptState: breakup.ptState || 'MH',
     professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
     insuranceAmount: comp.insuranceAmount || breakup.insuranceAmount || 0,
     employerNPS: comp.employerNPS || breakup.employerNPS || 0,
     joiningBonus: breakup.joiningBonus || 0,
-    customAllowances: Array.isArray(breakup.customAllowances) ? breakup.customAllowances : (Array.isArray(breakup.otherAllowances) ? breakup.otherAllowances : []),
-    customDeductions: Array.isArray(breakup.customDeductions) ? breakup.customDeductions : (Array.isArray(breakup.otherDeductions) ? breakup.otherDeductions : []),
+    customAllowances: (Array.isArray(breakup.customAllowances) ? breakup.customAllowances : (Array.isArray(breakup.otherAllowances) ? breakup.otherAllowances : [])).map(item => ({
+      name: item.name || '',
+      amount: item.amount || 0,
+      frequency: item.frequency || 'monthly',
+    })),
+    customDeductions: (Array.isArray(breakup.customDeductions) ? breakup.customDeductions : (Array.isArray(breakup.otherDeductions) ? breakup.otherDeductions : [])).map(item => ({
+      name: item.name || '',
+      amount: item.amount || 0,
+      frequency: item.frequency || 'monthly',
+    })),
     rateCard: Array.isArray(breakup.rateCard) && breakup.rateCard.length > 0 ? breakup.rateCard : ((breakup.compensationType === 'piece_rate' || comp.compensationType === 'piece_rate') ? [{ paymentType: 'per_unit', rate: 0, unit: 'Per Deliverable' }] : []),
     dailyRate: breakup.dailyRate || 0,
     weeklyRate: breakup.weeklyRate || 0,
@@ -393,12 +402,12 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
 
   const useComponents = source.useSalaryComponents !== false && !isIntern && !isHourly && !isFlat && !isNonSalariedType;
 
-  // Toggles integration — non-salaried contractor strategies turn off standard statutory by default unless user toggles on
-  const pfEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.pfEnabled !== false;
-  const esiEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.esiEnabled !== false;
-  const ptEnabled = !isIntern && !isHourly && !isFlat && source.ptEnabled !== false;
-  const lwfEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.lwfEnabled !== false;
-  const gratuityEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.gratuityEnabled !== false;
+  // Toggles integration — non-structured mode & non-salaried contractor strategies turn off standard statutory components (PF, ESI, PT, LWF, Gratuity)
+  const pfEnabled = useComponents && source.pfEnabled !== false;
+  const esiEnabled = useComponents && source.esiEnabled !== false;
+  const ptEnabled = useComponents && source.ptEnabled !== false;
+  const lwfEnabled = useComponents && source.lwfEnabled !== false;
+  const gratuityEnabled = useComponents && source.gratuityEnabled !== false;
   const includePfInCTC = pfEnabled && source.includePfInCTC === true;
   const includeGratuityInCTC = gratuityEnabled && source.includeGratuityInCTC !== false;
 
@@ -647,8 +656,9 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     declarations
   }, monthlyCTC, config, basicMaster, hraMaster, totalEarnings);
 
+  const tdsEnabled = parseBool(source.tdsEnabled, true);
   const calculatedTdsMonthly = taxDetails[taxRegime === 'old' ? 'oldRegime' : 'newRegime'].monthlyTax;
-  const tds = Number(source.deductions?.tds) > 0 ? Number(source.deductions?.tds) : roundAmount(calculatedTdsMonthly);
+  const tds = tdsEnabled ? (Number(source.deductions?.tds) > 0 ? Number(source.deductions?.tds) : roundAmount(calculatedTdsMonthly)) : 0;
 
   const manualPT = Number(source.deductions?.professionalTax) || 0;
   const computedPT = (ptEnabled && source.ptState)
