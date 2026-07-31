@@ -277,7 +277,7 @@ export const SectionCard = ({ title, sectionName, icon: Icon, children, editMode
                     ) : null
                 )}
             </div>
-            {children(isEditing)}
+            {typeof children === 'function' ? children(isEditing) : children}
         </div>
     );
 };
