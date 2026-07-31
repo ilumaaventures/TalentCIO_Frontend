@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-    TrendingUp, Download, History, Calendar, Settings, Shield, DollarSign, Trash2, X, FileText, Info 
+    TrendingUp, Download, History, Calendar, Settings, Shield, DollarSign, Trash2, X, FileText, Info, Briefcase 
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -60,24 +60,33 @@ export const SalaryTab = ({
         if (!data) return null;
 
         const breakup = data.compensation?.salaryBreakup || {};
+        const payType = data.compensation?.payType || breakup.payType || 'salaried';
         const source = {
             monthlyCTC: data.compensation?.ctc || 0,
+            compensationType: breakup.compensationType || data.compensation?.compensationType || payType || 'monthly_salary',
+            attendanceMode: data.attendanceMode || breakup.attendanceMode || 'attendance',
             pfEnabled: breakup.pfEnabled !== false,
             esiEnabled: breakup.esiEnabled !== false,
             ptEnabled: breakup.ptEnabled !== false,
             lwfEnabled: breakup.lwfEnabled !== false,
             gratuityEnabled: breakup.gratuityEnabled !== false,
+            tdsEnabled: breakup.tdsEnabled !== false,
+            ptState: breakup.ptState || 'MH',
             includePfInCTC: breakup.includePfInCTC === true,
             includeGratuityInCTC: breakup.includeGratuityInCTC !== false,
-            basicPercent: breakup.basicPercent !== undefined ? Number(breakup.basicPercent) : 50,
-            hraPercent: breakup.hraPercent !== undefined ? Number(breakup.hraPercent) : 50,
+            basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? Number(breakup.basicPercent) : null,
+            hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? Number(breakup.hraPercent) : null,
+            vpfPercent: breakup.vpfPercent !== undefined && breakup.vpfPercent !== null ? Number(breakup.vpfPercent) : null,
+            customAllowances: breakup.customAllowances || breakup.otherAllowances || [],
+            customDeductions: breakup.customDeductions || breakup.otherDeductions || [],
+            rateCard: breakup.rateCard || [],
             insuranceAmount: data.compensation?.insuranceAmount || 0,
             employerNPS: data.compensation?.employerNPS || 0,
             employmentType: data.employment?.employmentType || 'Full Time',
-            payType: data.compensation?.payType || breakup.payType || 'salaried',
+            payType,
             hourlyRate: data.compensation?.hourlyRate || breakup.hourlyRate || 0,
             hoursWorked: data.compensation?.hoursWorked || breakup.hoursWorked || 160,
-            useSalaryComponents: (data.compensation?.payType || breakup.payType || 'salaried') !== 'flat' && (data.compensation?.payType || breakup.payType || 'salaried') !== 'hourly' && breakup.useSalaryComponents !== false
+            useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && breakup.useSalaryComponents !== false
         };
 
         if (payrollConfig?.salaryComponents) {
@@ -570,7 +579,8 @@ export const SalaryTab = ({
                                 payrollConfig.salaryComponents
                                     .filter(c => c.type === 'earning')
                                     .map(c => {
-                                        const val = breakup.earningsMap?.[c.id] || 0;
+                                        const val = breakup.earningsMap?.[c.id] !== undefined ? breakup.earningsMap[c.id] : (breakup[c.id] || 0);
+                                        if (val <= 0 && c.id !== 'basic') return null;
                                         return (
                                             <div key={c.id} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
                                                 <span>{c.name}</span>
@@ -584,10 +594,12 @@ export const SalaryTab = ({
                                         <span>Basic Salary</span>
                                         <span className="font-semibold text-slate-800">{fmtMoney(breakup.basicMaster)}</span>
                                     </div>
-                                    <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
-                                        <span>HRA</span>
-                                        <span className="font-semibold text-slate-800">{fmtMoney(breakup.hraMaster)}</span>
-                                    </div>
+                                    {breakup.hraMaster > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                            <span>HRA</span>
+                                            <span className="font-semibold text-slate-800">{fmtMoney(breakup.hraMaster)}</span>
+                                        </div>
+                                    )}
                                     {breakup.specialAllowance > 0 && (
                                         <div className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
                                             <span>Special Allowance</span>
@@ -596,6 +608,14 @@ export const SalaryTab = ({
                                     )}
                                 </>
                             )}
+                            {Array.isArray(breakup.customAllowances) && breakup.customAllowances.map((item, idx) => (
+                                Number(item.amount) > 0 && (
+                                    <div key={`custom-allowance-${idx}`} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                        <span>{item.name} <span className="text-[10px] text-slate-400 font-normal">({(item.frequency || 'monthly').replace('_', '-')})</span></span>
+                                        <span className="font-semibold text-slate-800">{fmtMoney(item.amount)}</span>
+                                    </div>
+                                )
+                            ))}
                         </div>
                     </div>
 
@@ -633,7 +653,7 @@ export const SalaryTab = ({
                     )}
 
                     {/* 3. Employee Deductions */}
-                    {(breakup.pfEmployee > 0 || breakup.esiEmployee > 0 || breakup.lwfEmployee > 0 || breakup.professionalTax > 0 || breakup.tds > 0) && (
+                    {(breakup.pfEmployee > 0 || breakup.esiEmployee > 0 || breakup.lwfEmployee > 0 || breakup.professionalTax > 0 || breakup.tds > 0 || (Array.isArray(breakup.customDeductions) && breakup.customDeductions.some(d => Number(d.amount) > 0))) && (
                         <div>
                             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2">Employee Deductions</div>
                             <div className="space-y-2">
@@ -667,6 +687,14 @@ export const SalaryTab = ({
                                         <span className="font-semibold text-slate-800 text-rose-600">{fmtMoney(breakup.tds)}</span>
                                     </div>
                                 )}
+                                {Array.isArray(breakup.customDeductions) && breakup.customDeductions.map((item, idx) => (
+                                    Number(item.amount) > 0 && (
+                                        <div key={`custom-deduction-${idx}`} className="flex justify-between text-sm text-slate-600 border-b border-slate-50 pb-1.5">
+                                            <span>{item.name} <span className="text-[10px] text-slate-400 font-normal">({(item.frequency || 'monthly').replace('_', '-')})</span></span>
+                                            <span className="font-semibold text-slate-800 text-rose-600">{fmtMoney(item.amount)}</span>
+                                        </div>
+                                    )
+                                ))}
                             </div>
                         </div>
                     )}
@@ -881,6 +909,7 @@ export const SalaryTab = ({
                     >
                         {(isEditing) => {
                             const isCompEditing = isEditing && isCurrentUserAdmin;
+                            const isNonStructured = breakup?.useSalaryComponents === false || profile?.compensation?.payType === 'flat';
                             return (
                                 <div className="space-y-6">
                                     {/* Statutory Overrides */}
@@ -889,87 +918,99 @@ export const SalaryTab = ({
                                             <Settings size={18} className="text-blue-500" />
                                             <h3 className="font-bold text-slate-700">Statutory & Ratio Configurations</h3>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                            <PendingHighlight show={showPending} label="PF Enabled" liveValue={profile.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.pfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No')}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="PF Enabled" field="pfEnabled"
-                                                    value={profile.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No'}
-                                                    options={['No', 'Yes']}
-                                                    onChangeOverride={(e) => handleBreakupChange('pfEnabled', e.target.value === 'Yes')}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="Include PF in CTC" liveValue={profile.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.includePfInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No')}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="Include PF in CTC" field="includePfInCTC"
-                                                    value={profile.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No'}
-                                                    options={['No', 'Yes']}
-                                                    onChangeOverride={(e) => handleBreakupChange('includePfInCTC', e.target.value === 'Yes')}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="ESI Enabled" liveValue={profile.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.esiEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No')}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="ESI Enabled" field="esiEnabled"
-                                                    value={profile.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No'}
-                                                    options={['No', 'Yes']}
-                                                    onChangeOverride={(e) => handleBreakupChange('esiEnabled', e.target.value === 'Yes')}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="PT Enabled" liveValue={profile.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.ptEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No')}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="PT Enabled" field="ptEnabled"
-                                                    value={profile.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No'}
-                                                    options={['No', 'Yes']}
-                                                    onChangeOverride={(e) => handleBreakupChange('ptEnabled', e.target.value === 'Yes')}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="LWF Enabled" liveValue={profile.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.lwfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No')}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="LWF Enabled" field="lwfEnabled"
-                                                    value={profile.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No'}
-                                                    options={['No', 'Yes']}
-                                                    onChangeOverride={(e) => handleBreakupChange('lwfEnabled', e.target.value === 'Yes')}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="Gratuity Enabled" liveValue={profile.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.gratuityEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No')}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="Gratuity Enabled" field="gratuityEnabled"
-                                                    value={profile.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No'}
-                                                    options={['No', 'Yes']}
-                                                    onChangeOverride={(e) => handleBreakupChange('gratuityEnabled', e.target.value === 'Yes')}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="Include Gratuity in CTC" liveValue={profile.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.includeGratuityInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No')}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="Include Gratuity in CTC" field="includeGratuityInCTC"
-                                                    value={profile.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No'}
-                                                    options={['No', 'Yes']}
-                                                    onChangeOverride={(e) => handleBreakupChange('includeGratuityInCTC', e.target.value === 'Yes')}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="Basic Override %" liveValue={profile.compensation?.salaryBreakup?.basicPercent !== undefined ? `${profile.compensation.salaryBreakup.basicPercent}%` : '50%'} pendingValue={pend.compensation?.salaryBreakup?.basicPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.basicPercent}%`}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="Basic Salary Override (%)" field="basicPercent"
-                                                    value={profile.compensation?.salaryBreakup?.basicPercent !== undefined ? String(profile.compensation.salaryBreakup.basicPercent) : '50'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.basicPercent !== undefined ? String(formData.compensation.salaryBreakup.basicPercent) : '50'}
-                                                    onChangeOverride={(e) => handleBreakupChange('basicPercent', e.target.value)}
-                                                />
-                                            </PendingHighlight>
-                                            <PendingHighlight show={showPending} label="HRA Override %" liveValue={profile.compensation?.salaryBreakup?.hraPercent !== undefined ? `${profile.compensation.salaryBreakup.hraPercent}%` : '50%'} pendingValue={pend.compensation?.salaryBreakup?.hraPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.hraPercent}%`}>
-                                                <Field
-                                                    section="compensation" isEditing={isCompEditing} label="HRA Override (% of Basic)" field="hraPercent"
-                                                    value={profile.compensation?.salaryBreakup?.hraPercent !== undefined ? String(profile.compensation.salaryBreakup.hraPercent) : '50'}
-                                                    valueOverride={formData.compensation?.salaryBreakup?.hraPercent !== undefined ? String(formData.compensation.salaryBreakup.hraPercent) : '50'}
-                                                    onChangeOverride={(e) => handleBreakupChange('hraPercent', e.target.value)}
-                                                />
-                                            </PendingHighlight>
-                                        </div>
+                                        {isNonStructured && !isCompEditing ? (
+                                            <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-4 text-xs text-amber-900 flex items-start space-x-3">
+                                                <Briefcase className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+                                                <div className="space-y-1">
+                                                    <div className="font-bold text-sm text-amber-950">Non-Structured Flat Salary Mode Active</div>
+                                                    <p className="text-amber-800 leading-relaxed">
+                                                        Consolidated wages (100% Flat Salary) without statutory component splitting (PF, ESI, PT, LWF, Gratuity) or ratio breakdowns.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <PendingHighlight show={showPending} label="PF Enabled" liveValue={profile.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.pfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No')}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="PF Enabled" field="pfEnabled"
+                                                        value={profile.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No'}
+                                                        options={['No', 'Yes']}
+                                                        onChangeOverride={(e) => handleBreakupChange('pfEnabled', e.target.value === 'Yes')}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="Include PF in CTC" liveValue={profile.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.includePfInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No')}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="Include PF in CTC" field="includePfInCTC"
+                                                        value={profile.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No'}
+                                                        options={['No', 'Yes']}
+                                                        onChangeOverride={(e) => handleBreakupChange('includePfInCTC', e.target.value === 'Yes')}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="ESI Enabled" liveValue={profile.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.esiEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No')}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="ESI Enabled" field="esiEnabled"
+                                                        value={profile.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No'}
+                                                        options={['No', 'Yes']}
+                                                        onChangeOverride={(e) => handleBreakupChange('esiEnabled', e.target.value === 'Yes')}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="PT Enabled" liveValue={profile.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.ptEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No')}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="PT Enabled" field="ptEnabled"
+                                                        value={profile.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No'}
+                                                        options={['No', 'Yes']}
+                                                        onChangeOverride={(e) => handleBreakupChange('ptEnabled', e.target.value === 'Yes')}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="LWF Enabled" liveValue={profile.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.lwfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No')}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="LWF Enabled" field="lwfEnabled"
+                                                        value={profile.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No'}
+                                                        options={['No', 'Yes']}
+                                                        onChangeOverride={(e) => handleBreakupChange('lwfEnabled', e.target.value === 'Yes')}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="Gratuity Enabled" liveValue={profile.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.gratuityEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No')}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="Gratuity Enabled" field="gratuityEnabled"
+                                                        value={profile.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No'}
+                                                        options={['No', 'Yes']}
+                                                        onChangeOverride={(e) => handleBreakupChange('gratuityEnabled', e.target.value === 'Yes')}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="Include Gratuity in CTC" liveValue={profile.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No'} pendingValue={pend.compensation?.salaryBreakup?.includeGratuityInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No')}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="Include Gratuity in CTC" field="includeGratuityInCTC"
+                                                        value={profile.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No'}
+                                                        options={['No', 'Yes']}
+                                                        onChangeOverride={(e) => handleBreakupChange('includeGratuityInCTC', e.target.value === 'Yes')}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="Basic Override %" liveValue={profile.compensation?.salaryBreakup?.basicPercent !== undefined && profile.compensation?.salaryBreakup?.basicPercent !== null ? `${profile.compensation.salaryBreakup.basicPercent}%` : '50%'} pendingValue={pend.compensation?.salaryBreakup?.basicPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.basicPercent}%`}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="Basic Salary Override (%)" field="basicPercent"
+                                                        value={profile.compensation?.salaryBreakup?.basicPercent !== undefined && profile.compensation?.salaryBreakup?.basicPercent !== null ? String(profile.compensation.salaryBreakup.basicPercent) : '50'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.basicPercent !== undefined && formData.compensation?.salaryBreakup?.basicPercent !== null ? String(formData.compensation.salaryBreakup.basicPercent) : '50'}
+                                                        onChangeOverride={(e) => handleBreakupChange('basicPercent', e.target.value)}
+                                                    />
+                                                </PendingHighlight>
+                                                <PendingHighlight show={showPending} label="HRA Override %" liveValue={profile.compensation?.salaryBreakup?.hraPercent !== undefined && profile.compensation?.salaryBreakup?.hraPercent !== null ? `${profile.compensation.salaryBreakup.hraPercent}%` : '50%'} pendingValue={pend.compensation?.salaryBreakup?.hraPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.hraPercent}%`}>
+                                                    <Field
+                                                        section="compensation" isEditing={isCompEditing} label="HRA Override (% of Basic)" field="hraPercent"
+                                                        value={profile.compensation?.salaryBreakup?.hraPercent !== undefined && profile.compensation?.salaryBreakup?.hraPercent !== null ? String(profile.compensation.salaryBreakup.hraPercent) : '50'}
+                                                        valueOverride={formData.compensation?.salaryBreakup?.hraPercent !== undefined && formData.compensation?.salaryBreakup?.hraPercent !== null ? String(formData.compensation.salaryBreakup.hraPercent) : '50'}
+                                                        onChangeOverride={(e) => handleBreakupChange('hraPercent', e.target.value)}
+                                                    />
+                                                </PendingHighlight>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             );
