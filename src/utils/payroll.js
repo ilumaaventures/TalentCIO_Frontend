@@ -21,6 +21,75 @@ export const DEFAULT_PAYROLL_CONFIG = {
 
 export const fmtMoney = (value) => `₹${(Number(value) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
+export const parseBool = (val, def = true) => {
+  if (val === false || val === 'false') return false;
+  if (val === true || val === 'true') return true;
+  return def;
+};
+
+export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, config = null) => {
+  const salaryData = {
+    annualCTC: comp.ctc ? String(comp.ctc * 12) : (breakup.annualCTC ? String(breakup.annualCTC) : ''),
+    monthlyCTC: comp.ctc ? String(comp.ctc) : (breakup.monthlyCTC ? String(breakup.monthlyCTC) : ''),
+    compensationType: breakup.compensationType || breakup.payType || 'monthly_salary',
+    attendanceMode: (user && user.attendanceMode) || breakup.attendanceMode || 'attendance',
+    payType: breakup.payType || 'salaried',
+    pfEnabled: parseBool(breakup.pfEnabled, true),
+    esiEnabled: parseBool(breakup.esiEnabled, true),
+    ptEnabled: parseBool(breakup.ptEnabled, true),
+    lwfEnabled: parseBool(breakup.lwfEnabled, true),
+    gratuityEnabled: parseBool(breakup.gratuityEnabled, true),
+    tdsEnabled: parseBool(breakup.tdsEnabled, true),
+    includePfInCTC: parseBool(breakup.includePfInCTC, false),
+    includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
+    basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : 50,
+    hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : 50,
+    vpfPercent: breakup.vpfPercent !== undefined && breakup.vpfPercent !== null ? breakup.vpfPercent : 0,
+    useSalaryComponents: parseBool(breakup.useSalaryComponents, true),
+    ptState: breakup.ptState || 'MH',
+    professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
+    insuranceAmount: comp.insuranceAmount || breakup.insuranceAmount || 0,
+    employerNPS: comp.employerNPS || breakup.employerNPS || 0,
+    joiningBonus: breakup.joiningBonus || 0,
+    customAllowances: Array.isArray(breakup.customAllowances) ? breakup.customAllowances : (Array.isArray(breakup.otherAllowances) ? breakup.otherAllowances : []),
+    customDeductions: Array.isArray(breakup.customDeductions) ? breakup.customDeductions : (Array.isArray(breakup.otherDeductions) ? breakup.otherDeductions : []),
+    rateCard: Array.isArray(breakup.rateCard) && breakup.rateCard.length > 0 ? breakup.rateCard : ((breakup.compensationType === 'piece_rate' || comp.compensationType === 'piece_rate') ? [{ paymentType: 'per_unit', rate: 0, unit: 'Per Deliverable' }] : []),
+    dailyRate: breakup.dailyRate || 0,
+    weeklyRate: breakup.weeklyRate || 0,
+    projectFee: breakup.projectFee || 0,
+    milestoneAmount: breakup.milestoneAmount || 0,
+    commissionNotes: breakup.commissionNotes || '',
+    hourlyRate: comp.hourlyRate || breakup.hourlyRate || 0,
+    hoursWorked: breakup.hoursWorked || 160,
+    basic: breakup.basic || '',
+    hra: breakup.hra || '',
+    specialAllowance: breakup.specialAllowance || '',
+    monthlyGross: breakup.monthlyGross || '',
+    pfEmployer: breakup.pfEmployer || '0',
+    pfEmployee: breakup.pfEmployee || '0',
+    gratuity: breakup.gratuity || '0',
+    lwfEmployer: breakup.lwfEmployer || '0',
+    lwfEmployee: breakup.lwfEmployee || '0',
+    esiEmployer: breakup.esiEmployer || '0',
+    esiEmployee: breakup.esiEmployee || '0',
+    professionalTaxVal: breakup.professionalTax || '0',
+    tds: breakup.tds || '0',
+    netTakeHome: breakup.netTakeHome || '0',
+  };
+
+  if (config?.salaryComponents) {
+    config.salaryComponents.forEach(c => {
+      if (breakup[c.id] !== undefined) {
+        salaryData[c.id] = String(breakup[c.id]);
+      } else if (c.linkedTo === 'fixed') {
+        salaryData[c.id] = String(c.linkValue || 0);
+      }
+    });
+  }
+
+  return salaryData;
+};
+
 export const payrollStatusClass = {
   draft: 'bg-gray-100 text-gray-700',
   processed: 'bg-blue-100 text-blue-700',
@@ -274,24 +343,64 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
   const config = normalizePayrollConfig(configInput);
   let monthlyCTC = roundAmount(getMonthlyCTCValue(source));
 
-  if (source.payType === 'hourly') {
-    const hours = source.hoursWorked !== undefined ? Number(source.hoursWorked) : 160;
-    monthlyCTC = roundAmount((Number(source.hourlyRate) || 0) * hours);
+  const compType = source.compensationType || source.payType || 'monthly_salary';
+
+  switch (compType) {
+    case 'hourly': {
+      const hours = source.hoursWorked !== undefined ? Number(source.hoursWorked) : 160;
+      monthlyCTC = roundAmount((Number(source.hourlyRate) || 0) * hours);
+      break;
+    }
+    case 'daily_wage': {
+      const days = source.hoursWorked !== undefined ? Number(source.hoursWorked) : 26;
+      const rate = Number(source.dailyRate) || 0;
+      if (rate > 0) monthlyCTC = roundAmount(rate * days);
+      break;
+    }
+    case 'weekly_wage':
+    case 'weekly_salary': {
+      const rate = Number(source.weeklyRate) || 0;
+      if (rate > 0) monthlyCTC = roundAmount(rate * 4);
+      break;
+    }
+    case 'flat_project':
+    case 'project_based': {
+      const fee = Number(source.projectFee) || 0;
+      if (fee > 0) monthlyCTC = fee;
+      break;
+    }
+    case 'milestone':
+    case 'milestone_based': {
+      const fee = Number(source.milestoneAmount) || 0;
+      if (fee > 0) monthlyCTC = fee;
+      break;
+    }
+    case 'piece_rate': {
+      const rateCardEntry = (source.rateCard || []).find(r => r.paymentType === 'per_unit' || r.paymentType === 'UNIT') || (source.rateCard || [])[0];
+      if (rateCardEntry && rateCardEntry.rate) {
+        monthlyCTC = roundAmount(Number(rateCardEntry.rate) * (Number(source.hoursWorked) || 1));
+      }
+      break;
+    }
+    default:
+      break;
   }
 
-  const isIntern = source.employmentType === 'intern';
-  const isHourly = source.payType === 'hourly';
-  const isFlat = source.payType === 'flat';
-  const useComponents = source.useSalaryComponents !== false && !isIntern && !isHourly && !isFlat;
+  const isIntern = source.employmentType === 'intern' || compType === 'stipend_intern';
+  const isHourly = source.payType === 'hourly' || compType === 'hourly';
+  const isFlat = source.payType === 'flat' || compType === 'flat_project' || compType === 'project_based';
+  const isNonSalariedType = ['hourly', 'daily_wage', 'piece_rate', 'flat_project', 'project_based', 'milestone', 'milestone_based', 'commission_only', 'stipend_intern', 'retainer', 'timesheet_based'].includes(compType);
 
-  // Toggles integration
-  const pfEnabled = !isIntern && !isHourly && !isFlat && source.pfEnabled !== false;
-  const esiEnabled = !isIntern && !isHourly && !isFlat && source.esiEnabled !== false;
+  const useComponents = source.useSalaryComponents !== false && !isIntern && !isHourly && !isFlat && !isNonSalariedType;
+
+  // Toggles integration — non-salaried contractor strategies turn off standard statutory by default unless user toggles on
+  const pfEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.pfEnabled !== false;
+  const esiEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.esiEnabled !== false;
   const ptEnabled = !isIntern && !isHourly && !isFlat && source.ptEnabled !== false;
-  const lwfEnabled = !isIntern && !isHourly && !isFlat && source.lwfEnabled !== false;
-  const gratuityEnabled = !isIntern && !isHourly && !isFlat && source.gratuityEnabled !== false;
-  const includePfInCTC = !isIntern && !isHourly && !isFlat && source.includePfInCTC === true;
-  const includeGratuityInCTC = !isIntern && !isHourly && !isFlat && source.includeGratuityInCTC !== false;
+  const lwfEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.lwfEnabled !== false;
+  const gratuityEnabled = !isIntern && !isHourly && !isFlat && !isNonSalariedType && source.gratuityEnabled !== false;
+  const includePfInCTC = pfEnabled && source.includePfInCTC === true;
+  const includeGratuityInCTC = gratuityEnabled && source.includeGratuityInCTC !== false;
 
   let basicPercent = !useComponents ? 1.0 : config.basicPercent;
   if (useComponents && source.basicPercent !== undefined && source.basicPercent !== null && Number(source.basicPercent) > 0) {
@@ -362,11 +471,11 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
     }
   }
 
-  // PF Calculation
+  // PF Calculation — Fixed or Percentage PF requires basicMaster > 0 and monthlyCTC > 0
   let pfEmployer = 0;
   let pfEmployee = 0;
   let pfBase = 0;
-  if (pfEnabled) {
+  if (pfEnabled && basicMaster > 0 && monthlyCTC > 0) {
     if (config.pfCalculationType === 'fixed') {
       pfEmployer = roundAmount(config.pfAmountEmployer);
       pfEmployee = roundAmount(config.pfAmountEmployee);
