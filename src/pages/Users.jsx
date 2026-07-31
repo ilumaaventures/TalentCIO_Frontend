@@ -1280,6 +1280,12 @@ const Users = () => {
                 specialVal = String(master.specialAllowance || 0);
                 grossVal = String(master.totalEarnings || (monthlyCTC + customAllowancesSum));
                 
+                mergedSalary.basicMaster = basicVal;
+                mergedSalary.hraMaster = hraVal;
+                mergedSalary.basic = basicVal;
+                mergedSalary.hra = hraVal;
+                mergedSalary.specialAllowance = specialVal;
+                mergedSalary.flexi = specialVal;
                 mergedSalary.pfEmployer = String(master.pfEmployer || 0);
                 mergedSalary.pfEmployee = String(master.pfEmployee || 0);
                 mergedSalary.gratuity = String(master.gratuity || 0);
@@ -1348,9 +1354,9 @@ const Users = () => {
         let annualCTC = parseFloat(String(salaryData.annualCTC).replace(/[^0-9.]/g, '')) || 0;
         let monthlyCTC = parseFloat(String(salaryData.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
 
-        if (salaryData.annualCTC) {
+        if (annualCTC > 0 && !monthlyCTC) {
             monthlyCTC = Math.round(annualCTC / 12);
-        } else if (salaryData.monthlyCTC) {
+        } else if (monthlyCTC > 0 && !annualCTC) {
             annualCTC = monthlyCTC * 12;
         }
 
