@@ -58,7 +58,7 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
     const isEditing = Boolean(formData?.id || formData?._id || formData?.isEdit);
 
     const useComponents = parseBool(salary.useSalaryComponents, true);
-    const isSalaried = (compType === 'monthly_salary' || compType === 'stipend_intern');
+    const isSalaried = !['piece_rate', 'flat_project', 'milestone', 'commission_only'].includes(compType);
 
     useEffect(() => {
         if (!propConfig) {
@@ -714,7 +714,10 @@ const CompensationFormSection = ({ formData, calculateSalaryBreakdown, payrollCo
                                     formulaLabel = `Calculated Remainder`;
                                 }
 
-                                const value = salary[c.id] || (c.id === 'basic' ? salary.basicMaster : c.id === 'hra' ? salary.hraMaster : c.id === 'special' || c.id === 'flexi' ? salary.specialAllowance : '0');
+                                const value = c.id === 'basic' ? (salary.basicMaster || salary.basic || '0')
+                                    : c.id === 'hra' ? (salary.hraMaster || salary.hra || '0')
+                                    : c.id === 'special' || c.id === 'flexi' ? (salary.flexi || salary.specialAllowance || '0')
+                                    : (salary[c.id] || '0');
 
                                 return (
                                     <div key={c.id} className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-1.5">

@@ -37,9 +37,13 @@ export {
 };
 
 export const createDefaultSalaryData = (breakup = {}, comp = {}, user = null, config = null) => {
+  const rawMonthly = comp.ctc || breakup.monthlyCTC || (breakup.annualCTC ? Number(breakup.annualCTC) / 12 : 0) || breakup.monthlyGross || (Number(breakup.basic || 0) + Number(breakup.hra || 0) + Number(breakup.specialAllowance || 0));
+  const defaultMonthly = rawMonthly ? String(rawMonthly) : '';
+  const defaultAnnual = rawMonthly ? String(rawMonthly * 12) : '';
+
   const salaryData = {
-    annualCTC: comp.ctc ? String(comp.ctc * 12) : (breakup.annualCTC ? String(breakup.annualCTC) : ''),
-    monthlyCTC: comp.ctc ? String(comp.ctc) : (breakup.monthlyCTC ? String(breakup.monthlyCTC) : ''),
+    annualCTC: comp.ctc ? String(comp.ctc * 12) : (breakup.annualCTC ? String(breakup.annualCTC) : defaultAnnual),
+    monthlyCTC: comp.ctc ? String(comp.ctc) : (breakup.monthlyCTC ? String(breakup.monthlyCTC) : defaultMonthly),
     compensationType: breakup.compensationType || breakup.payType || 'monthly_salary',
     attendanceMode: (user && user.attendanceMode) || breakup.attendanceMode || 'attendance',
     payType: breakup.payType || 'salaried',
@@ -268,7 +272,7 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
   const isFlat = source.payType === 'flat' || compType === 'flat_project' || compType === 'project_based';
   const isNonSalariedType = ['hourly', 'daily_wage', 'piece_rate', 'flat_project', 'project_based', 'milestone', 'milestone_based', 'commission_only', 'stipend_intern', 'retainer', 'timesheet_based'].includes(compType);
 
-  const useComponents = source.useSalaryComponents !== false && !isIntern && !isHourly && !isFlat && !isNonSalariedType;
+  const useComponents = source.useSalaryComponents === true || (source.useSalaryComponents !== false && !isIntern && !isHourly && !isFlat && !isNonSalariedType);
 
   // Toggles integration — non-structured mode & non-salaried contractor strategies turn off standard statutory components (PF, ESI, PT, LWF, Gratuity)
   const pfEnabled = useComponents && source.pfEnabled !== false;
@@ -292,25 +296,13 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
   const hasDynamicComponents = config.salaryComponents && config.salaryComponents.length > 0;
 
   let basicMaster = roundAmount(monthlyCTC * basicPercent);
-  const sourceBasic = source.basic !== undefined ? source.basic : source.salaryStructure?.basic;
-  if (useComponents && sourceBasic !== undefined && sourceBasic !== null && Number(sourceBasic) > 0) {
-    basicMaster = roundAmount(sourceBasic);
-  }
-
   let hraMaster = roundAmount(basicMaster * hraPercent);
-  const sourceHra = source.hra !== undefined ? source.hra : source.salaryStructure?.hra;
-  if (useComponents && sourceHra !== undefined && sourceHra !== null && Number(sourceHra) > 0) {
-    hraMaster = roundAmount(sourceHra);
-  }
 
   if (hasDynamicComponents) {
     const basicComp = config.salaryComponents.find(c => c.id === 'basic');
     if (basicComp) {
-      const sourceBasic = source.basic !== undefined ? source.basic : source.salaryStructure?.basic;
       if (!useComponents) {
         basicMaster = monthlyCTC;
-      } else if (useComponents && sourceBasic !== undefined && sourceBasic !== null && Number(sourceBasic) > 0) {
-        basicMaster = roundAmount(sourceBasic);
       } else {
         let bVal = basicComp.linkValue;
         if (source.basicPercent !== undefined && source.basicPercent !== null && Number(source.basicPercent) > 0) {
@@ -319,18 +311,15 @@ export const buildMasterSalaryStructure = (source = {}, configInput = {}) => {
         if (basicComp.linkedTo === 'ctc_percent') {
           basicMaster = roundAmount(monthlyCTC * bVal);
         } else if (basicComp.linkedTo === 'fixed') {
-          const val = source['basic'] !== undefined ? source['basic'] : (source.salaryStructure?.[c.id] !== undefined ? source.salaryStructure[c.id] : 0);
+          const val = source['basic'] !== undefined ? source['basic'] : (source.salaryStructure?.[basicComp.id] !== undefined ? source.salaryStructure[basicComp.id] : 0);
           basicMaster = roundAmount(val);
         }
       }
     }
     const hraComp = config.salaryComponents.find(c => c.id === 'hra');
     if (hraComp) {
-      const sourceHra = source.hra !== undefined ? source.hra : source.salaryStructure?.hra;
       if (!useComponents) {
         hraMaster = 0;
-      } else if (useComponents && sourceHra !== undefined && sourceHra !== null && Number(sourceHra) > 0) {
-        hraMaster = roundAmount(sourceHra);
       } else {
         let hVal = hraComp.linkValue;
         if (source.hraPercent !== undefined && source.hraPercent !== null && Number(source.hraPercent) > 0) {
@@ -1003,7 +992,7 @@ export const buildPayrollSnapshot = (employee, configInput, attendance, adjustme
     workingDays,
     paidDays,
     lopDays: Math.max(0, workingDays - paidDays),
-    prorationRatio: roundAmount(prorate),
+    prorationRatio: roundAmount(workingDays > 0 ? paidDays / workingDays : 1.0),
     earnings,
     deductions,
     employerContributions,
