@@ -85,12 +85,12 @@ const EmployeeProfile = () => {
             const mergedSalary = { ...prev.salary, ...updatedSalaryFields };
             const payType = mergedSalary.payType || 'salaried';
             
-            let annualCTC = parseFloat(String(mergedSalary.annualCTC).replace(/[^0-9.]/g, '')) || 0;
-            let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+            let annualCTC = parseFloat(String(mergedSalary.annualCTC || '').replace(/[^0-9.]/g, '')) || 0;
+            let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC || '').replace(/[^0-9.]/g, '')) || 0;
             
-            if (updatedSalaryFields.annualCTC !== undefined) {
+            if (annualCTC > 0) {
                 monthlyCTC = Math.round(annualCTC / 12);
-            } else if (updatedSalaryFields.monthlyCTC !== undefined) {
+            } else if (monthlyCTC > 0) {
                 annualCTC = monthlyCTC * 12;
             }
             
@@ -113,20 +113,27 @@ const EmployeeProfile = () => {
             }
             
             const source = {
+                ...mergedSalary,
                 monthlyCTC,
+                compensationType: mergedSalary.compensationType || 'monthly_salary',
                 useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
                 pfEnabled: parseBool(mergedSalary.pfEnabled, true),
                 esiEnabled: parseBool(mergedSalary.esiEnabled, true),
                 ptEnabled: parseBool(mergedSalary.ptEnabled, true),
                 lwfEnabled: parseBool(mergedSalary.lwfEnabled, true),
                 gratuityEnabled: parseBool(mergedSalary.gratuityEnabled, true),
+                tdsEnabled: parseBool(mergedSalary.tdsEnabled, true),
                 includePfInCTC: parseBool(mergedSalary.includePfInCTC, false),
                 includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
                 basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
                 hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
+                vpfPercent: mergedSalary.vpfPercent !== undefined && mergedSalary.vpfPercent !== null ? Number(mergedSalary.vpfPercent) : null,
                 insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
                 employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
                 ptState: mergedSalary.ptState || '',
+                customAllowances: mergedSalary.customAllowances || [],
+                customDeductions: mergedSalary.customDeductions || [],
+                rateCard: mergedSalary.rateCard || [],
                 deductions: {
                     professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
                 }
@@ -186,25 +193,7 @@ const EmployeeProfile = () => {
             const userData = res.data;
             setProfile(userData);
 
-            let salaryData = {
-                annualCTC: '',
-                monthlyCTC: '',
-                payType: 'salaried',
-                pfEnabled: true,
-                esiEnabled: true,
-                ptEnabled: true,
-                lwfEnabled: true,
-                gratuityEnabled: true,
-                includePfInCTC: false,
-                includeGratuityInCTC: true,
-                basicPercent: null,
-                hraPercent: null,
-                useSalaryComponents: true,
-                ptState: 'MH',
-                professionalTax: '0',
-                insuranceAmount: 0,
-                employerNPS: 0,
-            };
+            let salaryData = createDefaultSalaryData({}, {}, userData, null);
 
             let configData = null;
             try {
@@ -219,49 +208,7 @@ const EmployeeProfile = () => {
                 const dossierRes = await api.get(`/dossier/${id}`);
                 const comp = dossierRes.data?.compensation || {};
                 const breakup = comp.salaryBreakup || {};
-                
-                salaryData = {
-                    annualCTC: comp.ctc ? String(comp.ctc * 12) : '',
-                    monthlyCTC: comp.ctc ? String(comp.ctc) : '',
-                    payType: breakup.payType || 'salaried',
-                    pfEnabled: parseBool(breakup.pfEnabled, true),
-                    esiEnabled: parseBool(breakup.esiEnabled, true),
-                    ptEnabled: parseBool(breakup.ptEnabled, true),
-                    lwfEnabled: parseBool(breakup.lwfEnabled, true),
-                    gratuityEnabled: parseBool(breakup.gratuityEnabled, true),
-                    includePfInCTC: parseBool(breakup.includePfInCTC, false),
-                    includeGratuityInCTC: parseBool(breakup.includeGratuityInCTC, true),
-                    basicPercent: breakup.basicPercent !== undefined && breakup.basicPercent !== null ? breakup.basicPercent : null,
-                    hraPercent: breakup.hraPercent !== undefined && breakup.hraPercent !== null ? breakup.hraPercent : null,
-                    useSalaryComponents: breakup.useSalaryComponents !== false,
-                    ptState: breakup.ptState || 'MH',
-                    professionalTax: breakup.professionalTax !== undefined ? String(breakup.professionalTax) : '0',
-                    insuranceAmount: comp.insuranceAmount || 0,
-                    employerNPS: comp.employerNPS || 0,
-                    basic: breakup.basic || '',
-                    hra: breakup.hra || '',
-                    specialAllowance: breakup.specialAllowance || '',
-                    monthlyGross: breakup.monthlyGross || '',
-                    pfEmployer: breakup.pfEmployer || '0',
-                    pfEmployee: breakup.pfEmployee || '0',
-                    gratuity: breakup.gratuity || '0',
-                    lwfEmployer: breakup.lwfEmployer || '0',
-                    lwfEmployee: breakup.lwfEmployee || '0',
-                    esiEmployer: breakup.esiEmployer || '0',
-                    esiEmployee: breakup.esiEmployee || '0',
-                    professionalTaxVal: breakup.professionalTax || '0',
-                    tds: breakup.tds || '0',
-                    netTakeHome: breakup.netTakeHome || '0',
-                };
-                if (configData?.salaryComponents) {
-                    configData.salaryComponents.forEach(c => {
-                        if (breakup[c.id] !== undefined) {
-                            salaryData[c.id] = String(breakup[c.id]);
-                        } else if (c.linkedTo === 'fixed') {
-                            salaryData[c.id] = String(c.linkValue || 0);
-                        }
-                    });
-                }
+                salaryData = createDefaultSalaryData(breakup, comp, userData, configData);
             } catch (err) {
                 console.error('Failed to fetch user dossier compensation:', err);
             }

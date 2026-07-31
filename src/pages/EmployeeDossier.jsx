@@ -14,7 +14,7 @@ import Button from '../components/Button';
 // Modular Tab Components
 import { PersonalTab } from './EmployeeDossier/PersonalTab';
 import { EmploymentTab } from './EmployeeDossier/EmploymentTab';
-import { SalaryTab } from './EmployeeDossier/SalaryTab';
+import { SalaryTab } from './Salary/SalaryTab';
 import { DocumentsTab } from './EmployeeDossier/DocumentsTab';
 import { HrisTab } from './EmployeeDossier/HrisTab';
 import { HistoryTab } from './EmployeeDossier/HistoryTab';

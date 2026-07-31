@@ -62,7 +62,7 @@ const HREmailSend              = lazy(() => import('./pages/HREmailSend'));
 const RecycleBin               = lazy(() => import('./pages/RecycleBin'));
 const PreOnboardingLogin       = lazy(() => import('./pages/PreOnboardingLogin'));
 const PreOnboardingPortal      = lazy(() => import('./pages/PreOnboardingPortal'));
-const SalaryCalculator         = lazy(() => import('./pages/SalaryCalculator'));
+const SalaryCalculator         = lazy(() => import('./pages/Salary/SalaryCalculator'));
 
 
 import ProtectedRoute from './components/ProtectedRoute';

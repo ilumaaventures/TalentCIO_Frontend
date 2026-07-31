@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { Download, Loader2, Info } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
-import PayrollSettings from './settings/PayrollSettings';
-import { buildPayrollSnapshot, buildMasterSalaryStructure, DEFAULT_PAYROLL_CONFIG, fmtMoney } from '../utils/payroll';
+import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import PayrollSettings from '../settings/PayrollSettings';
+import { buildPayrollSnapshot, buildMasterSalaryStructure, DEFAULT_PAYROLL_CONFIG, fmtMoney } from '../../utils/payroll';
 
 const toAnnual = (value) => (Number(value) || 0) * 12;
 
