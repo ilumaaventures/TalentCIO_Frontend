@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Loader, ArrowLeft, Download, Plus, CheckCircle, CheckCircle2, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2, Eye, Mail, Send, X } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
+import DocPreviewer from '../../components/DocPreviewer';
 import { ProfileReviewModal } from './PublicApplicationsView';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
@@ -756,9 +757,10 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                         )}
                                         {currentPhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && (
                                             <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase3Decision === 'Joined' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                candidate.phase3Decision === 'Offer Sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                    candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                        'bg-amber-50 text-amber-700 border-amber-200'
+                                                candidate.phase3Decision === 'Offer Accepted' ? 'bg-teal-50 text-teal-700 border-teal-200' :
+                                                    candidate.phase3Decision === 'Offer Sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                        candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                            'bg-amber-50 text-amber-700 border-amber-200'
                                                 }`}>
                                                 Phase 3: {candidate.phase3Decision}
                                             </span>
@@ -976,60 +978,6 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             )}
                         </div>
                     </div>
-
-                    {/* Inline Resume Viewer */}
-                    {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
-                        <div
-                            className={`scrollbar-hide bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${isSidePanel
-                                ? 'min-h-105 h-[68vh]'
-                                : 'min-h-130 h-[calc(100vh-190px)] max-h-225'
-                                }`}
-                        >
-                            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
-                                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                    <FileText size={16} className="text-blue-500" /> Resume Preview
-                                </h3>
-                                <div className="flex items-center gap-3">
-                                    <a
-                                        href={candidate.resumeUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm"
-                                    >
-                                        <ExternalLink size={14} /> Open in new tab
-                                    </a>
-                                    <button
-                                        onClick={toggleFullScreen}
-                                        className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-800 transition-colors bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-50"
-                                    >
-                                        <Maximize2 size={14} /> {isSidePanelMaximized ? 'Exit Full screen' : 'Full screen'}
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="scrollbar-hide w-full flex-1 overflow-hidden bg-white">
-                                <iframe
-                                    src={`${String(candidate.resumeUrl).replace('http://', 'https://')}#toolbar=0&navpanes=0&view=FitH`}
-                                    className="scrollbar-hide w-full h-full border-none overflow-hidden"
-                                    title="Resume Preview"
-                                    scrolling="no"
-                                    style={{ scrollbarWidth: 'none' }}
-                                >
-                                    <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
-                                        <FileText size={48} className="text-slate-300 mb-4" />
-                                        <p className="text-slate-600 font-medium mb-2">Resume preview not available in browser</p>
-                                        <a
-                                            href={candidate.resumeUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-blue-600 font-bold hover:underline"
-                                        >
-                                            View / Download Resume
-                                        </a>
-                                    </div>
-                                </iframe>
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 {/* Right Column: Interview Workflow Timeline */}
@@ -1945,7 +1893,35 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         </div>
                     </div>
 
-
+                    {/* Inline Resume Viewer */}
+                    {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-125 h-[650px]">
+                            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+                                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                    <FileText size={16} className="text-blue-500" /> Resume Preview
+                                </h3>
+                                <div className="flex items-center gap-3">
+                                    <a
+                                        href={candidate.resumeUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm"
+                                    >
+                                        <ExternalLink size={14} /> Open in new tab
+                                    </a>
+                                    <button
+                                        onClick={toggleFullScreen}
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-800 transition-colors bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-50"
+                                    >
+                                        <Maximize2 size={14} /> {isSidePanelMaximized ? 'Exit Full screen' : 'Full screen'}
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="scrollbar-hide w-full flex-1 overflow-hidden bg-white">
+                                <DocPreviewer url={candidate.resumeUrl} title="Resume Preview" />
+                            </div>
+                        </div>
+                    )}
 
                     {/* Internal Remark Card */}
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { X, Upload, Loader, ArrowLeft, Plus, Trash, CheckCircle, ChevronDown, Search, Eye, EyeOff } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Skeleton from '../../components/Skeleton';
+import DocPreviewer from '../../components/DocPreviewer';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
@@ -1089,20 +1090,8 @@ const CandidateForm = () => {
                     {showResumePanel && (resumeFile || resumeUrl) && (
                         <div className="w-1/2 sticky top-22 h-[calc(100vh-140px)] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden group flex flex-col animate-in slide-in-from-right-4 duration-500">
                             {/* PDF Previewer */}
-                            <div className="flex-1 bg-slate-100 relative">
-                                <div className="absolute inset-0 flex items-center justify-center text-slate-400 z-0">
-                                    <div className="text-center">
-                                        <Loader className="animate-spin mb-2 mx-auto" size={24} />
-                                        <p className="text-xs font-medium">Loading document...</p>
-                                    </div>
-                                </div>
-                                <iframe
-                                    src={(previewUrl || resumeUrl)?.startsWith('blob:')
-                                        ? (previewUrl || resumeUrl)
-                                        : (previewUrl || resumeUrl)?.replace('http://', 'https://')}
-                                    className="w-full h-full relative z-10 border-none bg-white"
-                                    title="Resume Preview"
-                                />
+                            <div className="flex-1 bg-slate-100 relative overflow-hidden">
+                                <DocPreviewer file={resumeFile} url={previewUrl || resumeUrl} title="Resume Preview" />
                             </div>
                         </div>
                     )}

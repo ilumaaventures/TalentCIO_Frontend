@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
-import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText, Paperclip, Trash2, Upload, Loader2 } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText, Paperclip, Trash2, Upload, Loader2, Eye } from 'lucide-react';
 import Skeleton from '../components/Skeleton';
 import { format, startOfISOWeek, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -173,6 +173,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [approvedLeaves, setApprovedLeaves] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
+    const [viewDiscussionModal, setViewDiscussionModal] = useState(null);
 
     // Identification for Manager/Admin View
     const targetUserId = propUserId || routeState.userId;
@@ -765,12 +766,14 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         projectId: '',
         moduleId: '',
         taskId: '',
+        discussionId: '',
         hours: '',
         minutes: '',
         description: ''
     });
     const [filteredModules, setFilteredModules] = useState([]);
     const [filteredTasks, setFilteredTasks] = useState([]);
+    const [filteredDiscussions, setFilteredDiscussions] = useState([]);
     const [availableProjects, setAvailableProjects] = useState([]);
 
     const handleEditClick = (entry) => {
@@ -1128,6 +1131,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                         module: entry.module,
                         task: entry.task,
                         taskName: entry.taskName,
+                        discussion: entry.discussion,
                         hours: entry.hours,
                         description: entry.description,
                         status: entry.status,
@@ -1254,18 +1258,23 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         await fetchData({ skipCache: true, silent });
     };
 
-    // Load Modules/Tasks when Project Changes for New Entry
+    // Load Modules/Tasks/Discussions when Project Changes for New Entry
     const handleProjectChange = async (projectId) => {
-        setNewEntry(prev => ({ ...prev, projectId, moduleId: '', taskId: '' }));
+        setNewEntry(prev => ({ ...prev, projectId, moduleId: '', taskId: '', discussionId: '' }));
         if (!projectId) {
             setFilteredModules([]);
+            setFilteredDiscussions([]);
             return;
         }
         try {
-            const res = await api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } });
-            setFilteredModules(res.data);
+            const [modulesRes, discussionsRes] = await Promise.all([
+                api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } }),
+                api.get('/discussions', { params: { project: projectId, limit: 100 } })
+            ]);
+            setFilteredModules(modulesRes.data || []);
+            setFilteredDiscussions(discussionsRes.data?.discussions || discussionsRes.data || []);
         } catch (error) {
-            console.error("Failed to fetch modules", error);
+            console.error("Failed to fetch modules or discussions", error);
         }
     };
 
@@ -1316,11 +1325,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 projectId: newEntry.projectId,
                 moduleId: newEntry.moduleId,
                 taskId: newEntry.taskId,
+                discussionId: newEntry.discussionId || undefined,
                 userId: targetUserId || undefined // Pass target user ID if Admin view
             })).data;
             toast.success("Work Log Added");
             setIsAddingEntry(false);
-            setNewEntry({ projectId: '', moduleId: '', taskId: '', hours: '', minutes: '', description: '', date: '' });
+            setNewEntry({ projectId: '', moduleId: '', taskId: '', discussionId: '', hours: '', minutes: '', description: '', date: '' });
             setTimesheet(prev => {
                 if (!prev) return prev;
 
@@ -1496,10 +1506,14 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         const groups = {};
 
         timesheet.entries.forEach(entry => {
-            const pid = entry.project._id || entry.project; // Handle populated or id
+            const pid = (typeof entry.project === 'object' && entry.project?._id)
+                ? entry.project._id
+                : (entry.project || 'unknown');
             if (!groups[pid]) {
                 groups[pid] = {
-                    project: entry.project,
+                    project: (typeof entry.project === 'object' && entry.project !== null)
+                        ? entry.project
+                        : { _id: pid, name: entry.project?.name || 'Unknown Project' },
                     hours: {}, // Key: YYYY-MM-DD, Value: Total Hours
                     logs: {}   // Key: YYYY-MM-DD, Value: [Entries]
                 };
@@ -2631,6 +2645,25 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     ))}
                                                                 </select>
                                                             </div>
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-slate-500 mb-1">Discussion</label>
+                                                                <select
+                                                                    value={newEntry.discussionId}
+                                                                    onChange={(e) => setNewEntry(prev => ({ ...prev, discussionId: e.target.value }))}
+                                                                    disabled={isSaving || isDeleting || !newEntry.projectId}
+                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                                >
+                                                                    <option value="">Select Discussion</option>
+                                                                    {filteredDiscussions.map(d => (
+                                                                        <option key={d._id} value={d._id}>
+                                                                            {d.discussion ? (d.discussion.length > 50 ? `${d.discussion.substring(0, 50)}...` : d.discussion) : (d.title || 'Discussion')}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-3">
                                                             <div className="flex space-x-2">
                                                                 <div className="flex-1">
                                                                     <label className="block text-xs font-bold text-slate-500 mb-1">Hours <span className="text-red-500">*</span></label>
@@ -2712,6 +2745,27 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     <>
                                                         <span className="mx-1 text-slate-300">/</span>
                                                         <span className="text-blue-600 font-medium">{log.taskName}</span>
+                                                    </>
+                                                )}
+                                                {log.discussion && (
+                                                    <>
+                                                        <span className="mx-1 text-slate-300">/</span>
+                                                        <span className="text-indigo-600 font-semibold inline-flex items-center space-x-1">
+                                                            <span>
+                                                                Discussion: {typeof log.discussion === 'object' ? (log.discussion.discussion ? (log.discussion.discussion.length > 30 ? `${log.discussion.discussion.substring(0, 30)}...` : log.discussion.discussion) : (log.discussion.title || 'Discussion')) : 'Discussion'}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setViewDiscussionModal(log.discussion);
+                                                                }}
+                                                                className="inline-flex items-center justify-center p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded transition-colors ml-1 cursor-pointer"
+                                                                title="View full discussion"
+                                                            >
+                                                                <Eye size={13} />
+                                                            </button>
+                                                        </span>
                                                     </>
                                                 )}
                                             </div>
@@ -3174,6 +3228,43 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             missingSections={dossierMissingSections}
             missingFields={dossierMissingFields}
         />
+        {viewDiscussionModal && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+                <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4 border border-slate-100 animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between border-b pb-3 border-slate-100">
+                        <div className="flex items-center space-x-2 text-indigo-600 font-bold text-base">
+                            <Eye size={18} />
+                            <span>Discussion Details</span>
+                        </div>
+                        <button
+                            onClick={() => setViewDiscussionModal(null)}
+                            className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-100 transition-colors text-xl font-bold leading-none"
+                        >
+                            &times;
+                        </button>
+                    </div>
+                    {typeof viewDiscussionModal === 'object' && viewDiscussionModal.title && (
+                        <div>
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Title</span>
+                            <p className="text-sm font-semibold text-slate-800 mt-0.5">{viewDiscussionModal.title}</p>
+                        </div>
+                    )}
+                    <div>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Full Discussion</span>
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap mt-1 bg-slate-50 p-3.5 rounded-lg border border-slate-200 max-h-72 overflow-y-auto leading-relaxed font-medium">
+                            {typeof viewDiscussionModal === 'string'
+                                ? viewDiscussionModal
+                                : (viewDiscussionModal.discussion || viewDiscussionModal.title || 'No discussion details available')}
+                        </p>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                        <Button onClick={() => setViewDiscussionModal(null)} variant="secondary" className="text-xs px-4">
+                            Close
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        )}
         </>
     );
 };
