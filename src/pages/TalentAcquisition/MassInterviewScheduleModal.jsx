@@ -40,6 +40,8 @@ const MassInterviewScheduleModal = ({
     const [emailTemplateId, setEmailTemplateId] = useState('');
     const [senderOptions, setSenderOptions] = useState([]);
     const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('');
+    const [sendEmail, setSendEmail] = useState(true);
+    const [emailRecipientIds, setEmailRecipientIds] = useState([]);
     const [cc, setCc] = useState('');
     const [bcc, setBcc] = useState('');
     const [customFields, setCustomFields] = useState([]);
@@ -54,12 +56,14 @@ const MassInterviewScheduleModal = ({
         if (!isOpen) return;
         setStep(1);
         setSelectedIds(initialSelectedIds);
+        setEmailRecipientIds(initialSelectedIds);
         setSearch('');
         setLevelName('');
         setAssignedTo([]);
         setScheduledDate('');
         setPhase(activePhase || 1);
         setInterviewerSearch('');
+        setSendEmail(true);
         setEmailTemplateId('');
         setSelectedEmailAccountId('');
         setCc('');
@@ -70,6 +74,13 @@ const MassInterviewScheduleModal = ({
         setPreviewCandidateId('');
         setViewMode('details');
     }, [isOpen, initialSelectedIds, activePhase]);
+
+    const handleToggleSendEmail = (value) => {
+        setSendEmail(value);
+        if (!value) {
+            setViewMode('details');
+        }
+    };
 
     useEffect(() => {
         if (!isOpen) return;
@@ -299,13 +310,15 @@ const MassInterviewScheduleModal = ({
                 assignedTo,
                 scheduledDate: scheduledDate || undefined,
                 phase,
-                emailTemplateId: emailTemplateId || undefined,
-                emailAccountId: selectedEmailAccountId || undefined,
-                cc: cc ? cc.trim() : undefined,
-                bcc: bcc ? bcc.trim() : undefined,
+                sendEmail,
+                emailCandidateIds: sendEmail ? emailRecipientIds : [],
+                emailTemplateId: sendEmail && emailTemplateId ? emailTemplateId : undefined,
+                emailAccountId: sendEmail && selectedEmailAccountId ? selectedEmailAccountId : undefined,
+                cc: sendEmail && cc ? cc.trim() : undefined,
+                bcc: sendEmail && bcc ? bcc.trim() : undefined,
                 customFields: customFields.filter((f) => f.key && f.key.trim()),
-                customSubject: customSubject.trim() || undefined,
-                customHtmlBody: customHtmlBody.trim() || undefined
+                customSubject: sendEmail && customSubject ? customSubject.trim() : undefined,
+                customHtmlBody: sendEmail && customHtmlBody ? customHtmlBody.trim() : undefined
             };
 
             const response = await api.post('/ta/candidates/bulk-schedule-interview', payload);
@@ -382,7 +395,7 @@ const MassInterviewScheduleModal = ({
                     </div>
 
                     {/* Step 2 View Mode Toggle */}
-                    {step === 2 && (
+                    {step === 2 && sendEmail && (
                         <div className="inline-flex rounded-xl bg-slate-200/80 p-1">
                             <button
                                 type="button"
@@ -483,6 +496,25 @@ const MassInterviewScheduleModal = ({
                             {viewMode === 'details' && (
                                 <div className="grid gap-6 lg:grid-cols-2">
                                     <div className="space-y-5">
+                                        {/* Send Email Toggle */}
+                                        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div>
+                                                <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                                    <Mail size={16} className="text-blue-600" />
+                                                    Send Email Invitation to Candidates
+                                                </label>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    Automatically send interview invitation emails to candidates.
+                                                </p>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={sendEmail}
+                                                onChange={(e) => setSendEmail(e.target.checked)}
+                                                className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                            />
+                                        </div>
+
                                         {/* Round Name */}
                                         <div className="rounded-2xl border border-slate-200 bg-white p-5">
                                             <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -654,13 +686,94 @@ const MassInterviewScheduleModal = ({
                             {/* View Mode 2: Edit Email */}
                             {viewMode === 'email' && (
                                 <div className="space-y-5">
-                                    <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {/* Email Template Select */}
-                                            <div>
-                                                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                    Email Template
-                                                </label>
+                                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5">
+                                        <div>
+                                            <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                                <Mail size={16} className="text-blue-600" />
+                                                Send Email Invitation to Candidates
+                                            </label>
+                                            <p className="text-xs text-slate-500 mt-0.5">
+                                                Automatically dispatch email invitations to scheduled candidates. Uncheck to schedule without sending emails.
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={sendEmail}
+                                            onChange={(e) => handleToggleSendEmail(e.target.checked)}
+                                            className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                    </div>
+
+                                    {sendEmail && (
+                                    <>
+                                        {/* Candidate Recipient Selector */}
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-2">
+                                                        <Users size={14} className="text-blue-600" />
+                                                        Select Email Recipients ({emailRecipientIds.length} of {selectedCandidates.length} selected)
+                                                    </label>
+                                                    <p className="text-xs text-slate-500 mt-0.5">
+                                                        Choose which candidates should receive the email invite for this interview round.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEmailRecipientIds(selectedCandidates.map(c => c._id))}
+                                                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-2.5 py-1 rounded-md"
+                                                    >
+                                                        Select All
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEmailRecipientIds([])}
+                                                        className="text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 px-2.5 py-1 rounded-md"
+                                                    >
+                                                        Deselect All
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                                {selectedCandidates.map((candidate) => {
+                                                    const isChecked = emailRecipientIds.includes(candidate._id);
+                                                    return (
+                                                        <label
+                                                            key={candidate._id}
+                                                            className={`flex cursor-pointer items-center justify-between px-3.5 py-2 transition hover:bg-slate-50 ${
+                                                                isChecked ? 'bg-blue-50/40' : ''
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => {
+                                                                        setEmailRecipientIds((prev) =>
+                                                                            prev.includes(candidate._id)
+                                                                                ? prev.filter((id) => id !== candidate._id)
+                                                                                : [...prev, candidate._id]
+                                                                        );
+                                                                    }}
+                                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                                />
+                                                                <span className="text-xs font-semibold text-slate-800 truncate">{candidate.candidateName}</span>
+                                                            </div>
+                                                            <span className="text-[11px] text-slate-500 font-mono">{candidate.email}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Email Template Select */}
+                                                <div>
+                                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                        Email Template
+                                                    </label>
                                                 <select
                                                     value={emailTemplateId}
                                                     onChange={(e) => setEmailTemplateId(e.target.value)}
@@ -767,7 +880,9 @@ const MassInterviewScheduleModal = ({
                                                 className="w-full font-mono text-xs rounded-lg border border-slate-300 p-3 outline-none focus:ring-2 focus:ring-blue-500"
                                             />
                                         </div>
-                                    </div>
+                                     </div>
+                                    </>
+                                    )}
                                 </div>
                             )}
 
