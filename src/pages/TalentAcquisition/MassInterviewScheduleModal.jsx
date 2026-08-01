@@ -158,6 +158,14 @@ const MassInterviewScheduleModal = ({
         }
     }, [selectedCandidates, previewCandidateId]);
 
+    useEffect(() => {
+        setEmailRecipientIds((prev) => {
+            const validPrev = prev.filter((id) => selectedIds.includes(id));
+            const newIds = selectedIds.filter((id) => !prev.includes(id));
+            return [...validPrev, ...newIds];
+        });
+    }, [selectedIds]);
+
     const filteredInterviewers = useMemo(() => {
         const normalizedSearch = interviewerSearch.trim().toLowerCase();
         if (!normalizedSearch) return interviewers;
