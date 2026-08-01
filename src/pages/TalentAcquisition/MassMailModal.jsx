@@ -299,7 +299,7 @@ const MassMailModal = ({
                 response = await api.post(`/ta/hiring-request/${hiringRequestId}/send-mass-mail`, payload);
             }
 
-            toast.success(`Mail sent to ${response.data.sent} candidates`);
+            toast.success(response.data?.message || `Mail queued for ${response.data?.sent ?? 'all'} candidates`);
             onSent?.(response.data);
             onClose();
         } catch (error) {
