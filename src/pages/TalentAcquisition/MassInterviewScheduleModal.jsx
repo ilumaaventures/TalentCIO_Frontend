@@ -25,51 +25,80 @@ const MassInterviewScheduleModal = ({
     activePhase,
     onScheduled
 }) => {
+    const createNewRound = useCallback((index = 1) => ({
+        id: Date.now() + Math.random(),
+        levelName: index === 1 ? '' : `Round ${index}`,
+        scheduledDate: '',
+        phase: activePhase || 1,
+        assignedTo: [],
+        customFields: [],
+        sendEmail: true,
+        emailRecipientIds: initialSelectedIds,
+        emailTemplateId: '',
+        selectedEmailAccountId: '',
+        cc: '',
+        bcc: '',
+        customSubject: '',
+        customHtmlBody: ''
+    }), [activePhase, initialSelectedIds]);
+
     const [step, setStep] = useState(1);
     const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
     const [search, setSearch] = useState('');
-    const [levelName, setLevelName] = useState('');
-    const [assignedTo, setAssignedTo] = useState([]);
-    const [scheduledDate, setScheduledDate] = useState('');
-    const [phase, setPhase] = useState(activePhase || 1);
+    const [rounds, setRounds] = useState([createNewRound(1)]);
+    const [activeRoundIndex, setActiveRoundIndex] = useState(0);
     const [interviewers, setInterviewers] = useState([]);
     const [loadingInterviewers, setLoadingInterviewers] = useState(false);
     const [interviewerSearch, setInterviewerSearch] = useState('');
     const [scheduling, setScheduling] = useState(false);
     const [emailTemplates, setEmailTemplates] = useState([]);
-    const [emailTemplateId, setEmailTemplateId] = useState('');
     const [senderOptions, setSenderOptions] = useState([]);
-    const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('');
-    const [cc, setCc] = useState('');
-    const [bcc, setBcc] = useState('');
-    const [customFields, setCustomFields] = useState([]);
 
     // Email Preview and Editing States
-    const [customSubject, setCustomSubject] = useState('');
-    const [customHtmlBody, setCustomHtmlBody] = useState('');
     const [previewCandidateId, setPreviewCandidateId] = useState('');
     const [viewMode, setViewMode] = useState('details'); // 'details' | 'email' | 'preview'
+
+    const activeRound = useMemo(() => rounds[activeRoundIndex] || rounds[0], [rounds, activeRoundIndex]);
+
+    const updateActiveRound = (field, value) => {
+        setRounds((prev) => {
+            const next = [...prev];
+            if (next[activeRoundIndex]) {
+                next[activeRoundIndex] = { ...next[activeRoundIndex], [field]: value };
+            }
+            return next;
+        });
+    };
+
+    const addRound = () => {
+        setRounds((prev) => [...prev, createNewRound(prev.length + 1)]);
+        setActiveRoundIndex(rounds.length);
+    };
+
+    const removeRound = (indexToRemove) => {
+        if (rounds.length <= 1) return;
+        setRounds((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+        setActiveRoundIndex((prev) => Math.max(0, Math.min(prev, rounds.length - 2)));
+    };
 
     useEffect(() => {
         if (!isOpen) return;
         setStep(1);
         setSelectedIds(initialSelectedIds);
         setSearch('');
-        setLevelName('');
-        setAssignedTo([]);
-        setScheduledDate('');
-        setPhase(activePhase || 1);
+        setRounds([createNewRound(1)]);
+        setActiveRoundIndex(0);
         setInterviewerSearch('');
-        setEmailTemplateId('');
-        setSelectedEmailAccountId('');
-        setCc('');
-        setBcc('');
-        setCustomFields([]);
-        setCustomSubject('');
-        setCustomHtmlBody('');
         setPreviewCandidateId('');
         setViewMode('details');
-    }, [isOpen, initialSelectedIds, activePhase]);
+    }, [isOpen, initialSelectedIds, createNewRound]);
+
+    const handleToggleSendEmail = (value) => {
+        updateActiveRound('sendEmail', value);
+        if (!value) {
+            setViewMode('details');
+        }
+    };
 
     useEffect(() => {
         if (!isOpen) return;
@@ -98,11 +127,10 @@ const MassInterviewScheduleModal = ({
                     setInterviewers(users.filter((u) => u.isActive !== false));
                     setEmailTemplates(tmpls);
                     setSenderOptions(nextSenderOptions);
-                    setSelectedEmailAccountId(
-                        nextSenderOptions.some((o) => o._id === senderData.defaultAccountId)
-                            ? senderData.defaultAccountId
-                            : (nextSenderOptions[0]?._id || '')
-                    );
+                    const defaultAccId = nextSenderOptions.some((o) => o._id === senderData.defaultAccountId)
+                        ? senderData.defaultAccountId
+                        : (nextSenderOptions[0]?._id || '');
+                    updateActiveRound('selectedEmailAccountId', defaultAccId);
                 }
             } catch (error) {
                 console.error('Failed to load interviewers/templates:', error);
@@ -116,16 +144,16 @@ const MassInterviewScheduleModal = ({
     }, [isOpen]);
 
     const activeTemplate = useMemo(
-        () => emailTemplates.find((t) => t._id === emailTemplateId),
-        [emailTemplates, emailTemplateId]
+        () => emailTemplates.find((t) => t._id === activeRound?.emailTemplateId),
+        [emailTemplates, activeRound?.emailTemplateId]
     );
 
     useEffect(() => {
-        if (emailTemplateId && activeTemplate) {
-            setCustomSubject(activeTemplate.subject || '');
-            setCustomHtmlBody(activeTemplate.htmlBody || '');
+        if (activeRound?.emailTemplateId && activeTemplate) {
+            updateActiveRound('customSubject', activeTemplate.subject || '');
+            updateActiveRound('customHtmlBody', activeTemplate.htmlBody || '');
         }
-    }, [activeTemplate, emailTemplateId]);
+    }, [activeTemplate, activeRound?.emailTemplateId]);
 
     const filteredCandidates = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase();
@@ -146,6 +174,13 @@ const MassInterviewScheduleModal = ({
             setPreviewCandidateId(selectedCandidates[0]._id);
         }
     }, [selectedCandidates, previewCandidateId]);
+
+    useEffect(() => {
+        const currentRecipients = activeRound?.emailRecipientIds || [];
+        const validPrev = currentRecipients.filter((id) => selectedIds.includes(id));
+        const newIds = selectedIds.filter((id) => !currentRecipients.includes(id));
+        updateActiveRound('emailRecipientIds', [...validPrev, ...newIds]);
+    }, [selectedIds]);
 
     const filteredInterviewers = useMemo(() => {
         const normalizedSearch = interviewerSearch.trim().toLowerCase();
@@ -173,16 +208,23 @@ const MassInterviewScheduleModal = ({
     }, []);
 
     const toggleInterviewer = useCallback((userId) => {
-        setAssignedTo((prev) =>
-            prev.includes(userId)
-                ? prev.filter((id) => id !== userId)
-                : [...prev, userId]
-        );
-    }, []);
+        setRounds((prev) => {
+            const next = [...prev];
+            const current = next[activeRoundIndex] || next[0];
+            if (!current) return prev;
+            const currentAssigned = current.assignedTo || [];
+            const nextAssigned = currentAssigned.includes(userId)
+                ? currentAssigned.filter((id) => id !== userId)
+                : [...currentAssigned, userId];
+            next[activeRoundIndex] = { ...current, assignedTo: nextAssigned };
+            return next;
+        });
+    }, [activeRoundIndex]);
 
     const insertPlaceholder = (token) => {
         const insertion = `{{${token}}}`;
-        setCustomHtmlBody((prev) => `${prev}${prev ? ' ' : ''}${insertion}`);
+        const prevBody = activeRound?.customHtmlBody || '';
+        updateActiveRound('customHtmlBody', `${prevBody}${prevBody ? ' ' : ''}${insertion}`);
     };
 
     // Live Email Preview Calculation
@@ -195,17 +237,20 @@ const MassInterviewScheduleModal = ({
         const [firstName = '', ...lastNameParts] = fullName.trim().split(/\s+/).filter(Boolean);
         const lastName = lastNameParts.join(' ');
 
-        const formattedDate = scheduledDate
-            ? new Date(scheduledDate).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })
+        const scheduledDateVal = activeRound?.scheduledDate;
+        const formattedDate = scheduledDateVal
+            ? new Date(scheduledDateVal).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })
             : 'To Be Confirmed';
 
-        const assignedUserNames = assignedTo
+        const roundAssignedTo = activeRound?.assignedTo || [];
+        const assignedUserNames = roundAssignedTo
             .map((uId) => interviewers.find((u) => u._id === uId))
             .filter(Boolean)
             .map((u) => `${u.firstName || ''} ${u.lastName || ''}`.trim())
             .join(', ') || 'Unassigned';
 
-        const validCustomFields = customFields.filter((f) => f.key && f.key.trim());
+        const roundCustomFields = activeRound?.customFields || [];
+        const validCustomFields = roundCustomFields.filter((f) => f.key && f.key.trim());
         let customFieldsHtml = '';
         if (validCustomFields.length > 0) {
             const rowsHtml = validCustomFields.map((f) => `
@@ -234,8 +279,8 @@ const MassInterviewScheduleModal = ({
             workEmail: currentPreviewCandidate?.email || 'candidate@example.com',
             phone: currentPreviewCandidate?.mobile || currentPreviewCandidate?.phone || 'N/A',
             mobile: currentPreviewCandidate?.mobile || currentPreviewCandidate?.phone || 'N/A',
-            roundName: levelName.trim() || 'Interview Round',
-            interviewRound: levelName.trim() || 'Interview Round',
+            roundName: activeRound?.levelName?.trim() || 'Interview Round',
+            interviewRound: activeRound?.levelName?.trim() || 'Interview Round',
             scheduledDate: formattedDate,
             interviewDate: formattedDate,
             interviewTime: formattedDate,
@@ -249,9 +294,9 @@ const MassInterviewScheduleModal = ({
             customFields: customFieldsHtml,
             additionalDetails: customFieldsHtml
         };
-    }, [currentPreviewCandidate, levelName, scheduledDate, assignedTo, interviewers, customFields]);
+    }, [currentPreviewCandidate, activeRound, interviewers]);
 
-    const defaultSubject = `Interview Scheduled: ${levelName || 'Interview Round'} - ${currentPreviewCandidate?.candidateName || 'Candidate'}`;
+    const defaultSubject = `Interview Scheduled: ${activeRound?.levelName || 'Interview Round'} - ${currentPreviewCandidate?.candidateName || 'Candidate'}`;
 
     const defaultCandidateBody = `<div style="font-family: Arial, sans-serif; color: #334155; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
     <h2 style="color: #2563eb; margin-top: 0;">Interview Scheduled</h2>
@@ -266,21 +311,21 @@ const MassInterviewScheduleModal = ({
 </div>`;
 
     const previewSubject = useMemo(() => {
-        const raw = customSubject || activeTemplate?.subject || defaultSubject;
+        const raw = activeRound?.customSubject || activeTemplate?.subject || defaultSubject;
         return resolveTemplate(raw, previewData);
-    }, [customSubject, activeTemplate, defaultSubject, previewData]);
+    }, [activeRound?.customSubject, activeTemplate, defaultSubject, previewData]);
 
     const previewHtml = useMemo(() => {
-        const raw = customHtmlBody || activeTemplate?.htmlBody || defaultCandidateBody;
+        const raw = activeRound?.customHtmlBody || activeTemplate?.htmlBody || defaultCandidateBody;
         return renderTemplateBody(raw, previewData);
-    }, [customHtmlBody, activeTemplate, defaultCandidateBody, previewData]);
+    }, [activeRound?.customHtmlBody, activeTemplate, defaultCandidateBody, previewData]);
 
     const canProceedStep1 = selectedIds.length >= 1;
-    const canProceedStep2 = levelName.trim().length > 0;
+    const canProceedStep2 = rounds.length > 0 && rounds.every((r) => r.levelName && r.levelName.trim().length > 0);
 
     const handleSubmit = async () => {
         if (!canProceedStep2) {
-            toast.error('Round name is required.');
+            toast.error('All interview rounds require a round name.');
             setStep(2);
             return;
         }
@@ -295,24 +340,28 @@ const MassInterviewScheduleModal = ({
             setScheduling(true);
             const payload = {
                 candidateIds: selectedIds,
-                levelName: levelName.trim(),
-                assignedTo,
-                scheduledDate: scheduledDate || undefined,
-                phase,
-                emailTemplateId: emailTemplateId || undefined,
-                emailAccountId: selectedEmailAccountId || undefined,
-                cc: cc ? cc.trim() : undefined,
-                bcc: bcc ? bcc.trim() : undefined,
-                customFields: customFields.filter((f) => f.key && f.key.trim()),
-                customSubject: customSubject.trim() || undefined,
-                customHtmlBody: customHtmlBody.trim() || undefined
+                rounds: rounds.map((r) => ({
+                    levelName: r.levelName.trim(),
+                    assignedTo: r.assignedTo || [],
+                    scheduledDate: r.scheduledDate || undefined,
+                    phase: r.phase || 1,
+                    sendEmail: r.sendEmail,
+                    emailCandidateIds: r.sendEmail ? (r.emailRecipientIds || selectedIds) : [],
+                    emailTemplateId: r.sendEmail && r.emailTemplateId ? r.emailTemplateId : undefined,
+                    emailAccountId: r.sendEmail && r.selectedEmailAccountId ? r.selectedEmailAccountId : undefined,
+                    cc: r.sendEmail && r.cc ? r.cc.trim() : undefined,
+                    bcc: r.sendEmail && r.bcc ? r.bcc.trim() : undefined,
+                    customFields: (r.customFields || []).filter((f) => f.key && f.key.trim()),
+                    customSubject: r.sendEmail && r.customSubject ? r.customSubject.trim() : undefined,
+                    customHtmlBody: r.sendEmail && r.customHtmlBody ? r.customHtmlBody.trim() : undefined
+                }))
             };
 
             const response = await api.post('/ta/candidates/bulk-schedule-interview', payload);
             const { scheduled, failed, errors } = response.data;
 
             if (scheduled > 0) {
-                toast.success(`Interview "${levelName}" scheduled for ${scheduled} candidate(s)`);
+                toast.success(`${rounds.length} interview round(s) scheduled for ${scheduled} candidate(s)`);
             }
 
             if (failed > 0) {
@@ -382,7 +431,7 @@ const MassInterviewScheduleModal = ({
                     </div>
 
                     {/* Step 2 View Mode Toggle */}
-                    {step === 2 && (
+                    {step === 2 && activeRound?.sendEmail && (
                         <div className="inline-flex rounded-xl bg-slate-200/80 p-1">
                             <button
                                 type="button"
@@ -417,6 +466,51 @@ const MassInterviewScheduleModal = ({
                         </div>
                     )}
                 </div>
+
+                {/* Step 2 Multi-Round Bar */}
+                {step === 2 && (
+                    <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-6 py-2.5 overflow-x-auto">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-400 shrink-0">Interview Rounds:</span>
+                        <div className="flex items-center gap-2 flex-1 overflow-x-auto">
+                            {rounds.map((r, idx) => (
+                                <div key={r.id} className="flex items-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveRoundIndex(idx)}
+                                        className={`flex items-center gap-2 rounded-xl px-3.5 py-1 text-xs font-bold transition ${
+                                            activeRoundIndex === idx
+                                                ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-600/30'
+                                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        <span>{r.levelName.trim() || `Round ${idx + 1}`}</span>
+                                        {!r.levelName.trim() && <span className="text-red-400 text-[10px]">*</span>}
+                                    </button>
+                                    {rounds.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                removeRound(idx);
+                                            }}
+                                            className="ml-1 rounded-full p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 text-xs font-bold"
+                                            title="Remove Round"
+                                        >
+                                            ×
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={addRound}
+                            className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-xl transition border border-blue-200 shrink-0"
+                        >
+                            + Add Another Round
+                        </button>
+                    </div>
+                )}
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto px-6 py-6">
@@ -483,6 +577,25 @@ const MassInterviewScheduleModal = ({
                             {viewMode === 'details' && (
                                 <div className="grid gap-6 lg:grid-cols-2">
                                     <div className="space-y-5">
+                                        {/* Send Email Toggle */}
+                                        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div>
+                                                <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                                    <Mail size={16} className="text-blue-600" />
+                                                    Send Email Invitation to Candidates
+                                                </label>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    Automatically send interview invitation emails to candidates for this round.
+                                                </p>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={activeRound?.sendEmail !== false}
+                                                onChange={(e) => handleToggleSendEmail(e.target.checked)}
+                                                className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                            />
+                                        </div>
+
                                         {/* Round Name */}
                                         <div className="rounded-2xl border border-slate-200 bg-white p-5">
                                             <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -490,8 +603,8 @@ const MassInterviewScheduleModal = ({
                                             </label>
                                             <input
                                                 type="text"
-                                                value={levelName}
-                                                onChange={(e) => setLevelName(e.target.value)}
+                                                value={activeRound?.levelName || ''}
+                                                onChange={(e) => updateActiveRound('levelName', e.target.value)}
                                                 placeholder="e.g. L1 - Technical, HR Round, Managerial"
                                                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                             />
@@ -505,8 +618,8 @@ const MassInterviewScheduleModal = ({
                                             </label>
                                             <input
                                                 type="datetime-local"
-                                                value={scheduledDate}
-                                                onChange={(e) => setScheduledDate(e.target.value)}
+                                                value={activeRound?.scheduledDate || ''}
+                                                onChange={(e) => updateActiveRound('scheduledDate', e.target.value)}
                                                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                             />
                                             <p className="mt-2 text-xs text-slate-500">Leave empty to create a pending round without a specific date.</p>
@@ -521,8 +634,8 @@ const MassInterviewScheduleModal = ({
                                             <input
                                                 type="number"
                                                 min={1}
-                                                value={phase}
-                                                onChange={(e) => setPhase(Number(e.target.value) || 1)}
+                                                value={activeRound?.phase || 1}
+                                                onChange={(e) => updateActiveRound('phase', Number(e.target.value) || 1)}
                                                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                             />
                                         </div>
@@ -535,27 +648,27 @@ const MassInterviewScheduleModal = ({
                                                 </label>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setCustomFields([...customFields, { key: '', value: '' }])}
+                                                    onClick={() => updateActiveRound('customFields', [...(activeRound?.customFields || []), { key: '', value: '' }])}
                                                     className="text-xs text-blue-600 hover:text-blue-800 font-bold"
                                                 >
                                                     + Add Field
                                                 </button>
                                             </div>
 
-                                            {customFields.length === 0 ? (
+                                            {(!activeRound?.customFields || activeRound.customFields.length === 0) ? (
                                                 <p className="text-xs text-slate-400 italic">No custom fields added yet. (e.g. Meeting Link, Mode)</p>
                                             ) : (
                                                 <div className="space-y-2 max-h-36 overflow-y-auto">
-                                                    {customFields.map((field, idx) => (
+                                                    {activeRound.customFields.map((field, idx) => (
                                                         <div key={idx} className="flex items-center gap-2">
                                                             <input
                                                                 type="text"
                                                                 placeholder="Key (e.g. Meeting Link)"
                                                                 value={field.key}
                                                                 onChange={(e) => {
-                                                                    const next = [...customFields];
+                                                                    const next = [...activeRound.customFields];
                                                                     next[idx].key = e.target.value;
-                                                                    setCustomFields(next);
+                                                                    updateActiveRound('customFields', next);
                                                                 }}
                                                                 className="w-1/2 rounded border border-slate-300 px-2 py-1 text-xs"
                                                             />
@@ -564,15 +677,15 @@ const MassInterviewScheduleModal = ({
                                                                 placeholder="Value (e.g. https://...)"
                                                                 value={field.value}
                                                                 onChange={(e) => {
-                                                                    const next = [...customFields];
+                                                                    const next = [...activeRound.customFields];
                                                                     next[idx].value = e.target.value;
-                                                                    setCustomFields(next);
+                                                                    updateActiveRound('customFields', next);
                                                                 }}
                                                                 className="w-1/2 rounded border border-slate-300 px-2 py-1 text-xs"
                                                             />
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setCustomFields(customFields.filter((_, i) => i !== idx))}
+                                                                onClick={() => updateActiveRound('customFields', activeRound.customFields.filter((_, i) => i !== idx))}
                                                                 className="text-red-500 hover:text-red-700 text-xs px-1 font-bold"
                                                             >
                                                                 ×
@@ -590,9 +703,9 @@ const MassInterviewScheduleModal = ({
                                             <Users size={14} />
                                             Assign Interviewers
                                         </label>
-                                        {assignedTo.length > 0 && (
+                                        {(activeRound?.assignedTo || []).length > 0 && (
                                             <div className="mb-3 flex flex-wrap gap-2">
-                                                {assignedTo.map((userId) => {
+                                                {(activeRound.assignedTo).map((userId) => {
                                                     const user = interviewers.find((u) => u._id === userId);
                                                     const name = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : userId;
                                                     return (
@@ -627,7 +740,7 @@ const MassInterviewScheduleModal = ({
                                                     <p className="px-3 py-4 text-center text-xs text-slate-500">No users found.</p>
                                                 ) : (
                                                     filteredInterviewers.map((user) => {
-                                                        const isSelected = assignedTo.includes(user._id);
+                                                        const isSelected = (activeRound?.assignedTo || []).includes(user._id);
                                                         const name = `${user.firstName || ''} ${user.lastName || ''}`.trim();
                                                         return (
                                                             <label key={user._id} className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 transition hover:bg-slate-50 ${isSelected ? 'bg-blue-50/50' : ''}`}>
@@ -654,120 +767,203 @@ const MassInterviewScheduleModal = ({
                             {/* View Mode 2: Edit Email */}
                             {viewMode === 'email' && (
                                 <div className="space-y-5">
-                                    <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {/* Email Template Select */}
-                                            <div>
-                                                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                    Email Template
-                                                </label>
-                                                <select
-                                                    value={emailTemplateId}
-                                                    onChange={(e) => setEmailTemplateId(e.target.value)}
-                                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                                                >
-                                                    <option value="">Default System Template</option>
-                                                    {emailTemplates.map((t) => (
-                                                        <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
-                                                    ))}
-                                                </select>
-                                            </div>
+                                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5">
+                                        <div>
+                                            <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                                <Mail size={16} className="text-blue-600" />
+                                                Send Email Invitation to Candidates
+                                            </label>
+                                            <p className="text-xs text-slate-500 mt-0.5">
+                                                Automatically dispatch email invitations to scheduled candidates for this round.
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={activeRound?.sendEmail !== false}
+                                            onChange={(e) => handleToggleSendEmail(e.target.checked)}
+                                            className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                    </div>
 
-                                            {/* Sender Account */}
-                                            {senderOptions.length > 0 && (
+                                    {activeRound?.sendEmail !== false && (
+                                    <>
+                                        {/* Candidate Recipient Selector */}
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-2">
+                                                        <Users size={14} className="text-blue-600" />
+                                                        Select Email Recipients ({(activeRound?.emailRecipientIds || selectedIds).length} of {selectedCandidates.length} selected)
+                                                    </label>
+                                                    <p className="text-xs text-slate-500 mt-0.5">
+                                                        Choose which candidates should receive the email invite for this interview round.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateActiveRound('emailRecipientIds', selectedCandidates.map(c => c._id))}
+                                                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-2.5 py-1 rounded-md"
+                                                    >
+                                                        Select All
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateActiveRound('emailRecipientIds', [])}
+                                                        className="text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 px-2.5 py-1 rounded-md"
+                                                    >
+                                                        Deselect All
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                                {selectedCandidates.map((candidate) => {
+                                                    const isChecked = (activeRound?.emailRecipientIds || selectedIds).includes(candidate._id);
+                                                    return (
+                                                        <label
+                                                            key={candidate._id}
+                                                            className={`flex cursor-pointer items-center justify-between px-3.5 py-2 transition hover:bg-slate-50 ${
+                                                                isChecked ? 'bg-blue-50/40' : ''
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => {
+                                                                        const current = activeRound?.emailRecipientIds || selectedIds;
+                                                                        const next = current.includes(candidate._id)
+                                                                            ? current.filter(id => id !== candidate._id)
+                                                                            : [...current, candidate._id];
+                                                                        updateActiveRound('emailRecipientIds', next);
+                                                                    }}
+                                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                                />
+                                                                <span className="text-xs font-semibold text-slate-800 truncate">{candidate.candidateName}</span>
+                                                            </div>
+                                                            <span className="text-[11px] text-slate-500 font-mono">{candidate.email}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Email Template Select */}
                                                 <div>
                                                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                        Sender Account
+                                                        Email Template
                                                     </label>
                                                     <select
-                                                        value={selectedEmailAccountId}
-                                                        onChange={(e) => setSelectedEmailAccountId(e.target.value)}
+                                                        value={activeRound?.emailTemplateId || ''}
+                                                        onChange={(e) => updateActiveRound('emailTemplateId', e.target.value)}
                                                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                                     >
-                                                        {senderOptions.map((option) => (
-                                                            <option key={option._id} value={option._id}>
-                                                                {option.name} – {option.fromAddress}
-                                                            </option>
+                                                        <option value="">Default System Template</option>
+                                                        {emailTemplates.map((t) => (
+                                                            <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
                                                         ))}
                                                     </select>
                                                 </div>
-                                            )}
-                                        </div>
 
-                                        <div className="grid grid-cols-2 gap-3">
+                                                {/* Sender Account */}
+                                                {senderOptions.length > 0 && (
+                                                    <div>
+                                                        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                            Sender Account
+                                                        </label>
+                                                        <select
+                                                            value={activeRound?.selectedEmailAccountId || ''}
+                                                            onChange={(e) => updateActiveRound('selectedEmailAccountId', e.target.value)}
+                                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                                        >
+                                                            {senderOptions.map((option) => (
+                                                                <option key={option._id} value={option._id}>
+                                                                    {option.name} – {option.fromAddress}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                        CC Emails
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={activeRound?.cc || ''}
+                                                        onChange={(e) => updateActiveRound('cc', e.target.value)}
+                                                        placeholder="e.g. hr@company.com"
+                                                        className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                        BCC Emails
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={activeRound?.bcc || ''}
+                                                        onChange={(e) => updateActiveRound('bcc', e.target.value)}
+                                                        placeholder="e.g. audit@company.com"
+                                                        className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Subject Input */}
                                             <div>
-                                                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                    CC Emails
+                                                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                    Email Subject Line
                                                 </label>
                                                 <input
                                                     type="text"
-                                                    value={cc}
-                                                    onChange={(e) => setCc(e.target.value)}
-                                                    placeholder="e.g. hr@company.com"
-                                                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value={activeRound?.customSubject || ''}
+                                                    onChange={(e) => updateActiveRound('customSubject', e.target.value)}
+                                                    placeholder={defaultSubject}
+                                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                                 />
                                             </div>
+
+                                            {/* Quick Placeholders */}
                                             <div>
-                                                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                    BCC Emails
+                                                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                    Insert Dynamic Placeholders
                                                 </label>
-                                                <input
-                                                    type="text"
-                                                    value={bcc}
-                                                    onChange={(e) => setBcc(e.target.value)}
-                                                    placeholder="e.g. audit@company.com"
-                                                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {QUICK_PLACEHOLDERS.map((item) => (
+                                                        <button
+                                                            key={item.token}
+                                                            type="button"
+                                                            onClick={() => insertPlaceholder(item.token)}
+                                                            className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-100 transition"
+                                                        >
+                                                            + {item.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* HTML / Custom Body Textarea */}
+                                            <div>
+                                                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                    Email Content (HTML or Plain Text)
+                                                </label>
+                                                <textarea
+                                                    rows={10}
+                                                    value={activeRound?.customHtmlBody || ''}
+                                                    onChange={(e) => updateActiveRound('customHtmlBody', e.target.value)}
+                                                    placeholder={defaultCandidateBody}
+                                                    className="w-full font-mono text-xs rounded-lg border border-slate-300 p-3 outline-none focus:ring-2 focus:ring-blue-500"
                                                 />
                                             </div>
                                         </div>
-
-                                        {/* Subject Input */}
-                                        <div>
-                                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                Email Subject Line
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={customSubject}
-                                                onChange={(e) => setCustomSubject(e.target.value)}
-                                                placeholder={defaultSubject}
-                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-
-                                        {/* Quick Placeholders */}
-                                        <div>
-                                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                Insert Dynamic Placeholders
-                                            </label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {QUICK_PLACEHOLDERS.map((item) => (
-                                                    <button
-                                                        key={item.token}
-                                                        type="button"
-                                                        onClick={() => insertPlaceholder(item.token)}
-                                                        className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-100 transition"
-                                                    >
-                                                        + {item.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {/* HTML / Custom Body Textarea */}
-                                        <div>
-                                            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                                Email Content (HTML or Plain Text)
-                                            </label>
-                                            <textarea
-                                                rows={10}
-                                                value={customHtmlBody}
-                                                onChange={(e) => setCustomHtmlBody(e.target.value)}
-                                                placeholder={defaultCandidateBody}
-                                                className="w-full font-mono text-xs rounded-lg border border-slate-300 p-3 outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                    </div>
+                                    </>
+                                    )}
                                 </div>
                             )}
 
@@ -841,44 +1037,40 @@ const MassInterviewScheduleModal = ({
                             <div className="grid gap-6 lg:grid-cols-2">
                                 {/* Configuration Summary */}
                                 <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-                                    <h4 className="text-sm font-bold text-slate-800">Interview Details</h4>
-                                    <div className="space-y-3 text-sm text-slate-600">
-                                        <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
-                                            <Calendar size={16} className="mt-0.5 flex-shrink-0 text-blue-600" />
-                                            <div>
-                                                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Round Name</p>
-                                                <p className="mt-0.5 font-semibold text-slate-900">{levelName || '—'}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
-                                            <Clock size={16} className="mt-0.5 flex-shrink-0 text-amber-600" />
-                                            <div>
-                                                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Scheduled Date</p>
-                                                <p className="mt-0.5 font-semibold text-slate-900">
-                                                    {scheduledDate ? new Date(scheduledDate).toLocaleString() : 'Not set (Pending)'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
-                                            <Users size={16} className="mt-0.5 flex-shrink-0 text-violet-600" />
-                                            <div>
-                                                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Interviewers ({assignedTo.length})</p>
-                                                {assignedTo.length === 0 ? (
-                                                    <p className="mt-0.5 text-slate-500 italic">None assigned</p>
-                                                ) : (
-                                                    <div className="mt-1 flex flex-wrap gap-1.5">
-                                                        {assignedTo.map((userId) => {
-                                                            const user = interviewers.find((u) => u._id === userId);
-                                                            return (
-                                                                <span key={userId} className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">
-                                                                    {user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : userId}
-                                                                </span>
-                                                            );
-                                                        })}
+                                    <h4 className="text-sm font-bold text-slate-800">
+                                        Configured Interview Rounds ({rounds.length})
+                                    </h4>
+                                    <div className="space-y-3 max-h-[260px] overflow-y-auto">
+                                        {rounds.map((r, idx) => (
+                                            <div key={r.id || idx} className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
+                                                        Round {idx + 1}: {r.levelName || 'Untitled Round'}
+                                                    </span>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.sendEmail !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                                                        {r.sendEmail !== false ? `Email Enabled (${(r.emailRecipientIds || selectedIds).length} candidate(s))` : 'Email Disabled'}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                                                    <div>
+                                                        <span className="font-semibold text-slate-500">Date & Time:</span>{' '}
+                                                        {r.scheduledDate ? new Date(r.scheduledDate).toLocaleString() : 'Not set (Pending)'}
                                                     </div>
-                                                )}
+                                                    <div>
+                                                        <span className="font-semibold text-slate-500">Phase:</span> {r.phase || 1}
+                                                    </div>
+                                                    <div className="col-span-2">
+                                                        <span className="font-semibold text-slate-500">Interviewers:</span>{' '}
+                                                        {Array.isArray(r.assignedTo) && r.assignedTo.length > 0
+                                                            ? r.assignedTo.map((id) => {
+                                                                const u = interviewers.find((i) => i._id === id);
+                                                                return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : id;
+                                                            }).join(', ')
+                                                            : 'None assigned'}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
+                                        ))}
                                     </div>
                                 </div>
 
@@ -911,33 +1103,35 @@ const MassInterviewScheduleModal = ({
                             </div>
 
                             {/* Final Live Email Preview Card */}
-                            <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                        <Eye size={16} className="text-blue-600" />
-                                        Final Email Preview
-                                    </h4>
-                                    {selectedCandidates.length > 1 && (
-                                        <select
-                                            value={previewCandidateId}
-                                            onChange={(e) => setPreviewCandidateId(e.target.value)}
-                                            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold outline-none"
-                                        >
-                                            {selectedCandidates.map((c) => (
-                                                <option key={c._id} value={c._id}>
-                                                    {c.candidateName}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                                <div className="rounded-xl border border-slate-300 overflow-hidden text-xs">
-                                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-bold text-slate-800">
-                                        Subject: {previewSubject}
+                            {activeRound?.sendEmail !== false && (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                            <Eye size={16} className="text-blue-600" />
+                                            Final Email Preview
+                                        </h4>
+                                        {selectedCandidates.length > 1 && (
+                                            <select
+                                                value={previewCandidateId}
+                                                onChange={(e) => setPreviewCandidateId(e.target.value)}
+                                                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold outline-none"
+                                            >
+                                                {selectedCandidates.map((c) => (
+                                                    <option key={c._id} value={c._id}>
+                                                        {c.candidateName}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
                                     </div>
-                                    <div className="p-4 bg-white prose prose-sm max-w-none text-slate-800" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                                    <div className="rounded-xl border border-slate-300 overflow-hidden text-xs">
+                                        <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-bold text-slate-800">
+                                            Subject: {previewSubject}
+                                        </div>
+                                        <div className="p-4 bg-white prose prose-sm max-w-none text-slate-800" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
                 </div>
