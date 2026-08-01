@@ -1199,11 +1199,31 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             onChange={(e) => setNewRound({ ...newRound, assignAfterStage: e.target.value })}
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
                                         >
-                                            <option value="Total Sourced">Total Sourced</option>
-                                            <option value="Interested">Interested</option>
-                                            <option value="Shortlisted">Shortlisted</option>
-                                            <option value="Profile Shared">Profile Shared</option>
-                                            <option value="Offer Released">Offer Released</option>
+                                            <optgroup label="Hiring Stages">
+                                                <option value="Total Sourced">Total Sourced</option>
+                                                <option value="Interested">Interested</option>
+                                                <option value="Shortlisted">Shortlisted</option>
+                                                <option value="Profile Shared">Profile Shared</option>
+                                                <option value="Offer Released">Offer Released</option>
+                                            </optgroup>
+                                            {(() => {
+                                                const existingRoundNames = [
+                                                    ...new Set(
+                                                        (candidate?.interviewRounds || [])
+                                                            .filter((r) => Number(r.phase || 1) === currentPhase)
+                                                            .map((r) => String(r.levelName || '').trim())
+                                                            .filter(Boolean)
+                                                    )
+                                                ];
+                                                if (existingRoundNames.length === 0) return null;
+                                                return (
+                                                    <optgroup label="After a Round (chain)">
+                                                        {existingRoundNames.map((name) => (
+                                                            <option key={name} value={name}>{name}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                );
+                                            })()}
                                         </select>
                                     </div>
                                     <div>

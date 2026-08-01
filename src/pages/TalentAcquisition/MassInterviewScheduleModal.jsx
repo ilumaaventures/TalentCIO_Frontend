@@ -622,11 +622,34 @@ const MassInterviewScheduleModal = ({
                                                 onChange={(e) => updateActiveRound('assignAfterStage', e.target.value)}
                                                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                                             >
-                                                <option value="Total Sourced">Total Sourced</option>
-                                                <option value="Interested">Interested</option>
-                                                <option value="Shortlisted">Shortlisted</option>
-                                                <option value="Profile Shared">Profile Shared</option>
-                                                <option value="Offer Released">Offer Released</option>
+                                                <optgroup label="Hiring Stages">
+                                                    <option value="Total Sourced">Total Sourced</option>
+                                                    <option value="Interested">Interested</option>
+                                                    <option value="Shortlisted">Shortlisted</option>
+                                                    <option value="Profile Shared">Profile Shared</option>
+                                                    <option value="Offer Released">Offer Released</option>
+                                                </optgroup>
+                                                {(() => {
+                                                    // Collect all unique phase-1 round names from the selected candidates.
+                                                    const selectedCandidates = candidates.filter((c) => selectedIds.includes(c._id));
+                                                    const roundNames = [
+                                                        ...new Set(
+                                                            selectedCandidates
+                                                                .flatMap((c) => c.interviewRounds || [])
+                                                                .filter((r) => Number(r.phase || 1) === (activePhase || 1))
+                                                                .map((r) => String(r.levelName || '').trim())
+                                                                .filter(Boolean)
+                                                        )
+                                                    ];
+                                                    if (roundNames.length === 0) return null;
+                                                    return (
+                                                        <optgroup label="After a Round (chain)">
+                                                            {roundNames.map((name) => (
+                                                                <option key={name} value={name}>{name}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })()}
                                             </select>
                                             <p className="mt-1.5 text-xs text-slate-500">Select which hiring stage this interview round should be assigned after.</p>
                                         </div>
