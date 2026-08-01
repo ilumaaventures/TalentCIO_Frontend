@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import api from '../../api/axios';
 import Skeleton from '../../components/Skeleton';
+import PublicApplicationsView from './PublicApplicationsView';
 import {
     createNoCacheRequestConfig,
     readTAClientsCache,
@@ -406,6 +407,24 @@ const TalentAcquisitionDashboard = () => {
         user?.permissions?.includes('*')
     ), [user]);
 
+const ALLOWED_APPLICATIONS_COMPANY_IDS = [
+    '69b50b31aea9daa0857991ba',
+    '69ba634ff8783714f16caafa'
+];
+
+const canShowApplicationsTab = (user) => {
+    const companyId = user?.company?._id || user?.companyId || user?.company;
+    const companyIdStr = typeof companyId === 'object' ? String(companyId?._id || companyId) : String(companyId || '');
+
+    const isAllowedCompany = ALLOWED_APPLICATIONS_COMPANY_IDS.includes(companyIdStr);
+    const isAllowedHost = typeof window !== 'undefined' && Boolean(
+        window.location.hostname.toLowerCase().includes('ilumaa') ||
+        window.location.href.toLowerCase().includes('ilumaa.talentcio.in')
+    );
+
+    return isAllowedCompany || isAllowedHost;
+};
+
     const isInterviewerOnlyUser = useMemo(() => (
         Boolean(user?.permissions?.includes('ta.interview.evaluate'))
         && !user?.roles?.some((role) => ['Admin', 'Super Admin', 'System Admin'].includes(role))
@@ -425,9 +444,14 @@ const TalentAcquisitionDashboard = () => {
         const tabs = [];
         if (canViewAnalytics) tabs.push('overview');
         tabs.push('requisitions', 'clients', 'interviews');
-        if (canViewCandidates) tabs.push('candidates');
+        if (canViewCandidates) {
+            tabs.push('candidates');
+            if (canShowApplicationsTab(user)) {
+                tabs.push('applications');
+            }
+        }
         return tabs;
-    }, [canViewAnalytics, canViewCandidates, isInterviewerOnlyUser]);
+    }, [canViewAnalytics, canViewCandidates, isInterviewerOnlyUser, user]);
 
 
     const activeTab = useMemo(() => {
@@ -1876,6 +1900,12 @@ const TalentAcquisitionDashboard = () => {
         );
     };
 
+    const renderApplications = () => (
+        <div className="space-y-6">
+            <PublicApplicationsView />
+        </div>
+    );
+
     return (
         <div className="font-ta-body min-h-screen bg-[#f4f5f7] p-4 sm:p-5 lg:p-6">
             {loading ? (
@@ -1889,8 +1919,8 @@ const TalentAcquisitionDashboard = () => {
                             </h1>
                             <p className="mt-1.5 text-[11px] text-slate-500">
                                 {canViewAnalytics
-                                    ? 'Requisitions, clients, interviews, and hiring insights in one workspace.'
-                                    : 'Requisitions, clients, and interviews in one workspace.'}
+                                    ? 'Requisitions, clients, interviews, candidates, and applications in one workspace.'
+                                    : 'Requisitions, clients, interviews, candidates, and applications in one workspace.'}
                             </p>
                         </div>
 
@@ -1915,6 +1945,7 @@ const TalentAcquisitionDashboard = () => {
                     {activeTab === 'clients' && renderClients()}
                     {activeTab === 'interviews' && renderInterviews()}
                     {activeTab === 'candidates' && renderCandidates()}
+                    {activeTab === 'applications' && renderApplications()}
 
                     <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
