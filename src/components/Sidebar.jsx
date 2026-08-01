@@ -37,8 +37,27 @@ const TA_DASHBOARD_VIEWS = [
   { id: 'requisitions', label: 'Requisitions', icon: FolderKanban },
   { id: 'clients', label: 'Clients', icon: Building2 },
   { id: 'interviews', label: 'Interviews', icon: CalendarClock },
-  { id: 'candidates', label: 'Candidates', icon: Users }
+  { id: 'candidates', label: 'Candidates', icon: Users },
+  { id: 'applications', label: 'Applications', icon: FileText }
 ];
+
+const ALLOWED_APPLICATIONS_COMPANY_IDS = [
+  '69b50b31aea9daa0857991ba',
+  '69ba634ff8783714f16caafa'
+];
+
+const canShowApplicationsTab = (user) => {
+  const companyId = user?.company?._id || user?.companyId || user?.company;
+  const companyIdStr = typeof companyId === 'object' ? String(companyId?._id || companyId) : String(companyId || '');
+
+  const isAllowedCompany = ALLOWED_APPLICATIONS_COMPANY_IDS.includes(companyIdStr);
+  const isAllowedHost = typeof window !== 'undefined' && Boolean(
+    window.location.hostname.toLowerCase().includes('ilumaa') ||
+    window.location.href.toLowerCase().includes('ilumaa.talentcio.in')
+  );
+
+  return isAllowedCompany || isAllowedHost;
+};
 
 // Returns true for users who are ONLY interviewers — they have ta.interview.evaluate
 // but none of the broader TA permissions that would give them full access.
@@ -349,6 +368,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                     return false;
                   }
                   if (!canViewCandidates && item.id === 'candidates') {
+                    return false;
+                  }
+
+                  if (item.id === 'applications' && (!canViewCandidates || !canShowApplicationsTab(user))) {
                     return false;
                   }
 

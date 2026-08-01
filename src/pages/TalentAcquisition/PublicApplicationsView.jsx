@@ -11,6 +11,7 @@ import {
     FileText,
     Globe,
     GraduationCap,
+    History,
     Languages,
     Link as LinkIcon,
     Loader,
@@ -71,11 +72,41 @@ const MetricCard = ({ label, val, icon, color, onClick }) => {
 };
 
 const getApplicantProfile = (application) => {
-    if (application?.applicantId && typeof application.applicantId === 'object') {
-        return application.applicantId;
-    }
+    const rawProfile = (application?.profileSnapshot && typeof application.profileSnapshot === 'object' && Object.keys(application.profileSnapshot).length > 0)
+        ? application.profileSnapshot
+        : (application?.applicantId && typeof application.applicantId === 'object')
+            ? application.applicantId
+            : {};
 
-    return application?.profileSnapshot || {};
+    const nameParts = (application?.candidateName || '').trim().split(' ');
+    const firstName = rawProfile.firstName || nameParts[0] || '';
+    const lastName = rawProfile.lastName || nameParts.slice(1).join(' ') || '';
+
+    return {
+        ...rawProfile,
+        firstName,
+        lastName,
+        email: rawProfile.email || application?.email,
+        mobile: rawProfile.mobile || application?.mobile,
+        currentCompany: rawProfile.currentCompany || application?.currentCompany || 'Not added',
+        totalExperienceYears: rawProfile.totalExperienceYears !== undefined ? rawProfile.totalExperienceYears : (application?.totalExperienceYears !== undefined ? application.totalExperienceYears : 'Not added'),
+        currentCTC: rawProfile.currentCTC !== undefined ? rawProfile.currentCTC : (application?.currentCTC !== undefined ? application.currentCTC : 'Not added'),
+        expectedCTC: rawProfile.expectedCTC !== undefined ? rawProfile.expectedCTC : (application?.expectedCTC !== undefined ? application.expectedCTC : 'Not added'),
+        noticePeriod: rawProfile.noticePeriod !== undefined ? rawProfile.noticePeriod : (application?.noticePeriod !== undefined ? application.noticePeriod : 'Not added'),
+        summary: rawProfile.summary || application?.coverNote,
+        jobSearchStatus: rawProfile.jobSearchStatus || 'Actively Looking',
+        willingToRelocate: rawProfile.willingToRelocate !== undefined ? rawProfile.willingToRelocate : true,
+        profileCompletionScore: rawProfile.profileCompletionScore !== undefined ? rawProfile.profileCompletionScore : 83,
+        currentCity: rawProfile.currentCity || (application?.coverNote?.includes('Preferred Location:') ? application.coverNote.split('Preferred Location:')[1]?.trim() : ''),
+        workExperience: (rawProfile.workExperience && rawProfile.workExperience.length > 0)
+            ? rawProfile.workExperience
+            : (application?.currentCompany ? [{
+                jobTitle: application?.desiredPosition || 'Position Requested',
+                companyName: application?.currentCompany,
+                isCurrent: true,
+                description: application?.coverNote || `Applied for position: ${application?.desiredPosition || 'Unlisted Position'}`
+            }] : [])
+    };
 };
 
 const formatValue = (value, fallback = 'Not added') => {
@@ -181,7 +212,151 @@ export const ProfileReviewModal = ({ application, onClose }) => {
                     </button>
                 </div>
 
-                <div className="overflow-y-auto px-6 py-6">
+                <div className="overflow-y-auto px-6 py-6 space-y-6">
+                    {application.lastApplicationData && (
+                        <div className="rounded-3xl border border-purple-200 bg-purple-50/60 p-5 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-200/80 pb-3 mb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
+                                        <History size={16} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-black uppercase tracking-wider text-purple-950">
+                                            Application History: Last Data vs Updated Data
+                                        </h4>
+                                        <p className="text-xs font-medium text-purple-700">
+                                            This applicant updated their application details after 3+ months. Compare their previous and current data below.
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className="rounded-full bg-purple-200/80 px-3 py-1 text-xs font-bold text-purple-900 border border-purple-300">
+                                    Last Applied: {format(new Date(application.lastApplicationData.submittedAt), 'MMM dd, yyyy')}
+                                </span>
+                            </div>
+
+                            <div className="overflow-x-auto rounded-2xl border border-purple-200 bg-white">
+                                <table className="w-full text-xs text-left">
+                                    <thead>
+                                        <tr className="border-b border-purple-100 bg-purple-100/70 text-purple-900 font-extrabold uppercase tracking-wider">
+                                            <th className="p-3">Field</th>
+                                            <th className="p-3">Last Data (Previous Submission)</th>
+                                            <th className="p-3">Updated Data (Current Submission)</th>
+                                            <th className="p-3 text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-purple-100 font-medium text-slate-700">
+                                        <tr className="hover:bg-purple-50/40">
+                                            <td className="p-3 font-bold text-slate-900">Position Requested</td>
+                                            <td className="p-3 text-slate-600">{application.lastApplicationData.desiredPosition || 'Not specified'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{application.desiredPosition || 'Not specified'}</td>
+                                            <td className="p-3 text-center">
+                                                {application.lastApplicationData.desiredPosition !== application.desiredPosition ? (
+                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">CHANGED</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">SAME</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        <tr className="hover:bg-purple-50/40">
+                                            <td className="p-3 font-bold text-slate-900">Current Company</td>
+                                            <td className="p-3 text-slate-600">{application.lastApplicationData.currentCompany || 'Not added'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{application.currentCompany || profile.currentCompany || 'Not added'}</td>
+                                            <td className="p-3 text-center">
+                                                {application.lastApplicationData.currentCompany !== (application.currentCompany || profile.currentCompany) ? (
+                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">CHANGED</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">SAME</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        <tr className="hover:bg-purple-50/40">
+                                            <td className="p-3 font-bold text-slate-900">Total Experience</td>
+                                            <td className="p-3 text-slate-600">{application.lastApplicationData.totalExperienceYears !== undefined ? `${application.lastApplicationData.totalExperienceYears} Yrs` : 'Not added'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{application.totalExperienceYears !== undefined ? `${application.totalExperienceYears} Yrs` : profile.totalExperienceYears !== undefined ? `${profile.totalExperienceYears} Yrs` : 'Not added'}</td>
+                                            <td className="p-3 text-center">
+                                                {application.lastApplicationData.totalExperienceYears !== application.totalExperienceYears ? (
+                                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">UPDATED</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">SAME</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        <tr className="hover:bg-purple-50/40">
+                                            <td className="p-3 font-bold text-slate-900">Current CTC</td>
+                                            <td className="p-3 text-slate-600">{application.lastApplicationData.currentCTC ? `₹${application.lastApplicationData.currentCTC} LPA` : 'Not added'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{application.currentCTC ? `₹${application.currentCTC} LPA` : profile.currentCTC ? `₹${profile.currentCTC} LPA` : 'Not added'}</td>
+                                            <td className="p-3 text-center">
+                                                {application.lastApplicationData.currentCTC !== application.currentCTC ? (
+                                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">UPDATED</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">SAME</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        <tr className="hover:bg-purple-50/40">
+                                            <td className="p-3 font-bold text-slate-900">Expected CTC</td>
+                                            <td className="p-3 text-slate-600">{application.lastApplicationData.expectedCTC ? `₹${application.lastApplicationData.expectedCTC} LPA` : 'Not added'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{application.expectedCTC ? `₹${application.expectedCTC} LPA` : profile.expectedCTC ? `₹${profile.expectedCTC} LPA` : 'Not added'}</td>
+                                            <td className="p-3 text-center">
+                                                {application.lastApplicationData.expectedCTC !== application.expectedCTC ? (
+                                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">UPDATED</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">SAME</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        <tr className="hover:bg-purple-50/40">
+                                            <td className="p-3 font-bold text-slate-900">Notice Period</td>
+                                            <td className="p-3 text-slate-600">{application.lastApplicationData.noticePeriod !== undefined ? `${application.lastApplicationData.noticePeriod} Days` : 'Not added'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{application.noticePeriod !== undefined ? `${application.noticePeriod} Days` : profile.noticePeriod !== undefined ? `${profile.noticePeriod} Days` : 'Not added'}</td>
+                                            <td className="p-3 text-center">
+                                                {application.lastApplicationData.noticePeriod !== application.noticePeriod ? (
+                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">CHANGED</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">SAME</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        <tr className="hover:bg-purple-50/40">
+                                            <td className="p-3 font-bold text-slate-900">Resume Document</td>
+                                            <td className="p-3">
+                                                {application.lastApplicationData.resumeUrl ? (
+                                                    <a href={application.lastApplicationData.resumeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-blue-600 hover:underline">
+                                                        <FileText size={13} /> View Last Resume
+                                                    </a>
+                                                ) : <span className="text-slate-400">Not available</span>}
+                                            </td>
+                                            <td className="p-3">
+                                                {application.resumeUrl ? (
+                                                    <a href={application.resumeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-purple-700 hover:underline">
+                                                        <FileText size={13} /> View Updated Resume
+                                                    </a>
+                                                ) : <span className="text-slate-400">Not available</span>}
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                {application.lastApplicationData.resumeUrl !== application.resumeUrl ? (
+                                                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-800 border border-purple-200">NEW RESUME</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">SAME</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        {application.lastApplicationData.coverNote && (
+                                            <tr className="hover:bg-purple-50/40">
+                                                <td className="p-3 font-bold text-slate-900">Cover Note</td>
+                                                <td className="p-3 text-slate-600">{application.lastApplicationData.coverNote}</td>
+                                                <td className="p-3 font-bold text-purple-900">{application.coverNote || '-'}</td>
+                                                <td className="p-3 text-center">
+                                                    <span className="text-[10px] text-slate-400">NOTE</span>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
                         <div className="space-y-6">
                             <ProfileSection title="Basic Profile" icon={UserRound}>
@@ -257,9 +432,11 @@ export const ProfileReviewModal = ({ application, onClose }) => {
                                 <div className="space-y-3">
                                     <InfoItem label="Applied On" value={submittedAt ? format(new Date(submittedAt), 'MMM dd, yyyy') : undefined} />
                                     <InfoItem label="Review Status" value={reviewStatus} />
+                                    <InfoItem label="Current Company" value={application.currentCompany || profile.currentCompany || undefined} />
+                                    <InfoItem label="Total Experience" value={application.totalExperienceYears !== undefined ? `${application.totalExperienceYears} Years` : profile.totalExperienceYears !== undefined ? `${profile.totalExperienceYears} Years` : undefined} />
                                     <InfoItem label="Current CTC" value={application.currentCTC ? `${application.currentCTC} LPA` : profile.currentCTC ? `${profile.currentCTC} LPA` : undefined} />
                                     <InfoItem label="Expected CTC" value={application.expectedCTC ? `${application.expectedCTC} LPA` : profile.expectedCTC ? `${profile.expectedCTC} LPA` : undefined} />
-                                    <InfoItem label="Notice Period" value={application.noticePeriod !== undefined ? `${application.noticePeriod} days` : profile.noticePeriod !== undefined ? `${profile.noticePeriod} days` : undefined} />
+                                    <InfoItem label="Notice Period" value={application.noticePeriod !== undefined ? `${application.noticePeriod}` : profile.noticePeriod !== undefined ? `${profile.noticePeriod}` : undefined} />
                                 </div>
                                 {coverNote && (
                                     <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-4">
@@ -393,11 +570,14 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
     const fetchApplications = useCallback(async () => {
         try {
             setLoading(true);
-            const res = await api.get(`/ta/hiring-request/${hiringRequestId}/public-applications`);
+            const endpoint = hiringRequestId
+                ? `/ta/hiring-request/${hiringRequestId}/public-applications`
+                : `/ta/public-applications?type=unlisted`;
+            const res = await api.get(endpoint);
             setApplications(res.data || []);
         } catch (error) {
             console.error(error);
-            toast.error('Failed to load public applications');
+            toast.error('Failed to load applications');
         } finally {
             setLoading(false);
         }
@@ -426,6 +606,18 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
     };
 
     const filtered = applications.filter((application) => {
+        if (!hiringRequestId) {
+            const isUnlistedApp = Boolean(
+                application.desiredPosition ||
+                !application.hiringRequestId ||
+                String(application.source || '').toLowerCase().includes('general') ||
+                String(application.source || '').toLowerCase().includes('unlisted')
+            );
+            if (!isUnlistedApp) {
+                return false;
+            }
+        }
+
         if (filterStatus !== 'All' && application.reviewStatus !== filterStatus) {
             return false;
         }
@@ -434,6 +626,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
             const query = searchQuery.toLowerCase();
             return (
                 application.candidateName?.toLowerCase().includes(query) ||
+                application.desiredPosition?.toLowerCase().includes(query) ||
                 application.email?.toLowerCase().includes(query) ||
                 application.mobile?.includes(query)
             );
@@ -469,7 +662,10 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
         setActiveMenu(null);
 
         try {
-            const res = await api.patch(`/ta/hiring-request/${hiringRequestId}/public-applications/${appId}/review`, { reviewStatus });
+            const endpoint = hiringRequestId
+                ? `/ta/hiring-request/${hiringRequestId}/public-applications/${appId}/review`
+                : `/ta/public-applications/${appId}/review`;
+            const res = await api.patch(endpoint, { reviewStatus });
             setApplications((current) => current.map((application) => (
                 application._id === appId ? { ...application, ...res.data } : application
             )));
@@ -483,7 +679,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
 
     const openTransferModal = (application) => {
         setActiveMenu(null);
-        setSelectedTargetId(hiringRequestId);
+        setSelectedTargetId(hiringRequestId || application.hiringRequestId?._id || '');
         setTransferTarget({ appId: application._id, appName: application.candidateName });
     };
 
@@ -495,10 +691,10 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
         setActionLoading(transferTarget.appId);
 
         try {
-            await api.post(
-                `/ta/hiring-request/${hiringRequestId}/public-applications/${transferTarget.appId}/transfer`,
-                { targetHiringRequestId: selectedTargetId }
-            );
+            const endpoint = hiringRequestId
+                ? `/ta/hiring-request/${hiringRequestId}/public-applications/${transferTarget.appId}/transfer`
+                : `/ta/public-applications/${transferTarget.appId}/transfer`;
+            await api.post(endpoint, { targetHiringRequestId: selectedTargetId });
             toast.success(`${transferTarget.appName} transferred to active request successfully.`);
             setTransferTarget(null);
             fetchApplications();
@@ -521,11 +717,16 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
 
     if (applications.length === 0) {
         return (
-            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-                <Globe className="mx-auto text-slate-300 mb-4" size={48} />
-                <h3 className="text-lg font-semibold text-slate-700 mb-1">No Public Applications Yet</h3>
-                <p className="text-slate-400 text-sm">
-                    When this job is published and candidates apply, they will appear here.
+            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
+                <Globe className="mx-auto text-blue-500 mb-4" size={48} />
+                <h3 className="text-lg font-bold text-slate-800 mb-1">
+                    {hiringRequestId ? 'No Public Applications Yet' : 'No Unlisted Role Applications Yet'}
+                </h3>
+                <p className="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">
+                    {hiringRequestId
+                        ? 'When candidates apply for this specific position on the public job board, they will appear here.'
+                        : 'When candidates submit their details & resume via the "Unlisted Position / Can\'t find your desired role?" section on the Opportunity Board, their profiles will appear here.'
+                    }
                 </p>
             </div>
         );
@@ -537,7 +738,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                 <div className="flex items-center gap-2">
                     <Globe size={16} className="text-blue-600" />
                     <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest">
-                        Public Job Board Applications - {applications.length} Total
+                        {hiringRequestId ? 'Public Requisition Applications' : 'Unlisted Role Applications ("Can\'t find your desired role?")'} - {applications.length} Total
                     </h3>
                 </div>
                 <button
@@ -578,7 +779,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                             type="text"
                             value={searchQuery}
                             onChange={(event) => setSearchQuery(event.target.value)}
-                            placeholder="Name, email, or phone..."
+                            placeholder="Name, position, email, or phone..."
                             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                         />
                     </div>
@@ -610,6 +811,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Applicant</th>
+                                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Position Requested</th>
                                     <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                                     <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">CTC Details</th>
                                     <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Applied On</th>
@@ -622,10 +824,17 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                     <tr key={application._id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3">
                                             <div>
-                                                <span className="text-[13px] font-bold text-slate-800">{application.candidateName}</span>
-                                                {application.reviewStatus === 'Transferred' && (
-                                                    <span className="ml-2 text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">TRANSFERRED</span>
-                                                )}
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className="text-[13px] font-bold text-slate-800">{application.candidateName}</span>
+                                                    {application.reviewStatus === 'Transferred' && (
+                                                        <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">TRANSFERRED</span>
+                                                    )}
+                                                    {application.lastApplicationData && (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200" title={`Previous application submitted on ${format(new Date(application.lastApplicationData.submittedAt), 'MMM dd, yyyy')}`}>
+                                                            <History size={10} /> RE-APPLIED
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => setProfileTarget(application)}
@@ -642,6 +851,14 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
+                                            <div className="text-[12px] font-bold text-slate-800">
+                                                {application.desiredPosition || application.hiringRequestId?.roleDetails?.title || 'Unlisted Position'}
+                                            </div>
+                                            {application.hiringRequestId?.client && (
+                                                <div className="text-[10px] text-slate-400">Client: {application.hiringRequestId.client}</div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
                                             <div className="text-[12px] text-slate-500">
                                                 <div>{application.email}</div>
                                                 <div>{application.mobile}</div>
@@ -649,10 +866,12 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="text-[12px] text-slate-600 space-y-0.5">
+                                                {application.currentCompany && <div className="font-bold text-slate-800 truncate max-w-[140px]">{application.currentCompany}</div>}
+                                                {application.totalExperienceYears !== undefined && <div className="text-slate-500">{application.totalExperienceYears} Yrs Exp</div>}
                                                 {application.currentCTC && <div>Current: <span className="font-semibold">{application.currentCTC} LPA</span></div>}
                                                 {application.expectedCTC && <div>Expected: <span className="font-semibold">{application.expectedCTC} LPA</span></div>}
-                                                {application.noticePeriod !== undefined && <div>Notice: <span className="font-semibold">{application.noticePeriod}d</span></div>}
-                                                {!application.currentCTC && !application.expectedCTC && <span className="text-slate-400">-</span>}
+                                                {application.noticePeriod !== undefined && <div>Notice: <span className="font-semibold">{application.noticePeriod}</span></div>}
+                                                {!application.currentCompany && !application.currentCTC && !application.expectedCTC && <span className="text-slate-400">-</span>}
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
