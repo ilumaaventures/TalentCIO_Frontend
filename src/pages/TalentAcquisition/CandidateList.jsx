@@ -21,7 +21,7 @@ import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
-const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Total Sourced', 'Interested', 'Interview Scheduled', 'Shortlisted', 'Profile Shared', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled', 'Did not Turn up'];
 const PROFILE_SHORTLISTED_EXPORT_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
 const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
