@@ -23,6 +23,7 @@ import {
   XCircle
 } from 'lucide-react';
 import api from '../../api/axios';
+import socket from '../../api/socket';
 import toast from 'react-hot-toast';
 import Skeleton from '../../components/Skeleton';
 import { format } from 'date-fns';
@@ -168,6 +169,32 @@ const TAEmailHistory = () => {
 
   useEffect(() => {
     fetchEmailHistory();
+  }, [fetchEmailHistory]);
+
+  useEffect(() => {
+    const handleLiveLog = (data) => {
+      if (data?.log) {
+        setLogs((prevLogs) => {
+          if (prevLogs.some((item) => String(item._id) === String(data.log._id))) {
+            return prevLogs;
+          }
+          return [data.log, ...prevLogs];
+        });
+        setPagination((prev) => ({ ...prev, total: (prev.total || 0) + 1 }));
+      }
+    };
+
+    const handleBatchComplete = () => {
+      fetchEmailHistory();
+    };
+
+    socket.on('ta_email_logged', handleLiveLog);
+    socket.on('ta_email_batch_completed', handleBatchComplete);
+
+    return () => {
+      socket.off('ta_email_logged', handleLiveLog);
+      socket.off('ta_email_batch_completed', handleBatchComplete);
+    };
   }, [fetchEmailHistory]);
 
   const handleOpenEmailDetail = async (logId) => {
