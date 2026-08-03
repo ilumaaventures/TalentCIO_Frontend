@@ -1363,7 +1363,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 const displayedRounds = hasPhase2ImportedCard
                                     ? [...phaseRounds, {
                                         _id: 'phase2-imported-interview',
-                                        levelName: 'Phase 2 Interview',
+                                        levelName: 'Round 1',
                                         assignedTo: [],
                                         scheduledDate: null,
                                         feedback: candidate.phase2InterviewerFeedback || '',
@@ -1487,7 +1487,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 setEvaluatingRoundId(null);
                                                                                 const formattedDate = round.scheduledDate ? new Date(round.scheduledDate).toISOString().slice(0, 16) : '';
                                                                                 setEditingRoundForm({
-                                                                                    levelName: round.levelName || 'Phase 2 Interview',
+                                                                                    levelName: round.levelName || 'Round 1',
                                                                                     assignAfterStage: round.assignAfterStage || (currentPhase === 2 ? 'Shortlisted' : 'Interested'),
                                                                                     scheduledDate: formattedDate,
                                                                                     assignedTo: round.assignedTo?.[0]?._id || round.assignedTo?.[0] || round.evaluatedBy?._id || round.evaluatedBy || '',

@@ -3155,7 +3155,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                 const hasLegacyPhase2 = Boolean(String(c?.phase2InterviewerFeedback || '').trim())
                                                     || ['Scheduled', 'Rejected', 'Shortlisted'].includes(c?.phase2InterviewStatus);
                                                 if (hasLegacyPhase2) {
-                                                    const name = 'Phase 2 Interview';
+                                                    const name = 'Round 1';
                                                     map.set(name, (map.get(name) || 0) + 1);
                                                 }
                                             }
