@@ -21,7 +21,119 @@ import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
-const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
+const LEGACY_EXPORT_STATUS_OPTIONS = ['Total Sourced', 'Interested', 'Interview Scheduled', 'Shortlisted', 'Profile Shared', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
+
+// Fixed stage anchors for the Phase 1 recruitment pipeline (in display order).
+const PIPELINE_FIXED_STAGES = ['Total Sourced', 'Interested', 'Shortlisted', 'Profile Shared'];
+const PIPELINE_FIXED_STAGE_SET = new Set(PIPELINE_FIXED_STAGES);
+
+/**
+ * buildDynamicPipeline
+ *
+ * Given a flat list of candidates (each with an `interviewRounds` array),
+ * returns an ordered array of node descriptors that represents the complete
+ * Phase 1 pipeline, interleaving interview rounds immediately after their
+ * configured `assignAfterStage` anchor (which can be a fixed stage name or
+ * another round's `levelName`).
+ *
+ * Algorithm:
+ *   1. Collect all distinct round levelNames (in first-seen order across candidates).
+ *   2. For each round, read its `assignAfterStage`.  If the value is not a known
+ *      fixed stage, treat it as a reference to another round (chaining).
+ *   3. Topologically expand: for each fixed stage in order, append all rounds
+ *      whose resolved anchor is that stage, then recursively append rounds that
+ *      chain off those rounds.
+ *   4. Any cycles or unresolved parents fall back to the 'Shortlisted' anchor.
+ *
+ * @param {Object[]} candidates - Array of candidate objects (interviewRounds included).
+ * @returns {string[]} Ordered array of node names, e.g.
+ *   ['Total Sourced', 'Interested', 'L1', 'Technical Round', 'Shortlisted', 'HR Round', 'Profile Shared']
+ */
+const PHASE_2_FIXED_STAGES = ['Profile Shared', 'Shortlisted', 'Selected', 'Rejected'];
+const PHASE_2_FIXED_STAGE_SET = new Set(PHASE_2_FIXED_STAGES);
+
+const buildDynamicPipeline = (roundsOrCandidates, phase = 1, fixedStages = PIPELINE_FIXED_STAGES) => {
+    const fixedSet = new Set(fixedStages);
+    const defaultAnchor = phase === 2 ? 'Shortlisted' : 'Interested';
+    const roundAnchorMap = new Map();
+
+    for (const item of (roundsOrCandidates || [])) {
+        if (item.interviewRounds && Array.isArray(item.interviewRounds)) {
+            for (const round of item.interviewRounds) {
+                if (Number(round.phase || 1) !== Number(phase)) continue;
+                const name = String(round.levelName || '').trim();
+                if (!name || roundAnchorMap.has(name)) continue;
+                let anchor = String(round.assignAfterStage || defaultAnchor).trim() || defaultAnchor;
+                if (anchor === 'Interview Scheduled') anchor = defaultAnchor;
+                roundAnchorMap.set(name, anchor);
+            }
+        } else if (item?.levelName) {
+            const name = String(item.levelName || '').trim();
+            if (!name || roundAnchorMap.has(name)) continue;
+            let anchor = String(item.assignAfterStage || defaultAnchor).trim() || defaultAnchor;
+            if (anchor === 'Interview Scheduled') anchor = defaultAnchor;
+            roundAnchorMap.set(name, anchor);
+        }
+    }
+
+    if (roundAnchorMap.size === 0) {
+        return [...fixedStages];
+    }
+
+    const insertAfter = new Map();
+    for (const stage of fixedStages) {
+        insertAfter.set(stage, []);
+    }
+
+    const allRoundNames = [...roundAnchorMap.keys()];
+    const children = new Map();
+    for (const name of allRoundNames) {
+        children.set(name, []);
+    }
+    for (const name of allRoundNames) {
+        let parent = roundAnchorMap.get(name);
+        if (parent === 'Interview Scheduled') parent = defaultAnchor;
+        if (parent && !fixedSet.has(parent) && roundAnchorMap.has(parent)) {
+            children.get(parent).push(name);
+        }
+    }
+
+    const visited = new Set();
+    const appendRound = (name, bucket) => {
+        if (visited.has(name)) return;
+        visited.add(name);
+        bucket.push(name);
+        for (const child of (children.get(name) || [])) {
+            appendRound(child, bucket);
+        }
+    };
+
+    for (const name of allRoundNames) {
+        let anchor = roundAnchorMap.get(name);
+        if (anchor === 'Interview Scheduled') anchor = defaultAnchor;
+        if (fixedSet.has(anchor)) {
+            const effectiveAnchor = anchor || defaultAnchor;
+            const bucket = insertAfter.get(effectiveAnchor);
+            if (bucket) appendRound(name, bucket);
+        }
+    }
+
+    for (const name of allRoundNames) {
+        if (!visited.has(name)) {
+            const fallbackBucket = insertAfter.get('Shortlisted') || insertAfter.get(fixedStages[0]);
+            if (fallbackBucket) fallbackBucket.push(name);
+        }
+    }
+
+    const result = [];
+    for (const stage of fixedStages) {
+        result.push(stage);
+        for (const roundName of (insertAfter.get(stage) || [])) {
+            result.push(roundName);
+        }
+    }
+    return result;
+};
 const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled', 'Did not Turn up'];
 const PROFILE_SHORTLISTED_EXPORT_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
 const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
@@ -469,6 +581,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [dateTo, setDateTo] = useState('');
     const [filterTransferred, setFilterTransferred] = useState('All');
     const [filterProfileShared, setFilterProfileShared] = useState(false);
+    // filterInterviewRound: when set to a round levelName, the table shows only
+    // candidates who have a phase-1 round with that levelName.
+    const [filterInterviewRound, setFilterInterviewRound] = useState('');
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
     const [users, setUsers] = useState([]);
     const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 200);
@@ -669,6 +784,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             filterUploadType !== 'All' ||
             filterTransferred !== 'All' ||
             filterProfileShared === true ||
+            filterInterviewRound !== '' ||
             candidateNameSearch.trim() !== ''
         );
     }, [
@@ -684,6 +800,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         filterUploadType,
         filterTransferred,
         filterProfileShared,
+        filterInterviewRound,
         candidateNameSearch
     ]);
 
@@ -728,6 +845,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             params.filterUploadType = filterUploadType;
             params.filterTransferred = filterTransferred;
             params.filterProfileShared = filterProfileShared;
+            params.filterInterviewRound = filterInterviewRound;
         }
 
         return params;
@@ -739,6 +857,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         debouncedCandidateNameSearch,
         filterDecision,
         filterExperience,
+        filterInterviewRound,
         filterInterviewStatus,
         filterPreference,
         filterProfileShared,
@@ -864,6 +983,31 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         });
     }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch, usesBackendPagination]);
 
+    const availableRoundOptions = useMemo(() => {
+        const roundSet = new Set();
+        for (const c of (candidates || [])) {
+            for (const r of (c?.interviewRounds || [])) {
+                if (Number(r?.phase || 1) === activePhase) {
+                    const name = String(r?.levelName || '').trim();
+                    if (name) roundSet.add(name);
+                }
+            }
+        }
+
+        const backendRoundsSummary = activePhase === 2
+            ? cardMetrics?.phase2Metrics?.interviewRoundsSummary
+            : cardMetrics?.phase1Metrics?.interviewRoundsSummary;
+
+        if (Array.isArray(backendRoundsSummary)) {
+            for (const r of backendRoundsSummary) {
+                const name = String(r?.levelName || '').trim();
+                if (name) roundSet.add(name);
+            }
+        }
+
+        return Array.from(roundSet);
+    }, [activePhase, candidates, cardMetrics]);
+
     // 2. Base for Dynamic Cards: Structural + (Rating, Exp, Preference)
     const basePhase1Candidates = useMemo(() => {
         if (usesBackendPagination) {
@@ -890,7 +1034,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         });
     }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase1Candidates, usesBackendPagination]);
 
-    // 3. Final Filtered list for the table: Base + (Status, Decision, InterviewStatus)
+    // 3. Final Filtered list for the table: Base + (Status, Decision, InterviewStatus, InterviewRound)
     const filteredCandidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 1 ? candidates : [];
@@ -906,9 +1050,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 const rounds = getRoundsForPhase(candidate, 1);
                 matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
             }
-            return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared;
+
+            // Filter by specific interview round levelName (set when a pipeline card is clicked).
+            let matchInterviewRound = true;
+            if (filterInterviewRound) {
+                const targetRound = String(filterInterviewRound).trim().toLowerCase();
+                const rounds = getRoundsForPhase(candidate, 1);
+                matchInterviewRound = (rounds || []).some(
+                    (r) => String(r.levelName || '').trim().toLowerCase() === targetRound
+                );
+            }
+
+            return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared && matchInterviewRound;
         });
-    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
+    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterInterviewRound, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
 
     // Compute Metrics for Summary Boxes (Phase 1 — computed from structuralPhase1Candidates for stability)
     const metrics = useMemo(() => {
@@ -1192,9 +1347,21 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         );
     };
 
-    const activeList = usesBackendPagination
-        ? candidates
-        : (activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered);
+    const activeList = useMemo(() => {
+        const rawList = usesBackendPagination
+            ? candidates
+            : (activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered);
+
+        if (!filterInterviewRound) return rawList;
+
+        const targetRound = String(filterInterviewRound).trim().toLowerCase();
+        return rawList.filter((candidate) => {
+            const rounds = getRoundsForPhase(candidate, activePhase || 1);
+            return (rounds || []).some(
+                (r) => String(r.levelName || '').trim().toLowerCase() === targetRound
+            );
+        });
+    }, [activePhase, candidates, filterInterviewRound, filteredCandidates, phase2Filtered, phase3Filtered, usesBackendPagination]);
 
     const sortedActiveList = useMemo(() => {
         if (!sortColumn) return activeList;
@@ -1320,6 +1487,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         setFilterInterviewStatus('All');
         setFilterPreference('All');
         setFilterRating('All');
+        setFilterInterviewRound('');
         setSearchParams((prev) => {
             const next = new URLSearchParams(prev);
             next.set('phase', phase);
@@ -2179,6 +2347,40 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 Phase 3
                             </button>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (filterInterviewStatus === 'Scheduled' && !filterInterviewRound) {
+                                    setFilterStatus('All');
+                                    setFilterDecision('All');
+                                    setFilterInterviewStatus('All');
+                                    setFilterTransferred('All');
+                                    setFilterProfileShared(false);
+                                    setFilterInterviewRound('');
+                                } else {
+                                    setFilterStatus('All');
+                                    setFilterDecision('All');
+                                    setFilterTransferred('All');
+                                    setFilterProfileShared(false);
+                                    setFilterInterviewRound('');
+                                    setFilterInterviewStatus('Scheduled');
+                                }
+                            }}
+                            className={`flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-[0.98] ${filterInterviewStatus === 'Scheduled' && !filterInterviewRound
+                                ? 'bg-amber-600 border-amber-700 text-white ring-2 ring-amber-200'
+                                : 'bg-amber-50/80 border-amber-200/80 text-amber-800 hover:bg-amber-100/80'
+                                }`}
+                            title="Click to filter candidates with scheduled interviews"
+                        >
+                            <Calendar size={14} className={filterInterviewStatus === 'Scheduled' && !filterInterviewRound ? 'text-white' : 'text-amber-600'} />
+                            <span>Total Interview Scheduled:</span>
+                            <span className={`font-extrabold px-2 py-0.5 rounded-md text-xs transition-colors ${filterInterviewStatus === 'Scheduled' && !filterInterviewRound
+                                ? 'bg-white/20 text-white'
+                                : 'bg-amber-200/60 text-amber-900'
+                                }`}>
+                                {activePhase === 1 ? (metrics?.interviewScheduled || 0) : activePhase === 2 ? (phase2Metrics?.scheduled || 0) : 0}
+                            </span>
+                        </button>
                     </div>
                     <div className="relative flex items-center gap-2">
                         <div className="relative min-w-34">
@@ -2545,53 +2747,132 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     {/* Summary Boxes - Only show when no candidate is selected */}
                     {!selectedCandidateId &&
                         (activePhase === 1 ? (() => {
-                            const funnelCards = [
-                                {
-                                    id: 'total',
-                                    label: 'Total Sourced',
-                                    value: metrics.total,
-                                    icon: Users,
-                                    color: 'purple',
-                                    isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All' && !filterProfileShared,
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(false); }
-                                },
-                                {
-                                    id: 'interested',
-                                    label: 'Interested',
-                                    value: metrics.interested,
-                                    icon: CheckCircle,
-                                    color: 'green',
-                                    isActive: filterStatus === 'Interested' && !filterProfileShared,
-                                    onClick: () => { setFilterStatus('Interested'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(false); }
-                                },
-                                {
-                                    id: 'interviewScheduled',
-                                    label: 'Interview Scheduled',
-                                    value: metrics.interviewScheduled,
-                                    icon: UserCheck,
-                                    color: 'amber',
-                                    isActive: filterInterviewStatus === 'Scheduled' && !filterProfileShared,
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); setFilterTransferred('All'); setFilterProfileShared(false); }
-                                },
-                                {
-                                    id: 'shortlisted',
-                                    label: 'Shortlisted',
-                                    value: metrics.shortlisted,
-                                    icon: ThumbsUp,
-                                    color: 'sky',
-                                    isActive: filterDecision === 'Shortlisted' && !filterProfileShared,
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('Shortlisted'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(false); }
-                                },
-                                {
-                                    id: 'profileShared',
-                                    label: 'Profile Shared',
-                                    value: metrics.profileShared,
-                                    icon: ArrowRight,
-                                    color: 'slate',
-                                    isActive: filterProfileShared,
-                                    onClick: () => { setFilterStatus('All'); setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterTransferred('All'); setFilterProfileShared(true); }
+                            // --- Dynamic Pipeline Cards ---
+                            // Build the ordered pipeline by topologically sorting all
+                            // interview rounds present across Phase 1 candidates.
+                            // Use cardMetrics.phase1Metrics.interviewRoundsSummary when available
+                            // to ensure stable pipeline structure and counts across card clicks.
+                            const summaryRounds = (usesBackendPagination && cardMetrics?.phase1Metrics?.interviewRoundsSummary)
+                                ? cardMetrics.phase1Metrics.interviewRoundsSummary
+                                : structuralPhase1Candidates;
+
+                            const pipelineOrder = buildDynamicPipeline(summaryRounds);
+
+                            // Count candidates per round levelName (phase 1 only).
+                            const roundCountMap = (() => {
+                                const map = new Map();
+                                if (usesBackendPagination && cardMetrics?.phase1Metrics?.interviewRoundsSummary) {
+                                    for (const item of cardMetrics.phase1Metrics.interviewRoundsSummary) {
+                                        if (item?.levelName) {
+                                            map.set(item.levelName, item.count || 0);
+                                        }
+                                    }
+                                } else {
+                                    for (const c of structuralPhase1Candidates) {
+                                        const seen = new Set();
+                                        for (const r of (c.interviewRounds || [])) {
+                                            if (Number(r.phase || 1) !== 1) continue;
+                                            const name = String(r.levelName || '').trim();
+                                            if (name && !seen.has(name)) {
+                                                seen.add(name);
+                                                map.set(name, (map.get(name) || 0) + 1);
+                                            }
+                                        }
+                                    }
                                 }
-                            ];
+                                return map;
+                            })();
+
+                            const clearRoundFilter = () => {
+                                setFilterStatus('All');
+                                setFilterDecision('All');
+                                setFilterInterviewStatus('All');
+                                setFilterTransferred('All');
+                                setFilterProfileShared(false);
+                                setFilterInterviewRound('');
+                            };
+
+                            const funnelCards = pipelineOrder
+                                .filter((node) => PIPELINE_FIXED_STAGE_SET.has(node))
+                                .map((node) => {
+                                    if (node === 'Total Sourced') {
+                                        return {
+                                            id: 'total',
+                                            label: 'Total Sourced',
+                                            value: metrics.total,
+                                            icon: Users,
+                                            color: 'purple',
+                                            isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All' && !filterProfileShared && !filterInterviewRound,
+                                            onClick: () => clearRoundFilter()
+                                        };
+                                    }
+                                    if (node === 'Interested') {
+                                        return {
+                                            id: 'interested',
+                                            label: 'Interested',
+                                            value: metrics.interested,
+                                            icon: CheckCircle,
+                                            color: 'green',
+                                            isActive: filterStatus === 'Interested' && !filterProfileShared && !filterInterviewRound,
+                                            onClick: () => { clearRoundFilter(); setFilterStatus('Interested'); }
+                                        };
+                                    }
+                                    if (node === 'Interview Scheduled') {
+                                        return {
+                                            id: 'interviewScheduled',
+                                            label: 'Interview Scheduled',
+                                            value: metrics.interviewScheduled,
+                                            icon: UserCheck,
+                                            color: 'amber',
+                                            isActive: filterInterviewStatus === 'Scheduled' && !filterProfileShared && !filterInterviewRound,
+                                            onClick: () => { clearRoundFilter(); setFilterInterviewStatus('Scheduled'); }
+                                        };
+                                    }
+                                    if (node === 'Shortlisted') {
+                                        return {
+                                            id: 'shortlisted',
+                                            label: 'Shortlisted',
+                                            value: metrics.shortlisted,
+                                            icon: ThumbsUp,
+                                            color: 'sky',
+                                            isActive: filterDecision === 'Shortlisted' && !filterProfileShared && !filterInterviewRound,
+                                            onClick: () => { clearRoundFilter(); setFilterDecision('Shortlisted'); }
+                                        };
+                                    }
+                                    if (node === 'Profile Shared') {
+                                        return {
+                                            id: 'profileShared',
+                                            label: 'Profile Shared',
+                                            value: metrics.profileShared,
+                                            icon: ArrowRight,
+                                            color: 'slate',
+                                            isActive: filterProfileShared && !filterInterviewRound,
+                                            onClick: () => { clearRoundFilter(); setFilterProfileShared(true); }
+                                        };
+                                    }
+                                    return null;
+                                })
+                                .filter(Boolean);
+
+                             // Round pills — compact clickable tags rendered inline with the main cards.
+                            const roundPills = pipelineOrder
+                                .filter((node) => !PIPELINE_FIXED_STAGE_SET.has(node))
+                                .map((node) => {
+                                    const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
+                                    return {
+                                        label: node,
+                                        count: roundCountMap.get(node) || 0,
+                                        isActive: isCurrentActive,
+                                        onClick: () => {
+                                            if (isCurrentActive) {
+                                                setFilterInterviewRound('');
+                                            } else {
+                                                clearRoundFilter();
+                                                setFilterInterviewRound(node);
+                                            }
+                                        }
+                                    };
+                                });
 
                             const dynamicCards = [];
 
@@ -2726,91 +3007,187 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 });
                             }
 
-                            const allCards = [...funnelCards, ...dynamicCards];
-                            const gridCols = selectedCandidateId ? 'grid-cols-1 md:grid-cols-2' : `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
+                            // Build quick-lookup maps for card/pill data by node name.
+                            const cardByNode = new Map(funnelCards.map((c) => [c.label, c]));
+                            const pillByNode = new Map(roundPills.map((p) => [p.label, p]));
+
+                            const colorMap = {
+                                purple: 'border-b-purple-500 text-purple-600',
+                                green: 'border-b-green-500 text-green-600',
+                                amber: 'border-b-amber-500 text-amber-600',
+                                sky: 'border-b-sky-500 text-sky-600',
+                                slate: 'border-b-slate-500 text-slate-600',
+                                rose: 'border-b-rose-500 text-rose-600',
+                                indigo: 'border-b-indigo-500 text-indigo-600',
+                                blue: 'border-b-blue-500 text-blue-600'
+                            };
 
                             return (
-                                <div className={`grid ${gridCols} gap-4`}>
-                                    {allCards.map((card, idx) => {
-                                        const Icon = card.icon;
-                                        const colorMap = {
-                                            purple: 'border-b-purple-500 text-purple-600',
-                                            green: 'border-b-green-500 text-green-600',
-                                            amber: 'border-b-amber-500 text-amber-600',
-                                            sky: 'border-b-sky-500 text-sky-600',
-                                            slate: 'border-b-slate-500 text-slate-600',
-                                            rose: 'border-b-rose-500 text-rose-600',
-                                            indigo: 'border-b-indigo-500 text-indigo-600',
-                                            blue: 'border-b-blue-500 text-blue-600'
-                                        };
-                                        const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
+                                <div className="w-full overflow-x-auto scrollbar-hide">
+                                    <div className="w-full flex items-stretch gap-2 md:gap-3">
+                                        {/* Ordered pipeline: fixed-stage big cards interleaved with round pills */}
+                                        {pipelineOrder.map((node) => {
+                                            if (PIPELINE_FIXED_STAGE_SET.has(node)) {
+                                                const card = cardByNode.get(node);
+                                                if (!card) return null;
+                                                const Icon = card.icon;
+                                                const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
+                                                return (
+                                                    <div
+                                                        key={node}
+                                                        onClick={card.onClick}
+                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${card.isActive ? 'bg-slate-50' : ''}`}
+                                                    >
+                                                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                    </div>
+                                                );
+                                            }
+                                            // Round pill — inline between its anchor stage and the next stage
+                                            const pill = pillByNode.get(node);
+                                            if (!pill) return null;
+                                            const pillLabel = String(pill.label || '');
+                                            const displayPillLabel = pillLabel.length > 10 ? `${pillLabel.substring(0, 10)}..` : pillLabel;
+                                            return (
+                                                <button
+                                                    key={node}
+                                                    onClick={pill.onClick}
+                                                    title={pillLabel}
+                                                    className={`self-center flex-none inline-flex flex-col items-center justify-center rounded-none border px-1 py-[1px] text-center transition-colors
+                                                        ${pill.isActive
+                                                            ? 'border-red-700 bg-red-600 text-white shadow-sm'
+                                                            : 'border-red-400 bg-red-50/20 text-slate-700 hover:border-red-600 hover:bg-red-50'
+                                                        }`}
+                                                >
+                                                    <span className={`text-[8px] font-bold uppercase tracking-tight whitespace-nowrap leading-none ${pill.isActive ? 'text-white' : 'text-red-600'}`}>
+                                                        {displayPillLabel}
+                                                    </span>
+                                                    <span className={`text-[10px] font-extrabold leading-none mt-[1px] ${pill.isActive ? 'text-white' : 'text-slate-900'}`}>{pill.count}</span>
+                                                </button>
+                                            );
+                                        })}
 
-                                        return (
-                                            <div
-                                                key={idx}
-                                                onClick={card.onClick}
-                                                className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
-                                            >
-                                                <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                                <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
-                                            </div>
-                                        );
-                                    })}
+                                        {/* Dynamic filter indicator cards (Rejected, On Hold, etc.) */}
+                                        {dynamicCards.map((card, idx) => {
+                                            const Icon = card.icon;
+                                            const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
+                                            return (
+                                                <div
+                                                    key={`dyn-${idx}`}
+                                                    onClick={card.onClick}
+                                                    className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px]`}
+                                                >
+                                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             );
                         })()
                             : activePhase === 2 ? (() => {
-                                const funnelCards = [
-                                    {
+                                const summaryRounds = (usesBackendPagination && cardMetrics?.phase2Metrics?.interviewRoundsSummary)
+                                    ? cardMetrics.phase2Metrics.interviewRoundsSummary
+                                    : structuralPhase2Candidates;
+
+                                const pipelineOrder = buildDynamicPipeline(summaryRounds, 2, PHASE_2_FIXED_STAGES);
+
+                                const roundCountMap = (() => {
+                                    const map = new Map();
+                                    if (usesBackendPagination && cardMetrics?.phase2Metrics?.interviewRoundsSummary) {
+                                        for (const item of cardMetrics.phase2Metrics.interviewRoundsSummary) {
+                                            if (item?.levelName) {
+                                                map.set(item.levelName, item.count || 0);
+                                            }
+                                        }
+                                    } else {
+                                        for (const c of structuralPhase2Candidates) {
+                                            const seen = new Set();
+                                            for (const r of (c.interviewRounds || [])) {
+                                                if (Number(r.phase || 1) !== 2) continue;
+                                                const name = String(r.levelName || '').trim();
+                                                if (name && !seen.has(name)) {
+                                                    seen.add(name);
+                                                    map.set(name, (map.get(name) || 0) + 1);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    return map;
+                                })();
+
+                                const clearRoundFilter = () => {
+                                    setFilterStatus('All');
+                                    setFilterDecision('All');
+                                    setFilterInterviewStatus('All');
+                                    setFilterTransferred('All');
+                                    setFilterProfileShared(false);
+                                    setFilterInterviewRound('');
+                                };
+
+                                const phase2FixedCardMap = {
+                                    'Profile Shared': {
                                         id: 'total',
                                         label: 'Profile Shared',
                                         value: phase2Metrics.totalShortlisted,
                                         icon: Users,
                                         color: 'purple',
-                                        isActive: filterDecision === 'All' && filterInterviewStatus === 'All' && filterStatus === 'All',
-                                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('All'); setFilterStatus('All'); }
+                                        isActive: filterDecision === 'All' && filterInterviewStatus === 'All' && filterStatus === 'All' && !filterInterviewRound,
+                                        onClick: () => clearRoundFilter()
                                     },
-                                    {
+                                    'Shortlisted': {
                                         id: 'shortlisted',
                                         label: 'Shortlisted',
                                         value: phase2Metrics.totalScreened,
                                         icon: UserCheck,
                                         color: 'sky',
-                                        isActive: filterDecision === 'Shortlisted_Selected',
-                                        onClick: () => { setFilterDecision('Shortlisted_Selected'); setFilterStatus('All'); }
+                                        isActive: filterDecision === 'Shortlisted_Selected' && !filterInterviewRound,
+                                        onClick: () => { clearRoundFilter(); setFilterDecision('Shortlisted_Selected'); }
                                     },
-                                    {
-                                        id: 'interviewScheduled',
-                                        label: 'Interview Scheduled',
-                                        value: phase2Metrics.interviewScheduled,
-                                        icon: Clock,
-                                        color: 'amber',
-                                        isActive: filterInterviewStatus === 'Scheduled',
-                                        onClick: () => { setFilterDecision('All'); setFilterInterviewStatus('Scheduled'); }
-                                    },
-                                    {
+                                    'Selected': {
                                         id: 'selected',
                                         label: 'Selected',
                                         value: phase2Metrics.selected,
                                         icon: CheckCircle,
                                         color: 'green',
-                                        isActive: filterDecision === 'Selected',
-                                        onClick: () => { setFilterDecision('Selected'); setFilterInterviewStatus('All'); }
+                                        isActive: filterDecision === 'Selected' && !filterInterviewRound,
+                                        onClick: () => { clearRoundFilter(); setFilterDecision('Selected'); }
                                     },
-                                    {
+                                    'Rejected': {
                                         id: 'rejected',
                                         label: 'Rejected',
                                         value: phase2Metrics.rejected,
                                         icon: ThumbsDown,
                                         color: 'rose',
-                                        isActive: filterDecision === 'Rejected',
-                                        onClick: () => { setFilterDecision('Rejected'); setFilterInterviewStatus('All'); }
+                                        isActive: filterDecision === 'Rejected' && !filterInterviewRound,
+                                        onClick: () => { clearRoundFilter(); setFilterDecision('Rejected'); }
                                     }
-                                ];
+                                };
+
+                                const pillByNode = new Map();
+                                for (const node of pipelineOrder) {
+                                    if (!PHASE_2_FIXED_STAGE_SET.has(node)) {
+                                        const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
+                                        pillByNode.set(node, {
+                                            label: node,
+                                            count: roundCountMap.get(node) || 0,
+                                            isActive: isCurrentActive,
+                                            onClick: () => {
+                                                if (isCurrentActive) {
+                                                    setFilterInterviewRound('');
+                                                } else {
+                                                    clearRoundFilter();
+                                                    setFilterInterviewRound(node);
+                                                }
+                                            }
+                                        });
+                                    }
+                                }
 
                                 const dynamicCards = [];
-
                                 if (filterPreference !== 'All') {
                                     const prefCount = basePhase2Candidates.filter(c => c.preference === filterPreference).length;
                                     dynamicCards.push({
@@ -2825,7 +3202,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 if (filterRating !== 'All') {
                                     const ratedCount = basePhase2Candidates.filter(c => {
                                         const rounds = c.interviewRounds || [];
-                                        const ratedRounds = rounds.filter(r => (r.phase || 1) === 2 && r.rating && r.rating > 0);
+                                        const ratedRounds = rounds.filter(r => Number(r.phase || 1) === 2 && r.rating && r.rating > 0);
                                         if (ratedRounds.length === 0) return false;
                                         const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
                                         return avgRating >= Number(filterRating);
@@ -2850,38 +3227,77 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     });
                                 }
 
-                                const allCards = [...funnelCards, ...dynamicCards];
-                                const gridCols = selectedCandidateId ? 'grid-cols-1 md:grid-cols-2' : `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
+                                const colorMap = {
+                                    purple: 'border-b-purple-500 text-purple-600',
+                                    green: 'border-b-green-500 text-green-600',
+                                    amber: 'border-b-amber-500 text-amber-600',
+                                    sky: 'border-b-sky-500 text-sky-600',
+                                    slate: 'border-b-slate-500 text-slate-600',
+                                    rose: 'border-b-rose-500 text-rose-600',
+                                    indigo: 'border-b-indigo-500 text-indigo-600',
+                                    blue: 'border-b-blue-500 text-blue-600'
+                                };
 
                                 return (
-                                    <div className={`grid ${gridCols} gap-4`}>
-                                        {allCards.map((card, idx) => {
-                                            const Icon = card.icon;
-                                            const colorMap = {
-                                                purple: 'border-b-purple-500 text-purple-600',
-                                                sky: 'border-b-sky-500 text-sky-600',
-                                                amber: 'border-b-amber-500 text-amber-600',
-                                                green: 'border-b-green-500 text-green-600',
-                                                emerald: 'border-b-emerald-500 text-emerald-600',
-                                                rose: 'border-b-rose-500 text-rose-600',
-                                                indigo: 'border-b-indigo-500 text-indigo-600',
-                                                blue: 'border-b-blue-500 text-blue-600',
-                                                slate: 'border-b-slate-500 text-slate-600'
-                                            };
-                                            const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
+                                    <div className="w-full overflow-x-auto pb-2 scrollbar-none">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {pipelineOrder.map((node) => {
+                                                if (PHASE_2_FIXED_STAGE_SET.has(node)) {
+                                                    const card = phase2FixedCardMap[node];
+                                                    if (!card) return null;
+                                                    const Icon = card.icon;
+                                                    const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
+                                                    return (
+                                                        <div
+                                                            key={node}
+                                                            onClick={card.onClick}
+                                                            className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${card.isActive ? 'bg-slate-50' : ''}`}
+                                                        >
+                                                            <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                                            <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                                            <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                        </div>
+                                                    );
+                                                }
+                                                const pill = pillByNode.get(node);
+                                                if (!pill) return null;
+                                                const pillLabel = String(pill.label || '');
+                                                const displayPillLabel = pillLabel.length > 10 ? `${pillLabel.substring(0, 10)}..` : pillLabel;
+                                                return (
+                                                    <button
+                                                        key={node}
+                                                        onClick={pill.onClick}
+                                                        title={pillLabel}
+                                                        className={`self-center flex-none inline-flex flex-col items-center justify-center rounded-none border px-1 py-[1px] text-center transition-colors
+                                                            ${pill.isActive
+                                                                ? 'border-red-700 bg-red-600 text-white shadow-sm'
+                                                                : 'border-red-400 bg-red-50/20 text-slate-700 hover:border-red-600 hover:bg-red-50'
+                                                            }`}
+                                                    >
+                                                        <span className={`text-[8px] font-bold uppercase tracking-tight whitespace-nowrap leading-none ${pill.isActive ? 'text-white' : 'text-red-600'}`}>
+                                                            {displayPillLabel}
+                                                        </span>
+                                                        <span className={`text-[10px] font-extrabold leading-none mt-[1px] ${pill.isActive ? 'text-white' : 'text-slate-900'}`}>{pill.count}</span>
+                                                    </button>
+                                                );
+                                            })}
 
-                                            return (
-                                                <div
-                                                    key={idx}
-                                                    onClick={card.onClick}
-                                                    className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
-                                                >
-                                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
-                                                </div>
-                                            );
-                                        })}
+                                            {dynamicCards.map((card, idx) => {
+                                                const Icon = card.icon;
+                                                const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
+                                                return (
+                                                    <div
+                                                        key={`dyn-${idx}`}
+                                                        onClick={card.onClick}
+                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px]`}
+                                                    >
+                                                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
+                                                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
+                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 );
                             })()
@@ -2997,7 +3413,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                                     <div
                                                         key={idx}
                                                         onClick={card.onClick}
-                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'ring-2 ring-blue-100 bg-blue-50/10' : ''}`}
+                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'bg-slate-50' : ''}`}
                                                     >
                                                         <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                                         <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
@@ -3096,6 +3512,26 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         ))}
                                     </select>
                                 </div>
+                                {([1, 2].includes(activePhase)) && (
+                                    <div className="shrink-0">
+                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Interview Round</label>
+                                        <select
+                                            value={filterInterviewRound}
+                                            onChange={(e) => setFilterInterviewRound(e.target.value)}
+                                            className={`px-2.5 py-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36 transition-colors ${filterInterviewRound
+                                                ? 'border-red-500 bg-red-50 text-red-700 font-bold'
+                                                : 'border-slate-300'
+                                                }`}
+                                        >
+                                            <option value="">All Rounds</option>
+                                            {availableRoundOptions.map((roundName) => (
+                                                <option key={roundName} value={roundName}>
+                                                    {roundName}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="shrink-0">
                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Min Avg Rating</label>
                                     <select
@@ -3210,7 +3646,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         ))}
                                     </select>
                                 </div>
-                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'All' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy.length > 0 || filterUploadedBy.length > 0 || filterUploadType !== 'All' || !isDefaultDateFilterState || filterTransferred !== 'All') && (
+                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'All' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy.length > 0 || filterUploadedBy.length > 0 || filterUploadType !== 'All' || !isDefaultDateFilterState || filterTransferred !== 'All' || filterInterviewRound !== '') && (
                                     <button
                                         onClick={() => {
                                             if (activePhase === 1) setFilterStatus('All');
@@ -3226,6 +3662,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                             setFilterUploadType('All');
                                             resetDateFiltersToDefault();
                                             setFilterTransferred('All');
+                                            setFilterInterviewRound('');
                                             setShowCreatedDateSortMenu(false);
                                             setOpenMultiFilter(null);
                                         }}

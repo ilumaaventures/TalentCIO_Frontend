@@ -28,6 +28,7 @@ const MassInterviewScheduleModal = ({
     const createNewRound = useCallback((index = 1) => ({
         id: Date.now() + Math.random(),
         levelName: index === 1 ? '' : `Round ${index}`,
+        assignAfterStage: 'Shortlisted',
         scheduledDate: '',
         phase: activePhase || 1,
         assignedTo: [],
@@ -342,6 +343,7 @@ const MassInterviewScheduleModal = ({
                 candidateIds: selectedIds,
                 rounds: rounds.map((r) => ({
                     levelName: r.levelName.trim(),
+                    assignAfterStage: r.assignAfterStage || 'Shortlisted',
                     assignedTo: r.assignedTo || [],
                     scheduledDate: r.scheduledDate || undefined,
                     phase: r.phase || 1,
@@ -608,6 +610,73 @@ const MassInterviewScheduleModal = ({
                                                 placeholder="e.g. L1 - Technical, HR Round, Managerial"
                                                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                             />
+                                        </div>
+
+                                        {/* Assign After Stage */}
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                Assign After Stage
+                                            </label>
+                                            <select
+                                                value={activeRound?.assignAfterStage || 'Shortlisted'}
+                                                onChange={(e) => updateActiveRound('assignAfterStage', e.target.value)}
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                            >
+                                                <optgroup label="Hiring Stages">
+                                                    {(() => {
+                                                        const p = Number(activePhase) || 1;
+                                                        if (p === 2) {
+                                                            return (
+                                                                <>
+                                                                    <option value="Profile Shared">Profile Shared</option>
+                                                                    <option value="Shortlisted">Shortlisted</option>
+                                                                    <option value="Selected">Selected</option>
+                                                                    <option value="Rejected">Rejected</option>
+                                                                </>
+                                                            );
+                                                        }
+                                                        if (p === 3) {
+                                                            return (
+                                                                <>
+                                                                    <option value="Offer Sent">Offer Sent</option>
+                                                                    <option value="Offer Accepted">Offer Accepted</option>
+                                                                    <option value="Joined">Joined</option>
+                                                                </>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <>
+                                                                <option value="Total Sourced">Total Sourced</option>
+                                                                <option value="Interested">Interested</option>
+                                                                <option value="Shortlisted">Shortlisted</option>
+                                                                <option value="Profile Shared">Profile Shared</option>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </optgroup>
+                                                {(() => {
+                                                    // Collect all unique phase-1 round names from the selected candidates.
+                                                    const selectedCandidates = candidates.filter((c) => selectedIds.includes(c._id));
+                                                    const roundNames = [
+                                                        ...new Set(
+                                                            selectedCandidates
+                                                                .flatMap((c) => c.interviewRounds || [])
+                                                                .filter((r) => Number(r.phase || 1) === (activePhase || 1))
+                                                                .map((r) => String(r.levelName || '').trim())
+                                                                .filter(Boolean)
+                                                        )
+                                                    ];
+                                                    if (roundNames.length === 0) return null;
+                                                    return (
+                                                        <optgroup label="After a Round (chain)">
+                                                            {roundNames.map((name) => (
+                                                                <option key={name} value={name}>{name}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })()}
+                                            </select>
+                                            <p className="mt-1.5 text-xs text-slate-500">Select which hiring stage this interview round should be assigned after.</p>
                                         </div>
 
                                         {/* Scheduled Date & Time */}

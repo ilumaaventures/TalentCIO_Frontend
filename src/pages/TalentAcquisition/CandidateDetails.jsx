@@ -212,6 +212,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             setActionLoading(true);
             const payload = {
                 levelName: newRound.levelName,
+                assignAfterStage: newRound.assignAfterStage || 'Shortlisted',
                 assignedTo: selectedInterviewer && selectedInterviewer.trim() !== '' ? [selectedInterviewer] : [],
                 scheduledDate: newRound.scheduledDate || undefined,
                 phase: currentPhase,
@@ -221,7 +222,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             await api.post(`/ta/candidates/${candidateId}/rounds`, payload);
             toast.success('Interview round added successfully');
             setIsAddingRound(false);
-            setNewRound({ levelName: '', scheduledDate: '' });
+            setNewRound({ levelName: '', assignAfterStage: 'Shortlisted', scheduledDate: '' });
             setCustomFields([]);
             setSelectedInterviewer('');
             setSelectedRoleForRound('');
@@ -1180,7 +1181,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         {isAddingRound && (
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 animate-in fade-in slide-in-from-top-2">
                                 <h4 className="text-sm font-bold text-slate-700 mb-3">Schedule New Round</h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
                                         <input
@@ -1190,6 +1191,65 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             onChange={(e) => setNewRound({ ...newRound, levelName: e.target.value })}
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                         />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Assign After Stage</label>
+                                        <select
+                                            value={newRound.assignAfterStage || 'Shortlisted'}
+                                            onChange={(e) => setNewRound({ ...newRound, assignAfterStage: e.target.value })}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                                        >
+                                            <optgroup label="Hiring Stages">
+                                                {(() => {
+                                                    const p = Number(currentPhase) || 1;
+                                                    if (p === 2) {
+                                                        return (
+                                                            <>
+                                                                <option value="Profile Shared">Profile Shared</option>
+                                                                <option value="Shortlisted">Shortlisted</option>
+                                                                <option value="Selected">Selected</option>
+                                                                <option value="Rejected">Rejected</option>
+                                                            </>
+                                                        );
+                                                    }
+                                                    if (p === 3) {
+                                                        return (
+                                                            <>
+                                                                <option value="Offer Sent">Offer Sent</option>
+                                                                <option value="Offer Accepted">Offer Accepted</option>
+                                                                <option value="Joined">Joined</option>
+                                                            </>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <>
+                                                            <option value="Total Sourced">Total Sourced</option>
+                                                            <option value="Interested">Interested</option>
+                                                            <option value="Shortlisted">Shortlisted</option>
+                                                            <option value="Profile Shared">Profile Shared</option>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </optgroup>
+                                            {(() => {
+                                                const existingRoundNames = [
+                                                    ...new Set(
+                                                        (candidate?.interviewRounds || [])
+                                                            .filter((r) => Number(r.phase || 1) === currentPhase)
+                                                            .map((r) => String(r.levelName || '').trim())
+                                                            .filter(Boolean)
+                                                    )
+                                                ];
+                                                if (existingRoundNames.length === 0) return null;
+                                                return (
+                                                    <optgroup label="After a Round (chain)">
+                                                        {existingRoundNames.map((name) => (
+                                                            <option key={name} value={name}>{name}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                );
+                                            })()}
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-500 mb-1">Target Role (Optional)</label>
@@ -1372,6 +1432,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                         <div className="flex flex-wrap items-center gap-1.5">
                                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeColor(effectiveRoundStatus)}`}>
                                                                 {effectiveRoundStatus}
+                                                            </span>
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200" title="Recruitment stage after which this round is assigned">
+                                                                After: {round.assignAfterStage || 'Shortlisted'}
                                                             </span>
 
                                                             {(() => {
