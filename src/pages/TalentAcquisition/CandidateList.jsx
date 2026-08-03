@@ -563,6 +563,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [serverSummary, setServerSummary] = useState(null);
     const [cardMetrics, setCardMetrics] = useState(null);
     const [loadingMetrics, setLoadingMetrics] = useState(false);
+    // roundSummary: result of the lightweight /round-summary endpoint.
+    // Contains { phase1: [{levelName,assignAfterStage,count}], phase2: [...] }
+    // Used exclusively for pipeline pill building across ALL pages.
+    const [roundSummary, setRoundSummary] = useState(null);
     const [actionCandidates, setActionCandidates] = useState([]);
 
     // Filter States
@@ -764,10 +768,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [searchParams, activePhase]);
 
-    // Reset page to 1 when any filter changes
+    // Reset page to 1 when any filter changes (including round pill clicks)
     useEffect(() => {
         setPage(1);
-    }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared]);
+    }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared, filterInterviewRound]);
 
     const isFilterActive = useMemo(() => {
         return (
@@ -1253,6 +1257,31 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [buildCandidateRequestParams, hiringRequestId]);
 
+    // Fetches ONLY interview round summaries from the lightweight /round-summary endpoint.
+    // Sends only structural params (no phase, no decision/status filters) so the pill
+    // counts reflect ALL candidates regardless of which page the user is on.
+    const fetchRoundSummary = useCallback(async () => {
+        if (!hiringRequestId || isLegacyView) return;
+        try {
+            const params = {
+                search: debouncedCandidateNameSearch || undefined,
+                filterPulledBy: filterPulledBy.length ? JSON.stringify(filterPulledBy) : undefined,
+                filterUploadedBy: filterUploadedBy.length ? JSON.stringify(filterUploadedBy) : undefined,
+                filterUploadType: filterUploadType !== 'All' ? filterUploadType : undefined,
+                filterTransferred: filterTransferred !== 'All' ? filterTransferred : undefined,
+                dateField: dateFilterField || undefined,
+                startDate: dateFrom || undefined,
+                endDate: dateTo || undefined
+            };
+            // Strip undefined keys
+            Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
+            const response = await api.get(`/ta/candidates/${hiringRequestId}/round-summary`, { params });
+            setRoundSummary(response.data || null);
+        } catch (error) {
+            console.error('Error fetching round summary:', error);
+        }
+    }, [hiringRequestId, isLegacyView, debouncedCandidateNameSearch, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, dateFilterField, dateFrom, dateTo]);
+
     const fetchCandidates = useCallback(async (silent = false) => {
         try {
             if (!silent && candidates.length === 0) setLoading(true);
@@ -1279,6 +1308,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 setServerResultCount(response.data.count || 0);
                 setServerSummary(response.data.summary || null);
                 void fetchCardMetrics();
+                void fetchRoundSummary();
             }
         } catch (error) {
             console.error('Error fetching candidates:', error);
@@ -2748,21 +2778,23 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     {!selectedCandidateId &&
                         (activePhase === 1 ? (() => {
                             // --- Dynamic Pipeline Cards ---
-                            // Build the ordered pipeline by topologically sorting all
-                            // interview rounds present across Phase 1 candidates.
-                            // Use cardMetrics.phase1Metrics.interviewRoundsSummary when available
-                            // to ensure stable pipeline structure and counts across card clicks.
-                            const summaryRounds = (usesBackendPagination && cardMetrics?.phase1Metrics?.interviewRoundsSummary)
-                                ? cardMetrics.phase1Metrics.interviewRoundsSummary
-                                : structuralPhase1Candidates;
+                            // Priority for round data: roundSummary (dedicated lightweight API, all pages)
+                            // → cardMetrics summary (full metrics endpoint) → in-memory candidates (non-paginated fallback)
+                            const phase1RoundData = roundSummary?.phase1
+                                || cardMetrics?.phase1Metrics?.interviewRoundsSummary
+                                || null;
+
+                            const summaryRounds = phase1RoundData
+                                ? phase1RoundData          // already aggregated [{levelName,assignAfterStage,count}]
+                                : structuralPhase1Candidates; // full candidate objects (non-paginated only)
 
                             const pipelineOrder = buildDynamicPipeline(summaryRounds);
 
                             // Count candidates per round levelName (phase 1 only).
                             const roundCountMap = (() => {
                                 const map = new Map();
-                                if (usesBackendPagination && cardMetrics?.phase1Metrics?.interviewRoundsSummary) {
-                                    for (const item of cardMetrics.phase1Metrics.interviewRoundsSummary) {
+                                if (phase1RoundData) {
+                                    for (const item of phase1RoundData) {
                                         if (item?.levelName) {
                                             map.set(item.levelName, item.count || 0);
                                         }
@@ -2782,6 +2814,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 }
                                 return map;
                             })();
+
 
                             const clearRoundFilter = () => {
                                 setFilterStatus('All');
@@ -3089,16 +3122,22 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                             );
                         })()
                             : activePhase === 2 ? (() => {
-                                const summaryRounds = (usesBackendPagination && cardMetrics?.phase2Metrics?.interviewRoundsSummary)
-                                    ? cardMetrics.phase2Metrics.interviewRoundsSummary
+                                // Priority for round data: roundSummary (dedicated lightweight API, all pages)
+                                // → cardMetrics summary → in-memory candidates (non-paginated fallback)
+                                const phase2RoundData = roundSummary?.phase2
+                                    || cardMetrics?.phase2Metrics?.interviewRoundsSummary
+                                    || null;
+
+                                const summaryRounds = phase2RoundData
+                                    ? phase2RoundData
                                     : structuralPhase2Candidates;
 
                                 const pipelineOrder = buildDynamicPipeline(summaryRounds, 2, PHASE_2_FIXED_STAGES);
 
                                 const roundCountMap = (() => {
                                     const map = new Map();
-                                    if (usesBackendPagination && cardMetrics?.phase2Metrics?.interviewRoundsSummary) {
-                                        for (const item of cardMetrics.phase2Metrics.interviewRoundsSummary) {
+                                    if (phase2RoundData) {
+                                        for (const item of phase2RoundData) {
                                             if (item?.levelName) {
                                                 map.set(item.levelName, item.count || 0);
                                             }
@@ -3118,6 +3157,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     }
                                     return map;
                                 })();
+
 
                                 const clearRoundFilter = () => {
                                     setFilterStatus('All');
