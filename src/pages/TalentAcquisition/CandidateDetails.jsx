@@ -1200,11 +1200,36 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
                                         >
                                             <optgroup label="Hiring Stages">
-                                                <option value="Total Sourced">Total Sourced</option>
-                                                <option value="Interested">Interested</option>
-                                                <option value="Shortlisted">Shortlisted</option>
-                                                <option value="Profile Shared">Profile Shared</option>
-                                                <option value="Offer Released">Offer Released</option>
+                                                {(() => {
+                                                    const p = Number(currentPhase) || 1;
+                                                    if (p === 2) {
+                                                        return (
+                                                            <>
+                                                                <option value="Profile Shared">Profile Shared</option>
+                                                                <option value="Shortlisted">Shortlisted</option>
+                                                                <option value="Selected">Selected</option>
+                                                                <option value="Rejected">Rejected</option>
+                                                            </>
+                                                        );
+                                                    }
+                                                    if (p === 3) {
+                                                        return (
+                                                            <>
+                                                                <option value="Offer Sent">Offer Sent</option>
+                                                                <option value="Offer Accepted">Offer Accepted</option>
+                                                                <option value="Joined">Joined</option>
+                                                            </>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <>
+                                                            <option value="Total Sourced">Total Sourced</option>
+                                                            <option value="Interested">Interested</option>
+                                                            <option value="Shortlisted">Shortlisted</option>
+                                                            <option value="Profile Shared">Profile Shared</option>
+                                                        </>
+                                                    );
+                                                })()}
                                             </optgroup>
                                             {(() => {
                                                 const existingRoundNames = [
