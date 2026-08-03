@@ -28,7 +28,7 @@ const MassInterviewScheduleModal = ({
     const createNewRound = useCallback((index = 1) => ({
         id: Date.now() + Math.random(),
         levelName: `Round ${index}`,
-        assignAfterStage: 'Shortlisted',
+        assignAfterStage: Number(activePhase) === 2 ? 'Shortlisted' : 'Interested',
         scheduledDate: '',
         phase: activePhase || 1,
         assignedTo: [],
@@ -343,7 +343,7 @@ const MassInterviewScheduleModal = ({
                 candidateIds: selectedIds,
                 rounds: rounds.map((r, idx) => ({
                     levelName: (r.levelName || `Round ${idx + 1}`).trim() || `Round ${idx + 1}`,
-                    assignAfterStage: r.assignAfterStage || 'Shortlisted',
+                    assignAfterStage: r.assignAfterStage || (Number(activePhase) === 2 ? 'Shortlisted' : 'Interested'),
                     assignedTo: r.assignedTo || [],
                     scheduledDate: r.scheduledDate || undefined,
                     phase: r.phase || 1,

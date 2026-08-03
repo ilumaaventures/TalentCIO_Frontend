@@ -243,6 +243,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             setActionLoading(true);
             const payload = {
                 levelName: editingRoundForm.levelName,
+                assignAfterStage: editingRoundForm.assignAfterStage,
                 assignedTo: editingRoundForm.assignedTo && editingRoundForm.assignedTo.trim() !== '' ? [editingRoundForm.assignedTo] : [],
                 scheduledDate: editingRoundForm.scheduledDate || undefined,
                 customFields: Array.isArray(editingRoundForm.customFields) ? editingRoundForm.customFields.filter(f => f.key && f.key.trim()) : []
@@ -1471,7 +1472,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                     </>
                                                                 );
                                                             })()}
-                                                            {canScheduleRounds && !round.isSyntheticPhase2 && ['Pending', 'Scheduled'].includes(round.status) && (
+                                                            {canScheduleRounds && !round.isSyntheticPhase2 && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-2 ml-1">
                                                                     <button
                                                                         onClick={() => {
@@ -1483,6 +1484,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 const formattedDate = round.scheduledDate ? new Date(round.scheduledDate).toISOString().slice(0, 16) : '';
                                                                                 setEditingRoundForm({
                                                                                     levelName: round.levelName,
+                                                                                    assignAfterStage: round.assignAfterStage || (currentPhase === 2 ? 'Shortlisted' : 'Interested'),
                                                                                     scheduledDate: formattedDate,
                                                                                     assignedTo: round.assignedTo?.[0]?._id || '',
                                                                                     customFields: Array.isArray(round.customFields) ? round.customFields.map(f => ({ key: f.key || '', value: f.value || '' })) : []
@@ -1642,7 +1644,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                     <h5 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
                                                                         <Edit2 size={16} /> Edit Round Details
                                                                     </h5>
-                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                                                                         <div>
                                                                             <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
                                                                             <input
@@ -1651,6 +1653,30 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 onChange={(e) => setEditingRoundForm({ ...editingRoundForm, levelName: e.target.value })}
                                                                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                                                             />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Assign After Stage</label>
+                                                                            <select
+                                                                                value={editingRoundForm.assignAfterStage || (currentPhase === 2 ? 'Shortlisted' : 'Interested')}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, assignAfterStage: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                                                                            >
+                                                                                {currentPhase === 2 ? (
+                                                                                    <>
+                                                                                        <option value="Profile Shared">Profile Shared</option>
+                                                                                        <option value="Shortlisted">Shortlisted</option>
+                                                                                        <option value="Selected">Selected</option>
+                                                                                        <option value="Rejected">Rejected</option>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <option value="Total Sourced">Total Sourced</option>
+                                                                                        <option value="Interested">Interested</option>
+                                                                                        <option value="Shortlisted">Shortlisted</option>
+                                                                                        <option value="Profile Shared">Profile Shared</option>
+                                                                                    </>
+                                                                                )}
+                                                                            </select>
                                                                         </div>
                                                                         <div>
                                                                             <label className="block text-xs font-medium text-slate-500 mb-1">Assign Interviewer</label>
@@ -1665,7 +1691,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 ))}
                                                                             </select>
                                                                         </div>
-                                                                         <div>
+                                                                        <div>
                                                                             <label className="block text-xs font-medium text-slate-500 mb-1">Scheduled Date</label>
                                                                             <input
                                                                                 type="datetime-local"
