@@ -2405,7 +2405,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                 ? 'bg-white/20 text-white'
                                 : 'bg-amber-200/60 text-amber-900'
                                 }`}>
-                                {activePhase === 1 ? (metrics?.interviewScheduled || 0) : activePhase === 2 ? (phase2Metrics?.scheduled || 0) : 0}
+                                {activePhase === 1 ? (metrics?.interviewScheduled || 0) : activePhase === 2 ? (phase2Metrics?.interviewScheduled || phase2Metrics?.scheduled || 0) : 0}
                             </span>
                         </button>
                     </div>
@@ -3142,10 +3142,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     } else {
                                         for (const c of structuralPhase2Candidates) {
                                             const seen = new Set();
-                                            for (const r of (c.interviewRounds || [])) {
-                                                const name = String(r.levelName || 'Round 1').trim() || 'Round 1';
-                                                if (!seen.has(name)) {
-                                                    seen.add(name);
+                                            const phase2Rounds = (c.interviewRounds || []).filter(r => Number(r.phase || 1) === 2);
+                                            if (phase2Rounds.length > 0) {
+                                                for (const r of phase2Rounds) {
+                                                    const name = String(r.levelName || 'Round 1').trim() || 'Round 1';
+                                                    if (!seen.has(name)) {
+                                                        seen.add(name);
+                                                        map.set(name, (map.get(name) || 0) + 1);
+                                                    }
+                                                }
+                                            } else {
+                                                const hasLegacyPhase2 = Boolean(String(c?.phase2InterviewerFeedback || '').trim())
+                                                    || ['Scheduled', 'Rejected', 'Shortlisted'].includes(c?.phase2InterviewStatus);
+                                                if (hasLegacyPhase2) {
+                                                    const name = 'Phase 2 Interview';
                                                     map.set(name, (map.get(name) || 0) + 1);
                                                 }
                                             }
