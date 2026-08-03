@@ -175,7 +175,7 @@ const interviewFilterOptions = [
 
 const getRoundsForPhase = (candidate, phase) => (
     Array.isArray(candidate?.interviewRounds)
-        ? candidate.interviewRounds.filter((round) => (round.phase || 1) === phase)
+        ? candidate.interviewRounds.filter((round) => Number(round.phase || 1) === Number(phase))
         : []
 );
 
@@ -1020,7 +1020,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
             let matchRating = true;
             if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 1) : [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === 1) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) {
                     matchRating = false;
@@ -1116,7 +1116,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchRating = true;
             if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 2) : [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === 2) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) { matchRating = false; } else {
                     const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
@@ -1190,7 +1190,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchRating = true;
             if (filterRating !== 'All') {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === 3) : [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === 3) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) { matchRating = false; } else {
                     const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
@@ -1634,7 +1634,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const dataToExport = await fetchAllMatchingCandidates();
             let maxRoundsCount = 1;
             dataToExport.forEach(candidate => {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === Number(activePhase)) : [];
                 if (rounds.length > maxRoundsCount) maxRoundsCount = rounds.length;
             });
 
@@ -1884,7 +1884,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             };
 
             dataToExport.forEach((candidate, index) => {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === Number(activePhase)) : [];
 
                 const techSkillRatings = techSkillsHeaders.map(skillName => {
                     const skillEntry = (candidate.mustHaveSkills || []).find(s => s.skill === skillName);
@@ -3366,7 +3366,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                     if (filterRating !== 'All') {
                                         const ratedCount = basePhase3Candidates.filter(c => {
                                             const rounds = c.interviewRounds || [];
-                                            const ratedRounds = rounds.filter(r => (r.phase || 1) === 3 && r.rating && r.rating > 0);
+                                            const ratedRounds = rounds.filter(r => Number(r.phase || 1) === 3 && r.rating && r.rating > 0);
                                             if (ratedRounds.length === 0) return false;
                                             const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
                                             return avgRating >= Number(filterRating);

@@ -1352,7 +1352,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         <div className="space-y-8 relative">
                             {(() => {
                                 const phaseRounds = Array.isArray(candidate.interviewRounds)
-                                    ? candidate.interviewRounds.filter(r => (r.phase || 1) === currentPhase)
+                                    ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === Number(currentPhase))
                                     : [];
                                 const hasPhase2ImportedCard = currentPhase === 2
                                     && (
