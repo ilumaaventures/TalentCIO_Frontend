@@ -455,17 +455,16 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
     const getEffectiveRoundStatus = useCallback((round) => {
         if (round.displayStatusLabel) return round.displayStatusLabel;
-        if (round.status === 'Passed') return 'Shortlisted';
-        if (round.status === 'Failed') return 'Rejected';
-        if (round.status === 'Skipped') return 'Did not turn up';
-        if (round.status === 'Scheduled') return 'Scheduled';
+        if (round.status && ['Shortlisted', 'Rejected', 'Did not Turn up', 'Did not turn up', 'Passed', 'Failed', 'Skipped', 'Pending', 'Scheduled', 'Left in between'].includes(round.status)) {
+            return round.status;
+        }
 
-        // Only mark as Passed if both feedback and rating are present
+        // Only mark as Shortlisted if both feedback and rating are present
         const isCompleted = round.feedback && (round.rating || round.rating === 0);
         if (isCompleted) return 'Shortlisted';
 
-        // If not completed, show as Scheduled if a date exists or it's already Scheduled
-        if (round.scheduledDate || round.status === 'Scheduled') return 'Scheduled';
+        // If not completed, show as Scheduled if a date exists
+        if (round.scheduledDate) return 'Scheduled';
 
         return 'Pending';
     }, []);
@@ -478,7 +477,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             case 'Rejected': return 'bg-red-100 text-red-700 border-red-200';
             case 'Scheduled': return 'bg-blue-100 text-blue-700 border-blue-200';
             case 'Skipped':
-            case 'Did not turn up': return 'bg-slate-100 text-slate-700 border-slate-200';
+            case 'Did not turn up':
+            case 'Did not Turn up': return 'bg-slate-100 text-slate-700 border-slate-200';
             default: return 'bg-amber-100 text-amber-700 border-amber-200'; // Pending
         }
     }, []);
@@ -491,7 +491,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             case 'Rejected': return <XCircle size={16} className="text-red-600" />;
             case 'Scheduled': return <Calendar size={16} className="text-blue-600" />;
             case 'Skipped':
-            case 'Did not turn up': return <XCircle size={16} className="text-slate-500" />;
+            case 'Did not turn up':
+            case 'Did not Turn up': return <XCircle size={16} className="text-slate-500" />;
             default: return <Clock size={16} className="text-amber-600" />;
         }
     }, []);
@@ -1671,9 +1672,6 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                             >
                                                                                 <option value="Scheduled">Scheduled</option>
                                                                                 <option value="Pending">Pending</option>
-                                                                                <option value="Passed">Passed</option>
-                                                                                <option value="Failed">Failed</option>
-                                                                                <option value="Skipped">Skipped</option>
                                                                                 <option value="Shortlisted">Shortlisted</option>
                                                                                 <option value="Rejected">Rejected</option>
                                                                                 <option value="Did not Turn up">Did not Turn up</option>
