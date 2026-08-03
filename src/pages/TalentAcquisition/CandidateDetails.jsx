@@ -51,7 +51,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
     // Edit Round State
     const [editingRoundId, setEditingRoundId] = useState(null);
-    const [editingRoundForm, setEditingRoundForm] = useState({ levelName: '', scheduledDate: '', assignedTo: '' });
+    const [editingRoundForm, setEditingRoundForm] = useState({ levelName: '', scheduledDate: '', assignedTo: '', status: 'Scheduled', rating: '', feedback: '', customFields: [] });
 
     // Send Round Mail State
     const [sendingMailRound, setSendingMailRound] = useState(null);
@@ -246,11 +246,14 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 assignAfterStage: editingRoundForm.assignAfterStage,
                 assignedTo: editingRoundForm.assignedTo && editingRoundForm.assignedTo.trim() !== '' ? [editingRoundForm.assignedTo] : [],
                 scheduledDate: editingRoundForm.scheduledDate || undefined,
+                status: editingRoundForm.status || 'Scheduled',
+                rating: editingRoundForm.rating !== '' && editingRoundForm.rating !== null && editingRoundForm.rating !== undefined ? Number(editingRoundForm.rating) : undefined,
+                feedback: editingRoundForm.feedback || '',
                 customFields: Array.isArray(editingRoundForm.customFields) ? editingRoundForm.customFields.filter(f => f.key && f.key.trim()) : []
             };
 
             await api.put(`/ta/candidates/${candidateId}/rounds/${roundId}`, payload);
-            toast.success('Interview round updated');
+            toast.success('Interview card updated');
             setEditingRoundId(null);
             fetchCandidate();
             if (onUpdate) onUpdate();
@@ -1472,7 +1475,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                     </>
                                                                 );
                                                             })()}
-                                                            {canScheduleRounds && !round.isSyntheticPhase2 && (
+                                                            {canScheduleRounds && (
                                                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-2 ml-1">
                                                                     <button
                                                                         onClick={() => {
@@ -1483,10 +1486,13 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 setEvaluatingRoundId(null);
                                                                                 const formattedDate = round.scheduledDate ? new Date(round.scheduledDate).toISOString().slice(0, 16) : '';
                                                                                 setEditingRoundForm({
-                                                                                    levelName: round.levelName,
+                                                                                    levelName: round.levelName || 'Phase 2 Interview',
                                                                                     assignAfterStage: round.assignAfterStage || (currentPhase === 2 ? 'Shortlisted' : 'Interested'),
                                                                                     scheduledDate: formattedDate,
-                                                                                    assignedTo: round.assignedTo?.[0]?._id || '',
+                                                                                    assignedTo: round.assignedTo?.[0]?._id || round.assignedTo?.[0] || round.evaluatedBy?._id || round.evaluatedBy || '',
+                                                                                    status: getEffectiveRoundStatus(round) || round.status || 'Scheduled',
+                                                                                    rating: round.rating !== undefined && round.rating !== null ? round.rating : '',
+                                                                                    feedback: round.feedback || '',
                                                                                     customFields: Array.isArray(round.customFields) ? round.customFields.map(f => ({ key: f.key || '', value: f.value || '' })) : []
                                                                                 });
                                                                             }
@@ -1496,13 +1502,15 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                     >
                                                                         <Edit2 size={15} />
                                                                     </button>
-                                                                    <button
-                                                                        onClick={() => handleDeleteRound(round._id)}
-                                                                        className="text-slate-400 hover:text-red-500 transition-colors"
-                                                                        title="Delete Round"
-                                                                    >
-                                                                        <Trash2 size={15} />
-                                                                    </button>
+                                                                    {!round.isSyntheticPhase2 && (
+                                                                        <button
+                                                                            onClick={() => handleDeleteRound(round._id)}
+                                                                            className="text-slate-400 hover:text-red-500 transition-colors"
+                                                                            title="Delete Round"
+                                                                        >
+                                                                            <Trash2 size={15} />
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1642,9 +1650,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                             <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
                                                                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                                                     <h5 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
-                                                                        <Edit2 size={16} /> Edit Round Details
+                                                                        <Edit2 size={16} /> Edit Interview Card Details
                                                                     </h5>
-                                                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                                                         <div>
                                                                             <label className="block text-xs font-medium text-slate-500 mb-1">Round Level/Title *</label>
                                                                             <input
@@ -1653,6 +1661,58 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 onChange={(e) => setEditingRoundForm({ ...editingRoundForm, levelName: e.target.value })}
                                                                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                                                             />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Round Status</label>
+                                                                            <select
+                                                                                value={editingRoundForm.status}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, status: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                                                                            >
+                                                                                <option value="Scheduled">Scheduled</option>
+                                                                                <option value="Pending">Pending</option>
+                                                                                <option value="Passed">Passed</option>
+                                                                                <option value="Failed">Failed</option>
+                                                                                <option value="Skipped">Skipped</option>
+                                                                                <option value="Shortlisted">Shortlisted</option>
+                                                                                <option value="Rejected">Rejected</option>
+                                                                                <option value="Did not Turn up">Did not Turn up</option>
+                                                                            </select>
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Scheduled Date & Time</label>
+                                                                            <input
+                                                                                type="datetime-local"
+                                                                                value={editingRoundForm.scheduledDate}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, scheduledDate: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Assign Interviewer</label>
+                                                                            <select
+                                                                                value={editingRoundForm.assignedTo}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, assignedTo: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                                                                            >
+                                                                                <option value="">-- Unassigned --</option>
+                                                                                {users.map(u => (
+                                                                                    <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Overall Rating (1-10)</label>
+                                                                            <select
+                                                                                value={editingRoundForm.rating}
+                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, rating: e.target.value })}
+                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                                                                            >
+                                                                                <option value="">-- No Rating --</option>
+                                                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                                                                                    <option key={n} value={n}>{n} / 10</option>
+                                                                                ))}
+                                                                            </select>
                                                                         </div>
                                                                         <div>
                                                                             <label className="block text-xs font-medium text-slate-500 mb-1">Assign After Stage</label>
@@ -1678,28 +1738,17 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 )}
                                                                             </select>
                                                                         </div>
-                                                                        <div>
-                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Assign Interviewer</label>
-                                                                            <select
-                                                                                value={editingRoundForm.assignedTo}
-                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, assignedTo: e.target.value })}
-                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                                                            >
-                                                                                <option value="">-- Unassigned --</option>
-                                                                                {users.map(u => (
-                                                                                    <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
-                                                                                ))}
-                                                                            </select>
-                                                                        </div>
-                                                                        <div>
-                                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Scheduled Date</label>
-                                                                            <input
-                                                                                type="datetime-local"
-                                                                                value={editingRoundForm.scheduledDate}
-                                                                                onChange={(e) => setEditingRoundForm({ ...editingRoundForm, scheduledDate: e.target.value })}
-                                                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                                                            />
-                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="mb-4">
+                                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Evaluator Feedback / Remarks</label>
+                                                                        <textarea
+                                                                            rows={3}
+                                                                            placeholder="Enter interviewer feedback, evaluation remarks, or notes..."
+                                                                            value={editingRoundForm.feedback}
+                                                                            onChange={(e) => setEditingRoundForm({ ...editingRoundForm, feedback: e.target.value })}
+                                                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                                        />
                                                                     </div>
 
                                                                     {/* Custom Fields Editor for Round Edit */}
