@@ -175,7 +175,7 @@ const interviewFilterOptions = [
 
 const getRoundsForPhase = (candidate, phase) => (
     Array.isArray(candidate?.interviewRounds)
-        ? candidate.interviewRounds.filter((round) => (round.phase || 1) === phase)
+        ? candidate.interviewRounds.filter((round) => Number(round.phase || 1) === Number(phase))
         : []
 );
 
