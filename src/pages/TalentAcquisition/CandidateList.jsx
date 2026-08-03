@@ -989,6 +989,18 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const availableRoundOptions = useMemo(() => {
         const roundSet = new Set();
+
+        const backendRoundsSummary = activePhase === 2
+            ? (roundSummary?.phase2 || cardMetrics?.phase2Metrics?.interviewRoundsSummary)
+            : (roundSummary?.phase1 || cardMetrics?.phase1Metrics?.interviewRoundsSummary);
+
+        if (Array.isArray(backendRoundsSummary)) {
+            for (const r of backendRoundsSummary) {
+                const name = String(r?.levelName || '').trim();
+                if (name) roundSet.add(name);
+            }
+        }
+
         for (const c of (candidates || [])) {
             for (const r of (c?.interviewRounds || [])) {
                 if (Number(r?.phase || 1) === activePhase) {
@@ -998,19 +1010,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
         }
 
-        const backendRoundsSummary = activePhase === 2
-            ? cardMetrics?.phase2Metrics?.interviewRoundsSummary
-            : cardMetrics?.phase1Metrics?.interviewRoundsSummary;
-
-        if (Array.isArray(backendRoundsSummary)) {
-            for (const r of backendRoundsSummary) {
-                const name = String(r?.levelName || '').trim();
-                if (name) roundSet.add(name);
-            }
-        }
-
         return Array.from(roundSet);
-    }, [activePhase, candidates, cardMetrics]);
+    }, [activePhase, candidates, cardMetrics, roundSummary]);
 
     // 2. Base for Dynamic Cards: Structural + (Rating, Exp, Preference)
     const basePhase1Candidates = useMemo(() => {
@@ -1319,34 +1320,25 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [buildCandidateRequestParams, candidates.length, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics]);
 
     const fetchAllMatchingCandidates = useCallback(async () => {
-        const endpoint = isLegacyView
-            ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
-            : `/ta/candidates/${hiringRequestId}`;
-        const params = isLegacyView
-            ? { t: Date.now() }
-            : buildCandidateRequestParams({
-                paginate: true,
-                pageOverride: 1,
-                limitOverride: Math.max(serverResultCount || itemsPerPage, itemsPerPage)
-            });
-
         if (isLegacyView) {
+            const params = { t: Date.now() };
             if (dateFilterField) params.dateField = dateFilterField;
             if (dateFrom) params.startDate = dateFrom;
             if (dateTo) params.endDate = dateTo;
+            const response = await api.get(`/ta/hiring-request/${hiringRequestId}/previous-candidates`, { params });
+            return response.data || [];
         }
 
-        const response = await api.get(endpoint, { params });
-        return isLegacyView ? response.data : (response.data.candidates || []);
+        const params = buildCandidateRequestParams({ paginate: false });
+        const response = await api.get(`/ta/candidates/${hiringRequestId}/interview-details`, { params });
+        return Array.isArray(response.data) ? response.data : (response.data.candidates || []);
     }, [
         buildCandidateRequestParams,
         dateFilterField,
         dateFrom,
         dateTo,
         hiringRequestId,
-        isLegacyView,
-        itemsPerPage,
-        serverResultCount
+        isLegacyView
     ]);
 
     const [sortColumn, setSortColumn] = useState(null);
@@ -1378,9 +1370,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     };
 
     const activeList = useMemo(() => {
-        const rawList = usesBackendPagination
-            ? candidates
-            : (activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered);
+        if (usesBackendPagination) {
+            return candidates;
+        }
+
+        const rawList = activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered;
 
         if (!filterInterviewRound) return rawList;
 
