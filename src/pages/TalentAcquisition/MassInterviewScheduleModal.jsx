@@ -27,7 +27,7 @@ const MassInterviewScheduleModal = ({
 }) => {
     const createNewRound = useCallback((index = 1) => ({
         id: Date.now() + Math.random(),
-        levelName: index === 1 ? '' : `Round ${index}`,
+        levelName: `Round ${index}`,
         assignAfterStage: 'Shortlisted',
         scheduledDate: '',
         phase: activePhase || 1,
@@ -322,11 +322,11 @@ const MassInterviewScheduleModal = ({
     }, [activeRound?.customHtmlBody, activeTemplate, defaultCandidateBody, previewData]);
 
     const canProceedStep1 = selectedIds.length >= 1;
-    const canProceedStep2 = rounds.length > 0 && rounds.every((r) => r.levelName && r.levelName.trim().length > 0);
+    const canProceedStep2 = rounds.length > 0;
 
     const handleSubmit = async () => {
         if (!canProceedStep2) {
-            toast.error('All interview rounds require a round name.');
+            toast.error('At least one interview round is required.');
             setStep(2);
             return;
         }
@@ -341,8 +341,8 @@ const MassInterviewScheduleModal = ({
             setScheduling(true);
             const payload = {
                 candidateIds: selectedIds,
-                rounds: rounds.map((r) => ({
-                    levelName: r.levelName.trim(),
+                rounds: rounds.map((r, idx) => ({
+                    levelName: (r.levelName || `Round ${idx + 1}`).trim() || `Round ${idx + 1}`,
                     assignAfterStage: r.assignAfterStage || 'Shortlisted',
                     assignedTo: r.assignedTo || [],
                     scheduledDate: r.scheduledDate || undefined,

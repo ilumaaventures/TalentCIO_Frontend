@@ -203,15 +203,11 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
 
     const handleAddRound = useCallback(async () => {
-        if (!newRound.levelName) {
-            toast.error('Level Name is required');
-            return;
-        }
-
         try {
             setActionLoading(true);
+            const roundName = (newRound.levelName || 'Round 1').trim() || 'Round 1';
             const payload = {
-                levelName: newRound.levelName,
+                levelName: roundName,
                 assignAfterStage: newRound.assignAfterStage || 'Shortlisted',
                 assignedTo: selectedInterviewer && selectedInterviewer.trim() !== '' ? [selectedInterviewer] : [],
                 scheduledDate: newRound.scheduledDate || undefined,

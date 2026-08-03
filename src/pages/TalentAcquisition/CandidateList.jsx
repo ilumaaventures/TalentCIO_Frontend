@@ -60,18 +60,21 @@ const buildDynamicPipeline = (roundsOrCandidates, phase = 1, fixedStages = PIPEL
     for (const item of (roundsOrCandidates || [])) {
         if (item.interviewRounds && Array.isArray(item.interviewRounds)) {
             for (const round of item.interviewRounds) {
-                if (Number(round.phase || 1) !== Number(phase)) continue;
-                const name = String(round.levelName || '').trim();
-                if (!name || roundAnchorMap.has(name)) continue;
+                const name = String(round.levelName || 'Round 1').trim() || 'Round 1';
+                if (roundAnchorMap.has(name)) continue;
                 let anchor = String(round.assignAfterStage || defaultAnchor).trim() || defaultAnchor;
-                if (anchor === 'Interview Scheduled') anchor = defaultAnchor;
+                if (anchor === 'Interview Scheduled' || !fixedSet.has(anchor)) {
+                    anchor = defaultAnchor;
+                }
                 roundAnchorMap.set(name, anchor);
             }
-        } else if (item?.levelName) {
-            const name = String(item.levelName || '').trim();
-            if (!name || roundAnchorMap.has(name)) continue;
+        } else if (item) {
+            const name = String(item.levelName || 'Round 1').trim() || 'Round 1';
+            if (roundAnchorMap.has(name)) continue;
             let anchor = String(item.assignAfterStage || defaultAnchor).trim() || defaultAnchor;
-            if (anchor === 'Interview Scheduled') anchor = defaultAnchor;
+            if (anchor === 'Interview Scheduled' || !fixedSet.has(anchor)) {
+                anchor = defaultAnchor;
+            }
             roundAnchorMap.set(name, anchor);
         }
     }
@@ -996,7 +999,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
         if (Array.isArray(backendRoundsSummary)) {
             for (const r of backendRoundsSummary) {
-                const name = String(r?.levelName || '').trim();
+                const name = String(r?.levelName || 'Round 1').trim() || 'Round 1';
                 if (name) roundSet.add(name);
             }
         }
@@ -1004,7 +1007,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         for (const c of (candidates || [])) {
             for (const r of (c?.interviewRounds || [])) {
                 if (Number(r?.phase || 1) === activePhase) {
-                    const name = String(r?.levelName || '').trim();
+                    const name = String(r?.levelName || 'Round 1').trim() || 'Round 1';
                     if (name) roundSet.add(name);
                 }
             }
@@ -3140,9 +3143,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                                         for (const c of structuralPhase2Candidates) {
                                             const seen = new Set();
                                             for (const r of (c.interviewRounds || [])) {
-                                                if (Number(r.phase || 1) !== 2) continue;
-                                                const name = String(r.levelName || '').trim();
-                                                if (name && !seen.has(name)) {
+                                                const name = String(r.levelName || 'Round 1').trim() || 'Round 1';
+                                                if (!seen.has(name)) {
                                                     seen.add(name);
                                                     map.set(name, (map.get(name) || 0) + 1);
                                                 }
