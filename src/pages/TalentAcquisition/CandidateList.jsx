@@ -1,17 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, X, Mail, ArrowRight, ArrowRightLeft, Menu, Search, Calendar, BarChart3, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
-import * as ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
 import BulkCandidateImport from './BulkCandidateImport';
 import BulkResumeImport from './BulkResumeImport';
-import CandidateDetails from './CandidateDetails';
 import { ProfileReviewModal } from './PublicApplicationsView';
 import MassMailModal from './MassMailModal';
 import BulkTransferModal from './BulkTransferModal';
@@ -21,475 +15,28 @@ import DynamicPhaseView from './CandidateList/DynamicPhaseView';
 import useDebouncedValue from '../../hooks/useDebouncedValue';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
 
-const LEGACY_EXPORT_STATUS_OPTIONS = ['Total Sourced', 'Interested', 'Interview Scheduled', 'Shortlisted', 'Profile Shared', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
+import {
+    DEFAULT_DATE_FILTER_FIELD
+} from './CandidateList/CandidateListConstants';
+import {
+    getCandidateUploadedByName,
+    getCandidateUploadType,
+    getRoundsForPhase,
+    getDisplayInterviewRoundsForPhase,
+    hasPhase2InterviewActivity,
+    matchesInterviewFilter,
+    normalizeMultiValueFilter,
+    matchesMultiValueFilter,
+    getPresetDateRange,
+    getDefaultDateFilterState
+} from './CandidateList/utils/candidateHelpers';
+import { exportCandidatesToExcel } from './CandidateList/utils/exportExcel';
 
-// Fixed stage anchors for the Phase 1 recruitment pipeline (in display order).
-const PIPELINE_FIXED_STAGES = ['Total Sourced', 'Interested', 'Shortlisted', 'Profile Shared'];
-const PIPELINE_FIXED_STAGE_SET = new Set(PIPELINE_FIXED_STAGES);
-
-/**
- * buildDynamicPipeline
- *
- * Given a flat list of candidates (each with an `interviewRounds` array),
- * returns an ordered array of node descriptors that represents the complete
- * Phase 1 pipeline, interleaving interview rounds immediately after their
- * configured `assignAfterStage` anchor (which can be a fixed stage name or
- * another round's `levelName`).
- *
- * Algorithm:
- *   1. Collect all distinct round levelNames (in first-seen order across candidates).
- *   2. For each round, read its `assignAfterStage`.  If the value is not a known
- *      fixed stage, treat it as a reference to another round (chaining).
- *   3. Topologically expand: for each fixed stage in order, append all rounds
- *      whose resolved anchor is that stage, then recursively append rounds that
- *      chain off those rounds.
- *   4. Any cycles or unresolved parents fall back to the 'Shortlisted' anchor.
- *
- * @param {Object[]} candidates - Array of candidate objects (interviewRounds included).
- * @returns {string[]} Ordered array of node names, e.g.
- *   ['Total Sourced', 'Interested', 'L1', 'Technical Round', 'Shortlisted', 'HR Round', 'Profile Shared']
- */
-const PHASE_2_FIXED_STAGES = ['Profile Shared', 'Shortlisted', 'Selected', 'Rejected'];
-const PHASE_2_FIXED_STAGE_SET = new Set(PHASE_2_FIXED_STAGES);
-
-const buildDynamicPipeline = (roundsOrCandidates, phase = 1, fixedStages = PIPELINE_FIXED_STAGES) => {
-    const fixedSet = new Set(fixedStages);
-    const defaultAnchor = phase === 2 ? 'Shortlisted' : 'Interested';
-    const roundAnchorMap = new Map();
-
-    for (const item of (roundsOrCandidates || [])) {
-        if (item.interviewRounds && Array.isArray(item.interviewRounds)) {
-            for (const round of item.interviewRounds) {
-                const name = String(round.levelName || 'Round 1').trim() || 'Round 1';
-                if (roundAnchorMap.has(name)) continue;
-                let anchor = String(round.assignAfterStage || defaultAnchor).trim() || defaultAnchor;
-                if (anchor === 'Interview Scheduled' || !fixedSet.has(anchor)) {
-                    anchor = defaultAnchor;
-                }
-                roundAnchorMap.set(name, anchor);
-            }
-        } else if (item) {
-            const name = String(item.levelName || 'Round 1').trim() || 'Round 1';
-            if (roundAnchorMap.has(name)) continue;
-            let anchor = String(item.assignAfterStage || defaultAnchor).trim() || defaultAnchor;
-            if (anchor === 'Interview Scheduled' || !fixedSet.has(anchor)) {
-                anchor = defaultAnchor;
-            }
-            roundAnchorMap.set(name, anchor);
-        }
-    }
-
-    if (roundAnchorMap.size === 0) {
-        return [...fixedStages];
-    }
-
-    const insertAfter = new Map();
-    for (const stage of fixedStages) {
-        insertAfter.set(stage, []);
-    }
-
-    const allRoundNames = [...roundAnchorMap.keys()];
-    const children = new Map();
-    for (const name of allRoundNames) {
-        children.set(name, []);
-    }
-    for (const name of allRoundNames) {
-        let parent = roundAnchorMap.get(name);
-        if (parent === 'Interview Scheduled') parent = defaultAnchor;
-        if (parent && !fixedSet.has(parent) && roundAnchorMap.has(parent)) {
-            children.get(parent).push(name);
-        }
-    }
-
-    const visited = new Set();
-    const appendRound = (name, bucket) => {
-        if (visited.has(name)) return;
-        visited.add(name);
-        bucket.push(name);
-        for (const child of (children.get(name) || [])) {
-            appendRound(child, bucket);
-        }
-    };
-
-    for (const name of allRoundNames) {
-        let anchor = roundAnchorMap.get(name);
-        if (anchor === 'Interview Scheduled') anchor = defaultAnchor;
-        if (fixedSet.has(anchor)) {
-            const effectiveAnchor = anchor || defaultAnchor;
-            const bucket = insertAfter.get(effectiveAnchor);
-            if (bucket) appendRound(name, bucket);
-        }
-    }
-
-    for (const name of allRoundNames) {
-        if (!visited.has(name)) {
-            const fallbackBucket = insertAfter.get('Shortlisted') || insertAfter.get(fixedStages[0]);
-            if (fallbackBucket) fallbackBucket.push(name);
-        }
-    }
-
-    const result = [];
-    for (const stage of fixedStages) {
-        result.push(stage);
-        for (const roundName of (insertAfter.get(stage) || [])) {
-            result.push(roundName);
-        }
-    }
-    return result;
-};
-const EXPORT_INTERVIEW_STATUS_OPTIONS = ['Shortlisted', 'Rejected', 'Scheduled', 'Did not Turn up'];
-const PROFILE_SHORTLISTED_EXPORT_OPTIONS = ['Yes', 'No', 'Did Not Turn Up', 'On Hold'];
-const PROFILE_SHORTLISTED_HEADER = 'Profile Shortlisted';
-
-const hasReviewableApplicantProfile = (item) => Boolean(
-    item &&
-    (
-        (item.applicantId && typeof item.applicantId === 'object') ||
-        item.profileSnapshot ||
-        item.publicApplicationId
-    )
-);
-
-const hasUploadedResumeFile = (resumeUrl) => (
-    typeof resumeUrl === 'string' &&
-    /^https?:\/\//i.test(resumeUrl.trim())
-);
-
-const getCandidateUploadType = (candidate) => (
-    hasUploadedResumeFile(candidate?.resumeUrl) ? 'CV' : 'Excel'
-);
-
-const getCandidateUploadedByName = (candidate) => (
-    `${candidate?.uploadedBy?.firstName || ''} ${candidate?.uploadedBy?.lastName || ''}`.trim()
-);
-
-const hasCandidateCtcDetails = (candidate) => (
-    (candidate?.currentCTC !== undefined && candidate?.currentCTC !== null && candidate?.currentCTC !== '')
-    || (candidate?.expectedCTC !== undefined && candidate?.expectedCTC !== null && candidate?.expectedCTC !== '')
-    || (candidate?.noticePeriod !== undefined && candidate?.noticePeriod !== null && candidate?.noticePeriod !== '')
-);
-
-const interviewFilterOptions = [
-    { value: 'All', label: 'All' },
-    { value: 'Scheduled', label: 'Scheduled' },
-    { value: 'Shortlisted', label: 'Shortlisted' },
-    { value: 'Failed', label: 'Failed' }
-];
-
-const getRoundsForPhase = (candidate, phase) => (
-    Array.isArray(candidate?.interviewRounds)
-        ? candidate.interviewRounds.filter((round) => Number(round.phase || 1) === Number(phase))
-        : []
-);
-
-const getPhase2InterviewStatusValue = (candidate = {}) => {
-    const normalized = String(candidate?.phase2InterviewStatus || '').trim();
-    if (['Scheduled', 'Rejected', 'Shortlisted', 'Did not Turn up'].includes(normalized)) {
-        return normalized;
-    }
-
-    if (candidate?.phase2Decision === 'Rejected') {
-        return 'Rejected';
-    }
-
-    if (candidate?.phase2Decision === 'Selected') {
-        return 'Shortlisted';
-    }
-
-    return '';
-};
-
-const getDisplayInterviewRoundsForPhase = (candidate, phase) => {
-    const rounds = getRoundsForPhase(candidate, phase);
-    if (phase !== 2 || rounds.length > 0) {
-        return rounds;
-    }
-
-    const phase2InterviewStatus = getPhase2InterviewStatusValue(candidate);
-    const phase2Feedback = String(candidate?.phase2InterviewerFeedback || '').trim();
-    if (!phase2InterviewStatus && !phase2Feedback) {
-        return [];
-    }
-
-    return [{
-        _id: 'phase2-imported-interview-summary',
-        phase: 2,
-        status: phase2InterviewStatus === 'Rejected'
-            ? 'Failed'
-            : phase2InterviewStatus === 'Shortlisted'
-                ? 'Passed'
-                : phase2InterviewStatus === 'Did not Turn up'
-                    ? 'Skipped'
-                    : 'Scheduled',
-        displayStatusLabel: phase2InterviewStatus || 'Scheduled',
-        feedback: candidate?.phase2InterviewerFeedback || '',
-        rating: null,
-        skillRatings: []
-    }];
-};
-
-const hasPhase2InterviewActivity = (candidate = {}) => {
-    return getDisplayInterviewRoundsForPhase(candidate, 2).length > 0;
-};
-
-const getInterviewFilterValue = (rounds = []) => {
-    if (!Array.isArray(rounds) || rounds.length === 0) {
-        return null;
-    }
-
-    const hasFailed = rounds.some((round) => round.status === 'Failed');
-    if (hasFailed) {
-        return 'Failed';
-    }
-
-    const hasScheduled = rounds.some((round) => ['Pending', 'Scheduled'].includes(round.status));
-    if (hasScheduled) {
-        return 'Scheduled';
-    }
-
-    const allClosed = rounds.every((round) => ['Passed', 'Skipped'].includes(round.status));
-    if (allClosed) {
-        return 'Shortlisted';
-    }
-
-    return 'Scheduled';
-};
-
-const getInterviewSummaryValue = (rounds = []) => {
-    if (!Array.isArray(rounds) || rounds.length === 0) {
-        return null;
-    }
-
-    if (rounds.some((round) => round.status === 'Failed')) {
-        return 'Failed';
-    }
-
-    if (rounds.some((round) => round.status === 'Pending')) {
-        return 'Pending';
-    }
-
-    if (rounds.some((round) => round.status === 'Scheduled')) {
-        return 'Scheduled';
-    }
-
-    if (rounds.every((round) => round.status === 'Skipped')) {
-        return 'Skipped';
-    }
-
-    const allClosed = rounds.every((round) => ['Passed', 'Skipped'].includes(round.status));
-    if (allClosed) {
-        return 'Shortlisted';
-    }
-
-    return 'Pending';
-};
-
-const getRoundExportInterviewStatus = (round = {}) => {
-    if (round.status === 'Failed') return 'Rejected';
-    if (round.status === 'Passed') return 'Shortlisted';
-    if (round.status === 'Skipped') return 'Did not Turn up';
-    return 'Scheduled';
-};
-
-const getPhase2InterviewStatusExportValue = (candidate = {}) => getPhase2InterviewStatusValue(candidate);
-
-const matchesInterviewFilter = (rounds = [], filterValue = 'All') => {
-    if (filterValue === 'All') {
-        return true;
-    }
-
-    if (filterValue === 'Scheduled') {
-        return Array.isArray(rounds) && rounds.length > 0;
-    }
-
-    return getInterviewFilterValue(rounds) === filterValue;
-};
-
-const normalizeMultiValueFilter = (values = []) => [...new Set(
-    (Array.isArray(values) ? values : [values])
-        .map((value) => String(value || '').trim())
-        .filter(Boolean)
-)];
-
-const matchesMultiValueFilter = (selectedValues = [], candidateValue = '') => {
-    const normalizedSelections = normalizeMultiValueFilter(selectedValues);
-    if (normalizedSelections.length === 0) {
-        return true;
-    }
-
-    const normalizedCandidateValue = String(candidateValue || '').trim();
-    return normalizedCandidateValue ? normalizedSelections.includes(normalizedCandidateValue) : false;
-};
-
-const getMultiFilterLabel = (selectedValues = [], fallbackLabel) => {
-    if (selectedValues.length === 0) {
-        return fallbackLabel;
-    }
-
-    if (selectedValues.length === 1) {
-        return selectedValues[0];
-    }
-
-    return `${selectedValues.length} selected`;
-};
-
-const formatDateInputValue = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
-
-const DEFAULT_DATE_FILTER_FIELD = 'updatedAt';
-
-const getPresetDateRange = (preset) => {
-    if (!preset) {
-        return { startDate: '', endDate: '' };
-    }
-
-    const today = new Date();
-    const startDate = new Date(today);
-
-    switch (preset) {
-        case 'today':
-            break;
-        case 'last2days':
-            startDate.setDate(today.getDate() - 1);
-            break;
-        case 'last7days':
-            startDate.setDate(today.getDate() - 6);
-            break;
-        case 'last2weeks':
-            startDate.setDate(today.getDate() - 13);
-            break;
-        case 'thisMonth':
-            startDate.setDate(1);
-            break;
-        default:
-            return { startDate: '', endDate: '' };
-    }
-
-    return {
-        startDate: formatDateInputValue(startDate),
-        endDate: formatDateInputValue(today)
-    };
-};
-
-const getDefaultDateFilterState = () => {
-    return {
-        createdDatePreset: '',
-        dateFilterField: '',
-        dateFrom: '',
-        dateTo: ''
-    };
-};
-
-const createdDatePresetOptions = [
-    { value: 'today', label: 'Today' },
-    { value: 'last2days', label: 'Last 2 Days' },
-    { value: 'last7days', label: 'Last 7 Days' },
-    { value: 'last2weeks', label: 'Last 2 Weeks' },
-    { value: 'thisMonth', label: 'This Month' },
-    { value: 'custom', label: 'Custom' }
-];
-
-const dateFilterFieldOptions = [
-    { value: '', label: 'None' },
-    { value: 'updatedAt', label: 'Updated At' },
-    { value: 'createdAt', label: 'Created At' }
-];
-
-const getCreatedDatePresetLabel = (preset) => (
-    createdDatePresetOptions.find((option) => option.value === preset)?.label || 'Sort'
-);
-
-const MultiSelectFilter = ({
-    label,
-    options = [],
-    selectedValues = [],
-    onToggleValue,
-    onClear,
-    isOpen,
-    onToggleOpen,
-    emptyLabel,
-    widthClass = 'w-40'
-}) => {
-    const normalizedSelectedValues = normalizeMultiValueFilter(selectedValues);
-    const triggerRef = useRef(null);
-    const [panelPosition, setPanelPosition] = useState(null);
-
-    useEffect(() => {
-        if (!isOpen || !triggerRef.current || typeof window === 'undefined') {
-            setPanelPosition(null);
-            return;
-        }
-
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPanelPosition({
-            top: rect.bottom + 8,
-            left: rect.left,
-            width: rect.width
-        });
-    }, [isOpen]);
-
-    return (
-        <div className={`shrink-0 relative ${widthClass}`}>
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">{label}</label>
-            <button
-                ref={triggerRef}
-                type="button"
-                onClick={() => onToggleOpen(isOpen ? null : label)}
-                data-multi-filter-trigger="true"
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-xs text-slate-700 outline-none transition hover:border-slate-400 focus:ring-2 focus:ring-blue-500"
-            >
-                <span className="truncate">{getMultiFilterLabel(normalizedSelectedValues, emptyLabel)}</span>
-                <svg className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                </svg>
-            </button>
-            {isOpen && panelPosition && typeof document !== 'undefined' && createPortal(
-                <div
-                    data-multi-filter-panel="true"
-                    className="fixed z-[10000] max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
-                    style={panelPosition}
-                >
-                    <div className="mb-2 flex items-center justify-between px-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Choose users</span>
-                        <button
-                            type="button"
-                            onClick={onClear}
-                            className="text-[10px] font-semibold text-blue-600 hover:text-blue-700"
-                        >
-                            Clear
-                        </button>
-                    </div>
-                    <div className="space-y-1">
-                        {options.length > 0 ? options.map((option) => {
-                            const isChecked = normalizedSelectedValues.includes(option);
-                            return (
-                                <label
-                                    key={option}
-                                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => onToggleValue(option)}
-                                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="truncate">{option}</span>
-                                </label>
-                            );
-                        }) : (
-                            <div className="px-2 py-3 text-xs text-slate-400">No users found</div>
-                        )}
-                    </div>
-                </div>,
-                document.body
-            )}
-        </div>
-    );
-};
+import CandidateHeaderToolbar from './CandidateList/components/CandidateHeaderToolbar';
+import CandidateMetricsCards from './CandidateList/components/CandidateMetricsCards';
+import CandidateFilters from './CandidateList/components/CandidateFilters';
+import CandidateTable from './CandidateList/components/CandidateTable';
+import CandidateSidePanel from './CandidateList/components/CandidateSidePanel';
 
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
     const [resolvedRequest, setResolvedRequest] = useState(requestMeta);
@@ -566,9 +113,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [serverSummary, setServerSummary] = useState(null);
     const [cardMetrics, setCardMetrics] = useState(null);
     const [loadingMetrics, setLoadingMetrics] = useState(false);
-    // roundSummary: result of the lightweight /round-summary endpoint.
-    // Contains { phase1: [{levelName,assignAfterStage,count}], phase2: [...] }
-    // Used exclusively for pipeline pill building across ALL pages.
     const [roundSummary, setRoundSummary] = useState(null);
     const [actionCandidates, setActionCandidates] = useState([]);
 
@@ -588,10 +132,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [dateTo, setDateTo] = useState('');
     const [filterTransferred, setFilterTransferred] = useState('All');
     const [filterProfileShared, setFilterProfileShared] = useState(false);
-    // filterInterviewRound: when set to a round levelName, the table shows only
-    // candidates who have a phase-1 round with that levelName.
     const [filterInterviewRound, setFilterInterviewRound] = useState('');
+    const [filterDynamicStage, setFilterDynamicStage] = useState('All');
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
+
+    useEffect(() => {
+        setFilterDynamicStage('All');
+    }, [filterInterviewRound]);
     const [users, setUsers] = useState([]);
     const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 200);
 
@@ -687,12 +234,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const isProfileSharedCandidate = useCallback((candidate) =>
         candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
         , []);
-    const hasMovedToPhase2 = useCallback((candidate) => (
-        isProfileSharedCandidate(candidate)
-        || Boolean(String(candidate?.phase2Decision || '').trim() && candidate?.phase2Decision !== 'None')
-        || Boolean(String(candidate?.phase2InterviewStatus || '').trim() && candidate?.phase2InterviewStatus !== 'None')
-        || Boolean(String(candidate?.phase2InterviewerFeedback || '').trim())
-    ), [isProfileSharedCandidate]);
 
     const handleSelectCandidate = (candId) => {
         if (!canViewCandidateDetails) {
@@ -771,52 +312,16 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [searchParams, activePhase]);
 
-    // Reset page to 1 when any filter changes (including round pill clicks)
+    // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared, filterInterviewRound]);
-
-    const isFilterActive = useMemo(() => {
-        return (
-            (activePhase === 1 && filterStatus !== 'All') ||
-            (activePhase === 2 && filterDecision !== 'All') ||
-            (activePhase === 3 && filterDecision !== 'All') ||
-            (activePhase === 1 && filterDecision !== 'All') ||
-            filterInterviewStatus !== 'All' ||
-            filterPreference !== 'All' ||
-            filterRating !== 'All' ||
-            filterExperience !== '' ||
-            filterPulledBy.length > 0 ||
-            filterUploadedBy.length > 0 ||
-            filterUploadType !== 'All' ||
-            filterTransferred !== 'All' ||
-            filterProfileShared === true ||
-            filterInterviewRound !== '' ||
-            candidateNameSearch.trim() !== ''
-        );
-    }, [
-        activePhase,
-        filterStatus,
-        filterDecision,
-        filterInterviewStatus,
-        filterPreference,
-        filterRating,
-        filterExperience,
-        filterPulledBy,
-        filterUploadedBy,
-        filterUploadType,
-        filterTransferred,
-        filterProfileShared,
-        filterInterviewRound,
-        candidateNameSearch
-    ]);
+    }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared, filterInterviewRound, filterDynamicStage]);
 
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
         if (!normalizedCandidateNameSearch) {
             return true;
         }
-
         return String(candidate?.candidateName || '').toLowerCase().includes(normalizedCandidateNameSearch);
     }, [normalizedCandidateNameSearch]);
 
@@ -853,6 +358,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             params.filterTransferred = filterTransferred;
             params.filterProfileShared = filterProfileShared;
             params.filterInterviewRound = filterInterviewRound;
+            params.filterDynamicStage = filterDynamicStage;
         }
 
         return params;
@@ -863,6 +369,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         dateTo,
         debouncedCandidateNameSearch,
         filterDecision,
+        filterDynamicStage,
         filterExperience,
         filterInterviewRound,
         filterInterviewStatus,
@@ -885,7 +392,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             ...candidates.map((candidate) => candidate.profilePulledBy),
             ...filterPulledBy
         ]);
-
         return options.sort((left, right) => left.localeCompare(right));
     }, [users, candidates, filterPulledBy]);
 
@@ -894,7 +400,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             ...candidates.map((candidate) => getCandidateUploadedByName(candidate)),
             ...filterUploadedBy
         ]);
-
         return options.sort((left, right) => left.localeCompare(right));
     }, [candidates, filterUploadedBy]);
 
@@ -904,7 +409,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             setDateFilterField((prev) => prev || DEFAULT_DATE_FILTER_FIELD);
             return;
         }
-
         const range = getPresetDateRange(preset);
         setCreatedDatePreset(preset);
         setDateFilterField((prev) => prev || DEFAULT_DATE_FILTER_FIELD);
@@ -968,14 +472,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, []);
 
-    // Base filter applies global filters (Preference, Experience, Rating, PulledBy) but NOT Status/Decision/InterviewStatus
-    // This allows the cards to show correct overall metrics even when a specific card (which sets Status/Decision) is clicked.
-    // 1. Structural population: Only structural filters (Pulled By, Transferred, Legacy)
     const structuralPhase1Candidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 1 ? candidates : [];
         }
-
         return candidates.filter(candidate => {
             const matchCandidateName = matchesCandidateNameSearch(candidate);
             const matchPulledBy = matchesMultiValueFilter(filterPulledBy, candidate.profilePulledBy);
@@ -991,7 +491,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch, usesBackendPagination]);
 
     const availableRoundOptions = useMemo(() => {
-        const roundSet = new Set();
+        const roundMap = new Map();
+        const normalizeRoundTitle = (str) => {
+            if (!str) return 'Round 1';
+            const trimmed = String(str).trim();
+            return trimmed.replace(/\b\w/g, (char) => char.toUpperCase());
+        };
 
         const backendRoundsSummary = activePhase === 2
             ? (roundSummary?.phase2 || cardMetrics?.phase2Metrics?.interviewRoundsSummary)
@@ -999,29 +504,33 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
         if (Array.isArray(backendRoundsSummary)) {
             for (const r of backendRoundsSummary) {
-                const name = String(r?.levelName || 'Round 1').trim() || 'Round 1';
-                if (name) roundSet.add(name);
+                const raw = String(r?.levelName || 'Round 1').trim() || 'Round 1';
+                const key = raw.toLowerCase();
+                if (raw && !roundMap.has(key)) {
+                    roundMap.set(key, normalizeRoundTitle(raw));
+                }
             }
         }
 
         for (const c of (candidates || [])) {
             for (const r of (c?.interviewRounds || [])) {
                 if (Number(r?.phase || 1) === activePhase) {
-                    const name = String(r?.levelName || 'Round 1').trim() || 'Round 1';
-                    if (name) roundSet.add(name);
+                    const raw = String(r?.levelName || 'Round 1').trim() || 'Round 1';
+                    const key = raw.toLowerCase();
+                    if (raw && !roundMap.has(key)) {
+                        roundMap.set(key, normalizeRoundTitle(raw));
+                    }
                 }
             }
         }
 
-        return Array.from(roundSet);
+        return Array.from(roundMap.values());
     }, [activePhase, candidates, cardMetrics, roundSummary]);
 
-    // 2. Base for Dynamic Cards: Structural + (Rating, Exp, Preference)
     const basePhase1Candidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 1 ? candidates : [];
         }
-
         return structuralPhase1Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
@@ -1042,12 +551,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         });
     }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase1Candidates, usesBackendPagination]);
 
-    // 3. Final Filtered list for the table: Base + (Status, Decision, InterviewStatus, InterviewRound)
     const filteredCandidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 1 ? candidates : [];
         }
-
         return basePhase1Candidates.filter(candidate => {
             const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
@@ -1059,9 +566,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
             }
 
-            // Filter by specific interview round levelName (set when a pipeline card is clicked).
+            const isNotScheduledFilter = filterDynamicStage && filterDynamicStage.startsWith('NotScheduled_');
+
             let matchInterviewRound = true;
-            if (filterInterviewRound) {
+            if (filterInterviewRound && !isNotScheduledFilter) {
                 const targetRound = String(filterInterviewRound).trim().toLowerCase();
                 const rounds = getRoundsForPhase(candidate, 1);
                 matchInterviewRound = (rounds || []).some(
@@ -1069,11 +577,46 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 );
             }
 
-            return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared && matchInterviewRound;
-        });
-    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterInterviewRound, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
+            let matchDynamicStage = true;
+            if (filterDynamicStage && filterDynamicStage !== 'All') {
+                const parts = filterDynamicStage.split('_');
+                const statusType = parts[0];
+                const targetRoundName = parts.slice(1).join('_').trim().toLowerCase();
+                const rounds = getRoundsForPhase(candidate, 1);
 
-    // Compute Metrics for Summary Boxes (Phase 1 — computed from structuralPhase1Candidates for stability)
+                if (statusType === 'NotScheduled' || statusType === 'Unscheduled') {
+                    const hasTargetRound = (rounds || []).some(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+                    matchDynamicStage = !hasTargetRound;
+                } else {
+                    const targetRoundObj = (rounds || []).find(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+
+                    if (!targetRoundObj) {
+                        matchDynamicStage = false;
+                    } else {
+                        const s = String(targetRoundObj.status || 'Pending').trim();
+                        if (statusType === 'Cleared') {
+                            matchDynamicStage = s === 'Passed' || s === 'Pass' || s === 'Shortlisted';
+                        } else if (statusType === 'Failed') {
+                            matchDynamicStage = s === 'Failed' || s === 'Fail' || s === 'Rejected';
+                        } else if (statusType === 'DNTU') {
+                            matchDynamicStage = s === 'Did Not Turn Up' || s === 'Did Not Turnup' || s === 'Did Not Turn up' || s === 'Skipped' || s === 'No Show' || s === 'DNTU';
+                        } else if (statusType === 'LIB') {
+                            matchDynamicStage = s === 'Left in between' || s === 'Left In Between' || s === 'LIB';
+                        } else if (statusType === 'Pending') {
+                            matchDynamicStage = s === 'Pending' || s === 'Scheduled';
+                        }
+                    }
+                }
+            }
+
+            return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared && matchInterviewRound && matchDynamicStage;
+        });
+    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterDynamicStage, filterInterviewRound, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
+
     const metrics = useMemo(() => {
         if (usesBackendPagination && cardMetrics?.phase1Metrics) {
             return cardMetrics.phase1Metrics;
@@ -1095,13 +638,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         return counts;
     }, [cardMetrics, structuralPhase1Candidates, isProfileSharedCandidate, usesBackendPagination]);
 
-    // --- Phase 2: shortlisted candidates + their metrics ---
-    // Structural Phase 2 population
     const structuralPhase2Candidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 2 ? candidates : [];
         }
-
         return candidates.filter(c => {
             const isShortlisted = isProfileSharedCandidate(c);
             const matchCandidateName = matchesCandidateNameSearch(c);
@@ -1113,12 +653,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         });
     }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, isProfileSharedCandidate, matchesCandidateNameSearch, usesBackendPagination]);
 
-    // Base for Phase 2 dynamic cards
     const basePhase2Candidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 2 ? candidates : [];
         }
-
         return structuralPhase2Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
@@ -1135,12 +673,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         });
     }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase2Candidates, usesBackendPagination]);
 
-    // Final Phase 2 list
     const phase2Filtered = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 2 ? candidates : [];
         }
-
         return basePhase2Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'Shortlisted_Selected'
@@ -1152,15 +688,49 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     ? hasPhase2InterviewActivity(candidate)
                     : matchesInterviewFilter(getDisplayInterviewRoundsForPhase(candidate, 2), filterInterviewStatus);
             }
-            return matchDecision && matchInterviewStatus;
+            let matchDynamicStage = true;
+            if (filterDynamicStage && filterDynamicStage !== 'All') {
+                const parts = filterDynamicStage.split('_');
+                const statusType = parts[0];
+                const targetRoundName = parts.slice(1).join('_').trim().toLowerCase();
+                const rounds = getRoundsForPhase(candidate, 2);
+
+                if (statusType === 'NotScheduled' || statusType === 'Unscheduled') {
+                    const hasTargetRound = (rounds || []).some(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+                    matchDynamicStage = !hasTargetRound;
+                } else {
+                    const targetRoundObj = (rounds || []).find(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+
+                    if (!targetRoundObj) {
+                        matchDynamicStage = false;
+                    } else {
+                        const s = String(targetRoundObj.status || 'Pending').trim();
+                        if (statusType === 'Cleared') {
+                            matchDynamicStage = s === 'Passed' || s === 'Pass' || s === 'Shortlisted';
+                        } else if (statusType === 'Failed') {
+                            matchDynamicStage = s === 'Failed' || s === 'Fail' || s === 'Rejected';
+                        } else if (statusType === 'DNTU') {
+                            matchDynamicStage = s === 'Did Not Turn Up' || s === 'Did Not Turnup' || s === 'Did Not Turn up' || s === 'Skipped' || s === 'No Show' || s === 'DNTU';
+                        } else if (statusType === 'LIB') {
+                            matchDynamicStage = s === 'Left in between' || s === 'Left In Between' || s === 'LIB';
+                        } else if (statusType === 'Pending') {
+                            matchDynamicStage = s === 'Pending' || s === 'Scheduled';
+                        }
+                    }
+                }
+            }
+            return matchDecision && matchInterviewStatus && matchDynamicStage;
         });
-    }, [activePhase, basePhase2Candidates, candidates, filterDecision, filterInterviewStatus, usesBackendPagination]);
+    }, [activePhase, basePhase2Candidates, candidates, filterDecision, filterDynamicStage, filterInterviewStatus, usesBackendPagination]);
 
     const phase2Metrics = useMemo(() => {
         if (usesBackendPagination && cardMetrics?.phase2Metrics) {
             return cardMetrics.phase2Metrics;
         }
-
         return {
             totalShortlisted: structuralPhase2Candidates.length,
             totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
@@ -1170,12 +740,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         };
     }, [cardMetrics, structuralPhase2Candidates, usesBackendPagination]);
 
-    // Structural Phase 3 population
     const structuralPhase3Candidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 3 ? candidates : [];
         }
-
         return candidates.filter(c => {
             const isSelected = c.phase2Decision === 'Selected';
             const matchCandidateName = matchesCandidateNameSearch(c);
@@ -1187,12 +755,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         });
     }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch, usesBackendPagination]);
 
-    // Base for Phase 3 dynamic cards
     const basePhase3Candidates = useMemo(() => {
         if (usesBackendPagination) {
             return activePhase === 3 ? candidates : [];
         }
-
         return structuralPhase3Candidates.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
@@ -1213,7 +779,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         if (usesBackendPagination) {
             return activePhase === 3 ? candidates : [];
         }
-
         return basePhase3Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'No Show_Offer Declined'
@@ -1237,7 +802,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         if (usesBackendPagination && cardMetrics?.phase3Metrics) {
             return cardMetrics.phase3Metrics;
         }
-
         return {
             total: structuralPhase3Candidates.length,
             offerSent: structuralPhase3Candidates.filter(c => ['Offer Sent', 'Offer Accepted', 'Joined'].includes(c.phase3Decision)).length,
@@ -1261,9 +825,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [buildCandidateRequestParams, hiringRequestId]);
 
-    // Fetches ONLY interview round summaries from the lightweight /round-summary endpoint.
-    // Sends only structural params (no phase, no decision/status filters) so the pill
-    // counts reflect ALL candidates regardless of which page the user is on.
     const fetchRoundSummary = useCallback(async () => {
         if (!hiringRequestId || isLegacyView) return;
         try {
@@ -1277,7 +838,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 startDate: dateFrom || undefined,
                 endDate: dateTo || undefined
             };
-            // Strip undefined keys
             Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
             const response = await api.get(`/ta/candidates/${hiringRequestId}/round-summary`, { params });
             setRoundSummary(response.data || null);
@@ -1288,7 +848,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const fetchCandidates = useCallback(async (silent = false) => {
         try {
-            if (!silent && candidates.length === 0) setLoading(true);
+            if (!silent) setLoading(true);
             const endpoint = isLegacyView
                 ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
                 : `/ta/candidates/${hiringRequestId}`;
@@ -1320,7 +880,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } finally {
             setLoading(false);
         }
-    }, [buildCandidateRequestParams, candidates.length, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics]);
+    }, [buildCandidateRequestParams, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics, fetchRoundSummary]);
 
     const fetchAllMatchingCandidates = useCallback(async () => {
         if (isLegacyView) {
@@ -1359,17 +919,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             setSortColumn(columnKey);
             setSortDirection('asc');
         }
-    };
-
-    const renderSortIcon = (columnKey) => {
-        if (sortColumn !== columnKey) {
-            return <ArrowUpDown size={12} className="opacity-40 hover:opacity-100 transition-opacity ml-1 inline text-slate-400" />;
-        }
-        return sortDirection === 'asc' ? (
-            <ArrowUp size={12} className="text-blue-600 ml-1 inline font-bold" />
-        ) : (
-            <ArrowDown size={12} className="text-blue-600 ml-1 inline font-bold" />
-        );
     };
 
     const activeList = useMemo(() => {
@@ -1463,13 +1012,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } else {
             const rect = e.currentTarget.getBoundingClientRect();
             const spaceBelow = window.innerHeight - rect.bottom;
-            const menuHeight = 220; // safe estimation of dropdown height
+            const menuHeight = 220;
 
             let positionStyles = {
                 right: window.innerWidth - rect.right
             };
 
-            // If not enough space below, open upwards
             if (spaceBelow < menuHeight && rect.top > menuHeight) {
                 positionStyles.bottom = window.innerHeight - rect.top + 5;
             } else {
@@ -1515,6 +1063,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         setFilterPreference('All');
         setFilterRating('All');
         setFilterInterviewRound('');
+        setFilterDynamicStage('All');
+        setCandidates([]);
+        setLoading(true);
         setSearchParams((prev) => {
             const next = new URLSearchParams(prev);
             next.set('phase', phase);
@@ -1604,490 +1155,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [fetchCandidates]);
 
-    const handleExportExcel = async () => {
-        try {
-            toast.loading('Preparing export...', { id: 'export-excel' });
-
-            const toEmptyCell = (value, { zeroIsEmpty = false } = {}) => {
-                if (value === undefined || value === null) {
-                    return null;
-                }
-
-                if (typeof value === 'number') {
-                    if (zeroIsEmpty && value === 0) {
-                        return null;
-                    }
-
-                    return value;
-                }
-
-                if (typeof value === 'string') {
-                    const normalized = value.trim();
-                    const upperValue = normalized.toUpperCase();
-                    const isZeroLike = /^0+(?:\.0+)?$/.test(normalized);
-                    if (!normalized || normalized === '-' || normalized === '--' || upperValue === 'N/A' || (zeroIsEmpty && isZeroLike)) {
-                        return null;
-                    }
-
-                    return normalized;
-                }
-
-                return value;
-            };
-
-            // 1. Fetch Requisition Details for Dynamic Skills
-            let softSkillsFromReq = [];
-            let techSkillsFromReq = [];
-            let requisitionData = null;
-
-            try {
-                const reqRes = await api.get(`/ta/hiring-request/${hiringRequestId}`);
-                requisitionData = reqRes.data || {};
-                const requirements = requisitionData.requirements || {};
-                const mustHave = requirements.mustHaveSkills || {};
-
-                softSkillsFromReq = Array.isArray(mustHave.softSkills) ? mustHave.softSkills : [];
-                techSkillsFromReq = Array.isArray(mustHave.technical) ? mustHave.technical :
-                    (Array.isArray(mustHave) ? mustHave : []);
-            } catch (err) {
-                console.error('Failed to fetch requisition for dynamic skills', err);
-            }
-
-            // 2. Prepare Sections for Dynamic Header Generation
-            const softSkillsHeaders = Array.isArray(softSkillsFromReq) ? softSkillsFromReq : [];
-            const techSkillsHeaders = Array.isArray(techSkillsFromReq) ? techSkillsFromReq : [];
-
-            // 3. Determine Maximum Interview Rounds among all candidates for sizing the table
-            const dataToExport = await fetchAllMatchingCandidates();
-            let maxRoundsCount = 1;
-            dataToExport.forEach(candidate => {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === Number(activePhase)) : [];
-                if (rounds.length > maxRoundsCount) maxRoundsCount = rounds.length;
-            });
-
-            const roundSections = [];
-            for (let i = 1; i <= maxRoundsCount; i++) {
-                roundSections.push({
-                    title: `Round ${i}`,
-                    subHeaders: [
-                        'Interviewer Feedback',
-                        'Interview date',
-                        'Interviewer Name',
-                        ...softSkillsHeaders,
-                        ...techSkillsHeaders,
-                        'Performance Rating',
-                        'Interview Status'
-                    ],
-                    width: 5 + softSkillsHeaders.length + techSkillsHeaders.length
-                });
-            }
-
-            // Define sections to iterate over for building Row 1, Row 2 and rowData
-            // width: span of columns under this title
-            const excelSections = [
-                { title: 'Basic Info', subHeaders: ['S.no', 'Submission Date', 'Source', 'Profile pulled by', 'Calling by', 'Name of Candidate', 'Total Experience'], width: 7 },
-                { title: 'Internal Round', subHeaders: ['TAT', 'Rate', 'Remarks'], width: 3 },
-                { title: 'Experience', subHeaders: ['Relevant Experience'], width: 1 },
-                { title: 'Technical Skills (Experience)', subHeaders: techSkillsHeaders, width: techSkillsHeaders.length },
-                { title: 'Education & Employment', subHeaders: ['Qualification', 'Company'], width: 2 },
-                { title: 'Compensation', subHeaders: ['CTC', 'Expected CTC'], width: 2 },
-                { title: 'Availability & Location', subHeaders: ['Notice Period(Days)', 'Last Working Day', 'Location', 'Preferred Location'], width: 4 },
-                { title: 'Contact Details', subHeaders: ['Email', 'Mobile No.'], width: 2 },
-                { title: 'Offer Details', subHeaders: ['Offer Company', 'Date Of Joining new company'], width: 2 },
-                { title: 'Status & Remarks', subHeaders: ['Status', 'Remark', 'Custom Remark'], width: 3 },
-                ...roundSections,
-                { title: 'Final Status & Decision', subHeaders: [PROFILE_SHORTLISTED_HEADER, 'Final Scoring', 'Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)', 'Interviewer Feedback (Phase 2)', 'Interview Status (Phase2)', 'Reason', 'Decision Status (Auto-calculated)'], width: 9 }
-            ].filter(sec => sec.width > 0);
-
-            const workbook = new ExcelJS.Workbook();
-            const sheet = workbook.addWorksheet('Candidates');
-            const validationSheet = workbook.addWorksheet('_ValidationLists');
-
-            const buildValidationRangeFormula = (columnLetter, itemCount) => (
-                `'${validationSheet.name}'!$${columnLetter}$1:$${columnLetter}$${Math.max(itemCount, 1)}`
-            );
-
-            LEGACY_EXPORT_STATUS_OPTIONS.forEach((option, index) => {
-                validationSheet.getCell(`A${index + 1}`).value = option;
-            });
-            PROFILE_SHORTLISTED_EXPORT_OPTIONS.forEach((option, index) => {
-                validationSheet.getCell(`B${index + 1}`).value = option;
-            });
-            validationSheet.state = 'hidden';
-            const candidateStatusValidationFormula = buildValidationRangeFormula('A', LEGACY_EXPORT_STATUS_OPTIONS.length);
-            const profileShortlistedValidationFormula = buildValidationRangeFormula('B', PROFILE_SHORTLISTED_EXPORT_OPTIONS.length);
-
-            // Row 1: MAIN HEADINGS
-            const row1Data = [];
-            excelSections.forEach(sec => {
-                row1Data.push(sec.title);
-                for (let i = 1; i < sec.width; i++) row1Data.push('');
-            });
-            const row1 = sheet.addRow(row1Data);
-
-            // Row 2: SUB-HEADERS
-            const row2Data = [];
-            excelSections.forEach(sec => {
-                sec.subHeaders.forEach(sub => row2Data.push(sub));
-            });
-            const row2 = sheet.addRow(row2Data);
-
-            // Merging Row 1 for Main Headings
-            let currentCol = 1;
-            excelSections.forEach(sec => {
-                if (sec.width > 1) {
-                    sheet.mergeCells(1, currentCol, 1, currentCol + sec.width - 1);
-                }
-                currentCol += sec.width;
-            });
-
-            const applyRoundColumnValidation = (startRow, endRow) => {
-                let sectionStartCol = 1;
-                excelSections.forEach((section) => {
-                    if (section.title.startsWith('Round ')) {
-                        const performanceRatingOffset = section.subHeaders.indexOf('Performance Rating');
-                        const interviewStatusOffset = section.subHeaders.indexOf('Interview Status');
-
-                        if (performanceRatingOffset >= 0) {
-                            const performanceRatingCol = sectionStartCol + performanceRatingOffset;
-                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
-                                sheet.getCell(rowNumber, performanceRatingCol).dataValidation = {
-                                    type: 'whole',
-                                    operator: 'between',
-                                    allowBlank: true,
-                                    showErrorMessage: true,
-                                    formulae: [1, 10],
-                                    errorTitle: 'Invalid Rating',
-                                    error: 'Performance Rating must be a whole number between 1 and 10.'
-                                };
-                            }
-                        }
-
-                        if (interviewStatusOffset >= 0) {
-                            const interviewStatusCol = sectionStartCol + interviewStatusOffset;
-                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
-                                sheet.getCell(rowNumber, interviewStatusCol).dataValidation = {
-                                    type: 'list',
-                                    allowBlank: true,
-                                    showErrorMessage: true,
-                                    formulae: [`"${EXPORT_INTERVIEW_STATUS_OPTIONS.join(',')}"`],
-                                    errorTitle: 'Invalid Interview Status',
-                                    error: `Interview Status must be one of: ${EXPORT_INTERVIEW_STATUS_OPTIONS.join(', ')}.`
-                                };
-                            }
-                        }
-                    }
-
-                    sectionStartCol += section.width;
-                });
-            };
-
-            const applyCandidateStatusValidation = (startRow, endRow) => {
-                let sectionStartCol = 1;
-                excelSections.forEach((section) => {
-                    if (section.title === 'Status & Remarks') {
-                        const statusOffset = section.subHeaders.indexOf('Status');
-                        if (statusOffset >= 0) {
-                            const statusCol = sectionStartCol + statusOffset;
-                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
-                                sheet.getCell(rowNumber, statusCol).dataValidation = {
-                                    type: 'list',
-                                    allowBlank: true,
-                                    showErrorMessage: true,
-                                    formulae: [candidateStatusValidationFormula],
-                                    errorTitle: 'Invalid Status',
-                                    error: `Status must be one of: ${LEGACY_EXPORT_STATUS_OPTIONS.join(', ')}.`
-                                };
-                            }
-                        }
-                    }
-
-                    sectionStartCol += section.width;
-                });
-            };
-
-            const applyPhase2InterviewStatusValidation = (startRow, endRow) => {
-                let sectionStartCol = 1;
-                excelSections.forEach((section) => {
-                    if (section.title === 'Final Status & Decision') {
-                        const phase2InterviewStatusOffset = section.subHeaders.indexOf('Interview Status (Phase2)');
-                        if (phase2InterviewStatusOffset >= 0) {
-                            const phase2InterviewStatusCol = sectionStartCol + phase2InterviewStatusOffset;
-                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
-                                sheet.getCell(rowNumber, phase2InterviewStatusCol).dataValidation = {
-                                    type: 'list',
-                                    allowBlank: true,
-                                    showErrorMessage: true,
-                                    formulae: ['"Scheduled,Did not Turn up"'],
-                                    errorTitle: 'Invalid Phase 2 Interview Status',
-                                    error: 'Interview Status (Phase2) must be: Scheduled or Did not Turn up.'
-                                };
-                            }
-                        }
-                    }
-                    sectionStartCol += section.width;
-                });
-            };
-
-            const applyFinalDecisionValidation = (startRow, endRow) => {
-                let sectionStartCol = 1;
-                excelSections.forEach((section) => {
-                    if (section.title === 'Final Status & Decision') {
-                        const profileShortlistedOffset = section.subHeaders.indexOf(PROFILE_SHORTLISTED_HEADER);
-                        if (profileShortlistedOffset >= 0) {
-                            const targetCol = sectionStartCol + profileShortlistedOffset;
-                            for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
-                                sheet.getCell(rowNumber, targetCol).dataValidation = {
-                                    type: 'list',
-                                    allowBlank: true,
-                                    showErrorMessage: true,
-                                    formulae: [profileShortlistedValidationFormula],
-                                    errorTitle: 'Invalid Value',
-                                    error: `${PROFILE_SHORTLISTED_HEADER} must be one of: ${PROFILE_SHORTLISTED_EXPORT_OPTIONS.join(', ')}.`
-                                };
-                            }
-                        }
-
-                        ['Profile Shared', 'Shortlisted (Phase 2)', 'Selected (Phase 2)'].forEach((headerName) => {
-                            const offset = section.subHeaders.indexOf(headerName);
-                            if (offset >= 0) {
-                                const targetCol = sectionStartCol + offset;
-                                for (let rowNumber = startRow; rowNumber <= endRow; rowNumber++) {
-                                    sheet.getCell(rowNumber, targetCol).dataValidation = {
-                                        type: 'list',
-                                        allowBlank: true,
-                                        showErrorMessage: true,
-                                        formulae: ['"Yes,No"'],
-                                        errorTitle: 'Invalid Value',
-                                        error: `${headerName} must be either Yes or No.`
-                                    };
-                                }
-                            }
-                        });
-                    }
-                    sectionStartCol += section.width;
-                });
-            };
-
-            // Set Column Widths and Formatting
-            row2Data.forEach((_, i) => {
-                const col = sheet.getColumn(i + 1);
-                col.width = 18; // default
-                if (i === 0) col.width = 8; // S.no
-                if (row2Data[i] === 'Remarks' || row2Data[i] === 'Interviewer Feedback' || row2Data[i] === 'Interviewer Feedback (Phase 2)') col.width = 35;
-                if (row2Data[i] === 'Name of Candidate' || row2Data[i].includes('Skill')) col.width = 25;
-
-                col.alignment = { wrapText: true, vertical: 'middle' };
-            });
-
-            // Formatting headers (Moved after column formatting to prevent alignment override)
-            [row1, row2].forEach((row, rowIndex) => {
-                row.font = { bold: true };
-                row.alignment = { horizontal: 'center', vertical: 'middle' };
-                row.eachCell((cell) => {
-                    // Explicitly set alignment on each cell to ensure centering
-                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                    cell.fill = {
-                        type: 'pattern',
-                        pattern: 'solid',
-                        fgColor: { argb: rowIndex === 0 ? 'FFD9EAD3' : 'FFE0E0E0' }
-                    };
-                    cell.border = {
-                        top: { style: 'thin' },
-                        left: { style: 'thin' },
-                        bottom: { style: 'thin' },
-                        right: { style: 'thin' }
-                    };
-                });
-            });
-
-            // Freeze top 2 rows
-            sheet.views = [{ state: 'frozen', ySplit: 2 }];
-
-            // Add Filters to Row 2
-            sheet.autoFilter = {
-                from: { row: 2, column: 1 },
-                to: { row: 2, column: row2Data.length }
-            };
-
-            dataToExport.forEach((candidate, index) => {
-                const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === Number(activePhase)) : [];
-
-                const techSkillRatings = techSkillsHeaders.map(skillName => {
-                    const skillEntry = (candidate.mustHaveSkills || []).find(s => s.skill === skillName);
-                    if (skillEntry) {
-                        const experience = toEmptyCell(skillEntry.experience, { zeroIsEmpty: true });
-                        return experience === null ? null : `${experience}y`;
-                    }
-
-                    return null;
-                });
-
-                // Collect data for each round
-                const roundsData = [];
-                for (let i = 0; i < maxRoundsCount; i++) {
-                    const r = rounds[i];
-                    if (r) {
-                        const feedback = toEmptyCell(r.feedback);
-                        const dateVal = r.scheduledDate || r.evaluatedAt;
-                        const date = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : null;
-                        const resolveUserName = (u) => {
-                            if (!u) return '';
-                            if (typeof u === 'object') {
-                                return `${u.firstName || ''} ${u.lastName || ''}`.trim();
-                            }
-                            if (typeof u === 'string') {
-                                const found = users.find(usr => String(usr._id) === String(u));
-                                if (found) {
-                                    return `${found.firstName || ''} ${found.lastName || ''}`.trim();
-                                }
-                            }
-                            return '';
-                        };
-
-                        let interviewer = '';
-                        if (r.evaluatedBy && resolveUserName(r.evaluatedBy)) {
-                            interviewer = resolveUserName(r.evaluatedBy);
-                        } else if (Array.isArray(r.assignedTo) && r.assignedTo.length > 0) {
-                            interviewer = r.assignedTo
-                                .map(u => resolveUserName(u))
-                                .filter(Boolean)
-                                .join(', ');
-                        }
-
-                        if (!interviewer) {
-                            interviewer = r.interviewerName || '';
-                        }
-                        const performanceRating = toEmptyCell(r.rating, { zeroIsEmpty: true });
-                        const roundInterviewStatus = getRoundExportInterviewStatus(r);
-
-                        const rSoftSkillRatings = softSkillsHeaders.map(skillName => {
-                            const rating = (r.skillRatings || []).find(sr => sr.skill === skillName)?.rating;
-                            return rating !== undefined ? `${rating}/10` : null;
-                        });
-
-                        const rTechSkillRatings = techSkillsHeaders.map(skillName => {
-                            const sr = (r.skillRatings || []).find(s => s.skill === skillName);
-                            return sr ? `${sr.rating}/10` : null;
-                        });
-
-                        roundsData.push(feedback, date, toEmptyCell(interviewer), ...rSoftSkillRatings, ...rTechSkillRatings, performanceRating, roundInterviewStatus);
-                    } else {
-                        // Empty round padding
-                        const fieldCount = 5 + softSkillsHeaders.length + techSkillsHeaders.length;
-                        for (let j = 0; j < fieldCount; j++) roundsData.push(null);
-                    }
-                }
-
-                const profileShortlisted = candidate.decision === 'Shortlisted'
-                    ? 'Yes'
-                    : candidate.decision === 'Rejected'
-                        ? 'No'
-                        : candidate.decision === 'Did Not Turn Up'
-                            ? 'Did Not Turn Up'
-                            : candidate.decision === 'On Hold'
-                                ? 'On Hold'
-                                : '';
-                const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected') ? 'Yes' : null;
-                const phase2Selected = candidate.phase2Decision === 'Selected' ? 'Yes' : null;
-                const phase2InterviewStatus = getPhase2InterviewStatusExportValue(candidate);
-                const statusSummary = getInterviewStatusSummary(rounds);
-                const interviewStatusLabel = toEmptyCell(statusSummary.label);
-
-                // Construct row data according to sections order
-                const rowData = [
-                    index + 1,
-                    candidate.uploadedAt ? format(new Date(candidate.uploadedAt), 'dd-MMM-yyyy') : null,
-                    toEmptyCell(candidate.source),
-                    toEmptyCell(candidate.profilePulledBy),
-                    toEmptyCell(candidate.calledBy),
-                    toEmptyCell(candidate.candidateName),
-                    toEmptyCell(candidate.totalExperience),
-
-                    toEmptyCell(candidate.tatToJoin, { zeroIsEmpty: true }),
-                    toEmptyCell(candidate.rate, { zeroIsEmpty: true }),
-                    toEmptyCell(candidate.remark),
-
-                    toEmptyCell(candidate.relevantExperience, { zeroIsEmpty: true }),
-                    ...techSkillRatings,
-
-                    toEmptyCell(candidate.qualification),
-                    toEmptyCell(candidate.currentCompany),
-
-                    toEmptyCell(candidate.currentCTC, { zeroIsEmpty: true }),
-                    toEmptyCell(candidate.expectedCTC, { zeroIsEmpty: true }),
-
-                    toEmptyCell(candidate.noticePeriod, { zeroIsEmpty: true }),
-                    candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd-MMM-yyyy') : null,
-                    toEmptyCell(candidate.currentLocation),
-                    toEmptyCell(candidate.preferredLocation),
-
-                    toEmptyCell(candidate.email),
-                    toEmptyCell(candidate.mobile),
-
-                    toEmptyCell(candidate.offerCompany),
-                    candidate.offerJoiningDate ? format(new Date(candidate.offerJoiningDate), 'dd-MMM-yyyy') : null,
-
-                    toEmptyCell(candidate.status),
-                    toEmptyCell(candidate.remark),
-                    toEmptyCell(candidate.customRemark),
-
-                    ...roundsData,
-
-                    toEmptyCell(profileShortlisted),
-                    null, // Final Scoring
-                    isProfileSharedCandidate(candidate) ? 'Yes' : null, // Profile Shared
-                    phase2Shortlisted,
-                    phase2Selected,
-                    toEmptyCell(candidate.phase2InterviewerFeedback),
-                    toEmptyCell(phase2InterviewStatus),
-                    toEmptyCell(candidate.rejectionReason),
-                    null // Decision Status
-                ];
-
-                const row = sheet.addRow(rowData);
-
-                // Calculate Formula Indexes Dynamically
-                // Profile Shortlisted is the 1st column of the last section
-                // Decision Status is the 6th column (last) of the last section
-                const totalColsBeforeLast = row2Data.length - 9;
-                const profileShortlistedColIndex = totalColsBeforeLast + 1;
-                const decisionStatusColIndex = totalColsBeforeLast + 9;
-
-                const colLetter = sheet.getColumn(profileShortlistedColIndex).letter;
-                const formulaRow = row.number;
-                if (profileShortlisted) {
-                    row.getCell(decisionStatusColIndex).value = {
-                        formula: `IF(${colLetter}${formulaRow}="Yes","Shortlisted",IF(${colLetter}${formulaRow}="No","Rejected",IF(${colLetter}${formulaRow}="Did Not Turn Up","Did Not Turn Up",IF(${colLetter}${formulaRow}="On Hold","On Hold",""))))`,
-                        result: profileShortlisted === 'Yes'
-                            ? 'Shortlisted'
-                            : profileShortlisted === 'No'
-                                ? 'Rejected'
-                                : profileShortlisted
-                    };
-                } else {
-                    row.getCell(decisionStatusColIndex).value = null;
-                }
-            });
-
-            const lastCandidateRow = Math.max(1000, dataToExport.length + 2);
-            applyCandidateStatusValidation(3, lastCandidateRow);
-            applyRoundColumnValidation(3, lastCandidateRow);
-            applyPhase2InterviewStatusValidation(3, lastCandidateRow);
-            applyFinalDecisionValidation(3, lastCandidateRow);
-
-            const buffer = await workbook.xlsx.writeBuffer();
-
-            // Generate dynamic filename: [Job Title] Candidate List.xlsx
-            const roleTitle = requisitionData?.roleDetails?.title || positionName || 'Candidates';
-            const fileName = `${roleTitle} Candidate List.xlsx`;
-
-            saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName);
-            toast.success('Excel exported successfully!', { id: 'export-excel' });
-        } catch (error) {
-            console.error('Export error:', error);
-            toast.error('Failed to export Excel', { id: 'export-excel' });
-        }
+    const handleExportExcelWrapper = () => {
+        exportCandidatesToExcel({
+            hiringRequestId,
+            positionName,
+            activePhase,
+            fetchAllMatchingCandidates,
+            users,
+            isProfileSharedCandidate
+        });
     };
 
     const handleDecisionChange = async (candidateId, newDecision) => {
@@ -2227,70 +1303,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     };
 
-
-
-    const getDecisionColor = (decision) => {
-        switch (decision) {
-            case 'Selected': return 'text-purple-600 font-bold';
-            case 'Shortlisted': return 'text-emerald-600 font-bold';
-            case 'Profile Shared': return 'text-sky-600 font-bold';
-            case 'Phase 3 Offer Stage': return 'text-purple-600 font-bold';
-            case 'Offer Sent': return 'text-blue-600 font-bold';
-            case 'Offer Accepted': return 'text-amber-600 font-bold';
-            case 'Joined': return 'text-emerald-600 font-bold';
-            case 'Did Not Turn Up':
-            case 'Left in between': return 'text-rose-600 font-bold';
-            case 'No Show':
-            case 'Offer Declined': return 'text-rose-600 font-bold';
-            case 'Rejected': return 'text-red-600 font-bold';
-            case 'On Hold': return 'text-amber-600 font-bold';
-            default: return 'text-slate-600';
-        }
-    };
-
-    const getInterviewStatusSummary = (rounds = []) => {
-        if (!rounds || rounds.length === 0) return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
-
-        if (rounds.length === 1 && rounds[0]?.displayStatusLabel) {
-            const displayStatus = rounds[0].displayStatusLabel;
-            if (displayStatus === 'Rejected') {
-                return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
-            }
-
-            if (displayStatus === 'Scheduled') {
-                return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
-            }
-
-            if (displayStatus === 'Shortlisted') {
-                return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-            }
-        }
-
-        const interviewStatus = getInterviewSummaryValue(rounds);
-
-        if (interviewStatus === 'Failed') {
-            return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
-        }
-
-        if (interviewStatus === 'Pending') {
-            return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };
-        }
-
-        if (interviewStatus === 'Scheduled') {
-            return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
-        }
-
-        if (interviewStatus === 'Skipped') {
-            return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
-        }
-
-        if (interviewStatus === 'Shortlisted') {
-            return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-        }
-
-        return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
-    };
-
     if (loading && candidates.length === 0) {
         return (
             <div className="space-y-4">
@@ -2301,7 +1313,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     </div>
                     <Skeleton className="h-10 w-36" />
                 </div>
-                {/* Skeleton for Summary Boxes */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                     {[...Array(6)].map((_, i) => (
                         <Skeleton key={i} className="h-24 w-full rounded-none" />
@@ -2332,1929 +1343,211 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         );
     }
 
-    const phaseToggleButtonClass = 'min-w-[84px] rounded-[10px] px-4 py-2.5 text-sm font-semibold transition-all duration-200';
-    const toolbarMenuButtonClass = 'inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50';
-    const toolbarMenuItemClass = 'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50';
-
     return (
         <div className="space-y-4">
-            {/* Header */}
-            <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-                        <div className="min-w-fit">
-                            <h3 className="text-[12px] font-bold uppercase tracking-[0.32em] text-slate-500">Pipeline</h3>
-                        </div>
-                        <div className="inline-flex w-fit rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-inner shadow-slate-200/70">
-                            <button
-                                onClick={() => handlePhaseChange(1)}
-                                className={`${phaseToggleButtonClass} ${activePhase === 1
-                                    ? 'cursor-default bg-slate-900 text-white shadow-sm'
-                                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
-                                    }`}
-                            >
-                                Phase 1
-                            </button>
-                            <button
-                                onClick={() => handlePhaseChange(2)}
-                                className={`${phaseToggleButtonClass} ${activePhase === 2
-                                    ? 'cursor-default bg-slate-900 text-white shadow-sm'
-                                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
-                                    }`}
-                            >
-                                Phase 2
-                            </button>
-                            <button
-                                onClick={() => handlePhaseChange(3)}
-                                className={`${phaseToggleButtonClass} ${activePhase === 3
-                                    ? 'cursor-default bg-slate-900 text-white shadow-sm'
-                                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
-                                    }`}
-                            >
-                                Phase 3
-                            </button>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (filterInterviewStatus === 'Scheduled' && !filterInterviewRound) {
-                                    setFilterStatus('All');
-                                    setFilterDecision('All');
-                                    setFilterInterviewStatus('All');
-                                    setFilterTransferred('All');
-                                    setFilterProfileShared(false);
-                                    setFilterInterviewRound('');
-                                } else {
-                                    setFilterStatus('All');
-                                    setFilterDecision('All');
-                                    setFilterTransferred('All');
-                                    setFilterProfileShared(false);
-                                    setFilterInterviewRound('');
-                                    setFilterInterviewStatus('Scheduled');
-                                }
-                            }}
-                            className={`flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-[0.98] ${filterInterviewStatus === 'Scheduled' && !filterInterviewRound
-                                ? 'bg-amber-600 border-amber-700 text-white ring-2 ring-amber-200'
-                                : 'bg-amber-50/80 border-amber-200/80 text-amber-800 hover:bg-amber-100/80'
-                                }`}
-                            title="Click to filter candidates with scheduled interviews"
-                        >
-                            <Calendar size={14} className={filterInterviewStatus === 'Scheduled' && !filterInterviewRound ? 'text-white' : 'text-amber-600'} />
-                            <span>Total Interview Scheduled:</span>
-                            <span className={`font-extrabold px-2 py-0.5 rounded-md text-xs transition-colors ${filterInterviewStatus === 'Scheduled' && !filterInterviewRound
-                                ? 'bg-white/20 text-white'
-                                : 'bg-amber-200/60 text-amber-900'
-                                }`}>
-                                {activePhase === 1 ? (metrics?.interviewScheduled || 0) : activePhase === 2 ? (phase2Metrics?.interviewScheduled || phase2Metrics?.scheduled || 0) : 0}
-                            </span>
-                        </button>
-                    </div>
-                    <div className="relative flex items-center gap-2">
-                        <div className="relative min-w-34">
-                            <button
-                                type="button"
-                                data-created-sort-trigger="true"
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    setShowToolbarMenu(false);
-                                    setShowCreatedDateSortMenu((prev) => !prev);
-                                }}
-                                className={`flex w-full items-center justify-between rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500 ${createdDatePreset
-                                        ? 'border-blue-200 text-blue-700'
-                                        : 'border-slate-200 text-slate-600'
-                                    }`}
-                            >
-                                <span className="truncate">{getCreatedDatePresetLabel(createdDatePreset)}</span>
-                                <svg className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showCreatedDateSortMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                                </svg>
-                            </button>
-                            {showCreatedDateSortMenu && (
-                                <div
-                                    data-created-sort-panel="true"
-                                    className={`absolute right-0 top-14 z-30 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-2 pr-3 shadow-xl shadow-slate-200/70 ${createdDatePreset === 'custom'
-                                            ? 'w-[min(18.5rem,calc(100vw-2rem))]'
-                                            : 'w-48'
-                                        }`}
-                                    onClick={(event) => event.stopPropagation()}
-                                >
-                                    <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
-                                        Sort
-                                    </div>
-                                    {createdDatePresetOptions.map((option) => (
-                                        <button
-                                            key={option.value}
-                                            type="button"
-                                            onClick={() => {
-                                                applyCreatedDatePreset(option.value);
-                                                if (option.value !== 'custom') {
-                                                    setShowCreatedDateSortMenu(false);
-                                                }
-                                            }}
-                                            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium transition ${createdDatePreset === option.value
-                                                    ? 'bg-blue-50 text-blue-700'
-                                                    : 'text-slate-600 hover:bg-slate-50'
-                                                }`}
-                                        >
-                                            {option.label}
-                                        </button>
-                                    ))}
-                                    {createdDatePreset === 'custom' && (
-                                        <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
-                                            <div className="grid grid-cols-1 gap-3">
-                                                <div className="min-w-0">
-                                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">From</label>
-                                                    <input
-                                                        type="date"
-                                                        value={dateFrom}
-                                                        onChange={(e) => {
-                                                            setCreatedDatePreset('custom');
-                                                            setDateFrom(e.target.value);
-                                                        }}
-                                                        max={dateTo || undefined}
-                                                        className="min-w-0 w-full max-w-[13.5rem] rounded-xl border border-slate-300 px-3 py-2 text-[13px] outline-none transition focus:ring-2 focus:ring-blue-500"
-                                                    />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">To</label>
-                                                    <input
-                                                        type="date"
-                                                        value={dateTo}
-                                                        onChange={(e) => {
-                                                            setCreatedDatePreset('custom');
-                                                            setDateTo(e.target.value);
-                                                        }}
-                                                        min={dateFrom || undefined}
-                                                        className="min-w-0 w-full max-w-[13.5rem] rounded-xl border border-slate-300 px-3 py-2 text-[13px] outline-none transition focus:ring-2 focus:ring-blue-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="my-2 border-t border-slate-100" />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setCreatedDatePreset('');
-                                            setDateFilterField('');
-                                            setDateFrom('');
-                                            setDateTo('');
-                                            setShowCreatedDateSortMenu(false);
-                                        }}
-                                        className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
-                                    >
-                                        Clear
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        <button
-                            type="button"
-                            data-toolbar-menu-trigger="true"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                event.preventDefault();
-                                setShowCreatedDateSortMenu(false);
-                                setShowToolbarMenu(prev => !prev);
-                            }}
-                            className={toolbarMenuButtonClass}
-                            aria-label="Open quick actions"
-                            title="Quick actions"
-                        >
-                            <Menu size={16} />
-                            <span className="sr-only">Quick actions</span>
-                        </button>
-                        {showToolbarMenu && (
-                            <div
-                                data-toolbar-menu-content="true"
-                                className="absolute right-0 top-14 z-30 w-70 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70"
-                                onClick={(event) => event.stopPropagation()}
-                            >
-                                <div className="mb-2 px-3 pt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
-                                    Quick Actions
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowToolbarMenu(false);
-                                        handleExportExcel();
-                                    }}
-                                    className={toolbarMenuItemClass}
-                                >
-                                    <span className="flex items-center gap-3">
-                                        <span className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                                            <Download size={15} />
-                                        </span>
-                                        Export Excel
-                                    </span>
-                                </button>
-                                {canMassMail && !isLegacyView && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            openMassMailModal();
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-rose-50 p-2 text-rose-600">
-                                                <Mail size={15} />
-                                            </span>
-                                            Send Mail
-                                        </span>
-                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                                            {selectedCandidateIds.length || serverResultCount || candidates.length}
-                                        </span>
-                                    </button>
-                                )}
-                                {canBulkTransfer && !isLegacyView && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            openTransferModal(selectedCandidateIds);
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-violet-50 p-2 text-violet-600">
-                                                <ArrowRightLeft size={15} />
-                                            </span>
-                                            Transfer
-                                        </span>
-                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
-                                            {selectedCandidateIds.length}
-                                        </span>
-                                    </button>
-                                )}
-                                {canEditCandidates && !isLegacyView && selectedCandidateIds.length >= 2 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            openMassInterviewModal();
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                                                <Calendar size={15} />
-                                            </span>
-                                            Schedule Interview
-                                        </span>
-                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-                                            {selectedCandidateIds.length}
-                                        </span>
-                                    </button>
-                                )}
+            <CandidateHeaderToolbar
+                activePhase={activePhase}
+                handlePhaseChange={handlePhaseChange}
+                filterInterviewStatus={filterInterviewStatus}
+                filterInterviewRound={filterInterviewRound}
+                setFilterStatus={setFilterStatus}
+                setFilterDecision={setFilterDecision}
+                setFilterInterviewStatus={setFilterInterviewStatus}
+                setFilterTransferred={setFilterTransferred}
+                setFilterProfileShared={setFilterProfileShared}
+                setFilterInterviewRound={setFilterInterviewRound}
+                metrics={metrics}
+                phase2Metrics={phase2Metrics}
+                createdDatePreset={createdDatePreset}
+                setCreatedDatePreset={setCreatedDatePreset}
+                dateFilterField={dateFilterField}
+                setDateFilterField={setDateFilterField}
+                dateFrom={dateFrom}
+                setDateFrom={setDateFrom}
+                dateTo={dateTo}
+                setDateTo={setDateTo}
+                showCreatedDateSortMenu={showCreatedDateSortMenu}
+                setShowCreatedDateSortMenu={setShowCreatedDateSortMenu}
+                applyCreatedDatePreset={applyCreatedDatePreset}
+                showToolbarMenu={showToolbarMenu}
+                setShowToolbarMenu={setShowToolbarMenu}
+                handleExportExcel={handleExportExcelWrapper}
+                canMassMail={canMassMail}
+                isLegacyView={isLegacyView}
+                openMassMailModal={openMassMailModal}
+                selectedCandidateIds={selectedCandidateIds}
+                serverResultCount={serverResultCount}
+                candidates={candidates}
+                canBulkTransfer={canBulkTransfer}
+                openTransferModal={openTransferModal}
+                canEditCandidates={canEditCandidates}
+                openMassInterviewModal={openMassInterviewModal}
+                handleBulkMoveToNextPhase={handleBulkMoveToNextPhase}
+                canMakeDecisions={canMakeDecisions}
+                showDecisionSubmenu={showDecisionSubmenu}
+                setShowDecisionSubmenu={setShowDecisionSubmenu}
+                decisionOptions={decisionOptions}
+                handleBulkDecisionChange={handleBulkDecisionChange}
+                canManageTemplates={canManageTemplates}
+                navigate={navigate}
+                canCreateCandidates={canCreateCandidates}
+                setShowBulkResumeImport={setShowBulkResumeImport}
+                canImportCandidates={canImportCandidates}
+                setShowBulkImport={setShowBulkImport}
+                hiringRequestId={hiringRequestId}
+                requestMeta={requestMeta}
+                handleAddNew={handleAddNew}
+                roundSummary={roundSummary}
+            />
 
-                                {canEditCandidates && selectedCandidateIds.length > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            handleBulkMoveToNextPhase();
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-                                                <ArrowRight size={15} />
-                                            </span>
-                                            Move to next phase
-                                        </span>
-                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
-                                            {selectedCandidateIds.length}
-                                        </span>
-                                    </button>
-                                )}
-
-                                {canMakeDecisions && selectedCandidateIds.length > 0 && (
-                                    <div className="border-t border-slate-100 pt-1 mt-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowDecisionSubmenu(prev => !prev)}
-                                            className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                        >
-                                            <span className="flex items-center gap-3">
-                                                <span className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                                                    <CheckCircle size={15} />
-                                                </span>
-                                                <span>Change Decision</span>
-                                            </span>
-                                            <span className="flex items-center gap-2">
-                                                <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                                                    {selectedCandidateIds.length}
-                                                </span>
-                                                <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${showDecisionSubmenu ? 'rotate-180' : ''}`} />
-                                            </span>
-                                        </button>
-
-                                        {showDecisionSubmenu && (
-                                            <div className="mt-1 space-y-0.5 rounded-xl bg-slate-50 p-1.5 border border-slate-100">
-                                                {decisionOptions.map((decision) => (
-                                                    <button
-                                                        key={decision}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShowToolbarMenu(false);
-                                                            setShowDecisionSubmenu(false);
-                                                            handleBulkDecisionChange(decision);
-                                                        }}
-                                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-slate-700 transition hover:bg-white hover:text-emerald-700 hover:shadow-sm"
-                                                    >
-                                                        <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
-                                                        <span>{decision}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                {canManageTemplates && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            navigate('/ta/email-templates');
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-slate-100 p-2 text-slate-600">
-                                                <FileText size={15} />
-                                            </span>
-                                            Templates
-                                        </span>
-                                    </button>
-                                )}
-                                {canCreateCandidates && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            setShowBulkResumeImport(true);
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-                                                <FileText size={15} />
-                                            </span>
-                                            Upload Resumes
-                                        </span>
-                                    </button>
-                                )}
-                                {canImportCandidates && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            setShowBulkImport(true);
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-slate-100 p-2 text-slate-700">
-                                                <Upload size={15} />
-                                            </span>
-                                            Import (Excel)
-                                        </span>
-                                    </button>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowToolbarMenu(false);
-                                        const reqId = hiringRequestId || requestMeta?._id || '';
-                                        const params = new URLSearchParams();
-                                        if (reqId) params.set('hiringRequestId', reqId);
-                                        if (activePhase) params.set('phase', activePhase);
-                                        const query = params.toString() ? `?${params.toString()}` : '';
-                                        navigate(`/ta/interview-analytics${query}`);
-                                    }}
-                                    className={toolbarMenuItemClass}
-                                >
-                                    <span className="flex items-center gap-3">
-                                        <span className="rounded-lg bg-teal-50 p-2 text-teal-600">
-                                            <BarChart3 size={15} />
-                                        </span>
-                                        Interview Analytics
-                                    </span>
-                                </button>
-                                {canCreateCandidates && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowToolbarMenu(false);
-                                            handleAddNew();
-                                        }}
-                                        className={toolbarMenuItemClass}
-                                    >
-                                        <span className="flex items-center gap-3">
-                                            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                                                <Plus size={15} />
-                                            </span>
-                                            Add Candidate
-                                        </span>
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Layout Wrapper for Split View */}
             <div className={`flex flex-col lg:flex-row gap-6 items-start transition-all duration-300 ${selectedCandidateId ? 'relative' : ''}`}>
-
-                {/* Left Side: Metrics, Filters, and Table */}
                 <div className={`flex-1 min-w-0 transition-all duration-300 space-y-6 ${selectedCandidateId ? 'w-full lg:w-[30%]' : 'w-full'}`}>
-                    {/* Summary Boxes - Only show when no candidate is selected */}
-                    {!selectedCandidateId &&
-                        (activePhase === 1 ? (() => {
-                            // --- Dynamic Pipeline Cards ---
-                            // Priority for round data: roundSummary (dedicated lightweight API, all pages)
-                            // → cardMetrics summary (full metrics endpoint) → in-memory candidates (non-paginated fallback)
-                            const phase1RoundData = roundSummary?.phase1
-                                || cardMetrics?.phase1Metrics?.interviewRoundsSummary
-                                || null;
+                    <CandidateMetricsCards
+                        activePhase={activePhase}
+                        roundSummary={roundSummary}
+                        cardMetrics={cardMetrics}
+                        structuralPhase1Candidates={structuralPhase1Candidates}
+                        structuralPhase2Candidates={structuralPhase2Candidates}
+                        structuralPhase3Candidates={structuralPhase3Candidates}
+                        metrics={metrics}
+                        phase2Metrics={phase2Metrics}
+                        phase3Metrics={phase3Metrics}
+                        filterStatus={filterStatus}
+                        setFilterStatus={setFilterStatus}
+                        filterDecision={filterDecision}
+                        setFilterDecision={setFilterDecision}
+                        filterInterviewStatus={filterInterviewStatus}
+                        setFilterInterviewStatus={setFilterInterviewStatus}
+                        filterTransferred={filterTransferred}
+                        setFilterTransferred={setFilterTransferred}
+                        filterProfileShared={filterProfileShared}
+                        setFilterProfileShared={setFilterProfileShared}
+                        filterInterviewRound={filterInterviewRound}
+                        setFilterInterviewRound={setFilterInterviewRound}
+                        filterPreference={filterPreference}
+                        filterRating={filterRating}
+                        filterExperience={filterExperience}
+                        filterPulledBy={filterPulledBy}
+                        basePhase1Candidates={basePhase1Candidates}
+                        basePhase2Candidates={basePhase2Candidates}
+                        basePhase3Candidates={basePhase3Candidates}
+                        usesBackendPagination={usesBackendPagination}
+                        selectedCandidateId={selectedCandidateId}
+                    />
 
-                            const summaryRounds = phase1RoundData
-                                ? phase1RoundData          // already aggregated [{levelName,assignAfterStage,count}]
-                                : structuralPhase1Candidates; // full candidate objects (non-paginated only)
+                    <CandidateFilters
+                        selectedCandidateId={selectedCandidateId}
+                        candidateNameSearch={candidateNameSearch}
+                        setCandidateNameSearch={setCandidateNameSearch}
+                        activePhase={activePhase}
+                        filterStatus={filterStatus}
+                        setFilterStatus={setFilterStatus}
+                        filterDecision={filterDecision}
+                        setFilterDecision={setFilterDecision}
+                        filterInterviewStatus={filterInterviewStatus}
+                        setFilterInterviewStatus={setFilterInterviewStatus}
+                        filterInterviewRound={filterInterviewRound}
+                        setFilterInterviewRound={setFilterInterviewRound}
+                        filterDynamicStage={filterDynamicStage}
+                        setFilterDynamicStage={setFilterDynamicStage}
+                        availableRoundOptions={availableRoundOptions}
+                        filterRating={filterRating}
+                        setFilterRating={setFilterRating}
+                        pulledByOptions={pulledByOptions}
+                        filterPulledBy={filterPulledBy}
+                        setFilterPulledBy={setFilterPulledBy}
+                        uploadedByOptions={uploadedByOptions}
+                        filterUploadedBy={filterUploadedBy}
+                        setFilterUploadedBy={setFilterUploadedBy}
+                        filterUploadType={filterUploadType}
+                        setFilterUploadType={setFilterUploadType}
+                        isLegacyView={isLegacyView}
+                        candidates={candidates}
+                        filterTransferred={filterTransferred}
+                        setFilterTransferred={setFilterTransferred}
+                        filterExperience={filterExperience}
+                        setFilterExperience={setFilterExperience}
+                        dateFilterField={dateFilterField}
+                        setDateFilterField={setDateFilterField}
+                        setCreatedDatePreset={setCreatedDatePreset}
+                        setDateFrom={setDateFrom}
+                        setDateTo={setDateTo}
+                        filterProfileShared={filterProfileShared}
+                        setFilterProfileShared={setFilterProfileShared}
+                        isDefaultDateFilterState={isDefaultDateFilterState}
+                        resetDateFiltersToDefault={resetDateFiltersToDefault}
+                        setShowCreatedDateSortMenu={setShowCreatedDateSortMenu}
+                        openMultiFilter={openMultiFilter}
+                        setOpenMultiFilter={setOpenMultiFilter}
+                    />
 
-                            const pipelineOrder = buildDynamicPipeline(summaryRounds);
-
-                            // Count candidates per round levelName (phase 1 only).
-                            const roundCountMap = (() => {
-                                const map = new Map();
-                                if (phase1RoundData) {
-                                    for (const item of phase1RoundData) {
-                                        if (item?.levelName) {
-                                            map.set(item.levelName, item.count || 0);
-                                        }
-                                    }
-                                } else {
-                                    for (const c of structuralPhase1Candidates) {
-                                        const seen = new Set();
-                                        for (const r of (c.interviewRounds || [])) {
-                                            if (Number(r.phase || 1) !== 1) continue;
-                                            const name = String(r.levelName || '').trim();
-                                            if (name && !seen.has(name)) {
-                                                seen.add(name);
-                                                map.set(name, (map.get(name) || 0) + 1);
-                                            }
-                                        }
-                                    }
-                                }
-                                return map;
-                            })();
-
-
-                            const clearRoundFilter = () => {
-                                setFilterStatus('All');
-                                setFilterDecision('All');
-                                setFilterInterviewStatus('All');
-                                setFilterTransferred('All');
-                                setFilterProfileShared(false);
-                                setFilterInterviewRound('');
-                            };
-
-                            const funnelCards = pipelineOrder
-                                .filter((node) => PIPELINE_FIXED_STAGE_SET.has(node))
-                                .map((node) => {
-                                    if (node === 'Total Sourced') {
-                                        return {
-                                            id: 'total',
-                                            label: 'Total Sourced',
-                                            value: metrics.total,
-                                            icon: Users,
-                                            color: 'purple',
-                                            isActive: filterStatus === 'All' && filterDecision === 'All' && filterInterviewStatus === 'All' && filterTransferred === 'All' && !filterProfileShared && !filterInterviewRound,
-                                            onClick: () => clearRoundFilter()
-                                        };
-                                    }
-                                    if (node === 'Interested') {
-                                        return {
-                                            id: 'interested',
-                                            label: 'Interested',
-                                            value: metrics.interested,
-                                            icon: CheckCircle,
-                                            color: 'green',
-                                            isActive: filterStatus === 'Interested' && !filterProfileShared && !filterInterviewRound,
-                                            onClick: () => { clearRoundFilter(); setFilterStatus('Interested'); }
-                                        };
-                                    }
-                                    if (node === 'Interview Scheduled') {
-                                        return {
-                                            id: 'interviewScheduled',
-                                            label: 'Interview Scheduled',
-                                            value: metrics.interviewScheduled,
-                                            icon: UserCheck,
-                                            color: 'amber',
-                                            isActive: filterInterviewStatus === 'Scheduled' && !filterProfileShared && !filterInterviewRound,
-                                            onClick: () => { clearRoundFilter(); setFilterInterviewStatus('Scheduled'); }
-                                        };
-                                    }
-                                    if (node === 'Shortlisted') {
-                                        return {
-                                            id: 'shortlisted',
-                                            label: 'Shortlisted',
-                                            value: metrics.shortlisted,
-                                            icon: ThumbsUp,
-                                            color: 'sky',
-                                            isActive: filterDecision === 'Shortlisted' && !filterProfileShared && !filterInterviewRound,
-                                            onClick: () => { clearRoundFilter(); setFilterDecision('Shortlisted'); }
-                                        };
-                                    }
-                                    if (node === 'Profile Shared') {
-                                        return {
-                                            id: 'profileShared',
-                                            label: 'Profile Shared',
-                                            value: metrics.profileShared,
-                                            icon: ArrowRight,
-                                            color: 'slate',
-                                            isActive: filterProfileShared && !filterInterviewRound,
-                                            onClick: () => { clearRoundFilter(); setFilterProfileShared(true); }
-                                        };
-                                    }
-                                    return null;
-                                })
-                                .filter(Boolean);
-
-                             // Round pills — compact clickable tags rendered inline with the main cards.
-                            const roundPills = pipelineOrder
-                                .filter((node) => !PIPELINE_FIXED_STAGE_SET.has(node))
-                                .map((node) => {
-                                    const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
-                                    return {
-                                        label: node,
-                                        count: roundCountMap.get(node) || 0,
-                                        isActive: isCurrentActive,
-                                        onClick: () => {
-                                            if (isCurrentActive) {
-                                                setFilterInterviewRound('');
-                                            } else {
-                                                clearRoundFilter();
-                                                setFilterInterviewRound(node);
-                                            }
-                                        }
-                                    };
-                                });
-
-                            const dynamicCards = [];
-
-                            if (filterStatus !== 'All' && filterStatus !== 'Interested') {
-                                let statusCount = 0;
-                                if (usesBackendPagination && metrics) {
-                                    const statusMetricKey = {
-                                        'Not Picking': 'notPicking',
-                                        'Not Relevant': 'notRelevant',
-                                        'Not Interested': 'notInterested',
-                                        'High expectation': 'highExpectation',
-                                        'Long Notice period': 'longNoticePeriod',
-                                        'Location Not suitable': 'locationNotSuitable'
-                                    }[filterStatus];
-                                    statusCount = metrics[statusMetricKey] || 0;
-                                } else {
-                                    statusCount = basePhase1Candidates.filter(c => c.status === filterStatus).length;
-                                }
-                                dynamicCards.push({
-                                    label: filterStatus,
-                                    value: statusCount,
-                                    icon: ThumbsDown,
-                                    color: 'rose',
-                                    onClick: () => { }
-                                });
-                            }
-
-                            if (!filterProfileShared) {
-                                const phase1DecisionCardMap = {
-                                    Rejected: {
-                                        label: 'Rejected',
-                                        value: metrics.rejected,
-                                        icon: XCircle,
-                                        color: 'rose'
-                                    },
-                                    'Did Not Turn Up': {
-                                        label: 'Did Not Turn Up',
-                                        value: metrics.didNotTurnUp,
-                                        icon: XCircle,
-                                        color: 'rose'
-                                    },
-                                    'On Hold': {
-                                        label: 'On Hold',
-                                        value: metrics.onHold,
-                                        icon: Clock,
-                                        color: 'slate'
-                                    }
-                                };
-
-                                const decisionCard = phase1DecisionCardMap[filterDecision];
-                                if (decisionCard) {
-                                    dynamicCards.push({
-                                        ...decisionCard,
-                                        onClick: () => { }
-                                    });
-                                }
-                            }
-
-                            if (filterPreference !== 'All') {
-                                const prefCount = basePhase1Candidates.filter(c => c.preference === filterPreference).length;
-                                dynamicCards.push({
-                                    label: filterPreference,
-                                    value: prefCount,
-                                    icon: UserCheck,
-                                    color: 'indigo',
-                                    onClick: () => { }
-                                });
-                            }
-
-                            if (filterRating !== 'All') {
-                                const ratedCount = basePhase1Candidates.filter(c => {
-                                    const rounds = c.interviewRounds || [];
-                                    const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                                    if (ratedRounds.length === 0) return false;
-                                    const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                                    return avgRating >= Number(filterRating);
-                                }).length;
-                                dynamicCards.push({
-                                    label: `${filterRating}+ Rating`,
-                                    value: ratedCount,
-                                    icon: ThumbsUp,
-                                    color: 'amber',
-                                    onClick: () => { }
-                                });
-                            }
-
-                            if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled' && !filterProfileShared) {
-                                const interviewCount = basePhase1Candidates.filter(candidate => {
-                                    const rounds = getRoundsForPhase(candidate, 1);
-                                    return matchesInterviewFilter(rounds, filterInterviewStatus);
-                                }).length;
-                                dynamicCards.push({
-                                    label: filterInterviewStatus,
-                                    value: interviewCount,
-                                    icon: Clock,
-                                    color: 'amber',
-                                    onClick: () => { }
-                                });
-                            }
-
-                            if (filterExperience) {
-                                const expCount = basePhase1Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
-                                dynamicCards.push({
-                                    label: `${filterExperience}+ Yrs Exp`,
-                                    value: expCount,
-                                    icon: Briefcase,
-                                    color: 'blue',
-                                    onClick: () => { }
-                                });
-                            }
-
-                            if (filterPulledBy.length > 0) {
-                                const pulledCount = basePhase1Candidates.filter(c => matchesMultiValueFilter(filterPulledBy, c.profilePulledBy)).length;
-                                dynamicCards.push({
-                                    label: filterPulledBy.length === 1
-                                        ? `By: ${filterPulledBy[0].split(' ')[0]}`
-                                        : `${filterPulledBy.length} Users`,
-                                    value: pulledCount,
-                                    icon: Users,
-                                    color: 'indigo',
-                                    onClick: () => { }
-                                });
-                            }
-
-                            if (filterTransferred === 'Transferred') {
-                                dynamicCards.push({
-                                    label: 'Transferred',
-                                    value: metrics.transferred,
-                                    icon: Download,
-                                    color: 'blue',
-                                    onClick: () => { }
-                                });
-                            }
-
-                            // Build quick-lookup maps for card/pill data by node name.
-                            const cardByNode = new Map(funnelCards.map((c) => [c.label, c]));
-                            const pillByNode = new Map(roundPills.map((p) => [p.label, p]));
-
-                            const colorMap = {
-                                purple: 'border-b-purple-500 text-purple-600',
-                                green: 'border-b-green-500 text-green-600',
-                                amber: 'border-b-amber-500 text-amber-600',
-                                sky: 'border-b-sky-500 text-sky-600',
-                                slate: 'border-b-slate-500 text-slate-600',
-                                rose: 'border-b-rose-500 text-rose-600',
-                                indigo: 'border-b-indigo-500 text-indigo-600',
-                                blue: 'border-b-blue-500 text-blue-600'
-                            };
-
-                            return (
-                                <div className="w-full overflow-x-auto scrollbar-hide">
-                                    <div className="w-full flex items-stretch gap-2 md:gap-3">
-                                        {/* Ordered pipeline: fixed-stage big cards interleaved with round pills */}
-                                        {pipelineOrder.map((node) => {
-                                            if (PIPELINE_FIXED_STAGE_SET.has(node)) {
-                                                const card = cardByNode.get(node);
-                                                if (!card) return null;
-                                                const Icon = card.icon;
-                                                const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
-                                                return (
-                                                    <div
-                                                        key={node}
-                                                        onClick={card.onClick}
-                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${card.isActive ? 'bg-slate-50' : ''}`}
-                                                    >
-                                                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
-                                                    </div>
-                                                );
-                                            }
-                                            // Round pill — inline between its anchor stage and the next stage
-                                            const pill = pillByNode.get(node);
-                                            if (!pill) return null;
-                                            const pillLabel = String(pill.label || '');
-                                            const displayPillLabel = pillLabel.length > 10 ? `${pillLabel.substring(0, 10)}..` : pillLabel;
-                                            return (
-                                                <button
-                                                    key={node}
-                                                    onClick={pill.onClick}
-                                                    title={pillLabel}
-                                                    className={`self-center flex-none inline-flex flex-col items-center justify-center rounded-none border px-1 py-[1px] text-center transition-colors
-                                                        ${pill.isActive
-                                                            ? 'border-red-700 bg-red-600 text-white shadow-sm'
-                                                            : 'border-red-400 bg-red-50/20 text-slate-700 hover:border-red-600 hover:bg-red-50'
-                                                        }`}
-                                                >
-                                                    <span className={`text-[8px] font-bold uppercase tracking-tight whitespace-nowrap leading-none ${pill.isActive ? 'text-white' : 'text-red-600'}`}>
-                                                        {displayPillLabel}
-                                                    </span>
-                                                    <span className={`text-[10px] font-extrabold leading-none mt-[1px] ${pill.isActive ? 'text-white' : 'text-slate-900'}`}>{pill.count}</span>
-                                                </button>
-                                            );
-                                        })}
-
-                                        {/* Dynamic filter indicator cards (Rejected, On Hold, etc.) */}
-                                        {dynamicCards.map((card, idx) => {
-                                            const Icon = card.icon;
-                                            const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
-                                            return (
-                                                <div
-                                                    key={`dyn-${idx}`}
-                                                    onClick={card.onClick}
-                                                    className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px]`}
-                                                >
-                                                    <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                                    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                    <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            );
-                        })()
-                            : activePhase === 2 ? (() => {
-                                // Priority for round data: roundSummary (dedicated lightweight API, all pages)
-                                // → cardMetrics summary → in-memory candidates (non-paginated fallback)
-                                const phase2RoundData = roundSummary?.phase2
-                                    || cardMetrics?.phase2Metrics?.interviewRoundsSummary
-                                    || null;
-
-                                const summaryRounds = phase2RoundData
-                                    ? phase2RoundData
-                                    : structuralPhase2Candidates;
-
-                                const pipelineOrder = buildDynamicPipeline(summaryRounds, 2, PHASE_2_FIXED_STAGES);
-
-                                const roundCountMap = (() => {
-                                    const map = new Map();
-                                    if (phase2RoundData) {
-                                        for (const item of phase2RoundData) {
-                                            if (item?.levelName) {
-                                                map.set(item.levelName, item.count || 0);
-                                            }
-                                        }
-                                    } else {
-                                        for (const c of structuralPhase2Candidates) {
-                                            const seen = new Set();
-                                            const phase2Rounds = (c.interviewRounds || []).filter(r => Number(r.phase || 1) === 2);
-                                            if (phase2Rounds.length > 0) {
-                                                for (const r of phase2Rounds) {
-                                                    const name = String(r.levelName || 'Round 1').trim() || 'Round 1';
-                                                    if (!seen.has(name)) {
-                                                        seen.add(name);
-                                                        map.set(name, (map.get(name) || 0) + 1);
-                                                    }
-                                                }
-                                            } else {
-                                                const hasLegacyPhase2 = Boolean(String(c?.phase2InterviewerFeedback || '').trim())
-                                                    || ['Scheduled', 'Rejected', 'Shortlisted'].includes(c?.phase2InterviewStatus);
-                                                if (hasLegacyPhase2) {
-                                                    const name = 'Round 1';
-                                                    map.set(name, (map.get(name) || 0) + 1);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    return map;
-                                })();
-
-
-                                const clearRoundFilter = () => {
-                                    setFilterStatus('All');
-                                    setFilterDecision('All');
-                                    setFilterInterviewStatus('All');
-                                    setFilterTransferred('All');
-                                    setFilterProfileShared(false);
-                                    setFilterInterviewRound('');
-                                };
-
-                                const phase2FixedCardMap = {
-                                    'Profile Shared': {
-                                        id: 'total',
-                                        label: 'Profile Shared',
-                                        value: phase2Metrics.totalShortlisted,
-                                        icon: Users,
-                                        color: 'purple',
-                                        isActive: filterDecision === 'All' && filterInterviewStatus === 'All' && filterStatus === 'All' && !filterInterviewRound,
-                                        onClick: () => clearRoundFilter()
-                                    },
-                                    'Shortlisted': {
-                                        id: 'shortlisted',
-                                        label: 'Shortlisted',
-                                        value: phase2Metrics.totalScreened,
-                                        icon: UserCheck,
-                                        color: 'sky',
-                                        isActive: filterDecision === 'Shortlisted_Selected' && !filterInterviewRound,
-                                        onClick: () => { clearRoundFilter(); setFilterDecision('Shortlisted_Selected'); }
-                                    },
-                                    'Selected': {
-                                        id: 'selected',
-                                        label: 'Selected',
-                                        value: phase2Metrics.selected,
-                                        icon: CheckCircle,
-                                        color: 'green',
-                                        isActive: filterDecision === 'Selected' && !filterInterviewRound,
-                                        onClick: () => { clearRoundFilter(); setFilterDecision('Selected'); }
-                                    },
-                                    'Rejected': {
-                                        id: 'rejected',
-                                        label: 'Rejected',
-                                        value: phase2Metrics.rejected,
-                                        icon: ThumbsDown,
-                                        color: 'rose',
-                                        isActive: filterDecision === 'Rejected' && !filterInterviewRound,
-                                        onClick: () => { clearRoundFilter(); setFilterDecision('Rejected'); }
-                                    }
-                                };
-
-                                const pillByNode = new Map();
-                                for (const node of pipelineOrder) {
-                                    if (!PHASE_2_FIXED_STAGE_SET.has(node)) {
-                                        const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
-                                        pillByNode.set(node, {
-                                            label: node,
-                                            count: roundCountMap.get(node) || 0,
-                                            isActive: isCurrentActive,
-                                            onClick: () => {
-                                                if (isCurrentActive) {
-                                                    setFilterInterviewRound('');
-                                                } else {
-                                                    clearRoundFilter();
-                                                    setFilterInterviewRound(node);
-                                                }
-                                            }
-                                        });
-                                    }
-                                }
-
-                                const dynamicCards = [];
-                                if (filterPreference !== 'All') {
-                                    const prefCount = basePhase2Candidates.filter(c => c.preference === filterPreference).length;
-                                    dynamicCards.push({
-                                        label: filterPreference,
-                                        value: prefCount,
-                                        icon: UserCheck,
-                                        color: 'indigo',
-                                        onClick: () => { }
-                                    });
-                                }
-
-                                if (filterRating !== 'All') {
-                                    const ratedCount = basePhase2Candidates.filter(c => {
-                                        const rounds = c.interviewRounds || [];
-                                        const ratedRounds = rounds.filter(r => Number(r.phase || 1) === 2 && r.rating && r.rating > 0);
-                                        if (ratedRounds.length === 0) return false;
-                                        const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                                        return avgRating >= Number(filterRating);
-                                    }).length;
-                                    dynamicCards.push({
-                                        label: `${filterRating}+ Rating`,
-                                        value: ratedCount,
-                                        icon: ThumbsUp,
-                                        color: 'amber',
-                                        onClick: () => { }
-                                    });
-                                }
-
-                                if (filterExperience) {
-                                    const expCount = basePhase2Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
-                                    dynamicCards.push({
-                                        label: `${filterExperience}+ Yrs Exp`,
-                                        value: expCount,
-                                        icon: Briefcase,
-                                        color: 'blue',
-                                        onClick: () => { }
-                                    });
-                                }
-
-                                const colorMap = {
-                                    purple: 'border-b-purple-500 text-purple-600',
-                                    green: 'border-b-green-500 text-green-600',
-                                    amber: 'border-b-amber-500 text-amber-600',
-                                    sky: 'border-b-sky-500 text-sky-600',
-                                    slate: 'border-b-slate-500 text-slate-600',
-                                    rose: 'border-b-rose-500 text-rose-600',
-                                    indigo: 'border-b-indigo-500 text-indigo-600',
-                                    blue: 'border-b-blue-500 text-blue-600'
-                                };
-
-                                return (
-                                    <div className="w-full overflow-x-auto pb-2 scrollbar-none">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            {pipelineOrder.map((node) => {
-                                                if (PHASE_2_FIXED_STAGE_SET.has(node)) {
-                                                    const card = phase2FixedCardMap[node];
-                                                    if (!card) return null;
-                                                    const Icon = card.icon;
-                                                    const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
-                                                    return (
-                                                        <div
-                                                            key={node}
-                                                            onClick={card.onClick}
-                                                            className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${card.isActive ? 'bg-slate-50' : ''}`}
-                                                        >
-                                                            <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                                            <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                            <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
-                                                        </div>
-                                                    );
-                                                }
-                                                const pill = pillByNode.get(node);
-                                                if (!pill) return null;
-                                                const pillLabel = String(pill.label || '');
-                                                const displayPillLabel = pillLabel.length > 10 ? `${pillLabel.substring(0, 10)}..` : pillLabel;
-                                                return (
-                                                    <button
-                                                        key={node}
-                                                        onClick={pill.onClick}
-                                                        title={pillLabel}
-                                                        className={`self-center flex-none inline-flex flex-col items-center justify-center rounded-none border px-1 py-[1px] text-center transition-colors
-                                                            ${pill.isActive
-                                                                ? 'border-red-700 bg-red-600 text-white shadow-sm'
-                                                                : 'border-red-400 bg-red-50/20 text-slate-700 hover:border-red-600 hover:bg-red-50'
-                                                            }`}
-                                                    >
-                                                        <span className={`text-[8px] font-bold uppercase tracking-tight whitespace-nowrap leading-none ${pill.isActive ? 'text-white' : 'text-red-600'}`}>
-                                                            {displayPillLabel}
-                                                        </span>
-                                                        <span className={`text-[10px] font-extrabold leading-none mt-[1px] ${pill.isActive ? 'text-white' : 'text-slate-900'}`}>{pill.count}</span>
-                                                    </button>
-                                                );
-                                            })}
-
-                                            {dynamicCards.map((card, idx) => {
-                                                const Icon = card.icon;
-                                                const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
-                                                return (
-                                                    <div
-                                                        key={`dyn-${idx}`}
-                                                        onClick={card.onClick}
-                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px]`}
-                                                    >
-                                                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                );
-                            })()
-                                : (() => {
-                                    const funnelCards = [
-                                        {
-                                            id: 'total',
-                                            label: 'Total Candidates',
-                                            value: phase3Metrics.total,
-                                            icon: Users,
-                                            color: 'purple',
-                                            isActive: filterDecision === 'All' && filterStatus === 'All',
-                                            onClick: () => { setFilterDecision('All'); setFilterStatus('All'); }
-                                        },
-                                        {
-                                            id: 'offerSent',
-                                            label: 'Offer Sent',
-                                            value: phase3Metrics.offerSent,
-                                            icon: FileText,
-                                            color: 'sky',
-                                            isActive: filterDecision === 'Offer Sent',
-                                            onClick: () => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }
-                                        },
-                                        {
-                                            id: 'offerAccepted',
-                                            label: 'Offer Accepted',
-                                            value: phase3Metrics.offerAccepted,
-                                            icon: ThumbsUp,
-                                            color: 'amber',
-                                            isActive: filterDecision === 'Offer Accepted',
-                                            onClick: () => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }
-                                        },
-                                        {
-                                            id: 'joined',
-                                            label: 'Joined',
-                                            value: phase3Metrics.joined,
-                                            icon: CheckCircle,
-                                            color: 'emerald',
-                                            isActive: filterDecision === 'Joined',
-                                            onClick: () => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }
-                                        },
-                                        {
-                                            id: 'noShow',
-                                            label: 'No Show / Declined',
-                                            value: phase3Metrics.noShow,
-                                            icon: XCircle,
-                                            color: 'rose',
-                                            isActive: filterDecision === 'No Show_Offer Declined',
-                                            onClick: () => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }
-                                        }
-                                    ];
-
-                                    const dynamicCards = [];
-
-                                    if (filterPreference !== 'All') {
-                                        const prefCount = basePhase3Candidates.filter(c => c.preference === filterPreference).length;
-                                        dynamicCards.push({
-                                            label: filterPreference,
-                                            value: prefCount,
-                                            icon: UserCheck,
-                                            color: 'indigo',
-                                            onClick: () => { }
-                                        });
-                                    }
-
-                                    if (filterRating !== 'All') {
-                                        const ratedCount = basePhase3Candidates.filter(c => {
-                                            const rounds = c.interviewRounds || [];
-                                            const ratedRounds = rounds.filter(r => Number(r.phase || 1) === 3 && r.rating && r.rating > 0);
-                                            if (ratedRounds.length === 0) return false;
-                                            const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                                            return avgRating >= Number(filterRating);
-                                        }).length;
-                                        dynamicCards.push({
-                                            label: `${filterRating}+ Rating`,
-                                            value: ratedCount,
-                                            icon: ThumbsUp,
-                                            color: 'amber',
-                                            onClick: () => { }
-                                        });
-                                    }
-
-                                    if (filterExperience) {
-                                        const expCount = basePhase3Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
-                                        dynamicCards.push({
-                                            label: `${filterExperience}+ Yrs Exp`,
-                                            value: expCount,
-                                            icon: Briefcase,
-                                            color: 'blue',
-                                            onClick: () => { }
-                                        });
-                                    }
-
-                                    const allCards = [...funnelCards, ...dynamicCards];
-                                    const gridCols = selectedCandidateId ? 'grid-cols-1 md:grid-cols-2' : `grid-cols-2 lg:grid-cols-${Math.min(allCards.length, 6)}`;
-
-                                    return (
-                                        <div className={`grid ${gridCols} gap-4`}>
-                                            {allCards.map((card, idx) => {
-                                                const Icon = card.icon;
-                                                const colorMap = {
-                                                    purple: 'border-b-purple-500 text-purple-600',
-                                                    sky: 'border-b-sky-500 text-sky-600',
-                                                    amber: 'border-b-amber-500 text-amber-600',
-                                                    emerald: 'border-b-emerald-500 text-emerald-600',
-                                                    rose: 'border-b-rose-500 text-rose-600',
-                                                    indigo: 'border-b-indigo-500 text-indigo-600',
-                                                    blue: 'border-b-blue-500 text-blue-600'
-                                                };
-                                                const colorClasses = (colorMap[card.color] || colorMap.blue).split(' ');
-
-                                                return (
-                                                    <div
-                                                        key={idx}
-                                                        onClick={card.onClick}
-                                                        className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] ${card.isActive ? 'bg-slate-50' : ''}`}
-                                                    >
-                                                        <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
-                                                        <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
-                                                        <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    );
-                                })())}
-
-                    {/* Filters - Only show when no candidate is selected */}
-                    {!selectedCandidateId && (
-                        <div className="scrollbar-hide bg-white p-4 rounded-xl border border-slate-200 overflow-x-auto">
-                            <div className="flex flex-nowrap gap-4 items-end min-w-max">
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Candidate Name</label>
-                                    <div className="relative">
-                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                        <input
-                                            type="text"
-                                            value={candidateNameSearch}
-                                            onChange={(e) => setCandidateNameSearch(e.target.value)}
-                                            placeholder="Search candidate name"
-                                            className="pl-8 pr-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-52"
-                                        />
-                                    </div>
-                                </div>
-
-                                {activePhase === 1 && (
-                                    <div className="shrink-0">
-                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Status</label>
-                                        <select
-                                            value={filterStatus}
-                                            onChange={(e) => setFilterStatus(e.target.value)}
-                                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                                        >
-                                            <option value="All">All</option>
-                                            <option value="Interested">Interested</option>
-                                            <option value="Not Interested">Not Interested</option>
-                                            <option value="Not Relevant">Not Relevant</option>
-                                            <option value="Not Picking">Not Picking</option>
-                                            <option value="High expectation">High expectation</option>
-                                            <option value="Long Notice period">Long Notice period</option>
-                                            <option value="Location Not suitable">Location Not suitable</option>
-                                        </select>
-                                    </div>
-                                )}
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Decision</label>
-                                    <select
-                                        value={filterDecision}
-                                        onChange={(e) => setFilterDecision(e.target.value)}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="All">All</option>
-                                        {activePhase === 1 && (
-                                            <>
-                                                <option value="Shortlisted">Shortlisted</option>
-                                                <option value="Rejected">Rejected</option>
-                                                <option value="Did Not Turn Up">Did Not Turn Up</option>
-                                                <option value="On Hold">On Hold</option>
-                                                <option value="None">None</option>
-                                            </>
-                                        )}
-                                        {activePhase === 2 && (
-                                            <>
-                                                <option value="Selected">Selected</option>
-                                                <option value="Shortlisted">Shortlisted</option>
-                                                <option value="Rejected">Rejected</option>
-                                                <option value="On Hold">On Hold</option>
-                                            </>
-                                        )}
-                                        {activePhase === 3 && (
-                                            <>
-                                                <option value="Offer Sent">Offer Sent</option>
-                                                <option value="Offer Accepted">Offer Accepted</option>
-                                                <option value="Joined">Joined</option>
-                                                <option value="No Show">No Show</option>
-                                                <option value="Offer Declined">Offer Declined</option>
-                                            </>
-                                        )}
-                                    </select>
-                                </div>
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Interviews</label>
-                                    <select
-                                        value={filterInterviewStatus}
-                                        onChange={(e) => setFilterInterviewStatus(e.target.value)}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-34"
-                                    >
-                                        {interviewFilterOptions.map((option) => (
-                                            <option key={option.value} value={option.value}>
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                {([1, 2].includes(activePhase)) && (
-                                    <div className="shrink-0">
-                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Interview Round</label>
-                                        <select
-                                            value={filterInterviewRound}
-                                            onChange={(e) => setFilterInterviewRound(e.target.value)}
-                                            className={`px-2.5 py-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-36 transition-colors ${filterInterviewRound
-                                                ? 'border-red-500 bg-red-50 text-red-700 font-bold'
-                                                : 'border-slate-300'
-                                                }`}
-                                        >
-                                            <option value="">All Rounds</option>
-                                            {availableRoundOptions.map((roundName) => (
-                                                <option key={roundName} value={roundName}>
-                                                    {roundName}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Min Avg Rating</label>
-                                    <select
-                                        value={filterRating}
-                                        onChange={(e) => setFilterRating(e.target.value)}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-30"
-                                    >
-                                        <option value="All">All</option>
-                                        <option value="9">9+ (Excellent)</option>
-                                        <option value="7">7+ (Good)</option>
-                                        <option value="5">5+ (Average)</option>
-                                        <option value="3">3+ (Below Avg)</option>
-                                    </select>
-                                </div>
-                                <MultiSelectFilter
-                                    label="Pulled By"
-                                    options={pulledByOptions}
-                                    selectedValues={filterPulledBy}
-                                    onToggleValue={(value) => {
-                                        const alreadySelected = filterPulledBy.includes(value);
-                                        const nextValues = alreadySelected
-                                            ? filterPulledBy.filter((item) => item !== value)
-                                            : [...filterPulledBy, value];
-                                        setFilterPulledBy(nextValues);
-                                        if (!alreadySelected) {
-                                            setFilterStatus('All');
-                                            setFilterDecision('All');
-                                            setFilterInterviewStatus('All');
-                                        }
-                                    }}
-                                    onClear={() => setFilterPulledBy([])}
-                                    isOpen={openMultiFilter === 'Pulled By'}
-                                    onToggleOpen={setOpenMultiFilter}
-                                    emptyLabel="All"
-                                    widthClass="w-40"
-                                />
-                                <MultiSelectFilter
-                                    label="Uploaded By"
-                                    options={uploadedByOptions}
-                                    selectedValues={filterUploadedBy}
-                                    onToggleValue={(value) => {
-                                        const alreadySelected = filterUploadedBy.includes(value);
-                                        setFilterUploadedBy(
-                                            alreadySelected
-                                                ? filterUploadedBy.filter((item) => item !== value)
-                                                : [...filterUploadedBy, value]
-                                        );
-                                    }}
-                                    onClear={() => setFilterUploadedBy([])}
-                                    isOpen={openMultiFilter === 'Uploaded By'}
-                                    onToggleOpen={setOpenMultiFilter}
-                                    emptyLabel="All"
-                                    widthClass="w-44"
-                                />
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Upload Type</label>
-                                    <select
-                                        value={filterUploadType}
-                                        onChange={(e) => setFilterUploadType(e.target.value)}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                                    >
-                                        <option value="All">All</option>
-                                        <option value="CV">CV</option>
-                                        <option value="Excel">Excel</option>
-                                    </select>
-                                </div>
-                                {!isLegacyView && candidates.some(c => c.isTransferred) && (
-                                    <div className="shrink-0">
-                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Origin</label>
-                                        <select
-                                            value={filterTransferred}
-                                            onChange={(e) => setFilterTransferred(e.target.value)}
-                                            className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                                        >
-                                            <option value="All">All Origins</option>
-                                            <option value="New">New Applications</option>
-                                            <option value="Transferred">Transferred</option>
-                                        </select>
-                                    </div>
-                                )}
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Min Experience (Yrs)</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="e.g. 2"
-                                        value={filterExperience}
-                                        onChange={(e) => setFilterExperience(e.target.value)}
-                                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-28"
-                                    />
-                                </div>
-                                <div className="shrink-0">
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Date Filter</label>
-                                    <select
-                                        value={dateFilterField}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            setDateFilterField(value);
-
-                                            if (!value) {
-                                                setCreatedDatePreset('');
-                                                setDateFrom('');
-                                                setDateTo('');
-                                            }
-                                        }}
-                                        className="w-40 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 outline-none transition focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        {dateFilterFieldOptions.map((option) => (
-                                            <option key={option.value} value={option.value}>
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'All' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy.length > 0 || filterUploadedBy.length > 0 || filterUploadType !== 'All' || !isDefaultDateFilterState || filterTransferred !== 'All' || filterInterviewRound !== '') && (
-                                    <button
-                                        onClick={() => {
-                                            if (activePhase === 1) setFilterStatus('All');
-                                            else setFilterStatus('All');
-                                            setCandidateNameSearch('');
-                                            setFilterProfileShared(false);
-                                            setFilterDecision('All');
-                                            setFilterExperience('');
-                                            setFilterInterviewStatus('All');
-                                            setFilterRating('All');
-                                            setFilterPulledBy([]);
-                                            setFilterUploadedBy([]);
-                                            setFilterUploadType('All');
-                                            resetDateFiltersToDefault();
-                                            setFilterTransferred('All');
-                                            setFilterInterviewRound('');
-                                            setShowCreatedDateSortMenu(false);
-                                            setOpenMultiFilter(null);
-                                        }}
-                                        className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
-                                    >
-                                        Clear Filters
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-
-                    {/* Candidates Table */}
-                    {candidates.length === 0 ? (
-                        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-                            <Upload className="mx-auto text-slate-300 mb-4" size={48} />
-                            <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
-                            <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
-                            {canCreateCandidates && (
-                                <button
-                                    onClick={handleAddNew}
-                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                                >
-                                    Upload First Resume
-                                </button>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="bg-white rounded-xl border border-slate-200 mb-24">
-                            <div className="w-full overflow-x-auto">
-                                <div className={selectedCandidateId ? "min-w-full" : "min-w-275"}>
-                                    <table className="w-full">
-                                        <thead className="bg-slate-50 border-b border-slate-200">
-                                            <tr key="header-row">
-                                                {!selectedCandidateId && !isLegacyView && (
-                                                    <th className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={allVisibleSelected}
-                                                            onChange={toggleSelectAllVisible}
-                                                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                        />
-                                                    </th>
-                                                )}
-                                                <th onClick={() => handleHeaderSort('candidate')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                    Candidate {renderSortIcon('candidate')}
-                                                </th>
-                                                {!selectedCandidateId && (
-                                                    <th onClick={() => handleHeaderSort('contact')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                        Contact {renderSortIcon('contact')}
-                                                    </th>
-                                                )}
-                                                {!selectedCandidateId && (
-                                                    <th onClick={() => handleHeaderSort('experience')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                        Experience {renderSortIcon('experience')}
-                                                    </th>
-                                                )}
-                                                {!selectedCandidateId && (
-                                                    <th onClick={() => handleHeaderSort('ctc')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                        CTC Details {renderSortIcon('ctc')}
-                                                    </th>
-                                                )}
-                                                {!selectedCandidateId && (
-                                                    <th onClick={() => handleHeaderSort('interviews')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                        Interviews {renderSortIcon('interviews')}
-                                                    </th>
-                                                )}
-                                                {!selectedCandidateId && (
-                                                    <th onClick={() => handleHeaderSort('decision')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                        Decision {renderSortIcon('decision')}
-                                                    </th>
-                                                )}
-                                                {!selectedCandidateId && (
-                                                    <th onClick={() => handleHeaderSort('pulled')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                        Pulled / Uploaded {renderSortIcon('pulled')}
-                                                    </th>
-                                                )}
-                                                <th onClick={() => handleHeaderSort('status')} className="px-4 py-3.5 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-slate-800 transition-colors select-none">
-                                                    Status {renderSortIcon('status')}
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-200">
-                                            {paginatedCandidates.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={!selectedCandidateId && !isLegacyView ? 9 : 7} className="px-4 py-8 text-center text-slate-500">
-                                                        No candidates match the selected filters.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                paginatedCandidates.map((candidate) => (
-                                                    <tr
-                                                        key={candidate._id}
-                                                        onClick={canViewCandidateDetails ? () => handleSelectCandidate(candidate._id) : undefined}
-                                                        className={`transition-colors border-b border-slate-100 last:border-0 ${canViewCandidateDetails ? 'cursor-pointer' : 'cursor-default'} ${selectedCandidateId === candidate._id
-                                                            ? 'bg-blue-50 ring-1 ring-inset ring-blue-100'
-                                                            : 'hover:bg-slate-50 bg-white'
-                                                            }`}
-                                                    >
-                                                        {!selectedCandidateId && !isLegacyView && (
-                                                            <td className="px-4 py-2 align-top text-center">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={selectedCandidateIds.includes(candidate._id)}
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                    onChange={() => toggleCandidateSelection(candidate._id)}
-                                                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                                />
-                                                            </td>
-                                                        )}
-                                                        <td className="px-4 py-2 align-top">
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className="text-xs font-bold text-slate-700 leading-tight">
-                                                                    {candidate.candidateName.split(' ')[0]}<br />
-                                                                    {candidate.candidateName.split(' ').slice(1).join(' ')}
-                                                                </span>
-                                                                {candidate.isTransferred && !isLegacyView && (
-                                                                    <span className="bg-blue-100 text-blue-700 text-[9px] px-1.5 py-0.5 rounded font-bold w-max uppercase tracking-wider mt-1 border border-blue-200" title="Moved from an older requisition">
-                                                                        Transferred
-                                                                    </span>
-                                                                )}
-                                                                {hasReviewableApplicantProfile(candidate) && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setProfileTarget(candidate);
-                                                                        }}
-                                                                        className="mt-1 flex items-center gap-1 text-[9px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
-                                                                    >
-                                                                        <Eye size={10} />
-                                                                        Review Complete Profile
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        {!selectedCandidateId && (
-                                                            <td className="px-4 py-2 align-top">
-                                                                <div className="flex flex-col">
-                                                                    <span className="text-[11px] text-slate-600 font-medium">{candidate.email}</span>
-                                                                    <span className="text-[11px] text-slate-500">{candidate.mobile}</span>
-                                                                </div>
-                                                            </td>
-                                                        )}
-                                                        {!selectedCandidateId && (
-                                                            <td className="px-4 py-2 align-top">
-                                                                <span className="text-[11px] font-bold text-slate-700">{candidate.totalExperience || '-'} yrs</span>
-                                                            </td>
-                                                        )}
-                                                        {!selectedCandidateId && (
-                                                            <td className="px-4 py-2 align-top">
-                                                                <div className="text-[11px] text-slate-600 space-y-0.5 whitespace-nowrap">
-                                                                    {candidate.currentCTC !== undefined && candidate.currentCTC !== null && candidate.currentCTC !== '' && (
-                                                                        <div>Current: <span className="font-semibold">{candidate.currentCTC} LPA</span></div>
-                                                                    )}
-                                                                    {candidate.expectedCTC !== undefined && candidate.expectedCTC !== null && candidate.expectedCTC !== '' && (
-                                                                        <div>Expected: <span className="font-semibold">{candidate.expectedCTC} LPA</span></div>
-                                                                    )}
-                                                                    {candidate.noticePeriod !== undefined && candidate.noticePeriod !== null && candidate.noticePeriod !== '' && (
-                                                                        <div>Notice: <span className="font-semibold">{candidate.noticePeriod}d</span></div>
-                                                                    )}
-                                                                    {!hasCandidateCtcDetails(candidate) && <span className="text-slate-400">-</span>}
-                                                                </div>
-                                                            </td>
-                                                        )}
-                                                        {!selectedCandidateId && (
-                                                            <td className="px-4 py-2 align-top">
-                                                                {(() => {
-                                                                    const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase);
-
-                                                                    const summary = getInterviewStatusSummary(rounds);
-
-                                                                    const hasFailed = rounds.some(r => r.status === 'Failed');
-                                                                    const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                                                                    const averageRating = !hasFailed && ratedRounds.length > 0
-                                                                        ? ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length
-                                                                        : null;
-
-                                                                    return (
-                                                                        <div className="flex flex-col gap-1 items-start">
-                                                                            <span className={`px-1.5 py-0.5 border rounded-md text-[9px] font-bold tracking-wide ${summary.color}`}>
-                                                                                {summary.label}
-                                                                            </span>
-                                                                            <div className="flex flex-col gap-1">
-                                                                                <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap leading-tight">
-                                                                                    {rounds.length} rounds total
-                                                                                </span>
-                                                                                {(() => {
-                                                                                    const activeRounds = rounds.filter(r => r.scheduledDate || r.evaluatedAt);
-                                                                                    if (activeRounds.length > 0) {
-                                                                                        const scheduledRound = activeRounds.find(r => ['Pending', 'Scheduled'].includes(r.status));
-                                                                                        const displayRound = scheduledRound || activeRounds[activeRounds.length - 1];
-                                                                                        const dateVal = displayRound.scheduledDate || displayRound.evaluatedAt;
-                                                                                        const formatted = dateVal ? format(new Date(dateVal), 'dd-MMM-yyyy') : '';
-                                                                                        if (formatted) {
-                                                                                            return (
-                                                                                                <span className="text-[9px] text-slate-600 font-semibold mt-0.5 whitespace-nowrap bg-slate-100 px-1 py-0.5 rounded border border-slate-200" title={`${displayRound.levelName || 'Interview'} Date`}>
-                                                                                                    {formatted}
-                                                                                                </span>
-                                                                                            );
-                                                                                        }
-                                                                                    }
-                                                                                    return null;
-                                                                                })()}
-                                                                                <div className="flex flex-wrap gap-1 mt-0.5">
-                                                                                    {ratedRounds.length > 0 && ratedRounds.slice(0, 2).map((r, idx) => (
-                                                                                        <span key={r._id || idx} title={r.roundName} className="text-[9px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
-                                                                                            R{idx + 1}: {r.rating}/10
-                                                                                        </span>
-                                                                                    ))}
-                                                                                    {ratedRounds.length > 2 && (
-                                                                                        <span
-                                                                                            className={`text-[9px] font-bold flex items-center justify-center px-1 py-0.5 rounded border cursor-pointer hover:bg-amber-100 transition-colors ${averageRating !== null ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
-                                                                                            onClick={(e) => { e.stopPropagation(); handleView(candidate); }}
-                                                                                            title="View all rounds"
-                                                                                        >
-                                                                                            ...
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    )
-                                                                })()}
-                                                            </td>
-                                                        )}
-                                                        {!selectedCandidateId && (
-                                                            <td className="px-4 py-2 align-top">
-                                                                <div className="relative inline-block w-full max-w-27.5">
-                                                                    {activePhase === 1 ? (
-                                                                        <select
-                                                                            value={candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None')}
-                                                                            onChange={(e) => handleDecisionChange(candidate._id, e.target.value)}
-                                                                            className={`w-full appearance-none px-2 py-0.5 pr-7 text-[11px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.decision === 'Profile Shared' ? 'None' : (candidate.decision || 'None'))}`}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!canMakeDecisions || hasMovedToPhase2(candidate)}
-                                                                            title={hasMovedToPhase2(candidate) ? 'Phase 1 decision is locked after moving to Phase 2' : undefined}
-                                                                        >
-                                                                            <option value="None" className="text-slate-600">None</option>
-                                                                            <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                            <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                                            <option value="Did Not Turn Up" className="text-rose-600 font-bold">Did Not Turn Up</option>
-                                                                            <option value="Left in between" className="text-rose-600 font-bold">Left in between</option>
-                                                                            <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                                        </select>
-                                                                    ) : activePhase === 2 ? (
-                                                                        <select
-                                                                            value={candidate.phase2Decision || 'None'}
-                                                                            onChange={(e) => handlePhase2DecisionChange(candidate._id, e.target.value)}
-                                                                            className={`w-full appearance-none px-2 py-0.5 pr-7 text-[11px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase2Decision || 'None')}`}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!canManagePhase3Decisions}
-                                                                        >
-                                                                            <option value="None" className="text-slate-600">None</option>
-                                                                            <option value="Shortlisted" className="text-emerald-600 font-bold">Shortlisted</option>
-                                                                            <option value="Selected" className="text-purple-600 font-bold">Selected</option>
-                                                                            <option value="Rejected" className="text-red-600 font-bold">Rejected</option>
-                                                                            <option value="Left in between" className="text-rose-600 font-bold">Left in between</option>
-                                                                            <option value="On Hold" className="text-amber-600 font-bold">On Hold</option>
-                                                                        </select>
-                                                                    ) : (
-                                                                        <select
-                                                                            value={candidate.phase3Decision || 'None'}
-                                                                            onChange={(e) => handlePhase3DecisionChange(candidate._id, e.target.value)}
-                                                                            className={`w-full appearance-none px-2 py-0.5 pr-7 text-[11px] font-bold rounded-lg border border-slate-200 bg-white outline-none cursor-pointer transition-colors hover:border-slate-300 focus:ring-2 focus:ring-blue-100 ${getDecisionColor(candidate.phase3Decision || 'None')}`}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            disabled={!canMakeDecisions}
-                                                                        >
-                                                                            <option value="None" className="text-slate-600">None</option>
-                                                                            <option value="Offer Sent" className="text-blue-600 font-bold">Offer Sent</option>
-                                                                            <option value="Offer Accepted" className="text-amber-600 font-bold">Offer Accepted</option>
-                                                                            <option value="Joined" className="text-emerald-600 font-bold">Joined</option>
-                                                                            <option value="No Show" className="text-rose-600 font-bold">No Show</option>
-                                                                            <option value="Offer Declined" className="text-rose-600 font-bold">Offer Declined</option>
-                                                                            <option value="Left in between" className="text-rose-600 font-bold">Left in between</option>
-                                                                        </select>
-                                                                    )}
-                                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                                                                        <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                                            <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                                                                        </svg>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                        )}
-                                                        {!selectedCandidateId && (
-                                                            <td className="px-4 py-2 align-top">
-                                                                <div className="flex flex-col gap-0.5 text-[11px] text-slate-500 font-medium whitespace-nowrap">
-                                                                    <span
-                                                                        className="font-bold text-blue-600 mb-0.5 max-w-30 truncate cursor-pointer hover:underline"
-                                                                        title={candidate.profilePulledBy || '-'}
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            if (candidate.profilePulledBy) {
-                                                                                setFilterPulledBy([candidate.profilePulledBy]);
-                                                                                setFilterStatus('All');
-                                                                                setFilterDecision('All');
-                                                                                setFilterInterviewStatus('All');
-                                                                                setOpenMultiFilter(null);
-                                                                            }
-                                                                        }}
-                                                                    >
-                                                                        {candidate.profilePulledBy || '-'}
-                                                                    </span>
-                                                                    {getCandidateUploadedByName(candidate) ? (
-                                                                        <button
-                                                                            type="button"
-                                                                            className="w-fit text-left text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                setFilterUploadedBy([getCandidateUploadedByName(candidate)]);
-                                                                                setOpenMultiFilter(null);
-                                                                            }}
-                                                                            title={`Filter by uploader ${getCandidateUploadedByName(candidate)}`}
-                                                                        >
-                                                                            {getCandidateUploadedByName(candidate)}
-                                                                        </button>
-                                                                    ) : (
-                                                                        <span className="text-[10px] text-slate-400">Unknown uploader</span>
-                                                                    )}
-                                                                    <span className={`mt-0.5 w-fit rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${getCandidateUploadType(candidate) === 'CV' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                                                                        {getCandidateUploadType(candidate)}
-                                                                    </span>
-                                                                    <span className="whitespace-nowrap">{format(new Date(candidate.uploadedAt), 'MMM dd, yyyy hh:mm a')}</span>
-                                                                </div>
-                                                            </td>
-                                                        )}
-                                                        <td className="px-4 py-2 align-top text-center">
-                                                            <button
-                                                                onClick={(e) => toggleMenu(e, candidate._id)}
-                                                                data-legacy-action-menu-trigger="true"
-                                                                className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors relative"
-                                                            >
-                                                                <MoreVertical size={18} />
-                                                            </button>
-
-                                                            {/* Dropdown Menu */}
-                                                            {activeMenu === candidate._id && typeof document !== 'undefined' && createPortal(
-                                                                <div
-                                                                    data-legacy-action-menu-content="true"
-                                                                    className="fixed z-9999 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
-                                                                    style={menuPosition}
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                >
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            handleView(candidate);
-                                                                            setActiveMenu(null);
-                                                                        }}
-                                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                                    >
-                                                                        <Eye size={16} className="text-slate-500" />
-                                                                        View Details
-                                                                    </button>
-
-                                                                    {hasReviewableApplicantProfile(candidate) && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setProfileTarget(candidate);
-                                                                                setActiveMenu(null);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
-                                                                        >
-                                                                            <Eye size={16} className="text-blue-500" />
-                                                                            Review Complete Profile
-                                                                        </button>
-                                                                    )}
-
-                                                                    {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
-                                                                        <a
-                                                                            href={candidate.resumeUrl}
-                                                                            target="_blank"
-                                                                            rel="noopener noreferrer"
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                                            onClick={() => setActiveMenu(null)}
-                                                                        >
-                                                                            <FileText size={16} className="text-slate-500" />
-                                                                            View Resume
-                                                                        </a>
-                                                                    )}
-
-                                                                    {canEditCandidates && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleEdit(candidate);
-                                                                                setActiveMenu(null);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                                                                        >
-                                                                            <Edit size={16} className="text-slate-500" />
-                                                                            Edit Candidate
-                                                                        </button>
-                                                                    )}
-
-                                                                    {activePhase === 1 && !isProfileSharedCandidate(candidate) && canEditCandidates && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleMoveToNextPhase(candidate._id);
-                                                                                setActiveMenu(null);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-sky-700 hover:bg-sky-50 transition-colors text-left font-semibold"
-                                                                        >
-                                                                            <ArrowRight size={16} className="text-sky-500" />
-                                                                            Moved to Next Phase
-                                                                        </button>
-                                                                    )}
-
-                                                                    {canBulkTransfer && !isLegacyView && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                openTransferModal([candidate._id]);
-                                                                                setActiveMenu(null);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
-                                                                        >
-                                                                            <Briefcase size={16} className="text-blue-500" />
-                                                                            Transfer Candidate
-                                                                        </button>
-                                                                    )}
-
-                                                                    {activePhase === 2 && canEditCandidates && !candidate.isTransferredToOnboarding && (!candidate.phase3Decision || candidate.phase3Decision === 'None') && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleMoveBackToPreviousPhase(candidate._id);
-                                                                                setActiveMenu(null);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors text-left font-semibold"
-                                                                        >
-                                                                            <ArrowRightLeft size={16} className="text-amber-500" />
-                                                                            Move Back to Previous Phase
-                                                                        </button>
-                                                                    )}
-
-                                                                    {((activePhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None') || (activePhase === 2 && candidate.phase2Decision === 'Selected')) && !candidate.isTransferredToOnboarding && canTransferCandidates && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleTransferToOnboarding(candidate._id);
-                                                                                setActiveMenu(null);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 transition-colors text-left font-bold"
-                                                                        >
-                                                                            <CheckCircle size={16} className="text-emerald-500" />
-                                                                            Transfer to Onboarding
-                                                                        </button>
-                                                                    )}
-
-                                                                    <div className="border-t border-slate-100 my-1"></div>
-
-                                                                    {canDeleteCandidates && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                handleDelete(candidate._id);
-                                                                                setActiveMenu(null);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
-                                                                        >
-                                                                            <Trash2 size={16} />
-                                                                            Delete Candidate
-                                                                        </button>
-                                                                    )}
-                                                                </div>,
-                                                                document.body
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            {/* Pagination Controls */}
-                            {!loading && (activeList.length > 0 || (usesBackendPagination && serverResultCount > 0)) && (
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-6 pt-4 border-t border-slate-200/80 text-xs text-slate-500 px-4 pb-4">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span>Show</span>
-                                        <select
-                                            value={itemsPerPage}
-                                            onChange={(e) => {
-                                                const newLimit = parseInt(e.target.value, 10);
-                                                setItemsPerPage(newLimit);
-                                                setPage(1);
-                                            }}
-                                            className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        >
-                                            <option value={50}>50</option>
-                                            <option value={100}>100</option>
-                                            <option value={150}>150</option>
-                                        </select>
-                                        <span>entries per page (Showing <span className="font-bold text-slate-700">{(usesBackendPagination ? serverResultCount : activeList.length) > 0 ? (page - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-bold text-slate-700">{Math.min(page * itemsPerPage, usesBackendPagination ? serverResultCount : activeList.length)}</span> of <span className="font-bold text-slate-700">{usesBackendPagination ? serverResultCount : activeList.length}</span> entries)</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                                        <button
-                                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                                            disabled={page === 1}
-                                            className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                                        >
-                                            Previous
-                                        </button>
-                                        <span className="text-xs font-semibold text-slate-600 px-2">
-                                            Page {page} of {totalPages}
-                                        </span>
-                                        <button
-                                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                            disabled={page >= totalPages}
-                                            className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                                        >
-                                            Next
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    <CandidateTable
+                        candidates={candidates}
+                        canCreateCandidates={canCreateCandidates}
+                        handleAddNew={handleAddNew}
+                        selectedCandidateId={selectedCandidateId}
+                        isLegacyView={isLegacyView}
+                        allVisibleSelected={allVisibleSelected}
+                        toggleSelectAllVisible={toggleSelectAllVisible}
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        handleHeaderSort={handleHeaderSort}
+                        paginatedCandidates={paginatedCandidates}
+                        selectedCandidateIds={selectedCandidateIds}
+                        toggleCandidateSelection={toggleCandidateSelection}
+                        handleSelectCandidate={handleSelectCandidate}
+                        canViewCandidateDetails={canViewCandidateDetails}
+                        activePhase={activePhase}
+                        canMakeDecisions={canMakeDecisions}
+                        canManagePhase3Decisions={canManagePhase3Decisions}
+                        handleDecisionChange={handleDecisionChange}
+                        handlePhase2DecisionChange={handlePhase2DecisionChange}
+                        handlePhase3DecisionChange={handlePhase3DecisionChange}
+                        setFilterPulledBy={setFilterPulledBy}
+                        setFilterUploadedBy={setFilterUploadedBy}
+                        setFilterStatus={setFilterStatus}
+                        setFilterDecision={setFilterDecision}
+                        setFilterInterviewStatus={setFilterInterviewStatus}
+                        setOpenMultiFilter={setOpenMultiFilter}
+                        toggleMenu={toggleMenu}
+                        activeMenu={activeMenu}
+                        setActiveMenu={setActiveMenu}
+                        menuPosition={menuPosition}
+                        handleView={handleView}
+                        setProfileTarget={setProfileTarget}
+                        canEditCandidates={canEditCandidates}
+                        handleEdit={handleEdit}
+                        isProfileSharedCandidate={isProfileSharedCandidate}
+                        handleMoveToNextPhase={handleMoveToNextPhase}
+                        canBulkTransfer={canBulkTransfer}
+                        openTransferModal={openTransferModal}
+                        handleMoveBackToPreviousPhase={handleMoveBackToPreviousPhase}
+                        canTransferCandidates={canTransferCandidates}
+                        handleTransferToOnboarding={handleTransferToOnboarding}
+                        canDeleteCandidates={canDeleteCandidates}
+                        handleDelete={handleDelete}
+                        loading={loading}
+                        activeList={activeList}
+                        usesBackendPagination={usesBackendPagination}
+                        serverResultCount={serverResultCount}
+                        itemsPerPage={itemsPerPage}
+                        filterInterviewRound={filterInterviewRound}
+                        roundSummary={roundSummary}
+                        setItemsPerPage={setItemsPerPage}
+                        page={page}
+                        setPage={setPage}
+                        totalPages={totalPages}
+                    />
                 </div>
 
-                {/* Right Side: Candidate Details Side Panel */}
-                {selectedCandidateId && (
-                    <div className={`${isSidePanelMaximized ? 'fixed top-0 right-0 bottom-0 left-0 md:left-64 z-100' : 'w-full lg:w-[72%] sticky top-20 h-[calc(100vh-100px)]'} bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300`}>
-                        {/* Side Panel Header */}
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 ">
-                            <h2 className="text-lg font-bold text-slate-800">Quick Profile View</h2>
-                            <button
-                                onClick={handleCloseCandidate}
-                                className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500 hover:text-slate-800 shadow-sm bg-white border border-slate-200"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Scrollable Content Area */}
-                        <div className="scrollbar-hide flex-1 overflow-y-auto bg-slate-50/50">
-                            <CandidateDetails
-                                key={selectedCandidateId}
-                                candidateId={selectedCandidateId}
-                                hiringRequestId={hiringRequestId}
-                                isSidePanel={true}
-                                onUpdate={() => fetchCandidates(true)}
-                                isSidePanelMaximized={isSidePanelMaximized}
-                                onToggleMaximize={handleToggleMaximize}
-                            />
-                        </div>
-                    </div>
-                )}
+                <CandidateSidePanel
+                    selectedCandidateId={selectedCandidateId}
+                    hiringRequestId={hiringRequestId}
+                    isSidePanelMaximized={isSidePanelMaximized}
+                    handleCloseCandidate={handleCloseCandidate}
+                    handleToggleMaximize={handleToggleMaximize}
+                    fetchCandidates={fetchCandidates}
+                />
             </div>
 
             {showBulkImport && (

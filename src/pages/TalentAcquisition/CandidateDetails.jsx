@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { Loader, ArrowLeft, Download, Plus, CheckCircle, CheckCircle2, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, FileText, ExternalLink, Maximize2, Eye, Mail, Send, X } from 'lucide-react';
+import { Loader, ArrowLeft, Download, Plus, CheckCircle, CheckCircle2, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, Edit3, FileText, ExternalLink, Maximize2, Eye, Mail, Send, X } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '../../components/Skeleton';
 import DocPreviewer from '../../components/DocPreviewer';
@@ -56,10 +56,11 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     // Send Round Mail State
     const [sendingMailRound, setSendingMailRound] = useState(null);
     const [viewingMailDetails, setViewingMailDetails] = useState(null);
-    const [sendMailForm, setSendMailForm] = useState({ emailTemplateId: '', emailAccountId: '', cc: '', bcc: '' });
+    const [sendMailForm, setSendMailForm] = useState({ emailTemplateId: '', emailAccountId: '', cc: '', bcc: '', customSubject: '', customHtmlBody: '' });
     const [isSendingMail, setIsSendingMail] = useState(false);
     const [mailPreview, setMailPreview] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    const [mailTab, setMailTab] = useState('preview'); // 'preview' | 'edit'
 
     // Workflow State
     const [interviewWorkflows, setInterviewWorkflows] = useState([]);
@@ -322,25 +323,56 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         }
     }, [candidateId, fetchCandidate, onUpdate]);
 
-    const fetchMailPreview = useCallback(async (roundId, templateId, customFieldsOverride = null) => {
+    const fetchMailPreview = useCallback(async (
+        roundId,
+        templateId,
+        customFieldsOverride = null,
+        customSubjectOverride = null,
+        customHtmlBodyOverride = null
+    ) => {
         try {
             setPreviewLoading(true);
             const fieldsToPass = customFieldsOverride !== null ? customFieldsOverride : (sendMailForm.customFields || []);
+            const subjToPass = customSubjectOverride !== null ? customSubjectOverride : sendMailForm.customSubject;
+            const bodyToPass = customHtmlBodyOverride !== null ? customHtmlBodyOverride : sendMailForm.customHtmlBody;
+
             const res = await api.post(`/ta/candidates/${candidateId}/rounds/${roundId}/mail-preview`, {
                 emailTemplateId: templateId || undefined,
-                customFields: fieldsToPass.filter(f => f.key && f.key.trim())
+                customFields: fieldsToPass.filter(f => f.key && f.key.trim()),
+                customSubject: subjToPass || undefined,
+                customHtmlBody: bodyToPass || undefined
             });
             setMailPreview(res.data);
+            setSendMailForm(prev => ({
+                ...prev,
+                customSubject: prev.customSubject !== '' ? prev.customSubject : (res.data?.rawSubject || res.data?.subject || ''),
+                customHtmlBody: prev.customHtmlBody !== '' ? prev.customHtmlBody : (res.data?.rawBody || res.data?.htmlBody || '')
+            }));
         } catch (error) {
             console.error('Error fetching mail preview:', error);
         } finally {
             setPreviewLoading(false);
         }
-    }, [candidateId, sendMailForm.customFields]);
+    }, [candidateId, sendMailForm.customFields, sendMailForm.customHtmlBody, sendMailForm.customSubject]);
+
+    useEffect(() => {
+        if (!sendingMailRound) return;
+        const timer = setTimeout(() => {
+            fetchMailPreview(
+                sendingMailRound._id,
+                sendMailForm.emailTemplateId,
+                sendMailForm.customFields,
+                sendMailForm.customSubject,
+                sendMailForm.customHtmlBody
+            );
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [fetchMailPreview, sendMailForm.customFields, sendMailForm.customHtmlBody, sendMailForm.customSubject, sendMailForm.emailTemplateId, sendingMailRound]);
 
     const openSendMailModal = useCallback(async (round) => {
         setSendingMailRound(round);
         setMailPreview(null);
+        setMailTab('preview');
 
         let currentOptions = senderOptions;
         let defaultId = selectedEmailAccountId;
@@ -363,7 +395,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             emailAccountId: targetAccount,
             cc: round.cc || '',
             bcc: round.bcc || '',
-            customFields: initialCustomFields
+            customFields: initialCustomFields,
+            customSubject: '',
+            customHtmlBody: ''
         });
         fetchMailPreview(round._id, initialTpl, initialCustomFields);
     }, [fetchMailPreview, fetchSenderOptions, selectedEmailAccountId, senderOptions]);
@@ -377,7 +411,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 emailAccountId: sendMailForm.emailAccountId || undefined,
                 cc: sendMailForm.cc?.trim() || undefined,
                 bcc: sendMailForm.bcc?.trim() || undefined,
-                customFields: Array.isArray(sendMailForm.customFields) ? sendMailForm.customFields.filter(f => f.key && f.key.trim()) : []
+                customFields: Array.isArray(sendMailForm.customFields) ? sendMailForm.customFields.filter(f => f.key && f.key.trim()) : [],
+                customSubject: sendMailForm.customSubject || undefined,
+                customHtmlBody: sendMailForm.customHtmlBody || undefined
             });
             toast.success(`Interview email sent for ${sendingMailRound.levelName}`);
             setSendingMailRound(null);
@@ -2132,139 +2168,187 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 <X size={20} />
                             </button>
                         </div>
-
-                        {/* Expanded 2-Column Desktop Grid Layout */}
+                        {/* Side-by-Side 2-Column Desktop Grid Layout */}
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                            {/* Left Column: Email Configuration Controls */}
-                            <div className="lg:col-span-5 space-y-4 text-xs bg-slate-50/70 p-4 rounded-xl border border-slate-200/80">
-                                <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200 pb-2">
-                                    Mail Configuration
-                                </h4>
+                            {/* Left Column: Email Configuration & Content Customization Editor */}
+                            <div className="lg:col-span-6 space-y-4 text-xs">
+                                {/* Mail Configuration */}
+                                <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                                    <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200 pb-2">
+                                        Mail Configuration
+                                    </h4>
 
-                                <div>
-                                    <label className="block font-semibold text-slate-700 mb-1">Email Template</label>
-                                    <select
-                                        value={sendMailForm.emailTemplateId}
-                                        onChange={(e) => {
-                                            const tplId = e.target.value;
-                                            setSendMailForm(prev => ({ ...prev, emailTemplateId: tplId }));
-                                            fetchMailPreview(sendingMailRound._id, tplId);
-                                        }}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
-                                    >
-                                        <option value="">Default Interview Schedule Template</option>
-                                        {emailTemplates.map(t => (
-                                            <option key={t._id} value={t._id}>{t.name} ({t.type})</option>
-                                        ))}
-                                    </select>
+                                    <div>
+                                        <label className="block font-semibold text-slate-700 mb-1">Email Template</label>
+                                        <select
+                                            value={sendMailForm.emailTemplateId}
+                                            onChange={(e) => {
+                                                const tplId = e.target.value;
+                                                setSendMailForm(prev => ({ ...prev, emailTemplateId: tplId, customSubject: '', customHtmlBody: '' }));
+                                                fetchMailPreview(sendingMailRound._id, tplId);
+                                            }}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
+                                        >
+                                            <option value="">Default Interview Schedule Template</option>
+                                            {emailTemplates.map(t => (
+                                                <option key={t._id} value={t._id}>{t.name} ({t.type})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block font-semibold text-slate-700 mb-1">Sender Email Account</label>
+                                        <select
+                                            value={sendMailForm.emailAccountId}
+                                            onChange={(e) => setSendMailForm(prev => ({ ...prev, emailAccountId: e.target.value }))}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
+                                        >
+                                            {senderOptions.map(opt => (
+                                                <option key={opt._id} value={opt._id}>
+                                                    {opt.label || `${opt.fromName || opt.name || 'Sender Account'} (${opt.fromAddress || opt.email || ''})`}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block font-semibold text-slate-700 mb-1">CC Email(s)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Comma separated"
+                                                value={sendMailForm.cc}
+                                                onChange={(e) => setSendMailForm(prev => ({ ...prev, cc: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block font-semibold text-slate-700 mb-1">BCC Email(s)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Comma separated"
+                                                value={sendMailForm.bcc}
+                                                onChange={(e) => setSendMailForm(prev => ({ ...prev, bcc: e.target.value }))}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Custom Fields */}
+                                    <div className="bg-indigo-50/80 border border-indigo-200/80 rounded-xl p-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                                                Custom Fields (Meeting Link, Location, Topics)
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = [...(sendMailForm.customFields || []), { key: '', value: '' }];
+                                                    setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                    fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                }}
+                                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-100 border border-indigo-200 rounded-lg transition"
+                                            >
+                                                <Plus size={12} /> Add Field
+                                            </button>
+                                        </div>
+
+                                        {(!sendMailForm.customFields || sendMailForm.customFields.length === 0) ? (
+                                            <p className="text-[11px] text-indigo-700/70 italic">No custom meeting details attached. Click "Add Field" to include links or location.</p>
+                                        ) : (
+                                            <div className="space-y-1.5">
+                                                {sendMailForm.customFields.map((cf, idx) => (
+                                                    <div key={idx} className="flex items-center gap-1.5">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Key (e.g. Meeting Link)"
+                                                            value={cf.key}
+                                                            onChange={(e) => {
+                                                                const updated = [...sendMailForm.customFields];
+                                                                updated[idx].key = e.target.value;
+                                                                setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                                fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                            }}
+                                                            className="w-5/12 px-2 py-1 border border-indigo-200/80 rounded-lg text-xs bg-white outline-none focus:border-indigo-500 font-medium"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Value (e.g. Google Meet link)"
+                                                            value={cf.value}
+                                                            onChange={(e) => {
+                                                                const updated = [...sendMailForm.customFields];
+                                                                updated[idx].value = e.target.value;
+                                                                setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                                fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                            }}
+                                                            className="w-6/12 px-2 py-1 border border-indigo-200/80 rounded-lg text-xs bg-white outline-none focus:border-indigo-500 font-medium"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = sendMailForm.customFields.filter((_, i) => i !== idx);
+                                                                setSendMailForm(prev => ({ ...prev, customFields: updated }));
+                                                                fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                            }}
+                                                            className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                <div>
-                                    <label className="block font-semibold text-slate-700 mb-1">Sender Email Account</label>
-                                    <select
-                                        value={sendMailForm.emailAccountId}
-                                        onChange={(e) => setSendMailForm(prev => ({ ...prev, emailAccountId: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
-                                    >
-                                        {senderOptions.map(opt => (
-                                            <option key={opt._id} value={opt._id}>
-                                                {opt.label || `${opt.fromName || opt.name || 'Sender Account'} (${opt.fromAddress || opt.email || ''})`}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block font-semibold text-slate-700 mb-1">CC Email(s)</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Comma separated emails (e.g. hr@company.com)"
-                                        value={sendMailForm.cc}
-                                        onChange={(e) => setSendMailForm(prev => ({ ...prev, cc: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block font-semibold text-slate-700 mb-1">BCC Email(s)</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Comma separated emails"
-                                        value={sendMailForm.bcc}
-                                        onChange={(e) => setSendMailForm(prev => ({ ...prev, bcc: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
-
-                                {/* Editable Custom Fields inside Send Mail modal */}
-                                <div className="bg-indigo-50/80 border border-indigo-200/80 rounded-xl p-3.5 space-y-2 mt-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
-                                            Custom Fields (Meeting Link, Location, Topics)
+                                {/* Candidate-Specific Email Customization Editor */}
+                                <div className="bg-white p-4 rounded-xl border border-indigo-200 space-y-3 shadow-xs">
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                        <span className="font-bold text-indigo-900 text-xs flex items-center gap-1.5">
+                                            <Edit3 size={14} className="text-indigo-600" /> Edit Content for this Candidate
                                         </span>
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const updated = [...(sendMailForm.customFields || []), { key: '', value: '' }];
-                                                setSendMailForm(prev => ({ ...prev, customFields: updated }));
-                                                fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
+                                                setSendMailForm(prev => ({
+                                                    ...prev,
+                                                    customSubject: mailPreview?.rawSubject || mailPreview?.subject || '',
+                                                    customHtmlBody: mailPreview?.rawBody || mailPreview?.htmlBody || ''
+                                                }));
+                                                toast.success('Reset to default template');
                                             }}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-100 border border-indigo-200 rounded-lg transition"
+                                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline"
                                         >
-                                            <Plus size={12} /> Add Field
+                                            Reset to Default
                                         </button>
                                     </div>
 
-                                    {(!sendMailForm.customFields || sendMailForm.customFields.length === 0) ? (
-                                        <p className="text-[11px] text-indigo-700/70 italic">No custom meeting details attached. Click "Add Field" to include links or location.</p>
-                                    ) : (
-                                        <div className="space-y-1.5">
-                                            {sendMailForm.customFields.map((cf, idx) => (
-                                                <div key={idx} className="flex items-center gap-1.5">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Key (e.g. Meeting Link)"
-                                                        value={cf.key}
-                                                        onChange={(e) => {
-                                                            const updated = [...sendMailForm.customFields];
-                                                            updated[idx].key = e.target.value;
-                                                            setSendMailForm(prev => ({ ...prev, customFields: updated }));
-                                                            fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
-                                                        }}
-                                                        className="w-5/12 px-2 py-1 border border-indigo-200/80 rounded-lg text-xs bg-white outline-none focus:border-indigo-500 font-medium"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Value (e.g. Google Meet link)"
-                                                        value={cf.value}
-                                                        onChange={(e) => {
-                                                            const updated = [...sendMailForm.customFields];
-                                                            updated[idx].value = e.target.value;
-                                                            setSendMailForm(prev => ({ ...prev, customFields: updated }));
-                                                            fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
-                                                        }}
-                                                        className="w-6/12 px-2 py-1 border border-indigo-200/80 rounded-lg text-xs bg-white outline-none focus:border-indigo-500 font-medium"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const updated = sendMailForm.customFields.filter((_, i) => i !== idx);
-                                                            setSendMailForm(prev => ({ ...prev, customFields: updated }));
-                                                            fetchMailPreview(sendingMailRound._id, sendMailForm.emailTemplateId, updated);
-                                                        }}
-                                                        className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition"
-                                                    >
-                                                        <X size={14} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Subject Line</label>
+                                        <input
+                                            type="text"
+                                            value={sendMailForm.customSubject !== '' ? sendMailForm.customSubject : (mailPreview?.rawSubject || mailPreview?.subject || '')}
+                                            onChange={(e) => setSendMailForm(prev => ({ ...prev, customSubject: e.target.value }))}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                            placeholder="Enter customized email subject line..."
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Email Body Content (Template Placeholders Supported)</label>
+                                        <textarea
+                                            rows={8}
+                                            value={sendMailForm.customHtmlBody !== '' ? sendMailForm.customHtmlBody : (mailPreview?.rawBody || mailPreview?.htmlBody || '')}
+                                            onChange={(e) => setSendMailForm(prev => ({ ...prev, customHtmlBody: e.target.value }))}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 leading-relaxed"
+                                            placeholder="Enter customized email body..."
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Right Column: Live Email Details & Compiled HTML Preview */}
-                            <div className="lg:col-span-7 border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                            {/* Right Column: Live Email Dispatch Preview Side-by-Side */}
+                            <div className="lg:col-span-6 border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3 sticky top-4">
                                 <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
                                     <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5 uppercase tracking-wider">
                                         <Eye size={15} className="text-indigo-600" /> Live Email Dispatch Preview
@@ -2291,13 +2375,22 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             )}
                                         </div>
 
-                                        <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs">
-                                            <span className="font-bold text-slate-500 block mb-0.5">Subject Line:</span>
-                                            <p className="font-semibold text-slate-800 text-xs">{mailPreview.subject}</p>
+                                        <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+                                            <div>
+                                                <span className="font-bold text-slate-500 block mb-0.5">Subject Line:</span>
+                                                <p className="font-semibold text-slate-800 text-xs">
+                                                    {mailPreview.subject}
+                                                </p>
+                                            </div>
+                                            {Boolean(sendMailForm.customSubject || sendMailForm.customHtmlBody) && (
+                                                <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md">
+                                                    Live Custom Edits
+                                                </span>
+                                            )}
                                         </div>
 
-                                        {/* Email Body Preview Frame */}
-                                        <div className="bg-white p-4 rounded-xl border border-slate-200 max-h-[380px] overflow-y-auto shadow-xs">
+                                        {/* Live Email Body Preview Frame */}
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 max-h-[460px] overflow-y-auto shadow-xs">
                                             <span className="font-bold text-slate-400 block text-[10px] uppercase tracking-wider mb-2 border-b pb-1">
                                                 Compiled Email Body Preview:
                                             </span>

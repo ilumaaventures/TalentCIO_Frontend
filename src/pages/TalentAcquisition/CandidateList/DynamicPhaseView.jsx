@@ -1776,6 +1776,11 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     key={statusOption.value}
                                     className={`bg-white border border-slate-200 border-b-4 ${summaryColorMap[meta.color].split(' ')[0]} shadow-sm p-5 relative overflow-hidden group`}
                                 >
+                                    {statusOption.value === 'Interested' && (
+                                        <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
+                                            R0
+                                        </span>
+                                    )}
                                     <span className="block text-[44px] font-light text-slate-900 leading-none mb-3 relative z-10">{statusOption.count}</span>
                                     <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{statusOption.label}</span>
                                     <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${summaryColorMap[meta.color].split(' ')[1]} opacity-[0.08] size-20`} />
@@ -1982,6 +1987,60 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {/* Top Table Header Toolbar: Entries Summary & Round Metrics Breakdown */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-200 bg-slate-50/70 text-xs text-slate-500">
+                    <div className="font-semibold text-slate-700">
+                        Showing <span className="font-bold text-slate-900">{filteredCandidates.length > 0 ? (page - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-bold text-slate-900">{Math.min(page * itemsPerPage, filteredCandidates.length)}</span> of <span className="font-bold text-slate-900">{filteredCandidates.length}</span> entries
+                    </div>
+
+                    {filterInterviewRound && (
+                        <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-700 self-center">
+                            <div className="flex items-center gap-1.5">
+                                <Calendar className="text-slate-500 size-4" />
+                                <span>Total Interview Scheduled:</span>
+                                <span className="font-extrabold text-slate-900">
+                                    {candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase())).length}
+                                </span>
+                            </div>
+                            <span className="text-slate-300 font-normal">|</span>
+                            <div className="flex items-center gap-2 font-extrabold text-xs">
+                                <span className="text-emerald-600" title="Shortlisted">
+                                    SH:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Passed', 'Pass', 'Shortlisted'].includes(String(r.status || '').trim()))).length}
+                                </span>
+                                <span className="text-rose-600" title="Rejected">
+                                    RJ:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Failed', 'Fail', 'Rejected'].includes(String(r.status || '').trim()))).length}
+                                </span>
+                                <span className="text-orange-600" title="Did Not Turn Up">
+                                    DNTU:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Did Not Turn Up', 'Did Not Turnup', 'Did Not Turn up', 'Skipped', 'No Show', 'DNTU'].includes(String(r.status || '').trim()))).length}
+                                </span>
+                                <span className="text-purple-600" title="Left In Between">
+                                    LIB:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Left in between', 'Left In Between', 'LIB'].includes(String(r.status || '').trim()))).length}
+                                </span>
+                                <span className="text-amber-600" title="Pending">
+                                    P:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && !['Passed', 'Pass', 'Shortlisted', 'Failed', 'Fail', 'Rejected', 'Did Not Turn Up', 'Did Not Turnup', 'Did Not Turn up', 'Skipped', 'No Show', 'DNTU', 'Left in between', 'Left In Between', 'LIB'].includes(String(r.status || '').trim()))).length}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                        <span>Show</span>
+                        <select
+                            value={itemsPerPage}
+                            onChange={(e) => {
+                                setItemsPerPage(parseInt(e.target.value, 10));
+                                setPage(1);
+                            }}
+                            className="bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value={150}>150</option>
+                        </select>
+                        <span>entries</span>
+                    </div>
+                </div>
+
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-slate-200">
                         <thead className="bg-slate-50">

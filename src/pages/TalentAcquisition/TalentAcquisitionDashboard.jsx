@@ -303,6 +303,16 @@ const TalentAcquisitionDashboard = () => {
     const [publicAppResults, setPublicAppResults] = useState([]);
     const [publicAppPagination, setPublicAppPagination] = useState({ currentPage: 1, totalPages: 1, count: 0, limit: 15 });
 
+    // Requisitions tab state
+    const [reqSearchInput, setReqSearchInput] = useState('');
+    const [reqStatusFilter, setReqStatusFilter] = useState('All');
+    const [reqPage, setReqPage] = useState(1);
+    const [reqLimit, setReqLimit] = useState(30);
+    const [reqList, setReqList] = useState([]);
+    const [reqTotalPages, setReqTotalPages] = useState(1);
+    const [reqTotalRequests, setReqTotalRequests] = useState(0);
+    const [isReqLoading, setIsReqLoading] = useState(false);
+
     // Applied states used for search execution
     const defaultAppliedFilters = useMemo(() => ({
         search: '', sources: [], minExp: '', maxExp: '', skills: [], client: '',
@@ -605,6 +615,39 @@ const canShowApplicationsTab = (user) => {
             }
         }
     }, [activeTab, searchPage, appliedFilters, fetchGlobalCandidates, fetchPublicApplications, showPublicApps]);
+
+    const fetchRequisitionsTab = useCallback(async () => {
+        setIsReqLoading(true);
+        try {
+            const params = {
+                page: reqPage,
+                limit: reqLimit,
+            };
+            if (reqSearchInput.trim()) {
+                params.search = reqSearchInput.trim();
+            }
+            if (reqStatusFilter && reqStatusFilter !== 'All') {
+                params.status = reqStatusFilter;
+            }
+
+            const response = await api.get('/ta/hiring-request', createNoCacheRequestConfig(params));
+            if (response.data) {
+                setReqList(response.data.requests || []);
+                setReqTotalPages(response.data.totalPages || 1);
+                setReqTotalRequests(response.data.totalRequests || 0);
+            }
+        } catch (err) {
+            console.error('Error fetching requisitions tab list:', err);
+        } finally {
+            setIsReqLoading(false);
+        }
+    }, [reqPage, reqLimit, reqSearchInput, reqStatusFilter]);
+
+    useEffect(() => {
+        if (activeTab === 'requisitions') {
+            void fetchRequisitionsTab();
+        }
+    }, [activeTab, reqPage, reqLimit, reqSearchInput, reqStatusFilter, fetchRequisitionsTab]);
 
     const loadDashboard = useCallback(async ({ silent = false } = {}) => {
         if (silent) {
@@ -930,57 +973,186 @@ const canShowApplicationsTab = (user) => {
     const renderRequisitions = () => (
         <SectionCard
             title="Requisition Command View"
-            action={<Link to="/ta/create-request" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Create new requisition</Link>}
+            action={<Link to="/ta/create-request" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">+ Create new requisition</Link>}
         >
-            <div className="mb-6 grid gap-4 md:grid-cols-3">
+            <div className="mb-6 grid gap-4 md:grid-cols-4">
+                <div className="rounded-xl bg-slate-50 p-3.5">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Total Requisitions</p>
+                    <p className="font-ta-head mt-2 text-xl font-bold text-slate-950">{reqTotalRequests || requests.length}</p>
+                </div>
                 <div className="rounded-xl bg-slate-50 p-3.5">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Approved</p>
-                    <p className="font-ta-head mt-2 text-xl font-bold text-slate-950">{approvedRequestsCount}</p>
+                    <p className="font-ta-head mt-2 text-xl font-bold text-emerald-600">{approvedRequestsCount}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3.5">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Pending Review</p>
-                    <p className="font-ta-head mt-2 text-xl font-bold text-slate-950">{pendingRequestsCount}</p>
+                    <p className="font-ta-head mt-2 text-xl font-bold text-amber-600">{pendingRequestsCount}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3.5">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Closed</p>
-                    <p className="font-ta-head mt-2 text-xl font-bold text-slate-950">{requests.filter((item) => item.status === 'Closed').length}</p>
+                    <p className="font-ta-head mt-2 text-xl font-bold text-slate-600">{requests.filter((item) => item.status === 'Closed').length}</p>
                 </div>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="min-w-full text-xs">
-                    <thead>
-                        <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                            <th className="px-4 py-3">Request</th>
-                            <th className="px-4 py-3">Client</th>
-                            <th className="px-4 py-3">Department</th>
-                            <th className="px-4 py-3">Created</th>
-                            <th className="px-4 py-3">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {requests.map((request) => (
-                            <tr
-                                key={request._id}
-                                className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
-                                onClick={() => navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`)}
-                            >
-                                <td className="px-4 py-3.5">
-                                    <p className="font-semibold text-slate-900">{request.requestId}</p>
-                                    <p className="text-[11px] text-slate-500">{request.roleDetails?.title}</p>
-                                </td>
-                                <td className="px-4 py-3.5 text-xs text-slate-600">{request.client}</td>
-                                <td className="px-4 py-3.5 text-xs text-slate-600">{request.roleDetails?.department}</td>
-                                <td className="px-4 py-3.5 text-xs text-slate-600">{formatShortDate(request.createdAt)}</td>
-                                <td className="px-4 py-3.5">
-                                    <span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em] ${requestStatusClasses[request.status] || requestStatusClasses.Draft}`}>
-                                        {String(request.status || 'Draft').replaceAll('_', ' ')}
-                                    </span>
-                                </td>
+            {/* Search & Filter Controls */}
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-50/70 p-3 rounded-xl border border-slate-200/80">
+                <div className="relative flex-1 max-w-md">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                        type="text"
+                        value={reqSearchInput}
+                        onChange={(e) => {
+                            setReqSearchInput(e.target.value);
+                            setReqPage(1);
+                        }}
+                        placeholder="Search requisition ID, title, client, department..."
+                        className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-8 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                    {reqSearchInput && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setReqSearchInput('');
+                                setReqPage(1);
+                            }}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600"
+                        >
+                            ×
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                        <span>Status:</span>
+                        <select
+                            value={reqStatusFilter}
+                            onChange={(e) => {
+                                setReqStatusFilter(e.target.value);
+                                setReqPage(1);
+                            }}
+                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                        >
+                            <option value="All">All Statuses</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Pending_Approval">Pending Approval</option>
+                            <option value="Submitted">Submitted</option>
+                            <option value="Draft">Draft</option>
+                            <option value="Closed">Closed</option>
+                            <option value="Rejected">Rejected</option>
+                        </select>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                        <span>Show:</span>
+                        <select
+                            value={reqLimit}
+                            onChange={(e) => {
+                                setReqLimit(Number(e.target.value));
+                                setReqPage(1);
+                            }}
+                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                        >
+                            <option value={30}>30 per page</option>
+                            <option value={50}>50 per page</option>
+                            <option value={100}>100 per page</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto min-h-[300px]">
+                {isReqLoading ? (
+                    <div className="py-12 text-center text-xs font-medium text-slate-400 animate-pulse">
+                        Loading requisitions...
+                    </div>
+                ) : (
+                    <table className="min-w-full text-xs">
+                        <thead>
+                            <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                                <th className="px-4 py-3">Request ID / Role</th>
+                                <th className="px-4 py-3">Client</th>
+                                <th className="px-4 py-3">Department</th>
+                                <th className="px-4 py-3">Created Date</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-right">Action</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {reqList.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                                        No requisitions found matching your search.
+                                    </td>
+                                </tr>
+                            ) : (
+                                reqList.map((request) => (
+                                    <tr
+                                        key={request._id}
+                                        className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
+                                        onClick={() => navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`)}
+                                    >
+                                        <td className="px-4 py-3.5">
+                                            <p className="font-semibold text-slate-900">{request.requestId}</p>
+                                            <p className="text-[11px] text-slate-500">{request.roleDetails?.title || 'No Title'}</p>
+                                        </td>
+                                        <td className="px-4 py-3.5 text-xs text-slate-600">{request.client || 'General'}</td>
+                                        <td className="px-4 py-3.5 text-xs text-slate-600">{request.roleDetails?.department || '—'}</td>
+                                        <td className="px-4 py-3.5 text-xs text-slate-600">{formatShortDate(request.createdAt)}</td>
+                                        <td className="px-4 py-3.5">
+                                            <span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em] ${requestStatusClasses[request.status] || requestStatusClasses.Draft}`}>
+                                                {String(request.status || 'Draft').replaceAll('_', ' ')}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3.5 text-right">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`);
+                                                }}
+                                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                            >
+                                                View
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            {/* Pagination Footer */}
+            <div className="mt-4 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-4 sm:flex-row text-xs">
+                <div className="text-slate-500 font-medium">
+                    Showing <span className="font-bold text-slate-800">{reqList.length ? (reqPage - 1) * reqLimit + 1 : 0}</span> to <span className="font-bold text-slate-800">{Math.min(reqPage * reqLimit, reqTotalRequests)}</span> of <span className="font-bold text-slate-800">{reqTotalRequests}</span> requisitions
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        disabled={reqPage <= 1 || isReqLoading}
+                        onClick={() => setReqPage((prev) => Math.max(1, prev - 1))}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        Previous
+                    </button>
+
+                    <span className="px-2 font-bold text-slate-700">
+                        Page {reqPage} of {reqTotalPages}
+                    </span>
+
+                    <button
+                        type="button"
+                        disabled={reqPage >= reqTotalPages || isReqLoading}
+                        onClick={() => setReqPage((prev) => Math.min(reqTotalPages, prev + 1))}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        Next
+                    </button>
+                </div>
             </div>
         </SectionCard>
     );
@@ -1946,33 +2118,6 @@ const canShowApplicationsTab = (user) => {
                     {activeTab === 'interviews' && renderInterviews()}
                     {activeTab === 'candidates' && renderCandidates()}
                     {activeTab === 'applications' && renderApplications()}
-
-                    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <p className="font-ta-head text-lg font-bold text-slate-950">Need the detailed TA workspaces too?</p>
-                                <p className="mt-1 text-[11px] text-slate-500">
-                                    The full requisition pages, candidate boards, client lanes, and analytics views are still available.
-                                </p>
-                            </div>
-                            <div className="flex flex-wrap gap-3">
-                                <Link to="/ta/clients" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
-                                    Clients
-                                    <ArrowRight size={14} />
-                                </Link>
-                                {canViewAnalytics && (
-                                    <Link to="/ta/analysis" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
-                                        Analytics
-                                        <ArrowRight size={14} />
-                                    </Link>
-                                )}
-                                <Link to="/ta/workflows" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
-                                    Workflows
-                                    <ArrowRight size={14} />
-                                </Link>
-                            </div>
-                        </div>
-                    </section>
                 </div>
             )}
         </div>
