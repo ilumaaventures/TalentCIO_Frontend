@@ -20,6 +20,8 @@ const CandidateFilters = ({
     setFilterInterviewStatus,
     filterInterviewRound,
     setFilterInterviewRound,
+    filterDynamicStage,
+    setFilterDynamicStage,
     availableRoundOptions,
     filterRating,
     setFilterRating,
@@ -154,6 +156,28 @@ const CandidateFilters = ({
                                 <option key={roundName} value={roundName}>
                                     {roundName}
                                 </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                {Boolean(filterInterviewRound && filterInterviewRound.trim() !== '') && (
+                    <div className="shrink-0">
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Dynamic Stages</label>
+                        <select
+                            value={filterDynamicStage}
+                            onChange={(e) => setFilterDynamicStage(e.target.value)}
+                            className="px-2.5 py-1.5 border border-indigo-300 bg-indigo-50/50 rounded-lg text-xs font-semibold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500 min-w-44 transition-colors"
+                        >
+                            <option value="All">All Dynamic Stages</option>
+                            {availableRoundOptions.map((roundName) => (
+                                <React.Fragment key={roundName}>
+                                    <option value={`Cleared_${roundName}`}>Cleared {roundName}</option>
+                                    <option value={`Failed_${roundName}`}>Failed {roundName}</option>
+                                    <option value={`DNTU_${roundName}`}>Did Not Turn Up {roundName}</option>
+                                    <option value={`LIB_${roundName}`}>Left In Between {roundName}</option>
+                                    <option value={`Pending_${roundName}`}>Pending {roundName}</option>
+                                    <option value={`NotScheduled_${roundName}`}>Not Scheduled for {roundName}</option>
+                                </React.Fragment>
                             ))}
                         </select>
                     </div>

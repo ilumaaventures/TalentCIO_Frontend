@@ -3,7 +3,7 @@ export const LEGACY_EXPORT_STATUS_OPTIONS = [
     'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'
 ];
 
-export const PIPELINE_FIXED_STAGES = ['Total Sourced', 'Interested', 'Shortlisted', 'Profile Shared'];
+export const PIPELINE_FIXED_STAGES = ['Total Sourced', 'Interested', 'Profile Shared'];
 export const PIPELINE_FIXED_STAGE_SET = new Set(PIPELINE_FIXED_STAGES);
 
 export const PHASE_2_FIXED_STAGES = ['Profile Shared', 'Shortlisted', 'Selected', 'Rejected'];

@@ -2,7 +2,7 @@ import React from 'react';
 import {
     Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, ArrowRight, FileText
 } from 'lucide-react';
-import { PIPELINE_FIXED_STAGE_SET, PHASE_2_FIXED_STAGE_SET } from '../CandidateListConstants';
+import { PIPELINE_FIXED_STAGE_SET, PHASE_2_FIXED_STAGES, PHASE_2_FIXED_STAGE_SET } from '../CandidateListConstants';
 import { buildDynamicPipeline } from '../utils/pipelineUtils';
 import { matchesMultiValueFilter, getRoundsForPhase, matchesInterviewFilter } from '../utils/candidateHelpers';
 
@@ -61,6 +61,53 @@ const CandidateMetricsCards = ({
         emerald: 'border-b-emerald-500 text-emerald-600'
     };
 
+    const computeRoundStats = (roundName, candidates = [], phase = 1, roundSummaryData = null) => {
+        const target = String(roundName || '').trim().toLowerCase();
+
+        if (Array.isArray(roundSummaryData)) {
+            const item = roundSummaryData.find(r => String(r?.levelName || '').trim().toLowerCase() === target);
+            if (item && (item.shortlisted !== undefined || item.rejected !== undefined || item.didNotTurnUp !== undefined || item.leftInBetween !== undefined || item.pending !== undefined)) {
+                return {
+                    total: item.count || 0,
+                    shortlisted: item.shortlisted || 0,
+                    rejected: item.rejected || 0,
+                    didNotTurnUp: item.didNotTurnUp || 0,
+                    leftInBetween: item.leftInBetween || 0,
+                    pending: item.pending || 0
+                };
+            }
+        }
+
+        let total = 0;
+        let shortlisted = 0;
+        let rejected = 0;
+        let didNotTurnUp = 0;
+        let leftInBetween = 0;
+        let pending = 0;
+
+        for (const c of (candidates || [])) {
+            const rounds = Array.isArray(c?.interviewRounds) ? c.interviewRounds : [];
+            const round = rounds.find(r => Number(r?.phase || 1) === phase && String(r?.levelName || '').trim().toLowerCase() === target);
+            if (round) {
+                total++;
+                const s = String(round.status || '').trim();
+                if (s === 'Passed' || s === 'Pass' || s === 'Shortlisted') {
+                    shortlisted++;
+                } else if (s === 'Failed' || s === 'Fail' || s === 'Rejected') {
+                    rejected++;
+                } else if (s === 'Did Not Turn Up' || s === 'Did Not Turnup' || s === 'Did Not Turn up' || s === 'Skipped' || s === 'No Show' || s === 'DNTU') {
+                    didNotTurnUp++;
+                } else if (s === 'Left in between' || s === 'Left In Between' || s === 'LIB') {
+                    leftInBetween++;
+                } else {
+                    pending++;
+                }
+            }
+        }
+
+        return { total, shortlisted, rejected, didNotTurnUp, leftInBetween, pending };
+    };
+
     if (activePhase === 1) {
         const phase1RoundData = roundSummary?.phase1
             || cardMetrics?.phase1Metrics?.interviewRoundsSummary
@@ -114,6 +161,7 @@ const CandidateMetricsCards = ({
                     return {
                         id: 'interested',
                         label: 'Interested',
+                        badge: 'R0',
                         value: metrics.interested,
                         icon: CheckCircle,
                         color: 'green',
@@ -132,17 +180,6 @@ const CandidateMetricsCards = ({
                         onClick: () => { clearRoundFilter(); setFilterInterviewStatus('Scheduled'); }
                     };
                 }
-                if (node === 'Shortlisted') {
-                    return {
-                        id: 'shortlisted',
-                        label: 'Shortlisted',
-                        value: metrics.shortlisted,
-                        icon: ThumbsUp,
-                        color: 'sky',
-                        isActive: filterDecision === 'Shortlisted' && !filterProfileShared && !filterInterviewRound,
-                        onClick: () => { clearRoundFilter(); setFilterDecision('Shortlisted'); }
-                    };
-                }
                 if (node === 'Profile Shared') {
                     return {
                         id: 'profileShared',
@@ -157,25 +194,6 @@ const CandidateMetricsCards = ({
                 return null;
             })
             .filter(Boolean);
-
-        const roundPills = pipelineOrder
-            .filter((node) => !PIPELINE_FIXED_STAGE_SET.has(node))
-            .map((node) => {
-                const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
-                return {
-                    label: node,
-                    count: roundCountMap.get(node) || 0,
-                    isActive: isCurrentActive,
-                    onClick: () => {
-                        if (isCurrentActive) {
-                            setFilterInterviewRound('');
-                        } else {
-                            clearRoundFilter();
-                            setFilterInterviewRound(node);
-                        }
-                    }
-                };
-            });
 
         const dynamicCards = [];
 
@@ -311,7 +329,6 @@ const CandidateMetricsCards = ({
         }
 
         const cardByNode = new Map(funnelCards.map((c) => [c.label, c]));
-        const pillByNode = new Map(roundPills.map((p) => [p.label, p]));
 
         return (
             <div className="w-full overflow-x-auto scrollbar-hide">
@@ -328,31 +345,42 @@ const CandidateMetricsCards = ({
                                     onClick={card.onClick}
                                     className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${card.isActive ? 'bg-slate-50' : ''}`}
                                 >
+                                    {card.badge && (
+                                        <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
+                                            {card.badge}
+                                        </span>
+                                    )}
                                     <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                     <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
                                     <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
                                 </div>
                             );
                         }
-                        const pill = pillByNode.get(node);
-                        if (!pill) return null;
-                        const pillLabel = String(pill.label || '');
-                        const displayPillLabel = pillLabel.length > 10 ? `${pillLabel.substring(0, 10)}..` : pillLabel;
+                        const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
+                        const stats = computeRoundStats(node, structuralPhase1Candidates, 1, phase1RoundData);
+
                         return (
-                            <button
+                            <div
                                 key={node}
-                                onClick={pill.onClick}
-                                title={pillLabel}
-                                className={`self-center flex-none inline-flex flex-col items-center justify-center rounded-none border px-1 py-[1px] text-center transition-colors ${pill.isActive
-                                    ? 'border-red-700 bg-red-600 text-white shadow-sm'
-                                    : 'border-red-400 bg-red-50/20 text-slate-700 hover:border-red-600 hover:bg-red-50'
-                                    }`}
+                                onClick={() => {
+                                    if (isCurrentActive) {
+                                        setFilterInterviewRound('');
+                                    } else {
+                                        clearRoundFilter();
+                                        setFilterInterviewRound(node);
+                                    }
+                                }}
+                                className={`bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${isCurrentActive ? 'bg-amber-50/40 ring-2 ring-amber-500/30' : ''}`}
                             >
-                                <span className={`text-[8px] font-bold uppercase tracking-tight whitespace-nowrap leading-none ${pill.isActive ? 'text-white' : 'text-red-600'}`}>
-                                    {displayPillLabel}
-                                </span>
-                                <span className={`text-[10px] font-extrabold leading-none mt-[1px] ${pill.isActive ? 'text-white' : 'text-slate-900'}`}>{pill.count}</span>
-                            </button>
+                                {node && (
+                                    <span className="absolute top-2 right-2 text-[10px] font-extrabold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 z-20 shadow-2xs uppercase">
+                                        {node}
+                                    </span>
+                                )}
+                                <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{stats.shortlisted}</span>
+                                <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{node}</span>
+                                <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
+                            </div>
                         );
                     })}
 
@@ -365,6 +393,11 @@ const CandidateMetricsCards = ({
                                 onClick={card.onClick}
                                 className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px]`}
                             >
+                                {card.badge && (
+                                    <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
+                                        {card.badge}
+                                    </span>
+                                )}
                                 <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                 <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
                                 <Icon className={`absolute -right-2 top-1/2 -translate-y-1/2 ${colorClasses[1]} opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10`} />
@@ -450,26 +483,6 @@ const CandidateMetricsCards = ({
             }
         };
 
-        const pillByNode = new Map();
-        for (const node of pipelineOrder) {
-            if (!PHASE_2_FIXED_STAGE_SET.has(node)) {
-                const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
-                pillByNode.set(node, {
-                    label: node,
-                    count: roundCountMap.get(node) || 0,
-                    isActive: isCurrentActive,
-                    onClick: () => {
-                        if (isCurrentActive) {
-                            setFilterInterviewRound('');
-                        } else {
-                            clearRoundFilter();
-                            setFilterInterviewRound(node);
-                        }
-                    }
-                });
-            }
-        }
-
         const dynamicCards = [];
         if (filterPreference !== 'All') {
             const prefCount = basePhase2Candidates.filter(c => c.preference === filterPreference).length;
@@ -531,25 +544,31 @@ const CandidateMetricsCards = ({
                                 </div>
                             );
                         }
-                        const pill = pillByNode.get(node);
-                        if (!pill) return null;
-                        const pillLabel = String(pill.label || '');
-                        const displayPillLabel = pillLabel.length > 10 ? `${pillLabel.substring(0, 10)}..` : pillLabel;
+                        const isCurrentActive = String(filterInterviewRound || '').trim().toLowerCase() === String(node || '').trim().toLowerCase();
+                        const stats = computeRoundStats(node, structuralPhase2Candidates, 2, phase2RoundData);
+
                         return (
-                            <button
+                            <div
                                 key={node}
-                                onClick={pill.onClick}
-                                title={pillLabel}
-                                className={`self-center flex-none inline-flex flex-col items-center justify-center rounded-none border px-1 py-[1px] text-center transition-colors ${pill.isActive
-                                    ? 'border-red-700 bg-red-600 text-white shadow-sm'
-                                    : 'border-red-400 bg-red-50/20 text-slate-700 hover:border-red-600 hover:bg-red-50'
-                                    }`}
+                                onClick={() => {
+                                    if (isCurrentActive) {
+                                        setFilterInterviewRound('');
+                                    } else {
+                                        clearRoundFilter();
+                                        setFilterInterviewRound(node);
+                                    }
+                                }}
+                                className={`bg-white border border-slate-200 border-b-4 border-b-amber-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${isCurrentActive ? 'bg-amber-50/40 ring-2 ring-amber-500/30' : ''}`}
                             >
-                                <span className={`text-[8px] font-bold uppercase tracking-tight whitespace-nowrap leading-none ${pill.isActive ? 'text-white' : 'text-red-600'}`}>
-                                    {displayPillLabel}
-                                </span>
-                                <span className={`text-[10px] font-extrabold leading-none mt-[1px] ${pill.isActive ? 'text-white' : 'text-slate-900'}`}>{pill.count}</span>
-                            </button>
+                                {node && (
+                                    <span className="absolute top-2 right-2 text-[10px] font-extrabold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 z-20 shadow-2xs uppercase">
+                                        {node}
+                                    </span>
+                                )}
+                                <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{stats.shortlisted}</span>
+                                <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{node}</span>
+                                <Clock className="absolute -right-2 top-1/2 -translate-y-1/2 text-amber-600 opacity-[0.08] size-16 transition-transform group-hover:scale-110 group-hover:opacity-10" />
+                            </div>
                         );
                     })}
 

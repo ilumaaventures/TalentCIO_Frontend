@@ -133,7 +133,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [filterTransferred, setFilterTransferred] = useState('All');
     const [filterProfileShared, setFilterProfileShared] = useState(false);
     const [filterInterviewRound, setFilterInterviewRound] = useState('');
+    const [filterDynamicStage, setFilterDynamicStage] = useState('All');
     const [candidateNameSearch, setCandidateNameSearch] = useState('');
+
+    useEffect(() => {
+        setFilterDynamicStage('All');
+    }, [filterInterviewRound]);
     const [users, setUsers] = useState([]);
     const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 200);
 
@@ -310,7 +315,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     // Reset page to 1 when any filter changes
     useEffect(() => {
         setPage(1);
-    }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared, filterInterviewRound]);
+    }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared, filterInterviewRound, filterDynamicStage]);
 
     const normalizedCandidateNameSearch = debouncedCandidateNameSearch.trim().toLowerCase();
     const matchesCandidateNameSearch = useCallback((candidate) => {
@@ -353,6 +358,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             params.filterTransferred = filterTransferred;
             params.filterProfileShared = filterProfileShared;
             params.filterInterviewRound = filterInterviewRound;
+            params.filterDynamicStage = filterDynamicStage;
         }
 
         return params;
@@ -363,6 +369,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         dateTo,
         debouncedCandidateNameSearch,
         filterDecision,
+        filterDynamicStage,
         filterExperience,
         filterInterviewRound,
         filterInterviewStatus,
@@ -484,28 +491,40 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, matchesCandidateNameSearch, usesBackendPagination]);
 
     const availableRoundOptions = useMemo(() => {
-        const roundSet = new Set();
+        const roundMap = new Map();
+        const normalizeRoundTitle = (str) => {
+            if (!str) return 'Round 1';
+            const trimmed = String(str).trim();
+            return trimmed.replace(/\b\w/g, (char) => char.toUpperCase());
+        };
+
         const backendRoundsSummary = activePhase === 2
             ? (roundSummary?.phase2 || cardMetrics?.phase2Metrics?.interviewRoundsSummary)
             : (roundSummary?.phase1 || cardMetrics?.phase1Metrics?.interviewRoundsSummary);
 
         if (Array.isArray(backendRoundsSummary)) {
             for (const r of backendRoundsSummary) {
-                const name = String(r?.levelName || 'Round 1').trim() || 'Round 1';
-                if (name) roundSet.add(name);
+                const raw = String(r?.levelName || 'Round 1').trim() || 'Round 1';
+                const key = raw.toLowerCase();
+                if (raw && !roundMap.has(key)) {
+                    roundMap.set(key, normalizeRoundTitle(raw));
+                }
             }
         }
 
         for (const c of (candidates || [])) {
             for (const r of (c?.interviewRounds || [])) {
                 if (Number(r?.phase || 1) === activePhase) {
-                    const name = String(r?.levelName || 'Round 1').trim() || 'Round 1';
-                    if (name) roundSet.add(name);
+                    const raw = String(r?.levelName || 'Round 1').trim() || 'Round 1';
+                    const key = raw.toLowerCase();
+                    if (raw && !roundMap.has(key)) {
+                        roundMap.set(key, normalizeRoundTitle(raw));
+                    }
                 }
             }
         }
 
-        return Array.from(roundSet);
+        return Array.from(roundMap.values());
     }, [activePhase, candidates, cardMetrics, roundSummary]);
 
     const basePhase1Candidates = useMemo(() => {
@@ -547,8 +566,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
             }
 
+            const isNotScheduledFilter = filterDynamicStage && filterDynamicStage.startsWith('NotScheduled_');
+
             let matchInterviewRound = true;
-            if (filterInterviewRound) {
+            if (filterInterviewRound && !isNotScheduledFilter) {
                 const targetRound = String(filterInterviewRound).trim().toLowerCase();
                 const rounds = getRoundsForPhase(candidate, 1);
                 matchInterviewRound = (rounds || []).some(
@@ -556,9 +577,45 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 );
             }
 
-            return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared && matchInterviewRound;
+            let matchDynamicStage = true;
+            if (filterDynamicStage && filterDynamicStage !== 'All') {
+                const parts = filterDynamicStage.split('_');
+                const statusType = parts[0];
+                const targetRoundName = parts.slice(1).join('_').trim().toLowerCase();
+                const rounds = getRoundsForPhase(candidate, 1);
+
+                if (statusType === 'NotScheduled' || statusType === 'Unscheduled') {
+                    const hasTargetRound = (rounds || []).some(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+                    matchDynamicStage = !hasTargetRound;
+                } else {
+                    const targetRoundObj = (rounds || []).find(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+
+                    if (!targetRoundObj) {
+                        matchDynamicStage = false;
+                    } else {
+                        const s = String(targetRoundObj.status || 'Pending').trim();
+                        if (statusType === 'Cleared') {
+                            matchDynamicStage = s === 'Passed' || s === 'Pass' || s === 'Shortlisted';
+                        } else if (statusType === 'Failed') {
+                            matchDynamicStage = s === 'Failed' || s === 'Fail' || s === 'Rejected';
+                        } else if (statusType === 'DNTU') {
+                            matchDynamicStage = s === 'Did Not Turn Up' || s === 'Did Not Turnup' || s === 'Did Not Turn up' || s === 'Skipped' || s === 'No Show' || s === 'DNTU';
+                        } else if (statusType === 'LIB') {
+                            matchDynamicStage = s === 'Left in between' || s === 'Left In Between' || s === 'LIB';
+                        } else if (statusType === 'Pending') {
+                            matchDynamicStage = s === 'Pending' || s === 'Scheduled';
+                        }
+                    }
+                }
+            }
+
+            return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared && matchInterviewRound && matchDynamicStage;
         });
-    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterInterviewRound, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
+    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterDynamicStage, filterInterviewRound, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
 
     const metrics = useMemo(() => {
         if (usesBackendPagination && cardMetrics?.phase1Metrics) {
@@ -631,9 +688,44 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                     ? hasPhase2InterviewActivity(candidate)
                     : matchesInterviewFilter(getDisplayInterviewRoundsForPhase(candidate, 2), filterInterviewStatus);
             }
-            return matchDecision && matchInterviewStatus;
+            let matchDynamicStage = true;
+            if (filterDynamicStage && filterDynamicStage !== 'All') {
+                const parts = filterDynamicStage.split('_');
+                const statusType = parts[0];
+                const targetRoundName = parts.slice(1).join('_').trim().toLowerCase();
+                const rounds = getRoundsForPhase(candidate, 2);
+
+                if (statusType === 'NotScheduled' || statusType === 'Unscheduled') {
+                    const hasTargetRound = (rounds || []).some(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+                    matchDynamicStage = !hasTargetRound;
+                } else {
+                    const targetRoundObj = (rounds || []).find(
+                        (r) => String(r.levelName || '').trim().toLowerCase() === targetRoundName
+                    );
+
+                    if (!targetRoundObj) {
+                        matchDynamicStage = false;
+                    } else {
+                        const s = String(targetRoundObj.status || 'Pending').trim();
+                        if (statusType === 'Cleared') {
+                            matchDynamicStage = s === 'Passed' || s === 'Pass' || s === 'Shortlisted';
+                        } else if (statusType === 'Failed') {
+                            matchDynamicStage = s === 'Failed' || s === 'Fail' || s === 'Rejected';
+                        } else if (statusType === 'DNTU') {
+                            matchDynamicStage = s === 'Did Not Turn Up' || s === 'Did Not Turnup' || s === 'Did Not Turn up' || s === 'Skipped' || s === 'No Show' || s === 'DNTU';
+                        } else if (statusType === 'LIB') {
+                            matchDynamicStage = s === 'Left in between' || s === 'Left In Between' || s === 'LIB';
+                        } else if (statusType === 'Pending') {
+                            matchDynamicStage = s === 'Pending' || s === 'Scheduled';
+                        }
+                    }
+                }
+            }
+            return matchDecision && matchInterviewStatus && matchDynamicStage;
         });
-    }, [activePhase, basePhase2Candidates, candidates, filterDecision, filterInterviewStatus, usesBackendPagination]);
+    }, [activePhase, basePhase2Candidates, candidates, filterDecision, filterDynamicStage, filterInterviewStatus, usesBackendPagination]);
 
     const phase2Metrics = useMemo(() => {
         if (usesBackendPagination && cardMetrics?.phase2Metrics) {
@@ -756,7 +848,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const fetchCandidates = useCallback(async (silent = false) => {
         try {
-            if (!silent && candidates.length === 0) setLoading(true);
+            if (!silent) setLoading(true);
             const endpoint = isLegacyView
                 ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
                 : `/ta/candidates/${hiringRequestId}`;
@@ -788,7 +880,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         } finally {
             setLoading(false);
         }
-    }, [buildCandidateRequestParams, candidates.length, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics, fetchRoundSummary]);
+    }, [buildCandidateRequestParams, dateFilterField, dateFrom, dateTo, hiringRequestId, isLegacyView, fetchCardMetrics, fetchRoundSummary]);
 
     const fetchAllMatchingCandidates = useCallback(async () => {
         if (isLegacyView) {
@@ -971,6 +1063,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         setFilterPreference('All');
         setFilterRating('All');
         setFilterInterviewRound('');
+        setFilterDynamicStage('All');
+        setCandidates([]);
+        setLoading(true);
         setSearchParams((prev) => {
             const next = new URLSearchParams(prev);
             next.set('phase', phase);
@@ -1302,6 +1397,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 hiringRequestId={hiringRequestId}
                 requestMeta={requestMeta}
                 handleAddNew={handleAddNew}
+                roundSummary={roundSummary}
             />
 
             <div className={`flex flex-col lg:flex-row gap-6 items-start transition-all duration-300 ${selectedCandidateId ? 'relative' : ''}`}>
@@ -1352,6 +1448,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         setFilterInterviewStatus={setFilterInterviewStatus}
                         filterInterviewRound={filterInterviewRound}
                         setFilterInterviewRound={setFilterInterviewRound}
+                        filterDynamicStage={filterDynamicStage}
+                        setFilterDynamicStage={setFilterDynamicStage}
                         availableRoundOptions={availableRoundOptions}
                         filterRating={filterRating}
                         setFilterRating={setFilterRating}
@@ -1433,6 +1531,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         usesBackendPagination={usesBackendPagination}
                         serverResultCount={serverResultCount}
                         itemsPerPage={itemsPerPage}
+                        filterInterviewRound={filterInterviewRound}
+                        roundSummary={roundSummary}
                         setItemsPerPage={setItemsPerPage}
                         page={page}
                         setPage={setPage}

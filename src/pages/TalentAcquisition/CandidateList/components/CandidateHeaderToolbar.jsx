@@ -61,11 +61,38 @@ const CandidateHeaderToolbar = ({
     setShowBulkImport,
     hiringRequestId,
     requestMeta,
-    handleAddNew
+    handleAddNew,
+    roundSummary
 }) => {
     const phaseToggleButtonClass = 'min-w-[84px] rounded-[10px] px-4 py-2.5 text-sm font-semibold transition-all duration-200';
     const toolbarMenuButtonClass = 'inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50';
     const toolbarMenuItemClass = 'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50';
+
+    const scheduledCount = React.useMemo(() => {
+        if (filterInterviewRound && filterInterviewRound.trim() !== '') {
+            const target = filterInterviewRound.trim().toLowerCase();
+            const phaseNum = Number(activePhase || 1);
+            const summaryData = phaseNum === 2 ? roundSummary?.phase2 : roundSummary?.phase1;
+
+            if (Array.isArray(summaryData)) {
+                const item = summaryData.find(r => String(r?.levelName || '').trim().toLowerCase() === target);
+                if (item && item.count !== undefined) {
+                    return item.count;
+                }
+            }
+
+            let count = 0;
+            for (const c of (candidates || [])) {
+                const rounds = Array.isArray(c?.interviewRounds) ? c.interviewRounds : [];
+                const r = rounds.find(item => Number(item?.phase || 1) === phaseNum && String(item?.levelName || '').trim().toLowerCase() === target);
+                if (r) {
+                    count++;
+                }
+            }
+            return count;
+        }
+        return activePhase === 1 ? (metrics?.interviewScheduled || 0) : activePhase === 2 ? (phase2Metrics?.interviewScheduled || phase2Metrics?.scheduled || 0) : 0;
+    }, [filterInterviewRound, activePhase, roundSummary, candidates, metrics, phase2Metrics]);
 
     return (
         <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -78,7 +105,7 @@ const CandidateHeaderToolbar = ({
                         <button
                             onClick={() => handlePhaseChange(1)}
                             className={`${phaseToggleButtonClass} ${activePhase === 1
-                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 font-bold'
                                 : 'text-slate-600 hover:bg-white hover:text-slate-900'
                                 }`}
                         >
@@ -87,7 +114,7 @@ const CandidateHeaderToolbar = ({
                         <button
                             onClick={() => handlePhaseChange(2)}
                             className={`${phaseToggleButtonClass} ${activePhase === 2
-                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 font-bold'
                                 : 'text-slate-600 hover:bg-white hover:text-slate-900'
                                 }`}
                         >
@@ -96,7 +123,7 @@ const CandidateHeaderToolbar = ({
                         <button
                             onClick={() => handlePhaseChange(3)}
                             className={`${phaseToggleButtonClass} ${activePhase === 3
-                                ? 'cursor-default bg-slate-900 text-white shadow-sm'
+                                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 font-bold'
                                 : 'text-slate-600 hover:bg-white hover:text-slate-900'
                                 }`}
                         >
@@ -122,19 +149,13 @@ const CandidateHeaderToolbar = ({
                                 setFilterInterviewStatus('Scheduled');
                             }
                         }}
-                        className={`flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-[0.98] ${filterInterviewStatus === 'Scheduled' && !filterInterviewRound
-                            ? 'bg-amber-600 border-amber-700 text-white ring-2 ring-amber-200'
-                            : 'bg-amber-50/80 border-amber-200/80 text-amber-800 hover:bg-amber-100/80'
-                            }`}
+                        className="flex items-center gap-2 rounded-full border border-amber-200/90 bg-amber-50/80 px-3.5 py-1.5 text-xs font-semibold text-amber-900 shadow-2xs transition-all duration-200 hover:bg-amber-100/80 cursor-pointer active:scale-[0.98]"
                         title="Click to filter candidates with scheduled interviews"
                     >
-                        <Calendar size={14} className={filterInterviewStatus === 'Scheduled' && !filterInterviewRound ? 'text-white' : 'text-amber-600'} />
+                        <Calendar size={14} className="text-amber-600 stroke-[2.2]" />
                         <span>Total Interview Scheduled:</span>
-                        <span className={`font-extrabold px-2 py-0.5 rounded-md text-xs transition-colors ${filterInterviewStatus === 'Scheduled' && !filterInterviewRound
-                            ? 'bg-white/20 text-white'
-                            : 'bg-amber-200/60 text-amber-900'
-                            }`}>
-                            {activePhase === 1 ? (metrics?.interviewScheduled || 0) : activePhase === 2 ? (phase2Metrics?.interviewScheduled || phase2Metrics?.scheduled || 0) : 0}
+                        <span className="font-extrabold px-2.5 py-0.5 rounded-lg text-xs bg-amber-200/80 text-amber-950 transition-colors">
+                            {scheduledCount}
                         </span>
                     </button>
                 </div>

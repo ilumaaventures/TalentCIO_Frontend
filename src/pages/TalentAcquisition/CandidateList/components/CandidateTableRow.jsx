@@ -14,6 +14,99 @@ import {
     getDecisionColor
 } from '../utils/candidateHelpers';
 
+const InterviewRoundCellCard = ({ round, roundName }) => {
+    if (!round) {
+        return <div className="text-center text-slate-300 font-bold py-6 text-sm">—</div>;
+    }
+
+    const interviewer = (() => {
+        if (Array.isArray(round.assignedTo) && round.assignedTo.length > 0) {
+            const u = round.assignedTo[0];
+            if (typeof u === 'object') {
+                if (u.firstName || u.lastName) return `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                if (u.email) return u.email;
+            }
+        }
+        if (round.evaluatedBy && typeof round.evaluatedBy === 'object') {
+            if (round.evaluatedBy.firstName || round.evaluatedBy.lastName) {
+                return `${round.evaluatedBy.firstName || ''} ${round.evaluatedBy.lastName || ''}`.trim();
+            }
+            if (round.evaluatedBy.email) return round.evaluatedBy.email;
+        }
+        return round.interviewer || round.interviewerName || null;
+    })();
+
+    const scheduledDate = (() => {
+        const d = round.scheduledDate || round.evaluatedAt || round.createdAt;
+        if (!d) return null;
+        try {
+            return format(new Date(d), 'dd MMM, hh:mm a');
+        } catch (e) {
+            return null;
+        }
+    })();
+
+    const ratingText = (() => {
+        if (round.rating !== undefined && round.rating !== null && round.rating !== '') {
+            return `${round.rating}/10`;
+        }
+        return 'N/A';
+    })();
+
+    const ratingNum = Number(round.rating);
+
+    const resultBadge = (() => {
+        const status = String(round.status || 'Scheduled').trim();
+        if (status === 'Passed' || status === 'Pass' || status === 'Shortlisted') {
+            return <span className="inline-block bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold text-[10px]">Pass</span>;
+        }
+        if (status === 'Failed' || status === 'Fail' || status === 'Rejected') {
+            return <span className="inline-block bg-pink-100 text-pink-800 px-2 py-0.5 rounded font-bold text-[10px]">Fail</span>;
+        }
+        if (status === 'Skipped') {
+            return <span className="inline-block bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold text-[10px]">Skipped</span>;
+        }
+        return <span className="inline-block bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px]">Scheduled</span>;
+    })();
+
+    const feedbackText = round.feedback || round.comments || round.interviewerFeedback || null;
+
+    return (
+        <div className="bg-white rounded-lg p-3 border border-slate-200/80 shadow-2xs text-left min-w-[170px] flex flex-col gap-1.5 my-1">
+            <div className="font-bold text-xs text-slate-800 border-b border-slate-100 pb-1">
+                {round.levelName || roundName || 'Round'}
+            </div>
+
+            <div className="text-[11px] text-slate-600">
+                <span className="text-slate-500 font-medium">Interviewer:</span> {interviewer || '—'}
+            </div>
+
+            <div className="text-[11px] text-slate-600">
+                <span className="text-slate-500 font-medium">Scheduled:</span> {scheduledDate || '—'}
+            </div>
+
+            <div className="text-[11px] text-slate-600">
+                <span className="text-slate-500 font-medium">Rating:</span>{' '}
+                <span className={ratingText === 'N/A' ? 'text-slate-500 font-bold' : ratingNum >= 7 ? 'text-emerald-600 font-extrabold' : 'text-amber-600 font-extrabold'}>
+                    {ratingText}
+                </span>
+            </div>
+
+            <div className="text-[11px] text-slate-600 flex items-center gap-1.5">
+                <span className="text-slate-500 font-medium">Result:</span>
+                {resultBadge}
+            </div>
+
+            {feedbackText && (
+                <div className="text-[11px] text-slate-600 mt-0.5">
+                    <span className="text-slate-500 font-medium">Feedback:</span>{' '}
+                    <span className="italic text-slate-700">{feedbackText}</span>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const CandidateTableRow = ({
     candidate,
     selectedCandidateId,
@@ -50,7 +143,9 @@ const CandidateTableRow = ({
     canTransferCandidates,
     handleTransferToOnboarding,
     canDeleteCandidates,
-    handleDelete
+    handleDelete,
+    isInterviewRoundView,
+    activeInterviewRounds = []
 }) => {
     const isSelected = selectedCandidateIds.includes(candidate._id);
     const displayRounds = getDisplayInterviewRoundsForPhase(candidate, activePhase);
@@ -106,12 +201,17 @@ const CandidateTableRow = ({
                     <div className="flex flex-col text-xs text-slate-600">
                         <span>{candidate.email}</span>
                         <span className="text-slate-500 text-[11px] mt-0.5">{candidate.mobile}</span>
+                        {isInterviewRoundView && (
+                            <span className="text-[11px] font-bold text-slate-800 mt-1">
+                                Exp: {candidate.totalExperience || 0} yrs
+                            </span>
+                        )}
                     </div>
                 </td>
             )}
 
             {/* Experience */}
-            {!selectedCandidateId && (
+            {!selectedCandidateId && !isInterviewRoundView && (
                 <td className="px-3 py-2.5 align-middle">
                     <div className="flex flex-col text-xs font-bold text-slate-700">
                         <span>{candidate.totalExperience || 0} yrs</span>
@@ -123,7 +223,7 @@ const CandidateTableRow = ({
             )}
 
             {/* CTC Details */}
-            {!selectedCandidateId && (
+            {!selectedCandidateId && !isInterviewRoundView && (
                 <td className="px-3 py-2.5 align-middle">
                     <div className="flex flex-col text-[11px] text-slate-600">
                         {hasCandidateCtcDetails(candidate) ? (
@@ -145,8 +245,8 @@ const CandidateTableRow = ({
                 </td>
             )}
 
-            {/* Interviews */}
-            {!selectedCandidateId && (
+            {/* Standard Interviews Pill */}
+            {!selectedCandidateId && !isInterviewRoundView && (
                 <td className="px-3 py-2.5 align-middle">
                     <div className="flex flex-col items-center justify-center gap-0.5 min-w-28">
                         {statusSummary.label ? (
@@ -164,6 +264,22 @@ const CandidateTableRow = ({
                         )}
                     </div>
                 </td>
+            )}
+
+            {/* Detailed Round Cards Columns */}
+            {!selectedCandidateId && isInterviewRoundView && (
+                activeInterviewRounds.map((roundName) => {
+                    const rounds = Array.isArray(candidate.interviewRounds) ? candidate.interviewRounds : [];
+                    const round = rounds.find(r =>
+                        Number(r.phase || 1) === Number(activePhase || 1) &&
+                        String(r.levelName || '').trim().toLowerCase() === String(roundName).trim().toLowerCase()
+                    );
+                    return (
+                        <td key={roundName} className="px-3 py-2.5 align-top">
+                            <InterviewRoundCellCard round={round} roundName={roundName} />
+                        </td>
+                    );
+                })
             )}
 
             {/* Decision Selector */}
@@ -235,7 +351,7 @@ const CandidateTableRow = ({
             )}
 
             {/* Pulled / Uploaded */}
-            {!selectedCandidateId && (
+            {!selectedCandidateId && !isInterviewRoundView && (
                 <td className="px-3 py-2.5 align-middle">
                     <div className="flex flex-col text-[11px] text-slate-500">
                         <span

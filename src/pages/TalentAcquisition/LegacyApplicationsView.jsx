@@ -349,9 +349,8 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                         {activePhase === 1 ? (
                             <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                                 <MetricCard label="Total Sourced" val={metrics.totalSourced} icon={<Users />} color="purple" onClick={() => { setFilterStatus('All'); setFilterDecision('All'); }} />
-                                <MetricCard label="Interested" val={metrics.interested} icon={<CheckCircle />} color="green" onClick={() => { setFilterStatus('Interested'); setFilterDecision('All'); }} />
+                                <MetricCard label="Interested" badge="R0" val={metrics.interested} icon={<CheckCircle />} color="green" onClick={() => { setFilterStatus('Interested'); setFilterDecision('All'); }} />
                                 <MetricCard label="In Interviews" val={metrics.inInterviews} icon={<UserCheck />} color="amber" onClick={() => { setFilterStatus('All'); setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }} />
-                                <MetricCard label="Shortlisted" val={metrics.shortlisted} icon={<ThumbsUp />} color="sky" onClick={() => { setFilterStatus('All'); setFilterDecision('Shortlisted'); }} />
                                 <MetricCard label="On Hold" val={metrics.onHold} icon={<Clock />} color="slate" onClick={() => { setFilterStatus('All'); setFilterDecision('On Hold'); }} />
                                 <MetricCard label="Transferred" val={metrics.transferred} icon={<Briefcase />} color="blue" onClick={() => { setFilterStatus('All'); setFilterTransferred('Transferred'); }} />
                             </div>
@@ -421,11 +420,16 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     );
 };
 
-const MetricCard = ({ label, val, icon, color, onClick }) => (
+const MetricCard = ({ label, val, icon, color, badge, onClick }) => (
     <div
         onClick={onClick}
         className={`bg-white border border-slate-200 border-b-4 border-b-${color}-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-all cursor-pointer active:scale-95 rounded-xl`}
     >
+        {badge && (
+            <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
+                {badge}
+            </span>
+        )}
         <div className="relative z-10">
             <span className="block text-[28px] font-light text-slate-800 leading-none mb-1.5 tracking-tight">{val}</span>
             <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-[1px]">{label}</span>
