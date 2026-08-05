@@ -1,12 +1,14 @@
 import React from 'react';
 import { Upload, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 import CandidateTableRow from './CandidateTableRow';
+import Skeleton from '../../../../components/Skeleton';
 
 const CandidateTable = ({
     candidates,
     structuralPhase1Candidates,
     cardMetrics,
     metrics,
+    loading = false,
     canCreateCandidates,
     handleAddNew,
     selectedCandidateId,
@@ -53,7 +55,6 @@ const CandidateTable = ({
     handleTransferToOnboarding,
     canDeleteCandidates,
     handleDelete,
-    loading,
     activeList,
     usesBackendPagination,
     serverResultCount,
@@ -133,27 +134,6 @@ const CandidateTable = ({
         );
     };
 
-    const isFilterActive = (filterStatus && filterStatus !== 'All') || Boolean(filterInterviewRound) || (filterDecision && filterDecision !== 'All');
-    const isTotalZeroPool = (structuralPhase1Candidates?.length === 0 || candidates?.length === 0) && !isFilterActive;
-
-    if (isTotalZeroPool) {
-        return (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-                <Upload className="mx-auto text-slate-300 mb-4" size={48} />
-                <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
-                <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
-                {canCreateCandidates && (
-                    <button
-                        onClick={handleAddNew}
-                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                    >
-                        Upload First Resume
-                    </button>
-                )}
-            </div>
-        );
-    }
-
     const candidateStatusStats = React.useMemo(() => {
         const pMetrics = cardMetrics?.phase1Metrics || metrics;
         if (pMetrics && (pMetrics.interested !== undefined || pMetrics.notInterested !== undefined)) {
@@ -205,6 +185,27 @@ const CandidateTable = ({
             otherStatus
         };
     }, [cardMetrics, metrics, structuralPhase1Candidates, candidates]);
+
+    const isFilterActive = (filterStatus && filterStatus !== 'All') || Boolean(filterInterviewRound) || (filterDecision && filterDecision !== 'All');
+    const isTotalZeroPool = (structuralPhase1Candidates?.length === 0 || candidates?.length === 0) && !isFilterActive;
+
+    if (isTotalZeroPool) {
+        return (
+            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+                <Upload className="mx-auto text-slate-300 mb-4" size={48} />
+                <h3 className="text-lg font-semibold text-slate-700 mb-2">No Candidates Yet</h3>
+                <p className="text-slate-500 mb-4">Start by uploading candidate resumes and filling their details</p>
+                {canCreateCandidates && (
+                    <button
+                        onClick={handleAddNew}
+                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                        Upload First Resume
+                    </button>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 mb-24 overflow-hidden">
@@ -326,7 +327,15 @@ const CandidateTable = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
-                            {paginatedCandidates.length === 0 ? (
+                            {loading ? (
+                                [...Array(5)].map((_, i) => (
+                                    <tr key={`skel-row-${i}`}>
+                                        <td colSpan={selectedCandidateId ? 3 : (isInterviewRoundView ? (4 + activeInterviewRounds.length + 1) : 9)} className="px-4 py-3.5 align-middle">
+                                            <Skeleton className="h-5 w-full rounded" />
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : paginatedCandidates.length === 0 ? (
                                 <tr>
                                     <td colSpan={selectedCandidateId ? 3 : (isInterviewRoundView ? (4 + activeInterviewRounds.length + 1) : 9)} className="px-4 py-12 text-center text-slate-500 bg-slate-50/30">
                                         <div className="flex flex-col items-center justify-center gap-1.5 py-4">
