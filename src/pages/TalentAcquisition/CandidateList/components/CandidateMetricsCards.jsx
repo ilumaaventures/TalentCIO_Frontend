@@ -5,6 +5,7 @@ import {
 import { PIPELINE_FIXED_STAGE_SET, PHASE_2_FIXED_STAGES, PHASE_2_FIXED_STAGE_SET } from '../CandidateListConstants';
 import { buildDynamicPipeline } from '../utils/pipelineUtils';
 import { matchesMultiValueFilter, getRoundsForPhase, matchesInterviewFilter } from '../utils/candidateHelpers';
+import EditableBadge from './EditableBadge';
 
 const CandidateMetricsCards = ({
     activePhase,
@@ -330,10 +331,8 @@ const CandidateMetricsCards = ({
                                     onClick={card.onClick}
                                     className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px] ${card.isActive ? 'bg-slate-50' : ''}`}
                                 >
-                                    {card.badge && (
-                                        <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
-                                            {card.badge}
-                                        </span>
+                                    {(card.badge || card.id === 'interested' || card.label === 'Interested') && (
+                                        <EditableBadge defaultText={card.badge || 'R0'} />
                                     )}
                                     <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                     <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>
@@ -378,10 +377,8 @@ const CandidateMetricsCards = ({
                                 onClick={card.onClick}
                                 className={`bg-white border border-slate-200 border-b-4 ${colorClasses[0]} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-colors cursor-pointer active:scale-[0.98] flex-1 min-w-[130px]`}
                             >
-                                {card.badge && (
-                                    <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
-                                        {card.badge}
-                                    </span>
+                                {(card.badge || card.id === 'interested' || card.label === 'Interested') && (
+                                    <EditableBadge defaultText={card.badge || 'R0'} />
                                 )}
                                 <span className="block text-[32px] font-light text-slate-800 leading-none mb-2 relative z-10">{card.value}</span>
                                 <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{card.label}</span>

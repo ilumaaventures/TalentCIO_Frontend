@@ -16,6 +16,7 @@ import MassMailModal from '../MassMailModal';
 import BulkTransferModal from '../BulkTransferModal';
 import MassInterviewScheduleModal from '../MassInterviewScheduleModal';
 import { canViewTACandidateDetails } from '../../../constants/accessPolicies';
+import EditableBadge from './components/EditableBadge';
 
 
 const TOTAL_CANDIDATE_CARD_KEY = 'total_candidates';
@@ -1777,9 +1778,7 @@ const DynamicPhaseView = ({ hiringRequest }) => {
                                     className={`bg-white border border-slate-200 border-b-4 ${summaryColorMap[meta.color].split(' ')[0]} shadow-sm p-5 relative overflow-hidden group`}
                                 >
                                     {statusOption.value === 'Interested' && (
-                                        <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
-                                            R0
-                                        </span>
+                                        <EditableBadge defaultText="R0" />
                                     )}
                                     <span className="block text-[44px] font-light text-slate-900 leading-none mb-3 relative z-10">{statusOption.count}</span>
                                     <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide relative z-10">{statusOption.label}</span>

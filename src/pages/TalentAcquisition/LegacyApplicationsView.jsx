@@ -14,6 +14,7 @@ import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
+import EditableBadge from './CandidateList/components/EditableBadge';
 
 const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 
@@ -425,10 +426,8 @@ const MetricCard = ({ label, val, icon, color, badge, onClick }) => (
         onClick={onClick}
         className={`bg-white border border-slate-200 border-b-4 border-b-${color}-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-all cursor-pointer active:scale-95 rounded-xl`}
     >
-        {badge && (
-            <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
-                {badge}
-            </span>
+        {(badge || label === 'Interested') && (
+            <EditableBadge defaultText={badge || 'R0'} />
         )}
         <div className="relative z-10">
             <span className="block text-[28px] font-light text-slate-800 leading-none mb-1.5 tracking-tight">{val}</span>
