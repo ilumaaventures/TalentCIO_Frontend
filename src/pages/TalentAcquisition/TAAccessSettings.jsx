@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BriefcaseBusiness, Building2, Loader, ShieldCheck, Users, UserSquare2 } from 'lucide-react';
+import { BriefcaseBusiness, Building2, Loader, ShieldCheck, Users, UserSquare2, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import Skeleton from '../../components/Skeleton';
 import UserMultiSelect from '../../components/UserMultiSelect';
 import { useAuth } from '../../context/AuthContext';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 
 const tabOptions = [
     { id: 'overview', label: 'Overview', icon: ShieldCheck },
@@ -166,6 +167,19 @@ const TAAccessSettings = () => {
         interviewPanel: []
     });
     const [userSearch, setUserSearch] = useState('');
+    const [requestSearch, setRequestSearch] = useState('');
+    const debouncedRequestSearch = useDebouncedValue(requestSearch, 250);
+
+    const filteredRequests = useMemo(() => {
+        const query = debouncedRequestSearch.trim().toLowerCase();
+        if (!query) return requests;
+        return requests.filter((req) => {
+            const titleMatch = String(req?.title || '').toLowerCase().includes(query);
+            const idMatch = String(req?.requestId || '').toLowerCase().includes(query);
+            const clientMatch = String(req?.client || '').toLowerCase().includes(query);
+            return titleMatch || idMatch || clientMatch;
+        });
+    }, [requests, debouncedRequestSearch]);
     const [showWarningModal, setShowWarningModal] = useState(false);
     const [warningModalConfig, setWarningModalConfig] = useState({
         clientName: '',
@@ -800,27 +814,55 @@ const TAAccessSettings = () => {
                         className="overflow-hidden xl:max-h-[calc(100vh-8.5rem)]"
                         bodyClassName="scrollbar-subtle max-h-[calc(100vh-15rem)] overflow-y-auto overflow-x-hidden pr-2 pb-3"
                     >
+                        <div className="mb-3">
+                            <div className="relative">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={requestSearch}
+                                    onChange={(e) => setRequestSearch(e.target.value)}
+                                    placeholder="Search title, ID, or client..."
+                                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                />
+                                {requestSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRequestSearch('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
-                            {requests.map((request) => (
-                                <button
-                                    key={request._id}
-                                    type="button"
-                                    onClick={() => setSelectedRequestId(request._id)}
-                                    className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
-                                        selectedRequestId === request._id
-                                            ? 'border-blue-200 bg-blue-50'
-                                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    <p className="font-semibold text-slate-800">{request.title}</p>
-                                    <p className="mt-1 text-xs text-slate-500">{request.requestId} • {request.client || 'No client'}</p>
-                                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
-                                        <span>{(request.assignedUsers || []).length} assigned</span>
-                                        <span>{(request.analyticsViewers || []).length} analytics</span>
-                                        <span>{(request.ownership?.interviewPanel || []).length} panel</span>
-                                    </div>
-                                </button>
-                            ))}
+                            {filteredRequests.length === 0 ? (
+                                <p className="py-4 text-center text-xs text-slate-400">
+                                    No requisitions match &quot;{debouncedRequestSearch}&quot;
+                                </p>
+                            ) : (
+                                filteredRequests.map((request) => (
+                                    <button
+                                        key={request._id}
+                                        type="button"
+                                        onClick={() => setSelectedRequestId(request._id)}
+                                        className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                                            selectedRequestId === request._id
+                                                ? 'border-blue-200 bg-blue-50'
+                                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <p className="font-semibold text-slate-800">{request.title}</p>
+                                        <p className="mt-1 text-xs text-slate-500">{request.requestId} • {request.client || 'No client'}</p>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
+                                            <span>{(request.assignedUsers || []).length} assigned</span>
+                                            <span>{(request.analyticsViewers || []).length} analytics</span>
+                                            <span>{(request.ownership?.interviewPanel || []).length} panel</span>
+                                        </div>
+                                    </button>
+                                ))
+                            )}
                         </div>
                     </SectionCard>
 
