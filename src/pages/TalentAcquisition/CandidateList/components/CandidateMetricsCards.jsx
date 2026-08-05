@@ -263,22 +263,7 @@ const CandidateMetricsCards = ({
             });
         }
 
-        if (filterRating !== 'All') {
-            const ratedCount = basePhase1Candidates.filter(c => {
-                const rounds = c.interviewRounds || [];
-                const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
-                if (ratedRounds.length === 0) return false;
-                const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                return avgRating >= Number(filterRating);
-            }).length;
-            dynamicCards.push({
-                label: `${filterRating}+ Rating`,
-                value: ratedCount,
-                icon: ThumbsUp,
-                color: 'amber',
-                onClick: () => { }
-            });
-        }
+
 
         if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled' && !filterProfileShared) {
             const interviewCount = basePhase1Candidates.filter(candidate => {
@@ -495,22 +480,7 @@ const CandidateMetricsCards = ({
             });
         }
 
-        if (filterRating !== 'All') {
-            const ratedCount = basePhase2Candidates.filter(c => {
-                const rounds = c.interviewRounds || [];
-                const ratedRounds = rounds.filter(r => Number(r.phase || 1) === 2 && r.rating && r.rating > 0);
-                if (ratedRounds.length === 0) return false;
-                const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                return avgRating >= Number(filterRating);
-            }).length;
-            dynamicCards.push({
-                label: `${filterRating}+ Rating`,
-                value: ratedCount,
-                icon: ThumbsUp,
-                color: 'amber',
-                onClick: () => { }
-            });
-        }
+
 
         if (filterExperience) {
             const expCount = basePhase2Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;
@@ -654,22 +624,7 @@ const CandidateMetricsCards = ({
             });
         }
 
-        if (filterRating !== 'All') {
-            const ratedCount = basePhase3Candidates.filter(c => {
-                const rounds = c.interviewRounds || [];
-                const ratedRounds = rounds.filter(r => Number(r.phase || 1) === 3 && r.rating && r.rating > 0);
-                if (ratedRounds.length === 0) return false;
-                const avgRating = ratedRounds.reduce((acc, curr) => acc + curr.rating, 0) / ratedRounds.length;
-                return avgRating >= Number(filterRating);
-            }).length;
-            dynamicCards.push({
-                label: `${filterRating}+ Rating`,
-                value: ratedCount,
-                icon: ThumbsUp,
-                color: 'amber',
-                onClick: () => { }
-            });
-        }
+
 
         if (filterExperience) {
             const expCount = basePhase3Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;

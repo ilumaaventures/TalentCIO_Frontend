@@ -761,6 +761,27 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                         <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Profile Summary</h3>
 
                         <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4 bg-slate-50/80 p-3 rounded-lg border border-slate-200/80">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Client Name</p>
+                                    <p className="text-slate-900 font-bold text-sm">
+                                        {candidate?.hiringRequestId?.clientConfidential
+                                            ? 'Confidential Client'
+                                            : (candidate?.hiringRequestId?.client || candidate?.client || 'N/A')}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Requisition Name</p>
+                                    <p className="text-slate-900 font-bold text-sm">
+                                        {candidate?.hiringRequestId?.roleDetails?.title || candidate?.hiringRequestId?.title || candidate?.roleTitle || 'N/A'}
+                                        {candidate?.hiringRequestId?.requestId && (
+                                            <span className="block text-[11px] font-medium text-slate-500">
+                                                {candidate.hiringRequestId.requestId}
+                                            </span>
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Status</p>
