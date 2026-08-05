@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -102,12 +102,24 @@ const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, re
 };
 
 const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
-    const [itemsPerPage, setItemsPerPage] = useState(50);
+    const savedFiltersKey = `ta_candidate_filters_${hiringRequestId || 'global'}`;
+
+    const savedFilters = useMemo(() => {
+        try {
+            const raw = sessionStorage.getItem(savedFiltersKey);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {
+            console.error('Failed to parse saved candidate filters', e);
+        }
+        return null;
+    }, [savedFiltersKey]);
+
+    const [itemsPerPage, setItemsPerPage] = useState(() => savedFilters?.itemsPerPage ?? 50);
     const { user } = useAuth();
     const navigate = useNavigate();
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState(1);
+    const [page, setPage] = useState(() => savedFilters?.page ?? 1);
     const [serverTotalPages, setServerTotalPages] = useState(1);
     const [serverResultCount, setServerResultCount] = useState(0);
     const [serverSummary, setServerSummary] = useState(null);
@@ -116,25 +128,25 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [roundSummary, setRoundSummary] = useState(null);
     const [actionCandidates, setActionCandidates] = useState([]);
 
-    // Filter States
-    const [filterPreference, setFilterPreference] = useState('All');
-    const [filterStatus, setFilterStatus] = useState('All');
-    const [filterDecision, setFilterDecision] = useState('All');
-    const [filterExperience, setFilterExperience] = useState('');
-    const [filterInterviewStatus, setFilterInterviewStatus] = useState('All');
-    const [filterRating, setFilterRating] = useState('All');
-    const [filterPulledBy, setFilterPulledBy] = useState([]);
-    const [filterUploadedBy, setFilterUploadedBy] = useState([]);
-    const [filterUploadType, setFilterUploadType] = useState('All');
-    const [createdDatePreset, setCreatedDatePreset] = useState('');
-    const [dateFilterField, setDateFilterField] = useState('');
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
-    const [filterTransferred, setFilterTransferred] = useState('All');
-    const [filterProfileShared, setFilterProfileShared] = useState(false);
-    const [filterInterviewRound, setFilterInterviewRound] = useState('');
-    const [filterDynamicStage, setFilterDynamicStage] = useState('All');
-    const [candidateNameSearch, setCandidateNameSearch] = useState('');
+    // Filter States initialized with saved filters
+    const [filterPreference, setFilterPreference] = useState(() => savedFilters?.filterPreference ?? 'All');
+    const [filterStatus, setFilterStatus] = useState(() => savedFilters?.filterStatus ?? 'All');
+    const [filterDecision, setFilterDecision] = useState(() => savedFilters?.filterDecision ?? 'All');
+    const [filterExperience, setFilterExperience] = useState(() => savedFilters?.filterExperience ?? '');
+    const [filterInterviewStatus, setFilterInterviewStatus] = useState(() => savedFilters?.filterInterviewStatus ?? 'All');
+    const [filterRating, setFilterRating] = useState(() => savedFilters?.filterRating ?? 'All');
+    const [filterPulledBy, setFilterPulledBy] = useState(() => savedFilters?.filterPulledBy ?? []);
+    const [filterUploadedBy, setFilterUploadedBy] = useState(() => savedFilters?.filterUploadedBy ?? []);
+    const [filterUploadType, setFilterUploadType] = useState(() => savedFilters?.filterUploadType ?? 'All');
+    const [createdDatePreset, setCreatedDatePreset] = useState(() => savedFilters?.createdDatePreset ?? '');
+    const [dateFilterField, setDateFilterField] = useState(() => savedFilters?.dateFilterField ?? '');
+    const [dateFrom, setDateFrom] = useState(() => savedFilters?.dateFrom ?? '');
+    const [dateTo, setDateTo] = useState(() => savedFilters?.dateTo ?? '');
+    const [filterTransferred, setFilterTransferred] = useState(() => savedFilters?.filterTransferred ?? 'All');
+    const [filterProfileShared, setFilterProfileShared] = useState(() => savedFilters?.filterProfileShared ?? false);
+    const [filterInterviewRound, setFilterInterviewRound] = useState(() => savedFilters?.filterInterviewRound ?? '');
+    const [filterDynamicStage, setFilterDynamicStage] = useState(() => savedFilters?.filterDynamicStage ?? 'All');
+    const [candidateNameSearch, setCandidateNameSearch] = useState(() => savedFilters?.candidateNameSearch ?? '');
 
     useEffect(() => {
         setFilterDynamicStage('All');
@@ -145,7 +157,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCandidateId = searchParams.get('candidateId');
     const initialPhaseParam = searchParams.get('phase');
-    const initialPhase = initialPhaseParam ? parseInt(initialPhaseParam, 10) : 1;
+    const initialPhase = initialPhaseParam ? parseInt(initialPhaseParam, 10) : (savedFilters?.activePhase || 1);
 
     // Menu State
     const [activeMenu, setActiveMenu] = useState(null);
@@ -312,8 +324,69 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [searchParams, activePhase]);
 
-    // Reset page to 1 when any filter changes
+    // Save filters to sessionStorage whenever any filter changes
     useEffect(() => {
+        if (!savedFiltersKey) return;
+        const currentFilterState = {
+            filterPreference,
+            filterStatus,
+            filterDecision,
+            filterExperience,
+            filterInterviewStatus,
+            filterRating,
+            filterPulledBy,
+            filterUploadedBy,
+            filterUploadType,
+            createdDatePreset,
+            dateFilterField,
+            dateFrom,
+            dateTo,
+            filterTransferred,
+            filterProfileShared,
+            filterInterviewRound,
+            filterDynamicStage,
+            candidateNameSearch,
+            page,
+            itemsPerPage,
+            activePhase
+        };
+        try {
+            sessionStorage.setItem(savedFiltersKey, JSON.stringify(currentFilterState));
+        } catch (e) {
+            console.error('Error saving candidate filters:', e);
+        }
+    }, [
+        savedFiltersKey,
+        filterPreference,
+        filterStatus,
+        filterDecision,
+        filterExperience,
+        filterInterviewStatus,
+        filterRating,
+        filterPulledBy,
+        filterUploadedBy,
+        filterUploadType,
+        createdDatePreset,
+        dateFilterField,
+        dateFrom,
+        dateTo,
+        filterTransferred,
+        filterProfileShared,
+        filterInterviewRound,
+        filterDynamicStage,
+        candidateNameSearch,
+        page,
+        itemsPerPage,
+        activePhase
+    ]);
+
+    // Reset page to 1 when any filter changes (except on first mount to preserve restored page)
+    const isFirstRender = useRef(true);
+    useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
         setPage(1);
     }, [activePhase, candidateNameSearch, filterPreference, filterStatus, filterDecision, filterExperience, filterInterviewStatus, filterRating, filterPulledBy, filterUploadedBy, filterUploadType, createdDatePreset, dateFilterField, dateFrom, dateTo, filterTransferred, filterProfileShared, filterInterviewRound, filterDynamicStage]);
 
@@ -329,7 +402,15 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         const {
             paginate = usesBackendPagination,
             pageOverride = page,
-            limitOverride = itemsPerPage
+            limitOverride = itemsPerPage,
+            activePhase: phaseOverride = activePhase,
+            filterStatus: statusOverride = filterStatus,
+            filterDecision: decisionOverride = filterDecision,
+            filterInterviewStatus: interviewStatusOverride = filterInterviewStatus,
+            filterPreference: preferenceOverride = filterPreference,
+            filterRating: ratingOverride = filterRating,
+            filterInterviewRound: roundOverride = filterInterviewRound,
+            filterDynamicStage: dynamicStageOverride = filterDynamicStage
         } = overrides;
 
         const params = {
@@ -344,21 +425,21 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             params.paginate = paginate;
             params.page = pageOverride;
             params.limit = limitOverride;
-            params.activePhase = activePhase;
+            params.activePhase = phaseOverride;
             params.search = debouncedCandidateNameSearch.trim();
-            params.filterPreference = filterPreference;
-            params.filterStatus = filterStatus;
-            params.filterDecision = filterDecision;
+            params.filterPreference = preferenceOverride;
+            params.filterStatus = statusOverride;
+            params.filterDecision = decisionOverride;
             params.filterExperience = filterExperience;
-            params.filterInterviewStatus = filterInterviewStatus;
-            params.filterRating = filterRating;
+            params.filterInterviewStatus = interviewStatusOverride;
+            params.filterRating = ratingOverride;
             params.filterPulledBy = JSON.stringify(filterPulledBy);
             params.filterUploadedBy = JSON.stringify(filterUploadedBy);
             params.filterUploadType = filterUploadType;
             params.filterTransferred = filterTransferred;
             params.filterProfileShared = filterProfileShared;
-            params.filterInterviewRound = filterInterviewRound;
-            params.filterDynamicStage = filterDynamicStage;
+            params.filterInterviewRound = roundOverride;
+            params.filterDynamicStage = dynamicStageOverride;
         }
 
         return params;
@@ -556,7 +637,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             return activePhase === 1 ? candidates : [];
         }
         return basePhase1Candidates.filter(candidate => {
-            const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
+            const mainStatuses = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
+            const matchStatus = filterStatus === 'All'
+                ? true
+                : ['Other', 'None', 'OTH'].includes(filterStatus)
+                    ? !mainStatuses.includes(candidate.status)
+                    : candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
             const matchProfileShared = !filterProfileShared || isProfileSharedCandidate(candidate);
 
@@ -625,6 +711,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         const counts = {
             total: structuralPhase1Candidates.length,
             interested: structuralPhase1Candidates.filter(c => c.status === 'Interested').length,
+            notInterested: structuralPhase1Candidates.filter(c => c.status === 'Not Interested').length,
+            notRelevant: structuralPhase1Candidates.filter(c => c.status === 'Not Relevant').length,
+            notPicking: structuralPhase1Candidates.filter(c => c.status === 'Not Picking').length,
+            highExpectation: structuralPhase1Candidates.filter(c => c.status === 'High expectation').length,
+            longNoticePeriod: structuralPhase1Candidates.filter(c => c.status === 'Long Notice period').length,
+            locationNotSuitable: structuralPhase1Candidates.filter(c => c.status === 'Location Not suitable').length,
+            otherStatus: structuralPhase1Candidates.filter(c => !['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'].includes(c.status)).length,
             interviewScheduled: structuralPhase1Candidates.filter(c =>
                 getRoundsForPhase(c, 1).length > 0
             ).length,
@@ -846,19 +939,30 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
     }, [hiringRequestId, isLegacyView, debouncedCandidateNameSearch, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, dateFilterField, dateFrom, dateTo]);
 
-    const fetchCandidates = useCallback(async (silent = false) => {
+    const abortControllerRef = useRef(null);
+
+    const fetchCandidates = useCallback(async (silent = false, overrides = {}) => {
+        if (!hiringRequestId) return;
         try {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+            abortControllerRef.current = new AbortController();
+
             if (!silent) setLoading(true);
             const endpoint = isLegacyView
                 ? `/ta/hiring-request/${hiringRequestId}/previous-candidates`
                 : `/ta/candidates/${hiringRequestId}`;
-            const params = isLegacyView ? { t: Date.now() } : buildCandidateRequestParams();
+            const params = isLegacyView ? { t: Date.now() } : buildCandidateRequestParams(overrides);
             if (isLegacyView) {
                 if (dateFilterField) params.dateField = dateFilterField;
                 if (dateFrom) params.startDate = dateFrom;
                 if (dateTo) params.endDate = dateTo;
             }
-            const response = await api.get(endpoint, { params });
+            const response = await api.get(endpoint, {
+                params,
+                signal: abortControllerRef.current.signal
+            });
             if (isLegacyView) {
                 setCandidates(response.data);
                 setServerTotalPages(1);
@@ -875,6 +979,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 void fetchRoundSummary();
             }
         } catch (error) {
+            if (error.name === 'CanceledError' || error.name === 'AbortError' || api.isCancel?.(error)) {
+                return;
+            }
             console.error('Error fetching candidates:', error);
             toast.error('Failed to load candidates');
         } finally {
@@ -1055,6 +1162,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [fetchCandidates]);
 
     const handlePhaseChange = useCallback((phase) => {
+        if (phase === activePhase) return;
         setActivePhase(phase);
         setPage(1);
         setFilterStatus('All');
@@ -1070,8 +1178,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const next = new URLSearchParams(prev);
             next.set('phase', phase);
             return next;
+        }, { replace: true });
+
+        fetchCandidates(false, {
+            activePhase: phase,
+            filterStatus: 'All',
+            filterDecision: 'All',
+            filterInterviewStatus: 'All',
+            filterPreference: 'All',
+            filterRating: 'All',
+            filterInterviewRound: '',
+            filterDynamicStage: 'All',
+            pageOverride: 1
         });
-    }, [setSearchParams]);
+    }, [activePhase, fetchCandidates, setSearchParams]);
 
     const handleAddNew = useCallback(() => {
         navigate(`/ta/hiring-request/${hiringRequestId}/add-candidate`);
@@ -1483,6 +1603,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                     <CandidateTable
                         candidates={candidates}
+                        structuralPhase1Candidates={structuralPhase1Candidates}
+                        cardMetrics={cardMetrics}
+                        metrics={metrics}
+                        loading={loading}
                         canCreateCandidates={canCreateCandidates}
                         handleAddNew={handleAddNew}
                         selectedCandidateId={selectedCandidateId}
@@ -1505,8 +1629,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         handlePhase3DecisionChange={handlePhase3DecisionChange}
                         setFilterPulledBy={setFilterPulledBy}
                         setFilterUploadedBy={setFilterUploadedBy}
+                        filterStatus={filterStatus}
                         setFilterStatus={setFilterStatus}
+                        filterDecision={filterDecision}
                         setFilterDecision={setFilterDecision}
+                        filterInterviewStatus={filterInterviewStatus}
                         setFilterInterviewStatus={setFilterInterviewStatus}
                         setOpenMultiFilter={setOpenMultiFilter}
                         toggleMenu={toggleMenu}

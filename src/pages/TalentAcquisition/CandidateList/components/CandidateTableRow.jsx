@@ -14,9 +14,16 @@ import {
     getDecisionColor
 } from '../utils/candidateHelpers';
 
-const InterviewRoundCellCard = ({ round, roundName }) => {
+const InterviewRoundCellCard = ({ round, roundName, onClick }) => {
     if (!round) {
-        return <div className="text-center text-slate-300 font-bold py-6 text-sm">—</div>;
+        return (
+            <div
+                onClick={onClick}
+                className="text-center text-slate-300 font-bold h-[155px] min-w-[170px] flex items-center justify-center text-sm cursor-pointer hover:bg-slate-50/80 rounded-lg border border-transparent transition-colors"
+            >
+                —
+            </div>
+        );
     }
 
     const interviewer = (() => {
@@ -63,44 +70,58 @@ const InterviewRoundCellCard = ({ round, roundName }) => {
         if (status === 'Failed' || status === 'Fail' || status === 'Rejected') {
             return <span className="inline-block bg-pink-100 text-pink-800 px-2 py-0.5 rounded font-bold text-[10px]">Fail</span>;
         }
-        if (status === 'Skipped') {
-            return <span className="inline-block bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold text-[10px]">Skipped</span>;
+        if (status === 'Left in between' || status === 'Left In Between' || status === 'LIB') {
+            return <span className="inline-block bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold text-[10px]">Left in between</span>;
+        }
+        if (status === 'Skipped' || status === 'Did Not Turn Up' || status === 'Did not turn up' || status === 'Did Not Turnup' || status === 'DNTU') {
+            return <span className="inline-block bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold text-[10px]">Did Not Turn Up</span>;
         }
         return <span className="inline-block bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px]">Scheduled</span>;
     })();
 
     const feedbackText = round.feedback || round.comments || round.interviewerFeedback || null;
+    const truncatedFeedback = (() => {
+        if (!feedbackText) return null;
+        const words = String(feedbackText).trim().split(/\s+/);
+        if (words.length <= 4) return feedbackText;
+        return `${words.slice(0, 4).join(' ')}...`;
+    })();
 
     return (
-        <div className="bg-white rounded-lg p-3 border border-slate-200/80 shadow-2xs text-left min-w-[170px] flex flex-col gap-1.5 my-1">
-            <div className="font-bold text-xs text-slate-800 border-b border-slate-100 pb-1">
-                {round.levelName || roundName || 'Round'}
-            </div>
+        <div
+            onClick={onClick}
+            className="bg-white rounded-lg p-3 border border-slate-200/80 shadow-2xs text-left min-w-[170px] max-w-[210px] h-[155px] flex flex-col justify-between my-1 cursor-pointer hover:border-blue-400 hover:shadow-md hover:scale-[1.01] transition-all"
+        >
+            <div className="flex flex-col gap-1">
+                <div className="font-bold text-xs text-slate-800 border-b border-slate-100 pb-1 truncate">
+                    {round.levelName || roundName || 'Round'}
+                </div>
 
-            <div className="text-[11px] text-slate-600">
-                <span className="text-slate-500 font-medium">Interviewer:</span> {interviewer || '—'}
-            </div>
+                <div className="text-[11px] text-slate-600 truncate" title={interviewer || '—'}>
+                    <span className="text-slate-500 font-medium">Interviewer:</span> {interviewer || '—'}
+                </div>
 
-            <div className="text-[11px] text-slate-600">
-                <span className="text-slate-500 font-medium">Scheduled:</span> {scheduledDate || '—'}
-            </div>
+                <div className="text-[11px] text-slate-600 truncate">
+                    <span className="text-slate-500 font-medium">Scheduled:</span> {scheduledDate || '—'}
+                </div>
 
-            <div className="text-[11px] text-slate-600">
-                <span className="text-slate-500 font-medium">Rating:</span>{' '}
-                <span className={ratingText === 'N/A' ? 'text-slate-500 font-bold' : ratingNum >= 7 ? 'text-emerald-600 font-extrabold' : 'text-amber-600 font-extrabold'}>
-                    {ratingText}
-                </span>
-            </div>
+                <div className="text-[11px] text-slate-600">
+                    <span className="text-slate-500 font-medium">Rating:</span>{' '}
+                    <span className={ratingText === 'N/A' ? 'text-slate-500 font-bold' : ratingNum >= 7 ? 'text-emerald-600 font-extrabold' : 'text-amber-600 font-extrabold'}>
+                        {ratingText}
+                    </span>
+                </div>
 
-            <div className="text-[11px] text-slate-600 flex items-center gap-1.5">
-                <span className="text-slate-500 font-medium">Result:</span>
-                {resultBadge}
+                <div className="text-[11px] text-slate-600 flex items-center gap-1.5">
+                    <span className="text-slate-500 font-medium">Result:</span>
+                    {resultBadge}
+                </div>
             </div>
 
             {feedbackText && (
-                <div className="text-[11px] text-slate-600 mt-0.5">
+                <div className="text-[11px] text-slate-600 border-t border-slate-100 pt-1 truncate" title={feedbackText}>
                     <span className="text-slate-500 font-medium">Feedback:</span>{' '}
-                    <span className="italic text-slate-700">{feedbackText}</span>
+                    <span className="italic text-slate-700">{truncatedFeedback}</span>
                 </div>
             )}
         </div>
@@ -158,6 +179,15 @@ const CandidateTableRow = ({
 
     const selectPillClass = "text-[11px] font-semibold rounded-full border border-slate-200 px-2.5 py-1 outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer w-28 text-center transition-colors shadow-2xs";
 
+    const handleOpenCandidateView = (e) => {
+        e?.stopPropagation?.();
+        if (typeof handleView === 'function') {
+            handleView(candidate);
+        } else if (typeof handleSelectCandidate === 'function') {
+            handleSelectCandidate(candidate._id);
+        }
+    };
+
     return (
         <tr
             key={candidate._id}
@@ -189,7 +219,7 @@ const CandidateTableRow = ({
                     )}
                     {candidate.isTransferred && (
                         <span className="mt-1 inline-flex w-fit items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700 border border-blue-200">
-                            Transferred App
+                            Transferred
                         </span>
                     )}
                 </div>
@@ -248,7 +278,10 @@ const CandidateTableRow = ({
             {/* Standard Interviews Pill */}
             {!selectedCandidateId && !isInterviewRoundView && (
                 <td className="px-3 py-2.5 align-middle">
-                    <div className="flex flex-col items-center justify-center gap-0.5 min-w-28">
+                    <div
+                        onClick={handleOpenCandidateView}
+                        className="flex flex-col items-center justify-center gap-0.5 min-w-28 cursor-pointer hover:bg-blue-50/60 p-1.5 rounded-lg transition-colors"
+                    >
                         {statusSummary.label ? (
                             <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusSummary.color}`}>
                                 {statusSummary.label}
@@ -276,7 +309,11 @@ const CandidateTableRow = ({
                     );
                     return (
                         <td key={roundName} className="px-3 py-2.5 align-top">
-                            <InterviewRoundCellCard round={round} roundName={roundName} />
+                            <InterviewRoundCellCard
+                                round={round}
+                                roundName={roundName}
+                                onClick={handleOpenCandidateView}
+                            />
                         </td>
                     );
                 })

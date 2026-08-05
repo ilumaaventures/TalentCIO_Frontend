@@ -1293,26 +1293,37 @@ const canShowApplicationsTab = (user) => {
     );
 
     const renderCandidates = () => {
-        const handleSearchSubmit = (e) => {
-            if (e) e.preventDefault();
+        const applyFilterState = (overrides = {}) => {
             setSearchPage(1);
             setAppliedFilters({
-                search: candidateSearchText,
-                sources: selectedSources,
-                minExp,
-                maxExp,
-                skills: searchSkills,
-                client: searchClient,
-                location: searchLocation,
-                maxNoticePeriod,
-                minCurrentCTC,
-                maxCurrentCTC,
-                minExpectedCTC,
-                maxExpectedCTC,
-                inHandOffer: searchInHandOffer,
-                decision: searchDecision,
-                publicAppReviewStatus
+                search: overrides.search !== undefined ? overrides.search : candidateSearchText,
+                sources: overrides.sources !== undefined ? overrides.sources : selectedSources,
+                minExp: overrides.minExp !== undefined ? overrides.minExp : minExp,
+                maxExp: overrides.maxExp !== undefined ? overrides.maxExp : maxExp,
+                skills: overrides.skills !== undefined ? overrides.skills : searchSkills,
+                client: overrides.client !== undefined ? overrides.client : searchClient,
+                location: overrides.location !== undefined ? overrides.location : searchLocation,
+                maxNoticePeriod: overrides.maxNoticePeriod !== undefined ? overrides.maxNoticePeriod : maxNoticePeriod,
+                minCurrentCTC: overrides.minCurrentCTC !== undefined ? overrides.minCurrentCTC : minCurrentCTC,
+                maxCurrentCTC: overrides.maxCurrentCTC !== undefined ? overrides.maxCurrentCTC : maxCurrentCTC,
+                minExpectedCTC: overrides.minExpectedCTC !== undefined ? overrides.minExpectedCTC : minExpectedCTC,
+                maxExpectedCTC: overrides.maxExpectedCTC !== undefined ? overrides.maxExpectedCTC : maxExpectedCTC,
+                inHandOffer: overrides.inHandOffer !== undefined ? overrides.inHandOffer : searchInHandOffer,
+                decision: overrides.decision !== undefined ? overrides.decision : searchDecision,
+                publicAppReviewStatus: overrides.publicAppReviewStatus !== undefined ? overrides.publicAppReviewStatus : publicAppReviewStatus
             });
+        };
+
+        const handleSearchSubmit = (e) => {
+            if (e) e.preventDefault();
+            applyFilterState();
+        };
+
+        const handleKeyDownSubmit = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyFilterState();
+            }
         };
 
         const handleResetFilters = () => {
@@ -1399,52 +1410,54 @@ const canShowApplicationsTab = (user) => {
             <div className="space-y-6">
                 {/* Search & Action Bar */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <form onSubmit={handleSearchSubmit} className="flex flex-col gap-3 md:flex-row md:items-center">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                value={candidateSearchText}
-                                onChange={(e) => setCandidateSearchText(e.target.value)}
-                                placeholder={showPublicApps ? 'Search public applications by name, email, phone or cover note...' : 'Search candidates by name, email, phone, location, company, skill or keyword...'}
-                                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                            />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3">
+                    <form onSubmit={handleSearchSubmit}>
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={candidateSearchText}
+                                    onChange={(e) => setCandidateSearchText(e.target.value)}
+                                    onKeyDown={handleKeyDownSubmit}
+                                    placeholder={showPublicApps ? 'Search public applications by name, email, phone or cover note...' : 'Search candidates by name, email, phone, location, company, skill or keyword...'}
+                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
 
-                            <button
-                                type="button"
-                                onClick={() => setShowFilters(!showFilters)}
-                                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-sm transition ${showFilters || activeFiltersCount > 0
-                                    ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                    }`}
-                            >
-                                <SlidersHorizontal size={14} />
-                                <span>Filters</span>
-                                {activeFiltersCount > 0 && (
-                                    <span className="ml-1 rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                                        {activeFiltersCount}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                type="submit"
-                                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
-                            >
-                                Search
-                            </button>
-                            {(candidateSearchText || activeFiltersCount > 0) && (
                                 <button
                                     type="button"
-                                    onClick={handleResetFilters}
-                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    onClick={() => setShowFilters(!showFilters)}
+                                    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-sm transition ${showFilters || activeFiltersCount > 0
+                                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                        }`}
                                 >
-                                    Clear
+                                    <SlidersHorizontal size={14} />
+                                    <span>Filters</span>
+                                    {activeFiltersCount > 0 && (
+                                        <span className="ml-1 rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                            {activeFiltersCount}
+                                        </span>
+                                    )}
                                 </button>
-                            )}
+                                <button
+                                    type="submit"
+                                    className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+                                >
+                                    Search
+                                </button>
+                                {(candidateSearchText || activeFiltersCount > 0) && (
+                                    <button
+                                        type="button"
+                                        onClick={handleResetFilters}
+                                        className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </form>
 
                     {/* Advanced Filters Panel */}
                     {showFilters && (
@@ -1460,6 +1473,7 @@ const canShowApplicationsTab = (user) => {
                                             type="number"
                                             value={minExp}
                                             onChange={(e) => setMinExp(e.target.value)}
+                                            onKeyDown={handleKeyDownSubmit}
                                             placeholder="Min"
                                             min="0"
                                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
@@ -1469,6 +1483,7 @@ const canShowApplicationsTab = (user) => {
                                             type="number"
                                             value={maxExp}
                                             onChange={(e) => setMaxExp(e.target.value)}
+                                            onKeyDown={handleKeyDownSubmit}
                                             placeholder="Max"
                                             min="0"
                                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
@@ -1485,6 +1500,7 @@ const canShowApplicationsTab = (user) => {
                                         type="number"
                                         value={maxNoticePeriod}
                                         onChange={(e) => setMaxNoticePeriod(e.target.value)}
+                                        onKeyDown={handleKeyDownSubmit}
                                         placeholder="e.g. 30"
                                         min="0"
                                         className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
@@ -1500,6 +1516,7 @@ const canShowApplicationsTab = (user) => {
                                         type="text"
                                         value={searchLocation}
                                         onChange={(e) => setSearchLocation(e.target.value)}
+                                        onKeyDown={handleKeyDownSubmit}
                                         placeholder="e.g. Bangalore, Noida"
                                         className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
                                     />
@@ -1514,6 +1531,7 @@ const canShowApplicationsTab = (user) => {
                                         type="text"
                                         value={searchClient}
                                         onChange={(e) => setSearchClient(e.target.value)}
+                                        onKeyDown={handleKeyDownSubmit}
                                         placeholder="e.g. Acme Corp"
                                         className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
                                     />
@@ -1529,6 +1547,7 @@ const canShowApplicationsTab = (user) => {
                                             type="number"
                                             value={minCurrentCTC}
                                             onChange={(e) => setMinCurrentCTC(e.target.value)}
+                                            onKeyDown={handleKeyDownSubmit}
                                             placeholder="Min"
                                             min="0"
                                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
@@ -1538,6 +1557,7 @@ const canShowApplicationsTab = (user) => {
                                             type="number"
                                             value={maxCurrentCTC}
                                             onChange={(e) => setMaxCurrentCTC(e.target.value)}
+                                            onKeyDown={handleKeyDownSubmit}
                                             placeholder="Max"
                                             min="0"
                                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
@@ -1555,6 +1575,7 @@ const canShowApplicationsTab = (user) => {
                                             type="number"
                                             value={minExpectedCTC}
                                             onChange={(e) => setMinExpectedCTC(e.target.value)}
+                                            onKeyDown={handleKeyDownSubmit}
                                             placeholder="Min"
                                             min="0"
                                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
@@ -1564,6 +1585,7 @@ const canShowApplicationsTab = (user) => {
                                             type="number"
                                             value={maxExpectedCTC}
                                             onChange={(e) => setMaxExpectedCTC(e.target.value)}
+                                            onKeyDown={handleKeyDownSubmit}
                                             placeholder="Max"
                                             min="0"
                                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
@@ -1580,6 +1602,7 @@ const canShowApplicationsTab = (user) => {
                                         type="text"
                                         value={skillsFilterText}
                                         onChange={(e) => setSkillsFilterText(e.target.value)}
+                                        onKeyDown={handleKeyDownSubmit}
                                         placeholder="Type to search skills..."
                                         className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none transition focus:border-blue-500 focus:bg-white"
                                     />
@@ -1595,8 +1618,10 @@ const canShowApplicationsTab = (user) => {
                                                         key={skill}
                                                         type="button"
                                                         onClick={() => {
-                                                            setSearchSkills(prev => [...prev, skill]);
+                                                            const next = [...searchSkills, skill];
+                                                            setSearchSkills(next);
                                                             setSkillsFilterText('');
+                                                            applyFilterState({ skills: next });
                                                         }}
                                                         className="w-full px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-100"
                                                     >
@@ -1616,7 +1641,11 @@ const canShowApplicationsTab = (user) => {
                                                     <span>{skill}</span>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setSearchSkills(prev => prev.filter(s => s !== skill))}
+                                                        onClick={() => {
+                                                            const next = searchSkills.filter(s => s !== skill);
+                                                            setSearchSkills(next);
+                                                            applyFilterState({ skills: next });
+                                                        }}
                                                         className="text-blue-500 hover:text-blue-700 text-xs font-bold font-mono"
                                                     >
                                                         ×
@@ -1635,7 +1664,12 @@ const canShowApplicationsTab = (user) => {
                                         </label>
                                         <select
                                             value={searchDecision}
-                                            onChange={(e) => setSearchDecision(e.target.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setSearchDecision(val);
+                                                applyFilterState({ decision: val });
+                                            }}
+                                            onKeyDown={handleKeyDownSubmit}
                                             className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
                                         >
                                             <option value="">All Statuses</option>
@@ -1660,7 +1694,12 @@ const canShowApplicationsTab = (user) => {
                                         </label>
                                         <select
                                             value={publicAppReviewStatus}
-                                            onChange={(e) => setPublicAppReviewStatus(e.target.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setPublicAppReviewStatus(val);
+                                                applyFilterState({ publicAppReviewStatus: val });
+                                            }}
+                                            onKeyDown={handleKeyDownSubmit}
                                             className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
                                         >
                                             <option value="">All Review Statuses</option>
@@ -1680,7 +1719,12 @@ const canShowApplicationsTab = (user) => {
                                         </label>
                                         <select
                                             value={searchInHandOffer}
-                                            onChange={(e) => setSearchInHandOffer(e.target.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setSearchInHandOffer(val);
+                                                applyFilterState({ inHandOffer: val });
+                                            }}
+                                            onKeyDown={handleKeyDownSubmit}
                                             className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
                                         >
                                             <option value="">All Candidates</option>
@@ -1715,7 +1759,13 @@ const canShowApplicationsTab = (user) => {
                                                     <button
                                                         key={sourceName}
                                                         type="button"
-                                                        onClick={() => toggleSource(sourceName)}
+                                                        onClick={() => {
+                                                            const next = isSelected
+                                                                ? selectedSources.filter(s => s !== sourceName)
+                                                                : [...selectedSources, sourceName];
+                                                            setSelectedSources(next);
+                                                            applyFilterState({ sources: next });
+                                                        }}
                                                         className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition border ${isSelected
                                                             ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
                                                             : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -1739,8 +1789,7 @@ const canShowApplicationsTab = (user) => {
                                     Reset Filters
                                 </button>
                                 <button
-                                    type="button"
-                                    onClick={handleSearchSubmit}
+                                    type="submit"
                                     className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
                                 >
                                     Apply Filters
@@ -1748,6 +1797,7 @@ const canShowApplicationsTab = (user) => {
                             </div>
                         </div>
                     )}
+                    </form>
                 </div>
 
                 {/* Candidate Results / Public Applications Table */}

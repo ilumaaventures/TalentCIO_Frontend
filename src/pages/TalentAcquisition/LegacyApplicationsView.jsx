@@ -14,6 +14,12 @@ import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
 import Skeleton from '../../components/Skeleton';
 import { canViewTACandidateDetails } from '../../constants/accessPolicies';
+import EditableBadge from './CandidateList/components/EditableBadge';
+import CandidateDetailsModal from '../../components/CandidateDetailsModal';
+import {
+    getDisplayInterviewRoundsForPhase,
+    getInterviewStatusSummary
+} from './CandidateList/utils/candidateHelpers';
 
 const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 
@@ -35,6 +41,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     const [activePhase, setActivePhase] = useState(1);
     const [activeMenu, setActiveMenu] = useState(null);
     const [menuPosition, setMenuPosition] = useState({});
+    const [selectedCandidateForModal, setSelectedCandidateForModal] = useState(null);
     const navigate = useNavigate();
     const { user } = useAuth();
     const canViewCandidateDetails = canViewTACandidateDetails(user);
@@ -78,7 +85,11 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
         total: candidates.length,
         totalSourced: candidates.length,
         interested: candidates.filter(c => c.status === 'Interested').length,
-        inInterviews: candidates.filter(c => c.decision === 'None' && c.interviewRounds?.length > 0 && !c.interviewRounds.some(r => r.status === 'Failed')).length,
+        inInterviews: candidates.filter(c => {
+            const cDec = c.decision || 'None';
+            const rounds = getDisplayInterviewRoundsForPhase(c, 1);
+            return cDec === 'None' && rounds.length > 0 && !rounds.some(r => r.status === 'Failed');
+        }).length,
         shortlisted: candidates.filter(c => c.decision === 'Shortlisted').length,
         onHold: candidates.filter(c => c.decision === 'On Hold').length,
         transferred: candidates.filter(c => c.isTransferred).length,
@@ -90,7 +101,11 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     const phase2Metrics = {
         totalShortlisted: candidates.filter(c => isProfileSharedCandidate(c)).length,
         totalScreened: candidates.filter(c => isProfileSharedCandidate(c) && (c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected')).length,
-        interviewScheduled: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'None' && c.interviewRounds?.some(r => r.phase === 2 && (r.status === 'Scheduled' || r.status === 'Pending'))).length,
+        interviewScheduled: candidates.filter(c => {
+            const cDec = c.phase2Decision || 'None';
+            const rounds = getDisplayInterviewRoundsForPhase(c, 2);
+            return isProfileSharedCandidate(c) && cDec === 'None' && rounds.length > 0 && !rounds.some(r => r.status === 'Failed');
+        }).length,
         selected: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Selected').length,
         rejected: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Rejected').length
     };
@@ -111,20 +126,23 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
 
         // Phase-specific Filtering
         if (activePhase === 1) {
-            if (filterDecision !== 'All' && candidate.decision !== filterDecision) return false;
+            const cDec = candidate.decision || 'None';
+            if (filterDecision !== 'All' && cDec !== filterDecision) return false;
         } else if (activePhase === 2) {
             if (!isProfileSharedCandidate(candidate)) return false;
+            const cDec2 = candidate.phase2Decision || 'None';
             if (filterDecision !== 'All') {
-                if (filterDecision === 'Shortlisted_Selected' && candidate.phase2Decision !== 'Shortlisted' && candidate.phase2Decision !== 'Selected') return false;
-                if (filterDecision !== 'Shortlisted_Selected' && candidate.phase2Decision !== filterDecision) return false;
+                if (filterDecision === 'Shortlisted_Selected' && cDec2 !== 'Shortlisted' && cDec2 !== 'Selected') return false;
+                if (filterDecision !== 'Shortlisted_Selected' && cDec2 !== filterDecision) return false;
             }
         } else if (activePhase === 3) {
+            const cDec3 = candidate.phase3Decision || 'None';
             if (candidate.phase2Decision !== 'Selected') return false;
             if (filterDecision !== 'All') {
-                if (filterDecision === 'No Show_Offer Declined' && candidate.phase3Decision !== 'No Show' && candidate.phase3Decision !== 'Offer Declined') return false;
-                if (filterDecision === 'Offer Sent' && !['Offer Sent', 'Offer Accepted', 'Joined'].includes(candidate.phase3Decision)) return false;
-                if (filterDecision === 'Offer Accepted' && !['Offer Accepted', 'Joined'].includes(candidate.phase3Decision)) return false;
-                if (!['No Show_Offer Declined', 'Offer Sent', 'Offer Accepted'].includes(filterDecision) && candidate.phase3Decision !== filterDecision) return false;
+                if (filterDecision === 'No Show_Offer Declined' && cDec3 !== 'No Show' && cDec3 !== 'Offer Declined') return false;
+                if (filterDecision === 'Offer Sent' && !['Offer Sent', 'Offer Accepted', 'Joined'].includes(cDec3)) return false;
+                if (filterDecision === 'Offer Accepted' && !['Offer Accepted', 'Joined'].includes(cDec3)) return false;
+                if (!['No Show_Offer Declined', 'Offer Sent', 'Offer Accepted'].includes(filterDecision) && cDec3 !== filterDecision) return false;
             }
         }
 
@@ -138,7 +156,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
 
         // Interview Status Filter
         if (filterInterviewStatus !== 'All') {
-            const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => (r.phase || 1) === activePhase) : [];
+            const rounds = getDisplayInterviewRoundsForPhase(candidate, activePhase);
             const hasPassed = rounds.length > 0 && rounds.every(r => r.status === 'Passed');
             const hasFailed = rounds.some(r => r.status === 'Failed');
             const hasInProcess = rounds.some(r => r.status === 'Scheduled' || r.status === 'Pending' || r.status === 'In Progress');
@@ -152,8 +170,6 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
 
         return true;
     });
-
-
 
     const renderTable = (candidateList, phaseIndex) => {
         if (candidateList.length === 0) {
@@ -174,6 +190,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Candidate</th>
                                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Experience</th>
+                                <th className="px-4 py-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Interviews</th>
                                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Decision</th>
                                 {phaseIndex === 1 && <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pulled By</th>}
                                 <th className="px-4 py-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
@@ -185,11 +202,50 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                 if (phaseIndex === 2) decision = candidate.phase2Decision || 'None';
                                 if (phaseIndex === 3) decision = candidate.phase3Decision || 'None';
 
+                                const displayRounds = getDisplayInterviewRoundsForPhase(candidate, phaseIndex);
+                                const statusSummary = getInterviewStatusSummary(displayRounds);
+
+                                const activeRounds = displayRounds.filter(r => r.scheduledDate || r.evaluatedAt || r.status === 'Scheduled');
+                                const scheduledRound = activeRounds.find(r => ['Pending', 'Scheduled'].includes(r.status));
+                                const displayRound = scheduledRound || activeRounds[activeRounds.length - 1];
+                                const dateVal = displayRound?.scheduledDate || displayRound?.evaluatedAt;
+                                const formattedDate = dateVal ? (() => {
+                                    try {
+                                        return format(new Date(dateVal), 'dd-MMM-yyyy, hh:mm a');
+                                    } catch (e) {
+                                        return null;
+                                    }
+                                })() : null;
+
+                                const interviewerName = (() => {
+                                    if (!displayRound) return null;
+                                    if (Array.isArray(displayRound.assignedTo) && displayRound.assignedTo.length > 0) {
+                                        const u = displayRound.assignedTo[0];
+                                        if (typeof u === 'object') {
+                                            if (u.firstName || u.lastName) return `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                                            if (u.email) return u.email;
+                                        }
+                                    }
+                                    if (displayRound.evaluatedBy && typeof displayRound.evaluatedBy === 'object') {
+                                        if (displayRound.evaluatedBy.firstName || displayRound.evaluatedBy.lastName) {
+                                            return `${displayRound.evaluatedBy.firstName || ''} ${displayRound.evaluatedBy.lastName || ''}`.trim();
+                                        }
+                                        if (displayRound.evaluatedBy.email) return displayRound.evaluatedBy.email;
+                                    }
+                                    return displayRound.interviewer || displayRound.interviewerName || null;
+                                })();
+
                                 return (
                                     <tr key={candidate._id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3">
                                             <div>
-                                                <span className="text-[13px] font-bold text-slate-800">{candidate.candidateName}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedCandidateForModal(candidate)}
+                                                    className="text-[13px] font-bold text-slate-800 hover:text-blue-600 transition-colors text-left"
+                                                >
+                                                    {candidate.candidateName}
+                                                </button>
                                                 {candidate.isTransferred && (
                                                     <span className="ml-2 text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">TRANSFERRED</span>
                                                 )}
@@ -203,6 +259,40 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className="text-[13px] font-semibold text-slate-700">{candidate.totalExperience || '—'} yrs</span>
+                                        </td>
+                                        <td className="px-4 py-3 align-middle text-center">
+                                            <div className="flex flex-col items-center justify-center gap-1 min-w-[140px]">
+                                                {statusSummary.label ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedCandidateForModal(candidate);
+                                                        }}
+                                                        className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition hover:opacity-80 cursor-pointer shadow-2xs ${statusSummary.color}`}
+                                                    >
+                                                        <Calendar size={12} className="mr-1 inline" />
+                                                        {statusSummary.label}
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-slate-400 font-bold text-xs">—</span>
+                                                )}
+                                                {displayRounds.length > 0 && (
+                                                    <span className="text-[10px] text-slate-500 font-medium">
+                                                        {displayRounds.length} round{displayRounds.length > 1 ? 's' : ''} total
+                                                    </span>
+                                                )}
+                                                {formattedDate && (
+                                                    <span className="bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded text-[9px] font-medium text-slate-600">
+                                                        {formattedDate}
+                                                    </span>
+                                                )}
+                                                {interviewerName && (
+                                                    <span className="text-[9px] text-slate-500 font-medium truncate max-w-[140px]" title={`Interviewer: ${interviewerName}`}>
+                                                        By: {interviewerName}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${decisionColor(decision)}`}>
@@ -227,6 +317,16 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                                                     style={menuPosition}
                                                     onClick={e => e.stopPropagation()}
                                                 >
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedCandidateForModal(candidate);
+                                                            setActiveMenu(null);
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left font-medium"
+                                                    >
+                                                        <Calendar size={15} className="text-blue-600" />
+                                                        View Schedule
+                                                    </button>
                                                     <button
                                                         onClick={() => {
                                                             if (!canViewCandidateDetails) {
@@ -416,29 +516,53 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                     </div>
                 </div>
             )}
+
+            {selectedCandidateForModal && (
+                <CandidateDetailsModal
+                    candidate={selectedCandidateForModal}
+                    phase={activePhase}
+                    onClose={() => setSelectedCandidateForModal(null)}
+                />
+            )}
         </div>
     );
 };
 
-const MetricCard = ({ label, val, icon, color, badge, onClick }) => (
-    <div
-        onClick={onClick}
-        className={`bg-white border border-slate-200 border-b-4 border-b-${color}-500 shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-all cursor-pointer active:scale-95 rounded-xl`}
-    >
-        {badge && (
-            <span className="absolute top-2 right-2 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 z-20 shadow-2xs">
-                {badge}
-            </span>
-        )}
-        <div className="relative z-10">
-            <span className="block text-[28px] font-light text-slate-800 leading-none mb-1.5 tracking-tight">{val}</span>
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-[1px]">{label}</span>
+const metricColorMap = {
+    purple: 'border-b-purple-500 text-purple-600',
+    green: 'border-b-emerald-500 text-emerald-600',
+    amber: 'border-b-amber-500 text-amber-600',
+    sky: 'border-b-sky-500 text-sky-600',
+    slate: 'border-b-slate-500 text-slate-600',
+    rose: 'border-b-rose-500 text-rose-600',
+    indigo: 'border-b-indigo-500 text-indigo-600',
+    blue: 'border-b-blue-500 text-blue-600',
+    emerald: 'border-b-emerald-500 text-emerald-600'
+};
+
+const MetricCard = ({ label, val, icon, color, badge, onClick }) => {
+    const colorClasses = metricColorMap[color] || 'border-b-slate-500 text-slate-600';
+    const borderClass = colorClasses.split(' ')[0];
+    const textClass = colorClasses.split(' ')[1];
+
+    return (
+        <div
+            onClick={onClick}
+            className={`bg-white border border-slate-200 border-b-4 ${borderClass} shadow-sm p-4 relative overflow-hidden group hover:bg-slate-50 transition-all cursor-pointer active:scale-95 rounded-xl`}
+        >
+            {(badge || label === 'Interested') && (
+                <EditableBadge defaultText={badge || 'R0'} />
+            )}
+            <div className="relative z-10">
+                <span className="block text-[28px] font-light text-slate-800 leading-none mb-1.5 tracking-tight">{val}</span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-[1px]">{label}</span>
+            </div>
+            <div className={`absolute -right-2 top-1/2 -translate-y-1/2 ${textClass} opacity-[0.08] transition-all group-hover:scale-110 group-hover:opacity-15 group-hover:-rotate-12`}>
+                {React.cloneElement(icon, { size: 64 })}
+            </div>
         </div>
-        <div className={`absolute -right-2 top-1/2 -translate-y-1/2 text-${color}-600 opacity-[0.06] transition-all group-hover:scale-110 group-hover:opacity-10 group-hover:-rotate-12`}>
-            {React.cloneElement(icon, { size: 64 })}
-        </div>
-    </div>
-);
+    );
+};
 
 const FilterSelect = ({ label, val, onChange, options }) => (
     <div className="flex-1 min-w-[130px]">

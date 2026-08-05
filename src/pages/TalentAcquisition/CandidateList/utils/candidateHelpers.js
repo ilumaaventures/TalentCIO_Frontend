@@ -116,6 +116,14 @@ export const getInterviewSummaryValue = (rounds = []) => {
         return 'Failed';
     }
 
+    if (rounds.some((round) => ['Left in between', 'Left In Between', 'LIB'].includes(round.status))) {
+        return 'Left in between';
+    }
+
+    if (rounds.some((round) => ['Did Not Turn Up', 'Did not turn up', 'Did Not Turnup', 'DNTU'].includes(round.status))) {
+        return 'Did Not Turn Up';
+    }
+
     if (rounds.some((round) => round.status === 'Pending')) {
         return 'Pending';
     }
@@ -266,6 +274,14 @@ export const getInterviewStatusSummary = (rounds = []) => {
             return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
         }
 
+        if (displayStatus === 'Left in between') {
+            return { label: 'Left in between', color: 'text-rose-700 bg-rose-50 border-rose-200' };
+        }
+
+        if (displayStatus === 'Did Not Turn Up') {
+            return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
+        }
+
         if (displayStatus === 'Scheduled') {
             return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
         }
@@ -279,6 +295,14 @@ export const getInterviewStatusSummary = (rounds = []) => {
 
     if (interviewStatus === 'Failed') {
         return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
+    }
+
+    if (interviewStatus === 'Left in between') {
+        return { label: 'Left in between', color: 'text-rose-700 bg-rose-50 border-rose-200' };
+    }
+
+    if (interviewStatus === 'Did Not Turn Up') {
+        return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
     }
 
     if (interviewStatus === 'Pending') {

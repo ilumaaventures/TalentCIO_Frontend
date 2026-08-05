@@ -1,9 +1,14 @@
 import React from 'react';
 import { Upload, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 import CandidateTableRow from './CandidateTableRow';
+import Skeleton from '../../../../components/Skeleton';
 
 const CandidateTable = ({
     candidates,
+    structuralPhase1Candidates,
+    cardMetrics,
+    metrics,
+    loading = false,
     canCreateCandidates,
     handleAddNew,
     selectedCandidateId,
@@ -26,8 +31,11 @@ const CandidateTable = ({
     handlePhase3DecisionChange,
     setFilterPulledBy,
     setFilterUploadedBy,
+    filterStatus,
     setFilterStatus,
+    filterDecision,
     setFilterDecision,
+    filterInterviewStatus,
     setFilterInterviewStatus,
     setOpenMultiFilter,
     toggleMenu,
@@ -47,7 +55,6 @@ const CandidateTable = ({
     handleTransferToOnboarding,
     canDeleteCandidates,
     handleDelete,
-    loading,
     activeList,
     usesBackendPagination,
     serverResultCount,
@@ -127,7 +134,62 @@ const CandidateTable = ({
         );
     };
 
-    if (candidates.length === 0) {
+    const candidateStatusStats = React.useMemo(() => {
+        const pMetrics = cardMetrics?.phase1Metrics || metrics;
+        if (pMetrics && (pMetrics.interested !== undefined || pMetrics.notInterested !== undefined)) {
+            return {
+                interested: pMetrics.interested || 0,
+                notInterested: pMetrics.notInterested || 0,
+                notRelevant: pMetrics.notRelevant || 0,
+                notPicking: pMetrics.notPicking || 0,
+                highExpectation: pMetrics.highExpectation || 0,
+                longNoticePeriod: pMetrics.longNoticePeriod || 0,
+                locationNotSuitable: pMetrics.locationNotSuitable || 0,
+                otherStatus: pMetrics.otherStatus || 0
+            };
+        }
+
+        const pool = Array.isArray(structuralPhase1Candidates) && structuralPhase1Candidates.length > 0
+            ? structuralPhase1Candidates
+            : (Array.isArray(candidates) ? candidates : []);
+
+        let interested = 0;
+        let notInterested = 0;
+        let notRelevant = 0;
+        let notPicking = 0;
+        let highExpectation = 0;
+        let longNoticePeriod = 0;
+        let locationNotSuitable = 0;
+        let otherStatus = 0;
+
+        for (const c of pool) {
+            const s = String(c?.status || '').trim().toLowerCase();
+            if (s === 'interested') interested++;
+            else if (s === 'not interested') notInterested++;
+            else if (s === 'not relevant') notRelevant++;
+            else if (s === 'not picking') notPicking++;
+            else if (s === 'high expectation') highExpectation++;
+            else if (s === 'long notice period') longNoticePeriod++;
+            else if (s === 'location not suitable') locationNotSuitable++;
+            else otherStatus++;
+        }
+
+        return {
+            interested,
+            notInterested,
+            notRelevant,
+            notPicking,
+            highExpectation,
+            longNoticePeriod,
+            locationNotSuitable,
+            otherStatus
+        };
+    }, [cardMetrics, metrics, structuralPhase1Candidates, candidates]);
+
+    const isFilterActive = (filterStatus && filterStatus !== 'All') || Boolean(filterInterviewRound) || (filterDecision && filterDecision !== 'All');
+    const isTotalZeroPool = (structuralPhase1Candidates?.length === 0 || candidates?.length === 0) && !isFilterActive;
+
+    if (isTotalZeroPool) {
         return (
             <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
                 <Upload className="mx-auto text-slate-300 mb-4" size={48} />
@@ -147,13 +209,13 @@ const CandidateTable = ({
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 mb-24 overflow-hidden">
-            {/* Top Table Header Toolbar: Entries Summary & Round Metrics Breakdown */}
+            {/* Top Table Header Toolbar: Entries Summary & Round / Status Metrics Breakdown */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-200 bg-slate-50/70 text-xs text-slate-500">
                 <div className="font-semibold text-slate-700">
                     Showing <span className="font-bold text-slate-900">{(usesBackendPagination ? serverResultCount : activeList.length) > 0 ? (page - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-bold text-slate-900">{Math.min(page * itemsPerPage, usesBackendPagination ? serverResultCount : activeList.length)}</span> of <span className="font-bold text-slate-900">{usesBackendPagination ? serverResultCount : activeList.length}</span> entries
                 </div>
 
-                {activeRoundStats && (
+                {activeRoundStats ? (
                     <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-700 self-center">
                         <div className="flex items-center gap-1.5">
                             <Calendar className="text-slate-500 size-4" />
@@ -169,7 +231,21 @@ const CandidateTable = ({
                             <span className="text-amber-600" title="Pending">P:{activeRoundStats.pending}</span>
                         </div>
                     </div>
-                )}
+                ) : (filterStatus && filterStatus !== 'All' && filterStatus !== 'Total Sourced' && ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable', 'Other', 'None', 'OTH'].includes(filterStatus)) ? (
+                    <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold text-slate-700 self-center">
+                        <span className="text-slate-400 font-bold">Status:</span>
+                        <div className="flex items-center gap-2 font-extrabold text-xs">
+                            <span onClick={() => setFilterStatus?.('Interested')} className="text-emerald-600 cursor-pointer hover:underline" title="Interested">INT:{candidateStatusStats.interested}</span>
+                            <span onClick={() => setFilterStatus?.('Not Interested')} className="text-rose-600 cursor-pointer hover:underline" title="Not Interested">NI:{candidateStatusStats.notInterested}</span>
+                            <span onClick={() => setFilterStatus?.('Not Relevant')} className="text-slate-600 cursor-pointer hover:underline" title="Not Relevant">NR:{candidateStatusStats.notRelevant}</span>
+                            <span onClick={() => setFilterStatus?.('Not Picking')} className="text-orange-600 cursor-pointer hover:underline" title="Not Picking">NP:{candidateStatusStats.notPicking}</span>
+                            <span onClick={() => setFilterStatus?.('High expectation')} className="text-purple-600 cursor-pointer hover:underline" title="High expectation">HE:{candidateStatusStats.highExpectation}</span>
+                            <span onClick={() => setFilterStatus?.('Long Notice period')} className="text-sky-600 cursor-pointer hover:underline" title="Long Notice period">LNP:{candidateStatusStats.longNoticePeriod}</span>
+                            <span onClick={() => setFilterStatus?.('Location Not suitable')} className="text-amber-600 cursor-pointer hover:underline" title="Location Not suitable">LNS:{candidateStatusStats.locationNotSuitable}</span>
+                            <span onClick={() => setFilterStatus?.('Other')} className="text-gray-500 cursor-pointer hover:underline" title="Other / Unassigned">OTH:{candidateStatusStats.otherStatus}</span>
+                        </div>
+                    </div>
+                ) : null}
 
                 <div className="flex items-center gap-2">
                     <span>Show</span>
@@ -251,10 +327,21 @@ const CandidateTable = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
-                            {paginatedCandidates.length === 0 ? (
+                            {loading ? (
+                                [...Array(5)].map((_, i) => (
+                                    <tr key={`skel-row-${i}`}>
+                                        <td colSpan={selectedCandidateId ? 3 : (isInterviewRoundView ? (4 + activeInterviewRounds.length + 1) : 9)} className="px-4 py-3.5 align-middle">
+                                            <Skeleton className="h-5 w-full rounded" />
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : paginatedCandidates.length === 0 ? (
                                 <tr>
-                                    <td colSpan={selectedCandidateId ? 3 : (isInterviewRoundView ? (4 + activeInterviewRounds.length + 1) : 9)} className="px-4 py-8 text-center text-slate-400">
-                                        No candidates match the selected filters
+                                    <td colSpan={selectedCandidateId ? 3 : (isInterviewRoundView ? (4 + activeInterviewRounds.length + 1) : 9)} className="px-4 py-12 text-center text-slate-500 bg-slate-50/30">
+                                        <div className="flex flex-col items-center justify-center gap-1.5 py-4">
+                                            <span className="font-semibold text-slate-700 text-sm">No candidates found for this status</span>
+                                            <span className="text-xs text-slate-400">Click on another status in the bar above to view candidates.</span>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : (
