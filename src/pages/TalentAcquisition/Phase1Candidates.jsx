@@ -279,9 +279,10 @@ const Phase1Candidates = () => {
     const getInterviewStatusSummary = (rounds = []) => {
         if (!rounds || rounds.length === 0) return { label: 'None', color: 'text-slate-400 bg-slate-50 border-slate-200' };
 
+        const leftInBetween = rounds.filter(r => ['Left in between', 'Left In Between', 'LIB'].includes(r.status)).length;
         const pending = rounds.filter(r => r.status === 'Pending' || r.status === 'Scheduled').length;
         const passed = rounds.filter(r => r.status === 'Passed').length;
-        const skipped = rounds.filter(r => r.status === 'Skipped').length;
+        const skipped = rounds.filter(r => ['Skipped', 'Did Not Turn Up', 'Did not turn up', 'DNTU'].includes(r.status)).length;
         const failedRounds = rounds.filter(r => r.status === 'Failed');
         const failedCount = failedRounds.length;
         const total = rounds.length;
@@ -289,6 +290,9 @@ const Phase1Candidates = () => {
         if (failedCount > 0) {
             const failedNames = failedRounds.map(r => r.levelName).join(', ');
             return { label: `Rejected: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
+        }
+        if (leftInBetween > 0) {
+            return { label: 'Left in between', color: 'text-rose-700 bg-rose-50 border-rose-200' };
         }
         if (skipped > 0 && pending === 0) {
             return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };

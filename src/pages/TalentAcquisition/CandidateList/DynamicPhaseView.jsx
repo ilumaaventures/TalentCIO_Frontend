@@ -92,27 +92,42 @@ const getInterviewStatusSummary = (rounds = []) => {
         if (displayStatus === 'Rejected') {
             return { label: 'Rejected', color: 'text-red-700 bg-red-50 border-red-200' };
         }
-
+        if (displayStatus === 'Left in between') {
+            return { label: 'Left in between', color: 'text-rose-700 bg-rose-50 border-rose-200' };
+        }
+        if (displayStatus === 'Did Not Turn Up') {
+            return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
+        }
         if (displayStatus === 'Scheduled') {
             return { label: 'Scheduled', color: 'text-blue-700 bg-blue-50 border-blue-200' };
         }
-
         if (displayStatus === 'Shortlisted') {
             return { label: 'Shortlisted', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
         }
     }
 
     const total = rounds.length;
-    const completedRounds = rounds.filter((round) => round.feedback && (round.rating || round.rating === 0));
-    const completedCount = completedRounds.length;
     const failedRounds = rounds.filter((round) => round.status === 'Failed');
-    const pendingRounds = rounds.filter((round) => round.status === 'Pending' && !round.feedback);
-    const scheduledRounds = rounds.filter((round) => round.status === 'Scheduled' && !round.feedback);
+    const leftInBetweenRounds = rounds.filter((round) => ['Left in between', 'Left In Between', 'LIB'].includes(round.status));
+    const dntuRounds = rounds.filter((round) => ['Did Not Turn Up', 'Did not turn up', 'Did Not Turnup', 'DNTU', 'Skipped'].includes(round.status));
 
     if (failedRounds.length > 0) {
         const failedNames = failedRounds.map((round) => round.levelName).join(', ');
         return { label: `Failed: ${failedNames}`, color: 'text-red-700 bg-red-50 border-red-200' };
     }
+
+    if (leftInBetweenRounds.length > 0) {
+        return { label: 'Left in between', color: 'text-rose-700 bg-rose-50 border-rose-200' };
+    }
+
+    if (dntuRounds.length > 0) {
+        return { label: 'Did not turn up', color: 'text-slate-700 bg-slate-50 border-slate-200' };
+    }
+
+    const completedRounds = rounds.filter((round) => round.feedback && (round.rating || round.rating === 0));
+    const completedCount = completedRounds.length;
+    const pendingRounds = rounds.filter((round) => round.status === 'Pending' && !round.feedback);
+    const scheduledRounds = rounds.filter((round) => round.status === 'Scheduled' && !round.feedback);
 
     if (pendingRounds.length > 0 && completedCount === 0) {
         return { label: 'Pending', color: 'text-amber-700 bg-amber-50 border-amber-200' };

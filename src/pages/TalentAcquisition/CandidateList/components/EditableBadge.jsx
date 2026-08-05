@@ -82,11 +82,10 @@ const EditableBadge = ({
                 <button
                     type="button"
                     onClick={openModal}
-                    className="group/badge inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200/80 shadow-2xs transition-all cursor-pointer select-none"
+                    className="group/badge inline-flex items-center text-[10px] font-extrabold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200/80 shadow-2xs transition-all cursor-pointer select-none"
                     title="Click to rename or remove badge"
                 >
                     <span>{config.text}</span>
-                    <Pencil className="w-2.5 h-2.5 opacity-40 group-hover/badge:opacity-100 transition-opacity text-emerald-600" />
                 </button>
             ) : (
                 <button

@@ -556,7 +556,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             return activePhase === 1 ? candidates : [];
         }
         return basePhase1Candidates.filter(candidate => {
-            const matchStatus = filterStatus === 'All' || candidate.status === filterStatus;
+            const mainStatuses = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
+            const matchStatus = filterStatus === 'All'
+                ? true
+                : ['Other', 'None', 'OTH'].includes(filterStatus)
+                    ? !mainStatuses.includes(candidate.status)
+                    : candidate.status === filterStatus;
             const matchDecision = filterDecision === 'All' || (candidate.decision || 'None') === filterDecision;
             const matchProfileShared = !filterProfileShared || isProfileSharedCandidate(candidate);
 
@@ -625,6 +630,13 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         const counts = {
             total: structuralPhase1Candidates.length,
             interested: structuralPhase1Candidates.filter(c => c.status === 'Interested').length,
+            notInterested: structuralPhase1Candidates.filter(c => c.status === 'Not Interested').length,
+            notRelevant: structuralPhase1Candidates.filter(c => c.status === 'Not Relevant').length,
+            notPicking: structuralPhase1Candidates.filter(c => c.status === 'Not Picking').length,
+            highExpectation: structuralPhase1Candidates.filter(c => c.status === 'High expectation').length,
+            longNoticePeriod: structuralPhase1Candidates.filter(c => c.status === 'Long Notice period').length,
+            locationNotSuitable: structuralPhase1Candidates.filter(c => c.status === 'Location Not suitable').length,
+            otherStatus: structuralPhase1Candidates.filter(c => !['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'].includes(c.status)).length,
             interviewScheduled: structuralPhase1Candidates.filter(c =>
                 getRoundsForPhase(c, 1).length > 0
             ).length,
@@ -1483,6 +1495,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
                     <CandidateTable
                         candidates={candidates}
+                        structuralPhase1Candidates={structuralPhase1Candidates}
+                        cardMetrics={cardMetrics}
+                        metrics={metrics}
                         canCreateCandidates={canCreateCandidates}
                         handleAddNew={handleAddNew}
                         selectedCandidateId={selectedCandidateId}
@@ -1505,8 +1520,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         handlePhase3DecisionChange={handlePhase3DecisionChange}
                         setFilterPulledBy={setFilterPulledBy}
                         setFilterUploadedBy={setFilterUploadedBy}
+                        filterStatus={filterStatus}
                         setFilterStatus={setFilterStatus}
+                        filterDecision={filterDecision}
                         setFilterDecision={setFilterDecision}
+                        filterInterviewStatus={filterInterviewStatus}
                         setFilterInterviewStatus={setFilterInterviewStatus}
                         setOpenMultiFilter={setOpenMultiFilter}
                         toggleMenu={toggleMenu}
