@@ -542,7 +542,18 @@ const DynamicPhaseView = ({ hiringRequest }) => {
             if (Number(activePhase?.order) === 1) {
                 return true;
             }
-            return Number(candidate.currentPhaseOrder) === Number(activePhase?.order);
+            if (Number(candidate.currentPhaseOrder) === Number(activePhase?.order)) {
+                return true;
+            }
+            if (Number(activePhase?.order) === 2) {
+                return candidate?.profileShared === true
+                    || candidate?.decision === 'Shortlisted'
+                    || candidate?.decision === 'Profile Shared'
+                    || Boolean(candidate?.phase2Decision && candidate?.phase2Decision !== 'None')
+                    || Boolean(candidate?.phase2InterviewStatus && candidate?.phase2InterviewStatus !== 'None')
+                    || Boolean(candidate?.phase2InterviewerFeedback);
+            }
+            return false;
         })
     ), [candidates, activePhase]);
 

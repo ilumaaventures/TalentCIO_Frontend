@@ -74,8 +74,14 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     };
 
     const { requisition, candidates } = opening;
-    const isProfileSharedCandidate = (candidate) =>
-        candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted');
+    const isProfileSharedCandidate = (candidate) => Boolean(
+        candidate?.profileShared === true
+        || candidate?.decision === 'Shortlisted'
+        || candidate?.decision === 'Profile Shared'
+        || (candidate?.phase2Decision && candidate?.phase2Decision !== 'None')
+        || (candidate?.phase2InterviewStatus && candidate?.phase2InterviewStatus !== 'None')
+        || Boolean(candidate?.phase2InterviewerFeedback)
+    );
     const openedAt = requisition.createdAt ? format(new Date(requisition.createdAt), 'MMM dd, yyyy') : '—';
     const closedAt = requisition.closedAt ? format(new Date(requisition.closedAt), 'MMM dd, yyyy') : 'Ongoing';
     const positionName = requisition.title || 'Position';

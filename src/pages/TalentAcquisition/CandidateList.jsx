@@ -243,9 +243,14 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         || user?.permissions?.includes('ta.email_template.manage')
         || user?.permissions?.includes('*');
     const canViewCandidateDetails = canViewTACandidateDetails(user);
-    const isProfileSharedCandidate = useCallback((candidate) =>
-        candidate?.profileShared === true || (candidate?.profileShared == null && candidate?.decision === 'Shortlisted')
-        , []);
+    const isProfileSharedCandidate = useCallback((candidate) => Boolean(
+        candidate?.profileShared === true
+        || candidate?.decision === 'Shortlisted'
+        || candidate?.decision === 'Profile Shared'
+        || (candidate?.phase2Decision && candidate?.phase2Decision !== 'None')
+        || (candidate?.phase2InterviewStatus && candidate?.phase2InterviewStatus !== 'None')
+        || Boolean(candidate?.phase2InterviewerFeedback)
+    ), []);
 
     const handleSelectCandidate = (candId) => {
         if (!canViewCandidateDetails) {
@@ -1653,7 +1658,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         handleTransferToOnboarding={handleTransferToOnboarding}
                         canDeleteCandidates={canDeleteCandidates}
                         handleDelete={handleDelete}
-                        loading={loading}
                         activeList={activeList}
                         usesBackendPagination={usesBackendPagination}
                         serverResultCount={serverResultCount}
