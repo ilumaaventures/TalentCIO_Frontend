@@ -187,7 +187,7 @@ const CandidateTable = ({
     }, [cardMetrics, metrics, structuralPhase1Candidates, candidates]);
 
     const isFilterActive = (filterStatus && filterStatus !== 'All') || Boolean(filterInterviewRound) || (filterDecision && filterDecision !== 'All');
-    const isTotalZeroPool = (structuralPhase1Candidates?.length === 0 || candidates?.length === 0) && !isFilterActive;
+    const isTotalZeroPool = candidates?.length === 0 && !isFilterActive;
 
     if (isTotalZeroPool) {
         return (
