@@ -175,7 +175,12 @@ function App() {
                       </ProtectedRoute>
                     )} />
                     <Route path="/salary-calculator" element={(
-                      <ProtectedRoute requiredPermissions={SALARY_CALCULATOR_PERMISSIONS} redirectTo="/">
+                      <ProtectedRoute
+                        requiredPermissions={SALARY_CALCULATOR_PERMISSIONS}
+                        requiredRoles={ADMIN_ROLES}
+                        allowAllPermissions
+                        redirectTo="/"
+                      >
                         <SalaryCalculator />
                       </ProtectedRoute>
                     )} />
