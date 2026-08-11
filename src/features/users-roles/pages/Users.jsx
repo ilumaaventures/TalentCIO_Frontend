@@ -76,6 +76,8 @@ const Users = () => {
     });
     const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortField, setSortField] = useState('joiningDate');
+    const [sortDirection, setSortDirection] = useState('desc');
     const [sortOption, setSortOption] = useState('joining_recent');
     const [showSortMenu, setShowSortMenu] = useState(false);
     const [showFilterMenu, setShowFilterMenu] = useState(false);
@@ -1028,28 +1030,77 @@ const Users = () => {
         });
 
         const sorted = [...filtered];
-        switch (sortOption) {
-            case 'alphabetical_az':
-                sorted.sort((left, right) => (
-                    `${left.firstName || ''} ${left.lastName || ''}`.trim().localeCompare(
-                        `${right.firstName || ''} ${right.lastName || ''}`.trim()
-                    )
-                ));
-                break;
-            case 'employee_code':
-                sorted.sort((left, right) => String(left.employeeCode || '').localeCompare(String(right.employeeCode || ''), undefined, { numeric: true, sensitivity: 'base' }));
-                break;
-            case 'newest':
-                sorted.sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0));
-                break;
-            case 'oldest':
-                sorted.sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0));
-                break;
-            case 'joining_recent':
-            default:
-                sorted.sort((left, right) => new Date(right.joiningDate || 0) - new Date(left.joiningDate || 0));
-                break;
-        }
+        sorted.sort((left, right) => {
+            let comparison = 0;
+            switch (sortField) {
+                case 'employee': {
+                    const nameA = `${left.firstName || ''} ${left.lastName || ''}`.trim();
+                    const nameB = `${right.firstName || ''} ${right.lastName || ''}`.trim();
+                    comparison = nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+                    break;
+                }
+                case 'email': {
+                    const emailA = (left.email || '').toLowerCase();
+                    const emailB = (right.email || '').toLowerCase();
+                    comparison = emailA.localeCompare(emailB);
+                    break;
+                }
+                case 'joiningDate': {
+                    const dateA = left.joiningDate ? new Date(left.joiningDate).getTime() : 0;
+                    const dateB = right.joiningDate ? new Date(right.joiningDate).getTime() : 0;
+                    comparison = dateA - dateB;
+                    break;
+                }
+                case 'role': {
+                    const roleA = (left.roles?.[0]?.name || '').toLowerCase();
+                    const roleB = (right.roles?.[0]?.name || '').toLowerCase();
+                    comparison = roleA.localeCompare(roleB);
+                    break;
+                }
+                case 'department': {
+                    const deptA = (left.department || '').toLowerCase();
+                    const deptB = (right.department || '').toLowerCase();
+                    comparison = deptA.localeCompare(deptB);
+                    break;
+                }
+                case 'employmentType': {
+                    const typeA = (left.employmentType || 'Full Time').toLowerCase();
+                    const typeB = (right.employmentType || 'Full Time').toLowerCase();
+                    comparison = typeA.localeCompare(typeB);
+                    break;
+                }
+                case 'reportingTo': {
+                    const mgrA = (left.reportingManagers?.[0]?.firstName || '').toLowerCase();
+                    const mgrB = (right.reportingManagers?.[0]?.firstName || '').toLowerCase();
+                    comparison = mgrA.localeCompare(mgrB);
+                    break;
+                }
+                case 'status': {
+                    const statusA = left.isActive ? 1 : 0;
+                    const statusB = right.isActive ? 1 : 0;
+                    comparison = statusA - statusB;
+                    break;
+                }
+                case 'employeeCode': {
+                    comparison = String(left.employeeCode || '').localeCompare(String(right.employeeCode || ''), undefined, { numeric: true, sensitivity: 'base' });
+                    break;
+                }
+                case 'createdAt': {
+                    const createdA = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+                    const createdB = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+                    comparison = createdA - createdB;
+                    break;
+                }
+                default: {
+                    const dateA = left.joiningDate ? new Date(left.joiningDate).getTime() : 0;
+                    const dateB = right.joiningDate ? new Date(right.joiningDate).getTime() : 0;
+                    comparison = dateA - dateB;
+                    break;
+                }
+            }
+
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
 
         return sorted;
     }, [
@@ -1060,7 +1111,8 @@ const Users = () => {
         filterStatus,
         filterDepartment,
         filterEmploymentType,
-        sortOption
+        sortField,
+        sortDirection
     ]);
 
     const totalPages = Math.max(Math.ceil(filteredUsers.length / rowsPerPage), 1);
@@ -1495,6 +1547,38 @@ const Users = () => {
         }
     };
 
+    const handleSort = (field) => {
+        if (sortField === field) {
+            setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortField(field);
+            setSortDirection(field === 'joiningDate' ? 'desc' : 'asc');
+        }
+    };
+
+    const renderSortHeader = (field, label, extraClass = '') => {
+        const isActive = sortField === field;
+        return (
+            <th
+                key={field}
+                onClick={() => handleSort(field)}
+                className={`px-2.5 py-1.5 cursor-pointer select-none transition hover:bg-slate-100 hover:text-slate-900 group whitespace-nowrap ${extraClass}`}
+                title={`Sort by ${label} (${isActive && sortDirection === 'asc' ? 'Click for Descending' : 'Click for Ascending'})`}
+            >
+                <div className="inline-flex items-center gap-1 font-semibold text-[10.5px]">
+                    <span>{label}</span>
+                    <span className={`inline-flex transition-colors ${isActive ? 'text-blue-600 font-bold' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                        {isActive ? (
+                            sortDirection === 'asc' ? <ChevronUp size={12} className="stroke-[2.5]" /> : <ChevronDown size={12} className="stroke-[2.5]" />
+                        ) : (
+                            <ArrowUpDown size={10} className="opacity-60 group-hover:opacity-100" />
+                        )}
+                    </span>
+                </div>
+            </th>
+        );
+    };
+
     if (loading) return (
         <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 md:p-10">
             <div className="max-w-7xl w-full mx-auto space-y-6">
@@ -1715,21 +1799,31 @@ const Users = () => {
                                     {showSortMenu && (
                                         <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                                             {[
-                                                { value: 'joining_recent', label: 'Joining date: recent first' },
-                                                { value: 'alphabetical_az', label: 'A-Z alphabetical' },
-                                                { value: 'employee_code', label: 'Employee code' },
-                                                { value: 'newest', label: 'Newest (latest first)' },
-                                                { value: 'oldest', label: 'Oldest (older first)' }
+                                                { value: 'joining_recent', label: 'Joining date: recent first', field: 'joiningDate', dir: 'desc' },
+                                                { value: 'joining_oldest', label: 'Joining date: oldest first', field: 'joiningDate', dir: 'asc' },
+                                                { value: 'alphabetical_az', label: 'Employee Name: A-Z', field: 'employee', dir: 'asc' },
+                                                { value: 'alphabetical_za', label: 'Employee Name: Z-A', field: 'employee', dir: 'desc' },
+                                                { value: 'email_az', label: 'Email: A-Z', field: 'email', dir: 'asc' },
+                                                { value: 'role_az', label: 'Role: A-Z', field: 'role', dir: 'asc' },
+                                                { value: 'department_az', label: 'Department: A-Z', field: 'department', dir: 'asc' },
+                                                { value: 'type_az', label: 'Employment Type: A-Z', field: 'employmentType', dir: 'asc' },
+                                                { value: 'reporting_az', label: 'Reporting To: A-Z', field: 'reportingTo', dir: 'asc' },
+                                                { value: 'status_active', label: 'Status: Active first', field: 'status', dir: 'desc' },
+                                                { value: 'employee_code', label: 'Employee Code: Ascending', field: 'employeeCode', dir: 'asc' },
+                                                { value: 'newest', label: 'Created: Newest first', field: 'createdAt', dir: 'desc' },
+                                                { value: 'oldest', label: 'Created: Oldest first', field: 'createdAt', dir: 'asc' }
                                             ].map((option) => (
                                                 <button
                                                     key={option.value}
                                                     type="button"
                                                     onClick={() => {
+                                                        setSortField(option.field);
+                                                        setSortDirection(option.dir);
                                                         setSortOption(option.value);
                                                         setShowSortMenu(false);
                                                     }}
                                                     className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                                                        sortOption === option.value
+                                                        sortField === option.field && sortDirection === option.dir
                                                             ? 'bg-blue-50 font-semibold text-blue-700'
                                                             : 'text-slate-700 hover:bg-slate-50'
                                                     }`}
@@ -1834,93 +1928,93 @@ const Users = () => {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
-                                <tr className="text-[11px] uppercase tracking-wider">
-                                    <th className="px-3 py-2 w-10">
+                                <tr className="text-[10.5px] uppercase tracking-wider">
+                                    <th className="px-2.5 py-1.5 w-8">
                                         <input
                                             type="checkbox"
                                             checked={allVisibleSelected}
                                             onChange={toggleSelectAllVisible}
-                                            className="rounded text-blue-600 focus:ring-blue-500"
+                                            className="h-3.5 w-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                             aria-label="Select all visible employees"
                                         />
                                     </th>
-                                    <th className="px-3 py-2">Employee</th>
-                                    <th className="px-3 py-2">Email</th>
-                                    <th className="px-3 py-2">Joining Date</th>
-                                    <th className="px-3 py-2">Role</th>
-                                    <th className="px-3 py-2">Department</th>
-                                    <th className="px-3 py-2">Type</th>
-                                    <th className="px-3 py-2">Reporting To</th>
-                                    <th className="px-3 py-2">Status</th>
-                                    <th className="px-3 py-2 text-right">Actions</th>
+                                    {renderSortHeader('employee', 'Employee')}
+                                    {renderSortHeader('email', 'Email')}
+                                    {renderSortHeader('joiningDate', 'Joining Date')}
+                                    {renderSortHeader('role', 'Role')}
+                                    {renderSortHeader('department', 'Department')}
+                                    {renderSortHeader('employmentType', 'Type')}
+                                    {renderSortHeader('reportingTo', 'Reporting To')}
+                                    {renderSortHeader('status', 'Status')}
+                                    <th className="px-2.5 py-1.5 text-right text-[10.5px] whitespace-nowrap">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {filteredUsers.length === 0 ? (
                                     <tr>
-                                        <td colSpan={10} className="px-6 py-10 text-center text-sm text-slate-500">
+                                        <td colSpan={10} className="px-6 py-8 text-center text-xs text-slate-500">
                                             No employees match the current search or filters.
                                         </td>
                                     </tr>
                                 ) : paginatedUsers.map((employee) => (
-                                    <tr key={employee._id} className="hover:bg-slate-50/50 text-[13px] border-b border-slate-50 last:border-0 transition-colors">
-                                        <td className="px-3 py-2">
+                                    <tr key={employee._id} className="hover:bg-slate-50/60 text-xs border-b border-slate-50 last:border-0 transition-colors">
+                                        <td className="px-2.5 py-1.5">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedEmployeeIds.includes(employee._id)}
                                                 onChange={() => toggleEmployeeSelection(employee._id)}
-                                                className="rounded text-blue-600 focus:ring-blue-500"
+                                                className="h-3.5 w-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                 aria-label={`Select ${employee.firstName} ${employee.lastName || ''}`}
                                             />
                                         </td>
-                                        <td className="px-3 py-2">
+                                        <td className="px-2.5 py-1.5">
                                             <div className="flex items-center space-x-2">
-                                                <div className="h-7 w-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] shrink-0">
+                                                <div className="h-6 w-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[9px] shrink-0">
                                                     {employee.firstName.charAt(0)}{employee.lastName?.charAt(0)}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <div className="font-semibold text-slate-800 truncate">{employee.firstName} {employee.lastName}</div>
-                                                    <div className="text-[10px] text-slate-500">{employee.employeeCode || 'N/A'}</div>
+                                                    <div className="font-semibold text-slate-800 truncate leading-tight text-xs">{employee.firstName} {employee.lastName}</div>
+                                                    <div className="text-[9.5px] text-slate-500 leading-tight">{employee.employeeCode || 'N/A'}</div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-3 py-2 text-slate-600 truncate max-w-[150px]" title={employee.email}>{employee.email}</td>
-                                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                                        <td className="px-2.5 py-1.5 text-slate-600 truncate max-w-[140px] text-xs" title={employee.email}>{employee.email}</td>
+                                        <td className="px-2.5 py-1.5 text-slate-600 whitespace-nowrap text-[11px]">
                                             {employee.joiningDate ? format(new Date(employee.joiningDate), 'dd MMM yyyy') : '-'}
                                         </td>
-                                        <td className="px-3 py-2">
+                                        <td className="px-2.5 py-1.5">
                                             {employee.roles.map(r => (
-                                                <span key={r._id} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 mr-1 whitespace-nowrap">
-                                                    <Shield size={10} className="mr-1" /> {r.name}
+                                                <span key={r._id} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-slate-100 text-slate-700 border border-slate-200 mr-1 whitespace-nowrap">
+                                                    <Shield size={9} className="mr-1" /> {r.name}
                                                 </span>
                                             ))}
                                         </td>
-                                        <td className="px-3 py-2 text-slate-600 truncate max-w-25">{employee.department || '-'}</td>
-                                        <td className="px-3 py-2">
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                                        <td className="px-2.5 py-1.5 text-slate-600 truncate max-w-25 text-xs">{employee.department || '-'}</td>
+                                        <td className="px-2.5 py-1.5">
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
                                                 {employee.employmentType || 'Full Time'}
                                             </span>
                                         </td>
-                                        <td className="px-3 py-2 text-slate-600">
+                                        <td className="px-2.5 py-1.5 text-slate-600">
                                             {employee.reportingManagers && employee.reportingManagers.length > 0 ? (
                                                 <div className="flex flex-col">
                                                     {employee.reportingManagers.map(mgr => (
-                                                        <span key={mgr._id} className="font-medium text-[11px] text-slate-700 truncate max-w-[120px]" title={mgr.email}>{mgr.firstName} {mgr.lastName.charAt(0)}.</span>
+                                                        <span key={mgr._id} className="font-medium text-[10.5px] text-slate-700 truncate max-w-[110px]" title={mgr.email}>{mgr.firstName} {mgr.lastName.charAt(0)}.</span>
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <span className="text-[11px] text-slate-400 italic">None</span>
+                                                <span className="text-[10.5px] text-slate-400 italic">None</span>
                                             )}
                                         </td>
-                                        <td className="px-3 py-2">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                        <td className="px-2.5 py-1.5">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
                                                 {employee.isActive ? 'Active' : (employee.isDeleted ? 'In Bin' : 'Inactive')}
                                             </span>
                                         </td>
-                                        <td className="px-3 py-2 text-right">
+                                        <td className="px-2.5 py-1.5 text-right">
                                             <button
                                                 onClick={() => navigate(`/users/${employee._id}`)}
-                                                className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors border border-blue-200 shadow-sm whitespace-nowrap"
+                                                className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors border border-blue-200 shadow-2xs whitespace-nowrap"
                                                 title="View Profile"
                                             >
                                                 View Profile
