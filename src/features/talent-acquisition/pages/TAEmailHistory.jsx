@@ -199,7 +199,19 @@ const TAEmailHistory = () => {
       const res = await api.get('/ta/email-history', { params });
       const fetchedLogs = res.data?.logs || [];
       setLogs(fetchedLogs);
-      setPagination(res.data?.pagination || { total: 0, page: 1, limit, totalPages: 1 });
+
+      const rawPagination = res.data?.pagination || {};
+      const totalCount = Number(rawPagination.total !== undefined ? rawPagination.total : fetchedLogs.length);
+      const currentPage = Number(rawPagination.page || page);
+      const currentLimit = Number(rawPagination.limit || limit);
+      const totalPages = Number(rawPagination.totalPages || rawPagination.pages) || Math.max(1, Math.ceil(totalCount / currentLimit));
+
+      setPagination({
+        total: totalCount,
+        page: currentPage,
+        limit: currentLimit,
+        totalPages
+      });
 
       const templatesSet = new Set(fetchedLogs.map((item) => item.templateName).filter(Boolean));
       setTemplateOptions((prev) => Array.from(new Set([...prev, ...Array.from(templatesSet)])));
@@ -644,7 +656,7 @@ const TAEmailHistory = () => {
             </div>
             <span className="text-slate-300">|</span>
             <span>
-              Showing Page <span className="font-bold text-slate-800">{pagination.page}</span> of <span className="font-bold text-slate-800">{pagination.totalPages}</span> ({pagination.total} total logs)
+              Showing Page <span className="font-bold text-slate-800">{pagination.page || 1}</span> of <span className="font-bold text-slate-800">{pagination.totalPages || 1}</span> ({pagination.total || 0} total logs)
             </span>
           </div>
 
@@ -652,19 +664,19 @@ const TAEmailHistory = () => {
             <button
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs font-bold flex items-center gap-1"
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs font-bold flex items-center gap-1 cursor-pointer"
             >
               <ChevronLeft size={15} /> Previous
             </button>
 
             <span className="text-xs font-bold text-slate-700 px-2 py-1 bg-white border border-slate-200 rounded-lg">
-              {page} / {pagination.totalPages}
+              {page} / {pagination.totalPages || 1}
             </span>
 
             <button
-              onClick={() => setPage((p) => Math.min(p + 1, pagination.totalPages))}
-              disabled={page >= pagination.totalPages}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs font-bold flex items-center gap-1"
+              onClick={() => setPage((p) => Math.min(p + 1, pagination.totalPages || 1))}
+              disabled={page >= (pagination.totalPages || 1)}
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs font-bold flex items-center gap-1 cursor-pointer"
             >
               Next <ChevronRight size={15} />
             </button>
