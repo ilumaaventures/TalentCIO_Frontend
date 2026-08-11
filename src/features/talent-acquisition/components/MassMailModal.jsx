@@ -262,7 +262,10 @@ const MassMailModal = ({
 
             if (attachments.length > 0) {
                 const formData = new FormData();
-                if (templateMode === 'saved' && templateId) formData.append('templateId', templateId);
+                if (templateMode === 'saved' && templateId) {
+                    formData.append('templateId', templateId);
+                    if (activeTemplate?.name) formData.append('templateName', activeTemplate.name);
+                }
                 formData.append('emailAccountId', selectedEmailAccountId);
                 formData.append('customSubject', customSubject);
                 formData.append('customHtmlBody', customHtmlBody);
@@ -286,6 +289,7 @@ const MassMailModal = ({
             } else {
                 const payload = {
                     templateId: templateMode === 'saved' ? templateId : undefined,
+                    templateName: (templateMode === 'saved' && activeTemplate?.name) ? activeTemplate.name : undefined,
                     emailAccountId: selectedEmailAccountId,
                     customSubject,
                     customHtmlBody,
