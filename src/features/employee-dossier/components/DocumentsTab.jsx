@@ -4,13 +4,13 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import api from '../../api/axios';
-import Button from '../../components/Button';
+import api from '@/lib/apiClient';
+import Button from '@/components/ui/Button';
 import { 
     documentCategories, 
     DOSSIER_ALLOWED_FILE_TYPES, 
     DOSSIER_FILE_MAX_SIZE_BYTES 
-} from './DossierHelpers';
+} from '@/features/employee-dossier/utils/DossierHelpers';
 
 export const DocumentsTab = ({
     profile,
@@ -296,9 +296,9 @@ export const DocumentsTab = ({
         // Validation: Check for mandatory documents
         const uploadedTitles = visibleDocuments.map(d => d.title.toLowerCase()) || [];
 
-        // 1. Mandatory Identity Docs (Except Passport)
+        // 1. Mandatory Identity Docs (Except Passport & Live Photograph)
         const identityCategory = documentCategories.find(c => c.name === 'Identity Documents');
-        const requiredIdentityDocs = identityCategory?.fixedDocs.filter(doc => doc !== 'Passport') || [];
+        const requiredIdentityDocs = identityCategory?.fixedDocs.filter(doc => doc !== 'Passport' && doc !== 'Live Photograph') || [];
 
         const missingIdentityDocs = requiredIdentityDocs.filter(reqDoc =>
             !uploadedTitles.includes(reqDoc.toLowerCase())
@@ -690,7 +690,7 @@ export const DocumentsTab = ({
                                 {/* Fixed documents (Identity, Education, Bank etc.) */}
                                 {catConfig.fixedDocs?.map((docTitle) => {
                                     const doc = categoryDocs.find(d => d.title.toLowerCase() === docTitle.toLowerCase());
-                                    const isMandatory = (catConfig.name === 'Identity Documents' && docTitle !== 'Passport') || (catConfig.name === 'Qualification Certificates');
+                                    const isMandatory = (catConfig.name === 'Identity Documents' && docTitle !== 'Passport' && docTitle !== 'Live Photograph') || (catConfig.name === 'Qualification Certificates');
 
                                     if (doc) {
                                         return <DocumentCard key={doc._id} doc={doc} />;

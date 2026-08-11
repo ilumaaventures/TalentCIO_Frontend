@@ -2,9 +2,9 @@ import React from 'react';
 import {
     Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Download, Briefcase, ArrowRight, FileText
 } from 'lucide-react';
-import { PIPELINE_FIXED_STAGE_SET, PHASE_2_FIXED_STAGES, PHASE_2_FIXED_STAGE_SET } from '../CandidateListConstants';
-import { buildDynamicPipeline } from '../utils/pipelineUtils';
-import { matchesMultiValueFilter, getRoundsForPhase, matchesInterviewFilter } from '../utils/candidateHelpers';
+import { PIPELINE_FIXED_STAGE_SET, PHASE_2_FIXED_STAGES, PHASE_2_FIXED_STAGE_SET } from '@/features/talent-acquisition/utils/CandidateListConstants';
+import { buildDynamicPipeline } from '@/features/talent-acquisition/utils/pipelineUtils';
+import { matchesMultiValueFilter, getRoundsForPhase, matchesInterviewFilter } from '@/features/talent-acquisition/utils/candidateHelpers';
 import EditableBadge from './EditableBadge';
 
 const CandidateMetricsCards = ({

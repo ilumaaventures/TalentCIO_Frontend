@@ -5,7 +5,7 @@ import {
     ArrowLeft, RefreshCw, Users, CheckCircle2, XCircle, Clock,
     Calendar, Award, BarChart3, Search, UserCheck, Briefcase, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 
 const getDecisionOptionsByPhase = (phase) => {

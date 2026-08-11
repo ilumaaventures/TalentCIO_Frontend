@@ -1,7 +1,7 @@
 import React from 'react';
 import { FileText, X, Download } from 'lucide-react';
-import Button from '../../components/Button';
-import { fmtMoney } from '../../utils/payroll';
+import Button from '@/components/ui/Button';
+import { fmtMoney } from '@/features/payroll/utils/payroll';
 
 const numberToWords = (num) => {
     const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];

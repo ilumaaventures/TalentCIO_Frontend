@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import api from '../api/axios';
-import Skeleton from '../components/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import api from '@/lib/apiClient';
+import Skeleton from '@/components/ui/Skeleton';
 import { Link, useNavigate } from 'react-router-dom';
 import { Users, Clock, Calendar, UserCheck, UserX, AlertCircle, ArrowUpRight, MapPin, ChevronLeft, ChevronRight, X, Megaphone, Pin } from 'lucide-react';
 import { addDays, format } from 'date-fns';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
 import { motion } from 'framer-motion';
 
 // Simple global cache for location lookups to avoid redundant API hits across polls
@@ -253,7 +253,7 @@ const Dashboard = () => {
         const fetchFeaturedAnnouncements = async () => {
             try {
                 setAnnouncementsLoading(true);
-                const response = await api.get('/announcements?featured=true&limit=3');
+                const response = await api.get(`/announcements?featured=true&limit=3&_t=${Date.now()}`);
                 if (!isMounted) return;
                 setFeaturedAnnouncements(Array.isArray(response.data?.announcements) ? response.data.announcements : []);
             } catch (error) {

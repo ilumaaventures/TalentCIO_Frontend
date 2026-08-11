@@ -1,13 +1,13 @@
 import React from 'react';
 import { User, Briefcase, Shield, DollarSign, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
-import Button from '../../components/Button';
+import Button from '@/components/ui/Button';
 import {
     Field,
     PendingHighlight,
     EditDisclaimer,
     SectionCard
-} from './DossierHelpers';
+} from '@/features/employee-dossier/utils/DossierHelpers';
 
 export const PersonalTab = ({
     profile,

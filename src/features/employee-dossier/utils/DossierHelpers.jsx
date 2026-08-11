@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Info, AlertTriangle, Save, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import Button from '../../components/Button';
+import Button from '@/components/ui/Button';
 
 export const COMPANY_LOGO_DISPLAY_OPTIONS = [
     {

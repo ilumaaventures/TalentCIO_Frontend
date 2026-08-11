@@ -1,10 +1,10 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { Plus, Edit2, Trash2, Calendar, X, Save, CalendarCheck, CalendarOff, CalendarDays } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
 
 const Holidays = () => {
     const { user } = useAuth();
@@ -53,7 +53,7 @@ const Holidays = () => {
 
         try {
             if (!isBackground && !force && !readSessionCache(CACHE_KEY)) setLoading(true);
-            const res = await api.get('/holidays');
+            const res = await api.get(`/holidays?_t=${Date.now()}`);
             const freshData = res.data;
 
             // 2. Check for changes via fingerprint
@@ -114,6 +114,8 @@ const Holidays = () => {
                 await api.post('/holidays', formData);
                 toast.success("Holiday added");
             }
+            const CACHE_KEY = `holiday_data_${user?._id}_${new Date().getFullYear()}`;
+            sessionStorage.removeItem(CACHE_KEY);
             setIsModalOpen(false);
             fetchHolidays(false, true); // Force refresh cache
         } catch (error) {
@@ -122,13 +124,17 @@ const Holidays = () => {
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm("Are you sure you want to delete this holiday?")) return;
+        if (!window.confirm("Are you sure you want to delete this holiday?")) return false;
         try {
             await api.delete(`/holidays/${id}`);
             toast.success("Holiday deleted");
+            const CACHE_KEY = `holiday_data_${user?._id}_${new Date().getFullYear()}`;
+            sessionStorage.removeItem(CACHE_KEY);
             fetchHolidays(false, true); // Force refresh cache
+            return true;
         } catch {
             toast.error("Failed to delete holiday");
+            return false;
         }
     };
 
@@ -326,9 +332,9 @@ const Holidays = () => {
                                     {editingHoliday && canDeleteHoliday && (
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                if (window.confirm("Are you sure you want to delete this holiday?")) {
-                                                    handleDelete(editingHoliday._id);
+                                            onClick={async () => {
+                                                const deleted = await handleDelete(editingHoliday._id);
+                                                if (deleted) {
                                                     setIsModalOpen(false);
                                                 }
                                             }}

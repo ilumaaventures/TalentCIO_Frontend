@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload, CheckCircle, XCircle, AlertCircle, Loader, ArrowRight, FileArchive } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import JSZip from 'jszip';
 

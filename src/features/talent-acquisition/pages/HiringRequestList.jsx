@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
-import api from '../../api/axios';
-import { useAuth } from '../../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { Plus, Filter, Settings, TrendingUp, ChevronRight, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
-import Skeleton from '../../components/Skeleton';
-import { createNoCacheRequestConfig } from '../../utils/taCache';
+import Skeleton from '@/components/ui/Skeleton';
+import { createNoCacheRequestConfig } from '@/features/talent-acquisition/utils/taCache';
 
 const HiringRequestList = () => {
     const { user } = useAuth();
@@ -82,6 +82,7 @@ const HiringRequestList = () => {
             'Submitted': 'bg-blue-50 text-blue-700 border-blue-200',
             'Pending_L1': 'bg-amber-50 text-amber-700 border-amber-200',
             'Pending_Approval': 'bg-amber-50 text-amber-700 border-amber-200',
+            'Pending Approval': 'bg-amber-50 text-amber-700 border-amber-200',
             'Pending_Final': 'bg-purple-50 text-purple-700 border-purple-200',
             'Approved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
             'Rejected': 'bg-red-50 text-red-700 border-red-200',

@@ -23,8 +23,8 @@ import {
     X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../api/axios';
-import { useAuth } from '../../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     GENERAL_EMAIL_TEMPLATE_PLACEHOLDERS,
     OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
@@ -34,7 +34,7 @@ import {
     sanitizeTemplateHtml,
     resolveTemplate,
     validateTemplateSyntax
-} from '../../utils/templatePlaceholders';
+} from '@/features/email/utils/templatePlaceholders';
 
 const PLATFORM_ID = 'platform';
 

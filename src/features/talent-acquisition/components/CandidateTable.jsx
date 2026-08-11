@@ -1,7 +1,7 @@
 import React from 'react';
 import { Upload, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 import CandidateTableRow from './CandidateTableRow';
-import Skeleton from '../../../../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 
 const CandidateTable = ({
     candidates,

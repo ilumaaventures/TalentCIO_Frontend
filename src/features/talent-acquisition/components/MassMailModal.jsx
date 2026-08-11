@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, Mail, Paperclip, Send, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import {
     getSupportedPlaceholderTokens,
@@ -10,7 +10,7 @@ import {
     TEMPLATE_PLACEHOLDERS,
     resolveTemplate,
     validateTemplateSyntax
-} from '../../utils/templatePlaceholders';
+} from '@/features/email/utils/templatePlaceholders';
 
 const SUPPORTED_PLACEHOLDER_HELPER = getSupportedPlaceholderTokens().join(', ');
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Users, User, Plus, Trash2, X } from 'lucide-react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const EMPTY_CONTACT = { name: '', email: '', phone: '' };
 

@@ -21,8 +21,8 @@ import {
     X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General', shiftType: 'general', startTime: '09:00', endTime: '18:00', maxWorkingHours: 9 },

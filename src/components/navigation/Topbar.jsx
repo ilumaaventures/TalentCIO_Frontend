@@ -3,9 +3,9 @@ import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock,
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import toast from 'react-hot-toast';
-import api from '../api/axios';
-import socket from '../api/socket';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import socket from '@/lib/socket';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const Topbar = ({ toggleSidebar }) => {
     const { user, hasModule } = useAuth();
@@ -168,11 +168,22 @@ const Topbar = ({ toggleSidebar }) => {
         return format(new Date(inv.scheduledDate), 'h:mm a');
     };
 
-    const handleMarkAsRead = async (id, link) => {
-        // Navigate immediately — don't block on the API call.
-        // A failure to mark-as-read is non-critical and should never prevent navigation.
-        if (link) {
-            navigate(link);
+    const handleMarkAsRead = async (id, link, notifObj = null) => {
+        let targetLink = link;
+        const notifTitle = notifObj?.title || '';
+        const notifMsg = notifObj?.message || '';
+
+        if (
+            targetLink === '/attendance/approvals' ||
+            targetLink === '/attendance/me' ||
+            targetLink === '/attendance/regularize' ||
+            (!targetLink && (notifTitle.toLowerCase().includes('regularization') || notifMsg.toLowerCase().includes('regularization')))
+        ) {
+            targetLink = '/attendance?tab=regularize';
+        }
+
+        if (targetLink) {
+            navigate(targetLink);
         }
         setShowDropdown(false);
 
@@ -364,7 +375,7 @@ const Topbar = ({ toggleSidebar }) => {
                                                             navigate(notif.link);
                                                             setShowDropdown(false);
                                                         } else {
-                                                            handleMarkAsRead(notif._id, notif.link);
+                                                            handleMarkAsRead(notif._id, notif.link, notif);
                                                         }
                                                     }}
                                                     className={`p-4 transition-colors cursor-pointer group ${!notif.isRead ? 'bg-indigo-50/30' : 'hover:bg-slate-50'}`}

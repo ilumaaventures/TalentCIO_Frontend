@@ -1,4 +1,4 @@
-import { createdDatePresetOptions } from '../CandidateListConstants';
+import { createdDatePresetOptions } from '@/features/talent-acquisition/utils/CandidateListConstants';
 
 export const hasReviewableApplicantProfile = (item) => Boolean(
     item &&

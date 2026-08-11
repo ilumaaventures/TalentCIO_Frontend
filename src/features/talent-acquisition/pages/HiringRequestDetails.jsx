@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip, Globe } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
-import CandidateList from './CandidateList';
-import LegacyApplicationsView from './LegacyApplicationsView';
-import PublicApplicationsView from './PublicApplicationsView';
-import Skeleton from '../../components/Skeleton';
-import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '../../utils/taCache';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import CandidateList from '@/features/talent-acquisition/pages/CandidateList';
+import LegacyApplicationsView from '@/features/talent-acquisition/components/LegacyApplicationsView';
+import PublicApplicationsView from '@/features/talent-acquisition/components/PublicApplicationsView';
+import Skeleton from '@/components/ui/Skeleton';
+import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '@/features/talent-acquisition/utils/taCache';
 
 const DetailRow = ({ label, value }) => (
     <div className="flex justify-between py-2 border-b border-slate-50 last:border-0">
@@ -136,15 +136,16 @@ const HiringRequestDetails = () => {
 
     const canApprove = request && isDynamic
         ? (
-            (request.status === 'Pending_Approval' || request.status === 'Submitted') &&
+            (request.status === 'Pending_Approval' || request.status === 'Pending Approval' || request.status === 'Submitted') &&
             currentStep &&
-            currentStep.status === 'Pending' &&
+            (currentStep.status === 'Pending' || !currentStep.status) &&
             (
                 hasApprovalOverride ||
-                (currentStep.approvers && currentStep.approvers.some(a => a._id === user?._id || a === user?._id))
+                (currentStep.approvers && currentStep.approvers.some(a => (a._id || a) === user?._id || (a._id || a) === user?.id)) ||
+                (currentStep.specificApprover && ((currentStep.specificApprover._id || currentStep.specificApprover) === user?._id || (currentStep.specificApprover._id || currentStep.specificApprover) === user?.id))
             )
         )
-        : request && (request.status === 'Pending_L1' || request.status === 'Pending_Final');
+        : request && (request.status === 'Pending_L1' || request.status === 'Pending_Final' || request.status === 'Pending_Approval' || request.status === 'Pending Approval');
 
     const handleApproval = async (action) => {
         if (action === 'REJECT' && !approvalComment.trim()) {
@@ -274,15 +275,18 @@ const HiringRequestDetails = () => {
             }
 
             const res = await api.patch(`/ta/hiring-request/${id}/visibility`, { isPublic: newValue });
+            const updatedReq = res.data.hiringRequest || res.data.job || {};
             setRequest((prev) => ({
                 ...prev,
-                ...res.data.job,
+                ...updatedReq,
+                isPublic: updatedReq.isPublic !== undefined ? updatedReq.isPublic : newValue,
+                isJobVisible: updatedReq.isJobVisible !== undefined ? updatedReq.isJobVisible : newValue,
                 previousRequestId: typeof prev?.previousRequestId === 'object'
                     ? { ...prev.previousRequestId, isPublic: false, isResourceGatewayPublic: false }
                     : prev?.previousRequestId
             }));
             toast.success(res.data.message);
-            invalidateTACaches({ requestId: id, client: res.data?.job?.client || request?.client });
+            invalidateTACaches({ requestId: id, client: updatedReq.client || request?.client });
         } catch (err) {
             toast.error(err.response?.data?.message || 'Failed to update visibility');
         } finally {
@@ -321,15 +325,17 @@ const HiringRequestDetails = () => {
             const res = await api.patch(`/ta/hiring-request/${id}/visibility`, {
                 isResourceGatewayPublic: newValue
             });
+            const updatedReq = res.data.hiringRequest || res.data.job || {};
             setRequest((prev) => ({
                 ...prev,
-                ...res.data.job,
+                ...updatedReq,
+                isResourceGatewayPublic: updatedReq.isResourceGatewayPublic !== undefined ? updatedReq.isResourceGatewayPublic : newValue,
                 previousRequestId: typeof prev?.previousRequestId === 'object'
                     ? { ...prev.previousRequestId, isResourceGatewayPublic: false }
                     : prev?.previousRequestId
             }));
             toast.success(res.data.message);
-            invalidateTACaches({ requestId: id, client: res.data?.job?.client || request?.client });
+            invalidateTACaches({ requestId: id, client: updatedReq.client || request?.client });
         } catch (err) {
             toast.error(err.response?.data?.message || 'Failed to update Resource Gateway visibility');
         } finally {
@@ -795,7 +801,7 @@ const HiringRequestDetails = () => {
                                 <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border ${request.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                     request.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
                                         request.status === 'Closed' ? 'bg-gray-100 text-gray-600 border-gray-200' :
-                                            request.status === 'Pending_L1' || request.status === 'Pending_Approval' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                            request.status === 'Pending_L1' || request.status === 'Pending_Approval' || request.status === 'Pending Approval' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                 request.status === 'Pending_Final' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                                                     'bg-blue-50 text-blue-700 border-blue-200'
                                     }`}>

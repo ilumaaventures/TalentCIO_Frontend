@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Settings, ArrowLeft, CheckCircle, Upload, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import Button from '../../components/Button';
+import Button from '@/components/ui/Button';
 
 // Constants
 const COMPANY_LOGO_DISPLAY_OPTIONS = [

@@ -1,6 +1,6 @@
 import React from 'react';
 import { DollarSign, X } from 'lucide-react';
-import Button from '../../components/Button';
+import Button from '@/components/ui/Button';
 
 export const AddPayrollModal = ({
     showPayrollModal,

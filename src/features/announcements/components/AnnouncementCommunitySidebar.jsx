@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, PartyPopper, Sparkles, Trophy } from 'lucide-react';
 import AnnouncementAvatar from './AnnouncementAvatar';
-import { getDisplayName } from './announcementUtils';
+import { getDisplayName } from '@/features/announcements/utils/announcementUtils';
 
 const SECTION_META = {
   birthdays: {

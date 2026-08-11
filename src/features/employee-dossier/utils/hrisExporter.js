@@ -1,4 +1,4 @@
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';

@@ -25,10 +25,10 @@ import {
     X,
     XCircle
 } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
-import Skeleton from '../../components/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import Skeleton from '@/components/ui/Skeleton';
 
 const statusColor = (status) => {
     switch (status) {

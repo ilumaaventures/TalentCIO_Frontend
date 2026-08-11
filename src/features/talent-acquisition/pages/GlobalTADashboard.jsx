@@ -6,15 +6,15 @@ import {
     Search, CheckSquare, Clock, AlertCircle, Inbox,
     ChevronDown, ExternalLink, Award, PlayCircle, Globe
 } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
     LineChart, Line, ComposedChart, Area, Funnel, FunnelChart, LabelList
 } from 'recharts';
-import Skeleton from '../../components/Skeleton';
-import { useAuth } from '../../context/AuthContext';
+import Skeleton from '@/components/ui/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e', '#10b981', '#f59e0b', '#64748b'];
 

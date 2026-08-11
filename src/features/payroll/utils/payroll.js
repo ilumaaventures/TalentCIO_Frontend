@@ -4,4 +4,4 @@
  * Re-exports all functions and constants for 100% backward compatibility.
  */
 
-export * from './payroll/index';
+export * from './index';

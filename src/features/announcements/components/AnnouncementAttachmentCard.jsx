@@ -12,7 +12,7 @@ import {
   getAnnouncementAttachmentDownloadUrl,
   getAnnouncementAttachmentKind,
   getAnnouncementAttachmentTypeLabel,
-} from './announcementUtils';
+} from '@/features/announcements/utils/announcementUtils';
 
 const renderAttachmentIcon = (attachment) => {
   const kind = getAnnouncementAttachmentKind(attachment);

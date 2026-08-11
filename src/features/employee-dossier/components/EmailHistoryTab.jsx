@@ -1,7 +1,7 @@
 import React from 'react';
 import { Mail, FileText } from 'lucide-react';
 import { format } from 'date-fns';
-import Skeleton from '../../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 
 export const EmailHistoryTab = ({
     emailHistoryByTab,

@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
-import Skeleton from '../../components/Skeleton';
-import BulkCandidateImport from './BulkCandidateImport';
-import BulkResumeImport from './BulkResumeImport';
-import { ProfileReviewModal } from './PublicApplicationsView';
-import MassMailModal from './MassMailModal';
-import BulkTransferModal from './BulkTransferModal';
-import DecisionConfirmationModal from '../../components/DecisionConfirmationModal';
-import MassInterviewScheduleModal from './MassInterviewScheduleModal';
-import DynamicPhaseView from './CandidateList/DynamicPhaseView';
-import useDebouncedValue from '../../hooks/useDebouncedValue';
-import { canViewTACandidateDetails } from '../../constants/accessPolicies';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import Skeleton from '@/components/ui/Skeleton';
+import BulkCandidateImport from '@/features/talent-acquisition/components/BulkCandidateImport';
+import BulkResumeImport from '@/features/talent-acquisition/components/BulkResumeImport';
+import { ProfileReviewModal } from '@/features/talent-acquisition/components/PublicApplicationsView';
+import MassMailModal from '@/features/talent-acquisition/components/MassMailModal';
+import BulkTransferModal from '@/features/talent-acquisition/components/BulkTransferModal';
+import DecisionConfirmationModal from '@/components/common/DecisionConfirmationModal';
+import MassInterviewScheduleModal from '@/features/talent-acquisition/components/MassInterviewScheduleModal';
+import DynamicPhaseView from '@/features/talent-acquisition/components/DynamicPhaseView';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
+import { canViewTACandidateDetails } from '@/config/accessPolicies';
 
 import {
     DEFAULT_DATE_FILTER_FIELD
-} from './CandidateList/CandidateListConstants';
+} from '@/features/talent-acquisition/utils/CandidateListConstants';
 import {
     getCandidateUploadedByName,
     getCandidateUploadType,
@@ -29,14 +29,14 @@ import {
     matchesMultiValueFilter,
     getPresetDateRange,
     getDefaultDateFilterState
-} from './CandidateList/utils/candidateHelpers';
-import { exportCandidatesToExcel } from './CandidateList/utils/exportExcel';
+} from '@/features/talent-acquisition/utils/candidateHelpers';
+import { exportCandidatesToExcel } from '@/features/talent-acquisition/utils/exportExcel';
 
-import CandidateHeaderToolbar from './CandidateList/components/CandidateHeaderToolbar';
-import CandidateMetricsCards from './CandidateList/components/CandidateMetricsCards';
-import CandidateFilters from './CandidateList/components/CandidateFilters';
-import CandidateTable from './CandidateList/components/CandidateTable';
-import CandidateSidePanel from './CandidateList/components/CandidateSidePanel';
+import CandidateHeaderToolbar from '@/features/talent-acquisition/components/CandidateHeaderToolbar';
+import CandidateMetricsCards from '@/features/talent-acquisition/components/CandidateMetricsCards';
+import CandidateFilters from '@/features/talent-acquisition/components/CandidateFilters';
+import CandidateTable from '@/features/talent-acquisition/components/CandidateTable';
+import CandidateSidePanel from '@/features/talent-acquisition/components/CandidateSidePanel';
 
 const CandidateList = ({ hiringRequestId, positionName, isLegacyView = false, requestMeta = null }) => {
     const [resolvedRequest, setResolvedRequest] = useState(requestMeta);
@@ -614,10 +614,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [activePhase, candidates, cardMetrics, roundSummary]);
 
     const basePhase1Candidates = useMemo(() => {
-        if (usesBackendPagination) {
-            return activePhase === 1 ? candidates : [];
-        }
-        return structuralPhase1Candidates.filter(candidate => {
+        const list = activePhase === 1 ? candidates : [];
+        return list.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
 
@@ -635,12 +633,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchPreference && matchExperience && matchRating;
         });
-    }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase1Candidates, usesBackendPagination]);
+    }, [activePhase, candidates, filterExperience, filterPreference, filterRating]);
 
     const filteredCandidates = useMemo(() => {
-        if (usesBackendPagination) {
-            return activePhase === 1 ? candidates : [];
-        }
         return basePhase1Candidates.filter(candidate => {
             const mainStatuses = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
             const matchStatus = filterStatus === 'All'
@@ -706,7 +701,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
             return matchStatus && matchDecision && matchInterviewStatus && matchProfileShared && matchInterviewRound && matchDynamicStage;
         });
-    }, [activePhase, basePhase1Candidates, candidates, filterDecision, filterDynamicStage, filterInterviewRound, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate, usesBackendPagination]);
+    }, [basePhase1Candidates, filterDecision, filterDynamicStage, filterInterviewRound, filterInterviewStatus, filterProfileShared, filterStatus, isProfileSharedCandidate]);
 
     const metrics = useMemo(() => {
         if (usesBackendPagination && cardMetrics?.phase1Metrics) {
@@ -737,25 +732,26 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     }, [cardMetrics, structuralPhase1Candidates, isProfileSharedCandidate, usesBackendPagination]);
 
     const structuralPhase2Candidates = useMemo(() => {
+        const list = candidates.filter(c => isProfileSharedCandidate(c));
         if (usesBackendPagination) {
-            return activePhase === 2 ? candidates : [];
+            return activePhase === 2 ? list : [];
         }
-        return candidates.filter(c => {
-            const isShortlisted = isProfileSharedCandidate(c);
+        return list.filter(c => {
             const matchCandidateName = matchesCandidateNameSearch(c);
             const matchPulledBy = matchesMultiValueFilter(filterPulledBy, c.profilePulledBy);
             const matchUploadedBy = matchesMultiValueFilter(filterUploadedBy, getCandidateUploadedByName(c));
             const matchUploadType = filterUploadType === 'All' || getCandidateUploadType(c) === filterUploadType;
             const matchTransferred = filterTransferred === 'All' || (filterTransferred === 'Transferred' ? c.isTransferred : !c.isTransferred);
-            return isShortlisted && matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
+            return matchCandidateName && matchPulledBy && matchUploadedBy && matchUploadType && matchTransferred;
         });
     }, [activePhase, candidates, filterPulledBy, filterUploadedBy, filterUploadType, filterTransferred, isProfileSharedCandidate, matchesCandidateNameSearch, usesBackendPagination]);
 
     const basePhase2Candidates = useMemo(() => {
+        const list = structuralPhase2Candidates.filter(c => isProfileSharedCandidate(c));
         if (usesBackendPagination) {
-            return activePhase === 2 ? candidates : [];
+            return activePhase === 2 ? list : [];
         }
-        return structuralPhase2Candidates.filter(candidate => {
+        return list.filter(candidate => {
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchRating = true;
@@ -769,11 +765,12 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             }
             return matchPreference && matchExperience && matchRating;
         });
-    }, [activePhase, candidates, filterExperience, filterPreference, filterRating, structuralPhase2Candidates, usesBackendPagination]);
+    }, [activePhase, candidates, filterExperience, filterPreference, filterRating, isProfileSharedCandidate, structuralPhase2Candidates, usesBackendPagination]);
 
     const phase2Filtered = useMemo(() => {
+        const list = basePhase2Candidates.filter(c => isProfileSharedCandidate(c));
         if (usesBackendPagination) {
-            return activePhase === 2 ? candidates : [];
+            return activePhase === 2 ? list : [];
         }
         return basePhase2Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
@@ -831,9 +828,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
         return {
             totalShortlisted: structuralPhase2Candidates.length,
-            totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
-            selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
-            rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
+            totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected' || c.decision === 'Shortlisted' || c.decision === 'Selected').length,
+            selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected' || c.decision === 'Selected').length,
+            rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected' || c.decision === 'Rejected').length,
             interviewScheduled: structuralPhase2Candidates.filter(hasPhase2InterviewActivity).length
         };
     }, [cardMetrics, structuralPhase2Candidates, usesBackendPagination]);
@@ -1034,10 +1031,6 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     };
 
     const activeList = useMemo(() => {
-        if (usesBackendPagination) {
-            return candidates;
-        }
-
         const rawList = activePhase === 1 ? filteredCandidates : activePhase === 2 ? phase2Filtered : phase3Filtered;
 
         if (!filterInterviewRound) return rawList;
@@ -1049,7 +1042,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 (r) => String(r.levelName || '').trim().toLowerCase() === targetRound
             );
         });
-    }, [activePhase, candidates, filterInterviewRound, filteredCandidates, phase2Filtered, phase3Filtered, usesBackendPagination]);
+    }, [activePhase, filterInterviewRound, filteredCandidates, phase2Filtered, phase3Filtered]);
 
     const sortedActiveList = useMemo(() => {
         if (!sortColumn) return activeList;

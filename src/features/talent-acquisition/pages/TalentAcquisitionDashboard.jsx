@@ -27,15 +27,15 @@ import {
     XAxis,
     YAxis
 } from 'recharts';
-import api from '../../api/axios';
-import Skeleton from '../../components/Skeleton';
-import PublicApplicationsView from './PublicApplicationsView';
+import api from '@/lib/apiClient';
+import Skeleton from '@/components/ui/Skeleton';
+import PublicApplicationsView from '@/features/talent-acquisition/components/PublicApplicationsView';
 import {
     createNoCacheRequestConfig,
     readTAClientsCache,
     refreshTAClientsCache
-} from '../../utils/taCache';
-import { useAuth } from '../../context/AuthContext';
+} from '@/features/talent-acquisition/utils/taCache';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const requestStatusClasses = {
     Draft: 'bg-slate-100 text-slate-600 border-slate-200',
@@ -43,6 +43,7 @@ const requestStatusClasses = {
     Pending_L1: 'bg-amber-50 text-amber-700 border-amber-200',
     Pending_Final: 'bg-purple-50 text-purple-700 border-purple-200',
     Pending_Approval: 'bg-amber-50 text-amber-700 border-amber-200',
+    'Pending Approval': 'bg-amber-50 text-amber-700 border-amber-200',
     Approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     Rejected: 'bg-rose-50 text-rose-700 border-rose-200',
     Closed: 'bg-slate-100 text-slate-600 border-slate-200',
@@ -1180,9 +1181,9 @@ const canShowApplicationsTab = (user) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {topClients.map((client) => (
+                                {topClients.map((client, index) => (
                                     <tr
-                                        key={client.name}
+                                        key={client.id || client._id || (client.name ? `${client.name}-${index}` : index)}
                                         className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
                                         onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`)}
                                         onKeyDown={(event) => {

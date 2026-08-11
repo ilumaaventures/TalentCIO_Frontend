@@ -1,19 +1,19 @@
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
-import api from '../../../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import {
     LEGACY_EXPORT_STATUS_OPTIONS,
     EXPORT_INTERVIEW_STATUS_OPTIONS,
     PROFILE_SHORTLISTED_EXPORT_OPTIONS,
     PROFILE_SHORTLISTED_HEADER
-} from '../CandidateListConstants';
+} from '@/features/talent-acquisition/utils/CandidateListConstants';
 import {
     getRoundExportInterviewStatus,
     getPhase2InterviewStatusExportValue,
     getInterviewStatusSummary
-} from './candidateHelpers';
+} from '@/features/talent-acquisition/utils/candidateHelpers';
 
 export const exportCandidatesToExcel = async ({
     hiringRequestId,
@@ -100,11 +100,104 @@ export const exportCandidatesToExcel = async ({
             });
         }
 
+        // Helper functions to parse and format candidate skills and experience
+        const getAllCandidateSkills = (candidate) => {
+            const list = [];
+            const seen = new Set();
+
+            const addSkill = (name, exp) => {
+                if (!name || typeof name !== 'string') return;
+                const cleanName = name.trim();
+                if (!cleanName) return;
+                const key = cleanName.toLowerCase();
+                if (seen.has(key)) return;
+                seen.add(key);
+
+                const expNum = Number(exp);
+                const validExp = (!isNaN(expNum) && expNum >= 0) ? expNum : null;
+                list.push({ skill: cleanName, experience: validExp });
+            };
+
+            const processItem = (item) => {
+                if (!item) return;
+                if (typeof item === 'string') {
+                    if (item.includes(',')) {
+                        item.split(',').forEach(processItem);
+                        return;
+                    }
+                    const match = item.match(/^([^(]+)(?:\((\d+(?:\.\d+)?)\s*(?:yrs|years|yr)?\))?/i);
+                    if (match) {
+                        const name = match[1].trim();
+                        const exp = match[2] ? parseFloat(match[2]) : null;
+                        addSkill(name, exp);
+                    } else {
+                        addSkill(item, null);
+                    }
+                } else if (typeof item === 'object') {
+                    const name = (item.skill || item.name || item.skillName || item.title || '').trim();
+                    const exp = item.experience !== undefined && item.experience !== null ? item.experience : item.yearsOfExperience;
+                    addSkill(name, exp);
+                }
+            };
+
+            const sources = [
+                candidate?.mustHaveSkills,
+                candidate?.niceToHaveSkills,
+                candidate?.skills,
+                candidate?.technicalSkills,
+                candidate?.primarySkills
+            ];
+
+            sources.forEach(src => {
+                if (Array.isArray(src)) {
+                    src.forEach(processItem);
+                } else if (typeof src === 'string') {
+                    processItem(src);
+                } else if (typeof src === 'object' && src !== null) {
+                    if (Array.isArray(src.technical)) src.technical.forEach(processItem);
+                    if (Array.isArray(src.softSkills)) src.softSkills.forEach(processItem);
+                }
+            });
+
+            return list;
+        };
+
+        const formatAllSkillsSummary = (candidate) => {
+            const skills = getAllCandidateSkills(candidate);
+            if (!skills.length) return null;
+
+            return skills.map(s => {
+                if (s.experience !== null && s.experience !== undefined) {
+                    return `${s.skill} (${s.experience} yrs)`;
+                }
+                return s.skill;
+            }).join(', ');
+        };
+
+        const getCandidateSkillExp = (candidate, targetSkillName) => {
+            if (!targetSkillName) return null;
+            const allSkills = getAllCandidateSkills(candidate);
+            const targetKey = targetSkillName.trim().toLowerCase();
+
+            const match = allSkills.find(s => {
+                const key = s.skill.toLowerCase();
+                return key === targetKey || key.includes(targetKey) || targetKey.includes(key);
+            });
+
+            if (match) {
+                if (match.experience !== null && match.experience !== undefined) {
+                    return `${match.experience} yrs`;
+                }
+                return 'Yes';
+            }
+            return null;
+        };
+
         // Define sections to iterate over for building Row 1, Row 2 and rowData
         const excelSections = [
             { title: 'Basic Info', subHeaders: ['S.no', 'Submission Date', 'Source', 'Profile pulled by', 'Calling by', 'Name of Candidate', 'Total Experience'], width: 7 },
             { title: 'Internal Round', subHeaders: ['TAT', 'Rate', 'Remarks'], width: 3 },
-            { title: 'Experience', subHeaders: ['Relevant Experience'], width: 1 },
+            { title: 'Experience & Skills', subHeaders: ['Relevant Experience', 'All Skills & Experience'], width: 2 },
             { title: 'Technical Skills (Experience)', subHeaders: techSkillsHeaders, width: techSkillsHeaders.length },
             { title: 'Education & Employment', subHeaders: ['Qualification', 'Company'], width: 2 },
             { title: 'Compensation', subHeaders: ['CTC', 'Expected CTC'], width: 2 },
@@ -329,15 +422,8 @@ export const exportCandidatesToExcel = async ({
         dataToExport.forEach((candidate, index) => {
             const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === Number(activePhase)) : [];
 
-            const techSkillRatings = techSkillsHeaders.map(skillName => {
-                const skillEntry = (candidate.mustHaveSkills || []).find(s => s.skill === skillName);
-                if (skillEntry) {
-                    const experience = toEmptyCell(skillEntry.experience, { zeroIsEmpty: true });
-                    return experience === null ? null : `${experience}y`;
-                }
-
-                return null;
-            });
+            const techSkillRatings = techSkillsHeaders.map(skillName => getCandidateSkillExp(candidate, skillName));
+            const allCandidateSkillsSummary = formatAllSkillsSummary(candidate);
 
             // Collect data for each round
             const roundsData = [];
@@ -415,13 +501,14 @@ export const exportCandidatesToExcel = async ({
                 toEmptyCell(candidate.profilePulledBy),
                 toEmptyCell(candidate.calledBy),
                 toEmptyCell(candidate.candidateName),
-                toEmptyCell(candidate.totalExperience),
+                toEmptyCell(candidate.totalExperience !== undefined && candidate.totalExperience !== null ? `${candidate.totalExperience} yrs` : null),
 
                 toEmptyCell(candidate.tatToJoin, { zeroIsEmpty: true }),
                 toEmptyCell(candidate.rate, { zeroIsEmpty: true }),
                 toEmptyCell(candidate.remark),
 
-                toEmptyCell(candidate.relevantExperience, { zeroIsEmpty: true }),
+                toEmptyCell(candidate.relevantExperience !== undefined && candidate.relevantExperience !== null ? `${candidate.relevantExperience} yrs` : null),
+                toEmptyCell(allCandidateSkillsSummary),
                 ...techSkillRatings,
 
                 toEmptyCell(candidate.qualification),

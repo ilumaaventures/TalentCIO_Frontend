@@ -6,20 +6,20 @@ import {
     Briefcase, MoreVertical, ArrowRight, Download, Plus,
     CheckCircle, UserCheck, ThumbsUp, Clock, ThumbsDown, XCircle, Upload, Search
 } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { useAuth } from '../../context/AuthContext';
-import Skeleton from '../../components/Skeleton';
-import { canViewTACandidateDetails } from '../../constants/accessPolicies';
-import EditableBadge from './CandidateList/components/EditableBadge';
-import CandidateDetailsModal from '../../components/CandidateDetailsModal';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import Skeleton from '@/components/ui/Skeleton';
+import { canViewTACandidateDetails } from '@/config/accessPolicies';
+import EditableBadge from '@/features/talent-acquisition/components/EditableBadge';
+import CandidateDetailsModal from '@/features/talent-acquisition/components/CandidateDetailsModal';
 import {
     getDisplayInterviewRoundsForPhase,
     getInterviewStatusSummary
-} from './CandidateList/utils/candidateHelpers';
+} from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const LEGACY_EXPORT_STATUS_OPTIONS = ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable'];
 
@@ -128,7 +128,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
     // Filter Logic
     const filteredCandidates = candidates.filter(candidate => {
         if (filterPreference !== 'All' && candidate.profilePreference !== filterPreference) return false;
-        if (filterStatus !== 'All' && candidate.status !== filterStatus) return false;
+        if (activePhase === 1 && filterStatus !== 'All' && candidate.status !== filterStatus) return false;
 
         // Phase-specific Filtering
         if (activePhase === 1) {
@@ -404,8 +404,8 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                         <div>
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                                 <h4 className="font-bold text-slate-800 text-base">Opening #{openingNum}: {positionName}</h4>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm ${requisition.status === 'Closed' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
-                                    {requisition.status.toUpperCase()}
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm ${(requisition?.status || 'Closed') === 'Closed' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+                                    {(requisition?.status || 'Closed').toUpperCase()}
                                 </span>
                             </div>
                             <div className="flex items-center gap-3 text-[12px] text-slate-500 flex-wrap font-medium">
@@ -631,7 +631,15 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
         try {
             setLoading(true);
             const res = await api.get(`/ta/hiring-request/${hiringRequestId}/previous-candidates`);
-            setOpenings(res.data || []);
+            const rawData = res.data;
+            const openingsArray = Array.isArray(rawData)
+                ? rawData
+                : (Array.isArray(rawData?.openings)
+                    ? rawData.openings
+                    : (Array.isArray(rawData?.candidates)
+                        ? [{ requisition: rawData.currentRequisition || {}, candidates: rawData.candidates }]
+                        : []));
+            setOpenings(openingsArray);
         } catch (e) {
             console.error(e);
             toast.error('Failed to load legacy applications');

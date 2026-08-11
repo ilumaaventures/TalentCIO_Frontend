@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { Save, Loader2, Info, Settings, Shield, RotateCcw } from 'lucide-react';
-import api from '../../api/axios';
-import { DEFAULT_PAYROLL_CONFIG } from '../../utils/payroll';
+import api from '@/lib/apiClient';
+import { DEFAULT_PAYROLL_CONFIG } from '@/features/payroll/utils/payroll';
 
 const COMPENSATION_TYPES = [
   { id: 'monthly_salary', name: 'Monthly Fixed Salary' },

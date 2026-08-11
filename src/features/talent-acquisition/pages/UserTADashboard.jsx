@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, ThumbsUp, ThumbsDown, CheckCircle, Clock, UserCheck, Eye, FileText, Upload } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import Skeleton from '../../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { Filter, Search, X } from 'lucide-react';
 
 const UserTADashboard = ({ providedUserName }) => {

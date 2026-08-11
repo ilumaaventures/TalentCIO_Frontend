@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar,
     ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck, Eye, EyeOff, X,
     Settings2, ChevronUp, ChevronDown, TrendingUp, Info
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { format } from 'date-fns';
-import UserTADashboard from './TalentAcquisition/UserTADashboard';
-import Timesheet from './Timesheet';
-import EmployeeDossier from './EmployeeDossier';
-import { restoreBinItem } from '../api/bin';
-import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData } from '../utils/payroll';
-import CompensationFormSection from '../components/compensation/CompensationFormSection';
+import UserTADashboard from '@/features/talent-acquisition/pages/UserTADashboard';
+import Timesheet from '@/features/timesheet/pages/Timesheet';
+import EmployeeDossier from '@/features/employee-dossier/pages/EmployeeDossier';
+import { restoreBinItem } from '@/features/recycle-bin/api/bin';
+import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData } from '@/features/payroll/utils/payroll';
+import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
 
 const parseBool = (val, defaultVal = true) => {
     if (val === false || val === 'false') return false;

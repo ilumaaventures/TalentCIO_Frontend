@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import api from '../api/axios';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import api from '@/lib/apiClient';
 import {
     ArrowLeft,
     Calendar,

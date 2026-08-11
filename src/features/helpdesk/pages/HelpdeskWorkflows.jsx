@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Plus, Trash2, Save, X, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 

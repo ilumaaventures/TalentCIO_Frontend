@@ -22,10 +22,10 @@ import {
   X,
   XCircle
 } from 'lucide-react';
-import api from '../../api/axios';
-import socket from '../../api/socket';
+import api from '@/lib/apiClient';
+import socket from '@/lib/socket';
 import toast from 'react-hot-toast';
-import Skeleton from '../../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { format } from 'date-fns';
 
 const statusBadge = (status) => {

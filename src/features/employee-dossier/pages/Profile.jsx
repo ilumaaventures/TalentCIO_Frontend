@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import { Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar, ZoomIn, Move, X, Lock, Eye, EyeOff, CheckCircle, AlertCircle, KeyRound, Camera, RotateCcw, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';

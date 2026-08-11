@@ -2,14 +2,14 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit, Trash2, FileText, Loader, Upload, Plus, Eye, MoreVertical, Users, ThumbsUp, ThumbsDown, CheckCircle, XCircle, Clock, UserCheck, Briefcase } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { useAuth } from '../../context/AuthContext';
-import Skeleton from '../../components/Skeleton';
-import BulkTransferModal from './BulkTransferModal';
-import DecisionConfirmationModal from '../../components/DecisionConfirmationModal';
-import { canViewTACandidateDetails } from '../../constants/accessPolicies';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import Skeleton from '@/components/ui/Skeleton';
+import BulkTransferModal from '@/features/talent-acquisition/components/BulkTransferModal';
+import DecisionConfirmationModal from '@/components/common/DecisionConfirmationModal';
+import { canViewTACandidateDetails } from '@/config/accessPolicies';
 
 const Phase1Candidates = () => {
     const { hiringRequestId } = useParams();

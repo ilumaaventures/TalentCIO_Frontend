@@ -1,10 +1,10 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Calendar, Clock, MapPin, Users, CheckSquare, Edit, List, Info, Briefcase, FileText, AlignLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
-import { useAuth } from '../context/AuthContext';
+import Skeleton from '@/components/ui/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { format } from 'date-fns';
 
 const MeetingDetails = () => {

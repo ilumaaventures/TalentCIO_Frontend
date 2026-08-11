@@ -1,17 +1,17 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     Calendar, Plus, RefreshCw, User, CheckCircle, XCircle,
     Check, X, ChevronDown, Clock, AlertCircle, Layers,
     Eye, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Button from '../components/Button';
-import DossierIncompleteModal from '../components/DossierIncompleteModal';
+import Button from '@/components/ui/Button';
+import DossierIncompleteModal from '@/features/employee-dossier/components/DossierIncompleteModal';
 import { format } from 'date-fns';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
-import UserMultiSelect from '../components/UserMultiSelect';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
+import UserMultiSelect from '@/components/common/UserMultiSelect';
 
 // ─── Donut Chart for Balance Card ────────────────────────────────────────────
 const DonutChart = ({ utilized, total, isUnlimited }) => {

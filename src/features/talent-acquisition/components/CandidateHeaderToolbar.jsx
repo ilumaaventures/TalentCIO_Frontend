@@ -5,10 +5,10 @@ import {
 } from 'lucide-react';
 import {
     createdDatePresetOptions
-} from '../CandidateListConstants';
+} from '@/features/talent-acquisition/utils/CandidateListConstants';
 import {
     getCreatedDatePresetLabel
-} from '../utils/candidateHelpers';
+} from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const CandidateHeaderToolbar = ({
     activePhase,

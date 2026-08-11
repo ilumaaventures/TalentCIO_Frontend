@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { KeyRound, ShieldCheck, ArrowRight, Loader2, Lock, RefreshCw, CheckCircle2, Eye, EyeOff } from 'lucide-react';
-import Button from '../components/Button';
+import Button from '@/components/ui/Button';
 
 const MotionDiv = motion.div;
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();

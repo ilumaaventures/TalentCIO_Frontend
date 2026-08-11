@@ -1,11 +1,11 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { ArrowLeft, Settings, Edit2, Shield, Plus, Check, X, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
 
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const LeaveConfig = () => {
     const navigate = useNavigate();

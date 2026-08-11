@@ -1,21 +1,21 @@
 import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import Sidebar from './Sidebar';
-import Topbar from './Topbar';
+import Sidebar from '@/components/navigation/Sidebar';
+import Topbar from '@/components/navigation/Topbar';
 import { Loader } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import api from '../api/axios';
-import socket from '../api/socket';
-import AnnouncementUnreadModal from './announcements/AnnouncementUnreadModal';
-import BirthdayCelebrationModal from './BirthdayCelebrationModal';
-import DossierGateBanner from './DossierGateBanner';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import api from '@/lib/apiClient';
+import socket from '@/lib/socket';
+import AnnouncementUnreadModal from '@/features/announcements/components/AnnouncementUnreadModal';
+import BirthdayCelebrationModal from '@/components/common/BirthdayCelebrationModal';
+import DossierGateBanner from '@/features/employee-dossier/components/DossierGateBanner';
 import {
     getAcknowledgedAnnouncementIds,
     getAnnouncementSessionGateKey,
     sortAnnouncementsByPublishedAt,
     storeAcknowledgedAnnouncementIds,
     REACTION_TYPES,
-} from './announcements/announcementUtils';
+} from '@/features/announcements/utils/announcementUtils';
 
 const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -119,21 +119,15 @@ const Layout = () => {
         };
     }, [location.pathname]);
 
-    const loadUnreadAnnouncements = useCallback(async (ignoreSessionGate = false) => {
+    const loadUnreadAnnouncements = useCallback(async () => {
         if (!user?._id) {
-            setAnnouncementGateLoading(false);
-            return;
-        }
-
-        const sessionGateKey = getAnnouncementSessionGateKey(user._id);
-        if (!ignoreSessionGate && sessionStorage.getItem(sessionGateKey) === '1') {
             setAnnouncementGateLoading(false);
             return;
         }
 
         try {
             setAnnouncementGateLoading(true);
-            const response = await api.get('/announcements?limit=5');
+            const response = await api.get(`/announcements?limit=20&_t=${Date.now()}`);
             if (!isMountedRef.current) return;
 
             const announcements = sortAnnouncementsByPublishedAt(
@@ -141,23 +135,20 @@ const Layout = () => {
             );
             const acknowledgedIds = new Set(getAcknowledgedAnnouncementIds(user._id));
             const unread = announcements.filter(
-                (announcement) => !announcement.viewerAcknowledged && !acknowledgedIds.has(String(announcement._id))
+                (announcement) =>
+                    announcement.status === 'published' &&
+                    !announcement.isExpired &&
+                    !announcement.viewerAcknowledged &&
+                    !acknowledgedIds.has(String(announcement._id))
             );
 
             setUnreadAnnouncements(unread);
             setAnnouncementIndex(0);
             setAnnouncementConfirmed(false);
             setAnnouncementAckBuffer([]);
-
-            if (unread.length === 0) {
-                sessionStorage.setItem(sessionGateKey, '1');
-            } else if (ignoreSessionGate) {
-                sessionStorage.removeItem(sessionGateKey);
-            }
         } catch (error) {
             console.error('Failed to load unread announcements:', error);
             if (isMountedRef.current) {
-                sessionStorage.setItem(sessionGateKey, '1');
                 setUnreadAnnouncements([]);
             }
         } finally {
@@ -168,7 +159,7 @@ const Layout = () => {
     }, [user?._id]);
 
     useEffect(() => {
-        void loadUnreadAnnouncements(false);
+        void loadUnreadAnnouncements();
     }, [loadUnreadAnnouncements]);
 
     useEffect(() => {
@@ -178,9 +169,10 @@ const Layout = () => {
             if (
                 notification?.preferenceKey === 'announcement_published' ||
                 notification?.metadata?.announcementId ||
-                notification?.link === '/announcements'
+                notification?.link === '/announcements' ||
+                notification?.title?.toLowerCase().includes('announcement')
             ) {
-                void loadUnreadAnnouncements(true);
+                void loadUnreadAnnouncements();
             }
         };
 
@@ -189,15 +181,6 @@ const Layout = () => {
             socket.off('notification', handleRealtimeAnnouncement);
         };
     }, [user?._id, loadUnreadAnnouncements]);
-
-    const dismissAnnouncementGateForSession = () => {
-        if (!user?._id) return;
-        sessionStorage.setItem(getAnnouncementSessionGateKey(user._id), '1');
-        setUnreadAnnouncements([]);
-        setAnnouncementIndex(0);
-        setAnnouncementConfirmed(false);
-        setAnnouncementAckBuffer([]);
-    };
 
     const handleAnnouncementContinue = async () => {
         const currentAnnouncement = unreadAnnouncements[announcementIndex];
@@ -210,10 +193,13 @@ const Layout = () => {
         }
 
         const nextAckBuffer = [...announcementAckBuffer, String(currentAnnouncement._id)];
+        storeAcknowledgedAnnouncementIds(user._id, [String(currentAnnouncement._id), ...nextAckBuffer]);
 
-        if (announcementIndex === unreadAnnouncements.length - 1) {
-            storeAcknowledgedAnnouncementIds(user._id, nextAckBuffer);
-            dismissAnnouncementGateForSession();
+        if (announcementIndex >= unreadAnnouncements.length - 1) {
+            setUnreadAnnouncements([]);
+            setAnnouncementIndex(0);
+            setAnnouncementConfirmed(false);
+            setAnnouncementAckBuffer([]);
             return;
         }
 
@@ -278,13 +264,7 @@ const Layout = () => {
                 </div>
             </main>
 
-            {announcementGateLoading ? (
-                <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-100/90 backdrop-blur-sm">
-                    <Loader className="animate-spin text-blue-600" size={30} />
-                </div>
-            ) : null}
-
-            {!announcementGateLoading && unreadAnnouncements.length > 0 ? (
+            {unreadAnnouncements.length > 0 ? (
                 <AnnouncementUnreadModal
                     announcements={unreadAnnouncements}
                     activeIndex={announcementIndex}

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, Check, ChevronRight, Clock, Edit3, Eye, Loader, Mail, Search, User, Users, X } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
-import { renderTemplateBody, resolveTemplate } from '../../utils/templatePlaceholders';
+import { renderTemplateBody, resolveTemplate } from '@/features/email/utils/templatePlaceholders';
 
 const QUICK_PLACEHOLDERS = [
     { label: 'Candidate Name', token: 'candidateName' },

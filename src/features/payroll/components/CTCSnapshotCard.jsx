@@ -1,6 +1,6 @@
 import React from 'react';
 import { TrendingUp, Download, Info } from 'lucide-react';
-import { fmtMoney } from '../../utils/payroll';
+import { fmtMoney } from '@/features/payroll/utils/payroll';
 
 export const CTCSnapshotCard = ({ breakup, payrollConfig, handleDownloadBreakup }) => {
     if (!breakup) return null;

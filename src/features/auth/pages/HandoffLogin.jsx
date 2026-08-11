@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { hasAuthSessionHint } from '../utils/authStorage';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import { hasAuthSessionHint } from '@/features/auth/utils/authStorage';
 
 const getHandoffSessionKey = (token) => `handoff-exchange:${token}`;
 const inflightExchangeRequests = new Map();

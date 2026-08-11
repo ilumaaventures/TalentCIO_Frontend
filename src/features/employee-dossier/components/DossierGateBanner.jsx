@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, X, ArrowRight } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
-import { isAdminUser } from "../constants/accessPolicies";
+import { useAuth } from '@/features/auth/context/AuthContext';
+import { isAdminUser } from '@/config/accessPolicies';
 
 /**
  * DossierGateBanner

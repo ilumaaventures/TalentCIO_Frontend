@@ -1,7 +1,7 @@
 import React from 'react';
 import { Briefcase, X } from 'lucide-react';
 import { format } from 'date-fns';
-import { Field, SectionCard } from './DossierHelpers';
+import { Field, SectionCard } from '@/features/employee-dossier/utils/DossierHelpers';
 
 export const EmploymentTab = ({
     profile,

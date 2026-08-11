@@ -4,11 +4,11 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import api from '../../api/axios';
-import Button from '../../components/Button';
+import api from '@/lib/apiClient';
+import Button from '@/components/ui/Button';
 import { 
     Field, DiffField, PendingHighlight, SkillsInput 
-} from './DossierHelpers';
+} from '@/features/employee-dossier/utils/DossierHelpers';
 
 export const getStatusBadge = (status) => {
     const badgeBase = "px-3 py-1.5 rounded-full text-[11px] font-bold border flex items-center shadow-sm transition-all";

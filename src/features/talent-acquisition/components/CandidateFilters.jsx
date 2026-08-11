@@ -5,7 +5,7 @@ import {
     interviewFilterOptions,
     dateFilterFieldOptions,
     DEFAULT_DATE_FILTER_FIELD
-} from '../CandidateListConstants';
+} from '@/features/talent-acquisition/utils/CandidateListConstants';
 
 const CandidateFilters = ({
     selectedCandidateId,

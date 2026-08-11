@@ -1,4 +1,4 @@
-import { PIPELINE_FIXED_STAGES } from '../CandidateListConstants';
+import { PIPELINE_FIXED_STAGES } from '@/features/talent-acquisition/utils/CandidateListConstants';
 
 /**
  * buildDynamicPipeline

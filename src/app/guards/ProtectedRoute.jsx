@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAppSelector } from '@/app/hooks';
+import { selectToken, selectCurrentUser, selectHasModule } from '@/features/auth/authSlice';
 
 const ProtectedRoute = ({
   children,
@@ -14,7 +15,9 @@ const ProtectedRoute = ({
   redirectTo = '/unauthorized'
 }) => {
   const location = useLocation();
-  const { token, user, hasModule } = useAuth();
+  const token = useAppSelector(selectToken);
+  const user = useAppSelector(selectCurrentUser);
+  const hasModuleAccess = useAppSelector((state) => (moduleName ? selectHasModule(state, moduleName) : true));
 
   if (!token) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -24,7 +27,7 @@ const ProtectedRoute = ({
     return null;
   }
 
-  if (moduleName && !hasModule(moduleName)) {
+  if (moduleName && !hasModuleAccess) {
     return <Navigate to={redirectTo} replace />;
   }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { History, X, Briefcase } from 'lucide-react';
-import Button from '../../components/Button';
-import { fmtMoney, PT_STATE_LIST } from '../../utils/payroll';
+import Button from '@/components/ui/Button';
+import { fmtMoney, PT_STATE_LIST } from '@/features/payroll/utils/payroll';
 
 export const ReviseSalaryModal = ({
     showRevisionModal,

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RotateCcw, Trash2, Archive, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { emptyBin, getBinItems, permanentDeleteBinItem, restoreBinItem } from '../api/bin';
+import { emptyBin, getBinItems, permanentDeleteBinItem, restoreBinItem } from '@/features/recycle-bin/api/bin';
 
 const ENTITY_OPTIONS = [
     { key: 'project', label: 'Projects' },

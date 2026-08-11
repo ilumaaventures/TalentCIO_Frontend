@@ -1,6 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import CandidateDetails from '../../CandidateDetails';
+import CandidateDetails from '@/features/talent-acquisition/pages/CandidateDetails';
 
 const CandidateSidePanel = ({
     selectedCandidateId,

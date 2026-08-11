@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Clock, Download, Briefcase, CheckSquare, Calendar, Edit2, Trash2, ChevronRight, ChevronLeft, Layers, Loader2, LogOut, CheckCircle, XCircle, Info, Search, X, Sparkles, Check } from 'lucide-react';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, subDays, startOfDay } from 'date-fns';
-import AttendanceAttachmentsView from '../components/AttendanceAttachmentsView';
-import AttendanceCalendar from '../components/AttendanceCalendar';
-import Button from '../components/Button';
-import useDebouncedValue from '../hooks/useDebouncedValue';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
-import { RGDocumentTracker, canViewRGDocumentTracker, isRGWorkspace } from '../features/rg-attendance';
-import DossierIncompleteModal from '../components/DossierIncompleteModal';
+import AttendanceAttachmentsView from '@/features/attendance/components/AttendanceAttachmentsView';
+import AttendanceCalendar from '@/features/attendance/components/AttendanceCalendar';
+import Button from '@/components/ui/Button';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
+import { RGDocumentTracker, canViewRGDocumentTracker, isRGWorkspace } from '@/features/attendance';
+import DossierIncompleteModal from '@/features/employee-dossier/components/DossierIncompleteModal';
 
 const ATTENDANCE_CACHE_TTL_MS = 20 * 1000;
 const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
@@ -348,6 +348,8 @@ const Attendance = () => {
 
         if (tab && allowedTabs.includes(tab)) {
             setActiveTab(tab);
+        } else if (location.pathname.includes('approvals') || location.pathname.includes('regularize')) {
+            setActiveTab('regularize');
         } else if (tab === 'rg-documents-summary' && !showRGDocumentTrackerTab) {
             setActiveTab(showDocumentsTab ? 'documents' : 'history');
         }
@@ -436,9 +438,11 @@ const Attendance = () => {
     const fetchRegularizations = async () => {
         try {
             const res = await api.get('/attendance/regularizations');
-            setRegularizationRequests(res.data);
+            const requestsList = Array.isArray(res.data) ? res.data : (res.data?.requests || []);
+            setRegularizationRequests(requestsList);
         } catch (error) {
             console.error('Error fetching regularizations', error);
+            setRegularizationRequests([]);
         }
     };
 
@@ -539,7 +543,8 @@ const Attendance = () => {
     const processRegularization = async (id, status, rejectionReason = '') => {
         setProcessingRegId(id);
         try {
-            await api.patch(`/attendance/regularize/${id}`, { status, rejectionReason });
+            const action = status === 'APPROVED' ? 'APPROVE' : status === 'REJECTED' ? 'REJECT' : status;
+            await api.patch(`/attendance/regularize/${id}`, { action, status, rejectionReason });
             toast.success(`Request ${status.toLowerCase()}ed`);
             fetchRegularizations();
             const now = new Date();
@@ -2767,7 +2772,8 @@ const AssignedTasksView = ({
     );
 };
 
-const RegularizationRequestsView = ({ requests, onProcess, processingId, currentUser }) => {
+const RegularizationRequestsView = ({ requests: rawRequests, onProcess, processingId, currentUser }) => {
+    const requests = Array.isArray(rawRequests) ? rawRequests : (rawRequests?.requests || []);
     const isAdmin = currentUser?.roles?.some(r => r.name === 'Admin' || r === 'Admin');
 
     if (requests.length === 0) {

@@ -4,10 +4,10 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import api from '../../api/axios';
-import Button from '../../components/Button';
-import { buildMasterSalaryStructure, fmtMoney } from '../../utils/payroll';
-import { Field, PendingHighlight, SectionCard } from '../EmployeeDossier/DossierHelpers';
+import api from '@/lib/apiClient';
+import Button from '@/components/ui/Button';
+import { buildMasterSalaryStructure, fmtMoney } from '@/features/payroll/utils/payroll';
+import { Field, PendingHighlight, SectionCard } from '@/features/employee-dossier/utils/DossierHelpers';
 
 import CTCSnapshotCard from './CTCSnapshotCard';
 import ReviseSalaryModal from './ReviseSalaryModal';

@@ -1,4 +1,4 @@
-import api from './axios';
+import api from '@/lib/apiClient';
 
 export const getBinItems = (entity, page = 1, limit = 20) =>
     api.get('/bin', {

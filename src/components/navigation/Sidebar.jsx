@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { getBinItems } from '../api/bin';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import { getBinItems } from '@/features/recycle-bin/api/bin';
 import {
   ArrowLeft,
   BarChart3,

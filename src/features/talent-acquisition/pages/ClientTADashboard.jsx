@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import api from '../../api/axios';
-import Skeleton from '../../components/Skeleton';
+import api from '@/lib/apiClient';
+import Skeleton from '@/components/ui/Skeleton';
 import { Briefcase, Users, FileCheck, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -44,8 +44,10 @@ const ClientTADashboard = ({ clientName }) => {
                 setLoading(true);
                 const query = selectedReqId !== 'All' ? `?hiringRequestId=${selectedReqId}` : '';
                 const res = await api.get(`/ta/analytics/client/${encodeURIComponent(clientName)}${query}`);
-                if (res.data.success) {
-                    setData(res.data.data);
+                const payload = res.data?.data || (res.data?.requisitions !== undefined ? res.data : null);
+                if (payload) {
+                    setData(payload);
+                    setError(null);
                 } else {
                     setError('Failed to load client TA metrics');
                 }
@@ -83,8 +85,8 @@ const ClientTADashboard = ({ clientName }) => {
     // Prepare Bar Chart Data for requested phases
     const barData = [
         { name: 'Sourced', value: data.totalSourced || 0, fill: '#3b82f6' },
-        { name: 'Shortlisted in 2nd Phase', value: data.pipeline['Phase 2 Shortlisted'] || 0, fill: '#8b5cf6' },
-        { name: 'Joined', value: data.pipeline['Joined'] || 0, fill: '#10b981' }
+        { name: 'Shortlisted in 2nd Phase', value: data.pipeline?.['Phase 2 Shortlisted'] || 0, fill: '#8b5cf6' },
+        { name: 'Joined', value: data.pipeline?.['Joined'] || 0, fill: '#10b981' }
     ];
 
     return (
@@ -118,28 +120,28 @@ const ClientTADashboard = ({ clientName }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
                     title="Total Requisitions"
-                    value={data.totalReqs}
-                    subtitle={`${data.activeReqs} Active | ${data.closedReqs} Closed`}
+                    value={data.totalReqs || 0}
+                    subtitle={`${data.activeReqs || 0} Active | ${data.closedReqs || 0} Closed`}
                     icon={Briefcase}
                     colorClass="bg-blue-50 text-blue-600"
                 />
                 <StatCard
                     title="Open Positions"
-                    value={data.totalOpenPositions}
+                    value={data.totalOpenPositions || 0}
                     subtitle="Currently seeking"
                     icon={Users}
                     colorClass="bg-purple-50 text-purple-600"
                 />
                 <StatCard
                     title="Total Hired"
-                    value={data.pipeline['Joined'] || 0}
-                    subtitle={`Hiring Ratio: ${data.hiringRatio}%`}
+                    value={data.pipeline?.['Joined'] || 0}
+                    subtitle={`Hiring Ratio: ${data.hiringRatio || 0}%`}
                     icon={FileCheck}
                     colorClass="bg-emerald-50 text-emerald-600"
                 />
                 <StatCard
                     title="In Interviews"
-                    value={data.pipeline['Phase 2 In Interviews'] || 0}
+                    value={data.pipeline?.['Phase 2 In Interviews'] || 0}
                     subtitle="Active pipeline"
                     icon={Users}
                     colorClass="bg-amber-50 text-amber-600"
@@ -177,17 +179,17 @@ const ClientTADashboard = ({ clientName }) => {
                     <div className="space-y-4">
                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                             <p className="text-sm text-slate-600">
-                                This client currently has <span className="font-bold text-slate-800">{data.activeReqs} active hiring requests</span> seeking to fill <span className="font-bold text-slate-800">{data.totalOpenPositions} positions</span>.
+                                This client currently has <span className="font-bold text-slate-800">{data.activeReqs || 0} active hiring requests</span> seeking to fill <span className="font-bold text-slate-800">{data.totalOpenPositions || 0} positions</span>.
                             </p>
                         </div>
                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                             <p className="text-sm text-slate-600">
-                                The historic hiring ratio for this client is <span className="font-bold text-slate-800">{data.hiringRatio}%</span> (Hired vs Sourced).
+                                The historic hiring ratio for this client is <span className="font-bold text-slate-800">{data.hiringRatio || 0}%</span> (Hired vs Sourced).
                             </p>
                         </div>
                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                             <p className="text-sm text-slate-600">
-                                Current bottleneck check: There are <span className="font-bold text-slate-800">{data.pipeline['Phase 2 In Interviews'] || 0}</span> candidates actively interviewing across {selectedReqId === 'All' ? 'all requisitions' : 'this requisition'}.
+                                Current bottleneck check: There are <span className="font-bold text-slate-800">{data.pipeline?.['Phase 2 In Interviews'] || 0}</span> candidates actively interviewing across {selectedReqId === 'All' ? 'all requisitions' : 'this requisition'}.
                             </p>
                         </div>
                     </div>

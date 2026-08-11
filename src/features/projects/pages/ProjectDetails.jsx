@@ -2,13 +2,13 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock, LayoutList, ListTree, GanttChart, ChevronDown, ChevronRight, ListChecks, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
-import { useAuth } from '../context/AuthContext';
-import Button from '../components/Button';
-import { createCachePayload } from '../utils/cache';
+import Skeleton from '@/components/ui/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import Button from '@/components/ui/Button';
+import { createCachePayload } from '@/lib/cache';
 import { format, differenceInDays, addDays, isValid } from 'date-fns';
 
 const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');

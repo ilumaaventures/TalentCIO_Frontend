@@ -1,22 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle, Camera } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
-import useDebouncedValue from '../hooks/useDebouncedValue';
-import { buildMasterSalaryStructure, buildPayrollSnapshot, PT_STATE_LIST } from '../utils/payroll';
-import CompensationFormSection from '../components/compensation/CompensationFormSection';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
+import { buildMasterSalaryStructure, buildPayrollSnapshot, PT_STATE_LIST } from '@/features/payroll/utils/payroll';
+import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
 import {
   ONBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
   getSupportedPlaceholderTokens,
   renderTemplateBody,
   resolveTemplate,
   validateTemplateSyntax
-} from '../utils/templatePlaceholders';
+} from '@/features/email/utils/templatePlaceholders';
 
 const parseBool = (val, defaultVal = true) => {
   if (val === false || val === 'false') return false;

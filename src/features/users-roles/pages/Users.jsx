@@ -1,18 +1,18 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight, Eye, EyeOff, Settings2, HelpCircle, Check, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
-import { createCachePayload, readSessionCache } from '../utils/cache';
-import { exportCandidateHRIS } from '../utils/hrisExporter';
-import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData, parseBool } from '../utils/payroll';
-import CompensationFormSection from '../components/compensation/CompensationFormSection';
+import { createCachePayload, readSessionCache } from '@/lib/cache';
+import { exportCandidateHRIS } from '@/features/employee-dossier/utils/hrisExporter';
+import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData, parseBool } from '@/features/payroll/utils/payroll';
+import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
 
 
 const DEFAULT_ATTENDANCE_SHIFTS = [

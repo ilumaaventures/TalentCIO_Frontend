@@ -1,9 +1,10 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAppSelector } from '@/app/hooks';
+import { selectCurrentUser } from '@/features/auth/authSlice';
 
 const SystemRoute = ({ children }) => {
-    const { user } = useAuth();
+    const user = useAppSelector(selectCurrentUser);
 
     // Check for System Roles (Admin) or All Permissions (Wildcards like *, all, admin)
     const hasAdminPermission = user?.permissions?.some(p => p === '*' || p === 'all' || p === 'admin');

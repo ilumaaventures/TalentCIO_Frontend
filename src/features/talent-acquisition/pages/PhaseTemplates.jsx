@@ -13,9 +13,9 @@ import {
     X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../../api/axios';
-import Skeleton from '../../../components/Skeleton';
-import { useAuth } from '../../../context/AuthContext';
+import api from '@/lib/apiClient';
+import Skeleton from '@/components/ui/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const createLocalId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -433,11 +433,18 @@ const PhaseTemplates = () => {
                             {templates.map((template) => {
                                 const isSelected = selectedTemplate?._id === template._id;
                                 return (
-                                    <button
+                                    <div
                                         key={template._id}
-                                        type="button"
+                                        role="button"
+                                        tabIndex={0}
                                         onClick={() => setSelectedTemplateId(template._id)}
-                                        className={`w-full rounded-2xl border p-4 text-left transition ${
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                event.preventDefault();
+                                                setSelectedTemplateId(template._id);
+                                            }
+                                        }}
+                                        className={`w-full cursor-pointer rounded-2xl border p-4 text-left transition ${
                                             isSelected
                                                 ? 'border-blue-200 bg-blue-50 shadow-sm'
                                                 : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
@@ -513,7 +520,7 @@ const PhaseTemplates = () => {
                                         ) : (
                                             <div className="mt-4 text-xs font-semibold text-slate-400">Read only</div>
                                         )}
-                                    </button>
+                                    </div>
                                 );
                             })}
                         </div>

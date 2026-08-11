@@ -1,13 +1,13 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     ArrowLeft, User as UserIcon, Calendar, Clock, AlertCircle,
     CheckCircle, MessageSquare, Send, Check, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { format } from 'date-fns';
 import { io } from 'socket.io-client';
 

@@ -8,7 +8,7 @@ import {
   AUDIENCE_TYPE_LABELS,
   getCategoryTheme,
   getDisplayName,
-} from './announcementUtils';
+} from '@/features/announcements/utils/announcementUtils';
 
 const getFocusableElements = (container) => {
   if (!container) return [];

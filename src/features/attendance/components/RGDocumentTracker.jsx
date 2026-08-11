@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { ExternalLink, Loader2, RefreshCw, Users, X } from 'lucide-react';
-import { useRGDocumentSummary } from '../hooks/useRGDocumentSummary';
-import api from '../../../api/axios';
+import { useRGDocumentSummary } from '@/features/attendance/hooks/useRGDocumentSummary';
+import api from '@/lib/apiClient';
 
 const formatTimestamp = (value) => {
   if (!value) return '-';

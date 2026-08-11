@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { normalizeMultiValueFilter, getMultiFilterLabel } from '../utils/candidateHelpers';
+import { normalizeMultiValueFilter, getMultiFilterLabel } from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const MultiSelectFilter = ({
     label,

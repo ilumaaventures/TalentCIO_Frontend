@@ -1,15 +1,15 @@
 import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, MoreVertical, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Download, Loader } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
 
 const useDebounce = (value, delay) => {
     const [debouncedValue, setDebouncedValue] = useState(value);

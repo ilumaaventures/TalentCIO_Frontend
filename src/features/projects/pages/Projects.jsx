@@ -1,13 +1,13 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
-import Button from '../components/Button';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import Skeleton from '@/components/ui/Skeleton';
+import Button from '@/components/ui/Button';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
 
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const Projects = () => {
     const { user } = useAuth();

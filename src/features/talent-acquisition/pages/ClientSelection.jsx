@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Users, Briefcase, ChevronRight, Search, Clock, CheckCircle, TrendingUp, Plus } from 'lucide-react';
-import Skeleton from '../../components/Skeleton';
-import { useAuth } from '../../context/AuthContext';
-import { isCacheFresh } from '../../utils/cache';
-import { readTAClientsCache, refreshTAClientsCache } from '../../utils/taCache';
+import Skeleton from '@/components/ui/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import { isCacheFresh } from '@/lib/cache';
+import { readTAClientsCache, refreshTAClientsCache } from '@/features/talent-acquisition/utils/taCache';
 
 const ClientSelection = () => {
     const { user } = useAuth();

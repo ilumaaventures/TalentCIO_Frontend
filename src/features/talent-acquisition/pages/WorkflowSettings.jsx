@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import { Plus, Trash2, Save, X, Check, ArrowRight, Loader } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import Skeleton from '../../components/Skeleton';
-import { useAuth } from '../../context/AuthContext';
+import Skeleton from '@/components/ui/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const WorkflowSettings = () => {
     const { user } = useAuth();

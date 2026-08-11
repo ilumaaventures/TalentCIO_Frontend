@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import api from '../../api/axios';
-import { useAuth } from '../../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { ArrowLeft, Save, Send, Briefcase, Users, FileText, DollarSign, X, Loader, Upload, Paperclip } from 'lucide-react';
 import toast from 'react-hot-toast';
-import WorkflowSettings from './WorkflowSettings';
-import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '../../utils/taCache';
-import UserMultiSelect from '../../components/UserMultiSelect';
+import WorkflowSettings from '@/features/talent-acquisition/pages/WorkflowSettings';
+import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '@/features/talent-acquisition/utils/taCache';
+import UserMultiSelect from '@/components/common/UserMultiSelect';
 
 const SALARY_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR'];
 const NO_TEMPLATE_OPTION = 'STANDARD_3_PHASE_PROCESS';
@@ -379,6 +379,16 @@ const CreateHiringRequest = () => {
                 }
                 if (!formData.purpose) {
                     toast.error('Hiring Purpose is required');
+                    setLoading(false);
+                    return;
+                }
+                if (!formData.location?.trim()) {
+                    toast.error('Work Location is required');
+                    setLoading(false);
+                    return;
+                }
+                if (!formData.openPositions || isNaN(Number(formData.openPositions)) || Number(formData.openPositions) <= 0) {
+                    toast.error('Number of Open Positions is required');
                     setLoading(false);
                     return;
                 }

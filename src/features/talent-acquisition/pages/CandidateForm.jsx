@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, Upload, Loader, ArrowLeft, Plus, Trash, CheckCircle, ChevronDown, Search, Eye, EyeOff } from 'lucide-react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import Skeleton from '../../components/Skeleton';
-import DocPreviewer from '../../components/DocPreviewer';
-import api from '../../api/axios';
+import Skeleton from '@/components/ui/Skeleton';
+import DocPreviewer from '@/components/common/DocPreviewer';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 
 const sortRequestPhases = (request) => (

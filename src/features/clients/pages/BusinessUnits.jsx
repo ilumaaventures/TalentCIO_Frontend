@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Building, Plus } from 'lucide-react';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
 
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 const BusinessUnits = () => {
     const { user } = useAuth();
     const canCreate = user?.roles?.includes('Admin') || user?.permissions?.includes('business_unit.create');

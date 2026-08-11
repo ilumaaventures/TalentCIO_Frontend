@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react';
 import * as ExcelJS from 'exceljs';
 import { X, Upload, FileText, CheckCircle, XCircle, AlertCircle, Loader, ArrowRight, Download } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const normalizeSkillLabel = (value) => String(value || '').trim();
 const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();

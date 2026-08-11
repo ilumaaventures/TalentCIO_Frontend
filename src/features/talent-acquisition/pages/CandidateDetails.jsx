@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import api from '../../api/axios';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { Loader, ArrowLeft, Download, Plus, CheckCircle, CheckCircle2, XCircle, Clock, User, Calendar, MessageSquare, Trash2, Edit2, Edit3, FileText, ExternalLink, Maximize2, Eye, Mail, Send, X } from 'lucide-react';
 import { format } from 'date-fns';
-import Skeleton from '../../components/Skeleton';
-import DocPreviewer from '../../components/DocPreviewer';
-import { ProfileReviewModal } from './PublicApplicationsView';
-import { canViewTACandidateDetails } from '../../constants/accessPolicies';
+import Skeleton from '@/components/ui/Skeleton';
+import DocPreviewer from '@/components/common/DocPreviewer';
+import { ProfileReviewModal } from '@/features/talent-acquisition/components/PublicApplicationsView';
+import { canViewTACandidateDetails } from '@/config/accessPolicies';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&

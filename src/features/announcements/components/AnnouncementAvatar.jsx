@@ -1,5 +1,5 @@
 import React from 'react';
-import { getDisplayName, getInitials } from './announcementUtils';
+import { getDisplayName, getInitials } from '@/features/announcements/utils/announcementUtils';
 
 /**
  * @param {object} props

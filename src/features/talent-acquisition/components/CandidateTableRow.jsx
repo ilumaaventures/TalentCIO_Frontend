@@ -12,7 +12,7 @@ import {
     getDisplayInterviewRoundsForPhase,
     getInterviewStatusSummary,
     getDecisionColor
-} from '../utils/candidateHelpers';
+} from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const InterviewRoundCellCard = ({ round, roundName, onClick }) => {
     if (!round) {

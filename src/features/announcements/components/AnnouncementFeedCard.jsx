@@ -27,7 +27,7 @@ import {
   canReactToAnnouncement,
   canCommentOnAnnouncement,
   canViewAnnouncementReactions,
-} from './announcementUtils';
+} from '@/features/announcements/utils/announcementUtils';
 
 const REACTION_META = {
   like: {
@@ -204,7 +204,7 @@ const AnnouncementFeedCard = ({
           </div>
         </div>
 
-        {announcement?.canManage ? (
+        {(announcement?.canManage || announcement?.canEdit) ? (
           <div className="flex items-center gap-2">
             {onViewAcknowledgements ? (
               <button

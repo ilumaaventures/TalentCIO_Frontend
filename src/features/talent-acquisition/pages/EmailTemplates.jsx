@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit, Eye, Plus, Trash2, X } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     getSupportedPlaceholderTokens,
     renderTemplateBody,
     TEMPLATE_PLACEHOLDERS,
     resolveTemplate,
     validateTemplateSyntax
-} from '../../utils/templatePlaceholders';
+} from '@/features/email/utils/templatePlaceholders';
 
 const SAMPLE_DATA = {
     candidateName: 'Aarav Mehta',

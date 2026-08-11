@@ -1,12 +1,12 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Calendar, Plus, Clock, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { format } from 'date-fns';
-import { createCachePayload } from '../utils/cache';
+import { createCachePayload } from '@/lib/cache';
 
 const Meetings = () => {
     const { user } = useAuth();

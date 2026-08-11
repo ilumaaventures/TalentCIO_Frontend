@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import api from '../../../api/axios';
+import api from '@/lib/apiClient';
 
 export const useRGDocumentSummary = ({ month, enabled = true }) => {
   const [records, setRecords] = useState([]);

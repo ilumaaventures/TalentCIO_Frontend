@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Users, Plus, MoreVertical } from 'lucide-react';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
-import Skeleton from '../components/Skeleton';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
+import Skeleton from '@/components/ui/Skeleton';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import toast from 'react-hot-toast';
 import ClientForm from './ClientForm';
 

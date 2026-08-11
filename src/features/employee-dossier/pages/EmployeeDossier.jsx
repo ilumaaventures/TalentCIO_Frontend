@@ -1,29 +1,29 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     User, Briefcase, FileText, DollarSign, Calendar, Shield, Settings,
     ArrowLeft, CheckCircle, AlertCircle, X, Search, Clock, AlertTriangle, Info, Mail
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { format } from 'date-fns';
-import Button from '../components/Button';
+import Button from '@/components/ui/Button';
 
 // Modular Tab Components
-import { PersonalTab } from './EmployeeDossier/PersonalTab';
-import { EmploymentTab } from './EmployeeDossier/EmploymentTab';
-import { SalaryTab } from './Salary/SalaryTab';
-import { DocumentsTab } from './EmployeeDossier/DocumentsTab';
-import { HrisTab } from './EmployeeDossier/HrisTab';
-import { HistoryTab } from './EmployeeDossier/HistoryTab';
-import { EmailHistoryTab } from './EmployeeDossier/EmailHistoryTab';
-import { HrisRequestsTab } from './EmployeeDossier/HrisRequestsTab';
-import { SettingsTab } from './EmployeeDossier/SettingsTab';
+import { PersonalTab } from '@/features/employee-dossier/components/PersonalTab';
+import { EmploymentTab } from '@/features/employee-dossier/components/EmploymentTab';
+import { SalaryTab } from '@/features/payroll/components/SalaryTab';
+import { DocumentsTab } from '@/features/employee-dossier/components/DocumentsTab';
+import { HrisTab } from '@/features/employee-dossier/components/HrisTab';
+import { HistoryTab } from '@/features/employee-dossier/components/HistoryTab';
+import { EmailHistoryTab } from '@/features/employee-dossier/components/EmailHistoryTab';
+import { HrisRequestsTab } from '@/features/employee-dossier/components/HrisRequestsTab';
+import { SettingsTab } from '@/features/employee-dossier/components/SettingsTab';
 
 // Shared Helpers
-import { mergePendingIntoProfile } from './EmployeeDossier/DossierHelpers';
+import { mergePendingIntoProfile } from '@/features/employee-dossier/utils/DossierHelpers';
 
 const DEFAULT_COMPANY_LOGO_ALIGNMENT = 'left';
 const DEFAULT_COMPANY_LOGO_SIZE = 140;
@@ -242,17 +242,36 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
     }, [userId, fetchDossier]);
 
-    const fetchHRISRequests = async () => {
+    const fetchHRISRequests = useCallback(async () => {
         try {
             setLoadingRequests(true);
             const res = await api.get('/dossier/requests');
-            setHrisRequests(res.data);
+            setHrisRequests(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error('Failed to fetch HRIS requests', error);
         } finally {
             setLoadingRequests(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        if (queryTab) {
+            setActiveTab(queryTab);
+        }
+    }, [queryTab]);
+
+    useEffect(() => {
+        if (activeTab === 'requests') {
+            fetchHRISRequests();
+        }
+    }, [activeTab, fetchHRISRequests]);
+
+    const handleViewForm = useCallback((targetUserId) => {
+        setActiveTab('hris');
+        if (targetUserId) {
+            navigate(`/dossier/${targetUserId}?tab=hris`);
+        }
+    }, [navigate]);
 
     const handleHRISApproveOther = async (id) => {
         try {
@@ -930,6 +949,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             handleHRISApproveOther={handleHRISApproveOther}
                             handleHRISRejectOther={handleHRISRejectOther}
                             handleExcelExport={handleExcelExport}
+                            onViewForm={handleViewForm}
                         />
                     )}
                     {activeTab === 'settings' && (

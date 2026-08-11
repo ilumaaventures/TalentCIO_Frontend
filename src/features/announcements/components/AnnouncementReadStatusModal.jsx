@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Search, CheckCircle2, Clock, Users, ArrowUpRight, Loader } from 'lucide-react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import AnnouncementAvatar from './AnnouncementAvatar';
-import { formatAnnouncementDateTime } from './announcementUtils';
+import { formatAnnouncementDateTime } from '@/features/announcements/utils/announcementUtils';
 
 const AnnouncementReadStatusModal = ({ announcementId, onClose }) => {
   const [data, setData] = useState({ read: [], unread: [] });

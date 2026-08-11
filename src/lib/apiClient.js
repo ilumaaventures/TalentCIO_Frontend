@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { clearAuthSession, getStoredAccessToken } from '../utils/authStorage';
+import { clearAuthSession, getStoredAccessToken } from '@/features/auth/utils/authStorage';
 
 const API_TIMEOUT_MS = 40000;
 const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);

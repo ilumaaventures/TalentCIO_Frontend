@@ -5,7 +5,7 @@ import AnnouncementAttachmentCard from './AnnouncementAttachmentCard';
 import {
   formatAnnouncementDateTime,
   getCategoryTheme,
-} from './announcementUtils';
+} from '@/features/announcements/utils/announcementUtils';
 
 const getFocusableElements = (container) => {
   if (!container) return [];
@@ -88,7 +88,12 @@ const AnnouncementUnreadModal = ({
         <div className="border-b border-slate-200 px-6 py-5 sm:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <img src="/talentcio-logo.png" alt="TalentCIO" className="h-10 w-auto" />
+              <img
+                src="/talentcio-logo.png"
+                alt="TalentCIO"
+                className="h-10 w-auto object-contain"
+                onError={(e) => { e.currentTarget.src = '/dark-logo-compact.png'; }}
+              />
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Unread Announcement</div>
                 <h1 id="announcement-gate-title" className="mt-1 text-xl font-semibold text-slate-900">

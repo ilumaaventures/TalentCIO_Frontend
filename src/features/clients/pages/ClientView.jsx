@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Building2, Users, User, Globe, Mail, MapPin, Phone, Briefcase, ChevronRight } from 'lucide-react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
-import ClientTADashboard from './TalentAcquisition/ClientTADashboard';
-import ClientForm from './ClientForm';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import ClientTADashboard from '@/features/talent-acquisition/pages/ClientTADashboard';
+import ClientForm from '@/features/clients/pages/ClientForm';
 
 const Field = ({ label, value, icon: Icon }) => (
     <div>

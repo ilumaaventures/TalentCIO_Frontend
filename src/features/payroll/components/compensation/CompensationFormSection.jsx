@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../../api/axios';
+import api from '@/lib/apiClient';
 import DeliverableRateCardEditor from './DeliverableRateCardEditor';
 import CustomAllowancesEditor from './CustomAllowancesEditor';
 import CustomDeductionsEditor from './CustomDeductionsEditor';

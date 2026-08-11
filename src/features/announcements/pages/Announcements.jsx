@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Megaphone, PencilLine, Pin, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocation, useNavigate } from 'react-router-dom';
-import api from '../api/axios';
-import socket from '../api/socket';
-import { useAuth } from '../context/AuthContext';
-import AnnouncementCommunitySidebar from '../components/announcements/AnnouncementCommunitySidebar';
-import AnnouncementComposerDrawer from '../components/announcements/AnnouncementComposerDrawer';
-import AnnouncementFeedCard from '../components/announcements/AnnouncementFeedCard';
-import AnnouncementReadStatusModal from '../components/announcements/AnnouncementReadStatusModal';
+import api from '@/lib/apiClient';
+import socket from '@/lib/socket';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import AnnouncementCommunitySidebar from '@/features/announcements/components/AnnouncementCommunitySidebar';
+import AnnouncementComposerDrawer from '@/features/announcements/components/AnnouncementComposerDrawer';
+import AnnouncementFeedCard from '@/features/announcements/components/AnnouncementFeedCard';
+import AnnouncementReadStatusModal from '@/features/announcements/components/AnnouncementReadStatusModal';
 import {
   buildAnnouncementPayload,
   createOptimisticComment,
@@ -21,7 +21,7 @@ import {
   canViewAnnouncementCommunitySection,
   isAnnouncementManager,
   sortAnnouncementsByPublishedAt,
-} from '../components/announcements/announcementUtils';
+} from '@/features/announcements/utils/announcementUtils';
 
 const EMPTY_COMMUNITY_DATA = {
   month: { year: new Date().getFullYear(), month: new Date().getMonth() + 1 },
@@ -142,14 +142,15 @@ const Announcements = () => {
         setFeedLoading(true);
       }
 
-      const requests = [api.get('/announcements')];
+      const timestamp = Date.now();
+      const requests = [api.get(`/announcements?_t=${timestamp}`)];
 
       if (canViewCommunitySidebar) {
-        requests.push(api.get('/announcements/community'));
+        requests.push(api.get(`/announcements/community?_t=${timestamp}`));
       }
 
       if (userCanManage) {
-        requests.push(api.get('/announcements?scope=manage&limit=50'));
+        requests.push(api.get(`/announcements?scope=manage&limit=50&_t=${timestamp}`));
       }
 
       const responses = await Promise.all(requests);
@@ -338,21 +339,24 @@ const Announcements = () => {
       if (editingAnnouncement?._id === announcementId) {
         closeComposer();
       }
+      await loadPageData(true);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to delete the announcement.');
     } finally {
       setDeletingAnnouncementId('');
     }
-  }, [closeComposer, editingAnnouncement?._id]);
+  }, [closeComposer, editingAnnouncement?._id, loadPageData]);
 
   const handleTogglePin = useCallback(async (announcement) => {
     try {
       setPinningAnnouncementId(announcement._id);
-      const payload = buildAnnouncementPayload(announcement, {
+      const form = buildFormFromAnnouncement({
+        ...announcement,
         pinned: !announcement.pinned,
-        expiresAt: announcement.expiresAt ? formatDateInputValue(announcement.expiresAt) : null,
+        expiresAt: announcement.expiresAt ? formatDateInputValue(announcement.expiresAt) : '',
       });
-      const response = await api.put(`/announcements/${announcement._id}`, payload);
+      const formData = buildAnnouncementFormData(form, announcement.status || 'published');
+      const response = await api.put(`/announcements/${announcement._id}`, formData);
       syncAnnouncementEverywhere(response.data?.announcement);
       toast.success(response.data?.announcement?.pinned ? 'Announcement pinned.' : 'Announcement unpinned.');
     } catch (error) {

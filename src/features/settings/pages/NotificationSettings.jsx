@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Bell, Loader2, Mail, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../api/axios';
-import { useAuth } from '../../context/AuthContext';
+import api from '@/lib/apiClient';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const CHANNEL_LABELS = {
     off: 'Off',

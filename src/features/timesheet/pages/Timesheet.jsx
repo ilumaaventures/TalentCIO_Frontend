@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
-import api from '../api/axios';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import api from '@/lib/apiClient';
 import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText, Paperclip, Trash2, Upload, Loader2, Eye } from 'lucide-react';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import { format, startOfISOWeek, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import AttendanceAttachmentsView from '../components/AttendanceAttachmentsView';
-import AttendanceCalendar from '../components/AttendanceCalendar';
-import Button from '../components/Button';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
-import DossierIncompleteModal from '../components/DossierIncompleteModal';
+import AttendanceAttachmentsView from '@/features/attendance/components/AttendanceAttachmentsView';
+import AttendanceCalendar from '@/features/attendance/components/AttendanceCalendar';
+import Button from '@/components/ui/Button';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
+import DossierIncompleteModal from '@/features/employee-dossier/components/DossierIncompleteModal';
 
 const TIMESHEET_CACHE_TTL_MS = 20 * 1000;
 const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');

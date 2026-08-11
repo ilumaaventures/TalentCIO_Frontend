@@ -11,7 +11,8 @@ export const HrisRequestsTab = ({
     setHrisSearchTerm,
     handleHRISApproveOther,
     handleHRISRejectOther,
-    handleExcelExport
+    handleExcelExport,
+    onViewForm
 }) => {
     const navigate = useNavigate();
 
@@ -103,7 +104,11 @@ export const HrisRequestsTab = ({
                                                 )}
                                                 <button
                                                     onClick={() => {
-                                                        navigate(`/dossier/${req._id}?tab=hris`);
+                                                        if (onViewForm) {
+                                                            onViewForm(req._id);
+                                                        } else {
+                                                            navigate(`/dossier/${req._id}?tab=hris`);
+                                                        }
                                                     }}
                                                     className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                                     title="View Form"

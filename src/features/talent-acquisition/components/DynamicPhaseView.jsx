@@ -6,17 +6,17 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import api from '../../../api/axios';
-import Skeleton from '../../../components/Skeleton';
-import { useAuth } from '../../../context/AuthContext';
-import useDebouncedValue from '../../../hooks/useDebouncedValue';
-import BulkCandidateImport from '../BulkCandidateImport';
-import BulkResumeImport from '../BulkResumeImport';
-import MassMailModal from '../MassMailModal';
-import BulkTransferModal from '../BulkTransferModal';
-import MassInterviewScheduleModal from '../MassInterviewScheduleModal';
-import { canViewTACandidateDetails } from '../../../constants/accessPolicies';
-import EditableBadge from './components/EditableBadge';
+import api from '@/lib/apiClient';
+import Skeleton from '@/components/ui/Skeleton';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
+import BulkCandidateImport from '@/features/talent-acquisition/components/BulkCandidateImport';
+import BulkResumeImport from '@/features/talent-acquisition/components/BulkResumeImport';
+import MassMailModal from '@/features/talent-acquisition/components/MassMailModal';
+import BulkTransferModal from '@/features/talent-acquisition/components/BulkTransferModal';
+import MassInterviewScheduleModal from '@/features/talent-acquisition/components/MassInterviewScheduleModal';
+import { canViewTACandidateDetails } from '@/config/accessPolicies';
+import EditableBadge from '@/features/talent-acquisition/components/EditableBadge';
 
 
 const TOTAL_CANDIDATE_CARD_KEY = 'total_candidates';
@@ -257,7 +257,7 @@ const hasCandidateCtcDetails = (candidate) => (
     || (candidate?.noticePeriod !== undefined && candidate?.noticePeriod !== null && candidate?.noticePeriod !== '')
 );
 
-const DynamicPhaseView = ({ hiringRequest }) => {
+const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [phases, setPhases] = useState((hiringRequest?.phases || []).slice().sort((left, right) => left.order - right.order));

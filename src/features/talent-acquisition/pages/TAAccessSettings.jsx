@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BriefcaseBusiness, Building2, Loader, ShieldCheck, Users, UserSquare2, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../api/axios';
-import Skeleton from '../../components/Skeleton';
-import UserMultiSelect from '../../components/UserMultiSelect';
-import { useAuth } from '../../context/AuthContext';
-import useDebouncedValue from '../../hooks/useDebouncedValue';
+import api from '@/lib/apiClient';
+import Skeleton from '@/components/ui/Skeleton';
+import UserMultiSelect from '@/components/common/UserMultiSelect';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
 
 const tabOptions = [
     { id: 'overview', label: 'Overview', icon: ShieldCheck },

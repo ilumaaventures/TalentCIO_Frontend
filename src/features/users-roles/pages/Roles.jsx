@@ -1,10 +1,10 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Check } from 'lucide-react';
-import Skeleton from '../components/Skeleton';
+import Skeleton from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
-import { createCachePayload, isCacheFresh, readSessionCache } from '../utils/cache';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
 
 const LEGACY_HIDDEN_PERMISSION_KEYS = new Set(['ta.analytics.requisition']);
 const TA_PERMISSION_MODULE = 'TALENT ACQUISITION';

@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
-import useDebouncedValue from '../hooks/useDebouncedValue';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
 import {
   OFFBOARDING_EMAIL_TEMPLATE_PLACEHOLDERS,
   getSupportedPlaceholderTokens,
   renderTemplateBody,
   resolveTemplate
-} from '../utils/templatePlaceholders';
+} from '@/features/email/utils/templatePlaceholders';
 import {
   AlertCircle,
   FileText,

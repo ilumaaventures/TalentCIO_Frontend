@@ -1,9 +1,9 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import api from '../api/axios';
+import api from '@/lib/apiClient';
 import { Save, X, Plus, Trash2, Calendar, Clock, AlignLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const MeetingForm = () => {
     const { id } = useParams();

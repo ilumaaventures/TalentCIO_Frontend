@@ -1,5 +1,5 @@
-import api from '../api/axios';
-import { createCachePayload, readSessionCache } from './cache';
+import api from '@/lib/apiClient';
+import { createCachePayload, readSessionCache } from '@/lib/cache';
 
 export const TA_CLIENT_CACHE_KEY = 'ta_client_selection_v1';
 export const TA_CLIENT_LOCAL_CACHE_KEY = 'ta_client_selection_local_v1';
