@@ -95,7 +95,8 @@ const HiringRequestDetails = () => {
         try {
             setLoading(true);
             const res = await api.get(`/ta/hiring-request/${id}`, force ? createNoCacheRequestConfig() : undefined);
-            setRequest(res.data);
+            const data = res.data?.hiringRequest || res.data;
+            setRequest(data);
         } catch (error) {
             console.error(error);
             toast.error('Failed to load request details');
@@ -131,8 +132,19 @@ const HiringRequestDetails = () => {
     const positionSummary = getHiringPositionSummary(request);
     const canPartialClose = positionSummary.open > 1;
 
-    const isJobBoardLive = Boolean(request?.isPublic || (request?.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isPublic));
-    const isResourceGatewayLive = Boolean(request?.isResourceGatewayPublic || (request?.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isResourceGatewayPublic));
+    const previousReq = request?.previousRequestId && typeof request.previousRequestId === 'object' ? request.previousRequestId : null;
+    const reopenedReq = request?.reopenedToId && typeof request.reopenedToId === 'object' ? request.reopenedToId : null;
+
+    const isJobBoardLive = Boolean(
+        request?.isPublic ||
+        previousReq?.isPublic ||
+        reopenedReq?.isPublic
+    );
+    const isResourceGatewayLive = Boolean(
+        request?.isResourceGatewayPublic ||
+        previousReq?.isResourceGatewayPublic ||
+        reopenedReq?.isResourceGatewayPublic
+    );
 
     const canApprove = request && isDynamic
         ? (
@@ -163,14 +175,14 @@ const HiringRequestDetails = () => {
 
             if (action === 'APPROVE') {
                 const response = await api.patch(`/ta/hiring-request/${id}/approve`, payload);
-                const updatedRequest = response.data;
-                setRequest(updatedRequest);
+                const updatedRequest = response.data?.hiringRequest || response.data;
+                setRequest((prev) => ({ ...prev, ...updatedRequest }));
                 toast.success('Approved successfully');
                 invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
             } else {
                 const response = await api.patch(`/ta/hiring-request/${id}/reject`, payload);
-                const updatedRequest = response.data;
-                setRequest(updatedRequest);
+                const updatedRequest = response.data?.hiringRequest || response.data;
+                setRequest((prev) => ({ ...prev, ...updatedRequest }));
                 toast.success('Rejected successfully');
                 invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
             }
@@ -212,13 +224,13 @@ const HiringRequestDetails = () => {
                 closeCount,
                 unpublishFromJobBoard
             });
-            const updatedRequest = response.data;
-            setRequest(updatedRequest);
+            const updatedRequest = response.data?.hiringRequest || response.data;
+            setRequest((prev) => ({ ...prev, ...updatedRequest }));
             setShowCloseModal(false);
             setShowUnpublishPrompt(false);
             setCloseMode('all');
             setPartialCloseCount(1);
-            if (updatedRequest.status === 'Closed') {
+            if (updatedRequest?.status === 'Closed') {
                 if (unpublishFromJobBoard) {
                     toast.success('Request closed and unpublished from job board successfully.');
                 } else if (request?.isPublic) {
@@ -269,9 +281,18 @@ const HiringRequestDetails = () => {
         try {
             setTogglingVisibility(true);
 
-            if (!newValue && request.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isPublic) {
-                const prevId = request.previousRequestId._id || request.previousRequestId;
-                await api.patch(`/ta/hiring-request/${prevId}/visibility`, { isPublic: false });
+            if (!newValue && request.previousRequestId) {
+                const prevId = request.previousRequestId?._id || request.previousRequestId;
+                if (prevId) {
+                    await api.patch(`/ta/hiring-request/${prevId}/visibility`, { isPublic: false }).catch(() => {});
+                }
+            }
+
+            if (!newValue && request.reopenedToId) {
+                const reopenedId = request.reopenedToId?._id || request.reopenedToId;
+                if (reopenedId) {
+                    await api.patch(`/ta/hiring-request/${reopenedId}/visibility`, { isPublic: false }).catch(() => {});
+                }
             }
 
             const res = await api.patch(`/ta/hiring-request/${id}/visibility`, { isPublic: newValue });
@@ -282,8 +303,11 @@ const HiringRequestDetails = () => {
                 isPublic: updatedReq.isPublic !== undefined ? updatedReq.isPublic : newValue,
                 isJobVisible: updatedReq.isJobVisible !== undefined ? updatedReq.isJobVisible : newValue,
                 previousRequestId: typeof prev?.previousRequestId === 'object'
-                    ? { ...prev.previousRequestId, isPublic: false, isResourceGatewayPublic: false }
-                    : prev?.previousRequestId
+                    ? { ...prev.previousRequestId, isPublic: newValue ? prev.previousRequestId.isPublic : false, isResourceGatewayPublic: newValue ? prev.previousRequestId.isResourceGatewayPublic : false }
+                    : prev?.previousRequestId,
+                reopenedToId: typeof prev?.reopenedToId === 'object'
+                    ? { ...prev.reopenedToId, isPublic: newValue ? prev.reopenedToId.isPublic : false, isResourceGatewayPublic: newValue ? prev.reopenedToId.isResourceGatewayPublic : false }
+                    : prev?.reopenedToId
             }));
             toast.success(res.data.message);
             invalidateTACaches({ requestId: id, client: updatedReq.client || request?.client });
@@ -317,9 +341,18 @@ const HiringRequestDetails = () => {
         try {
             setTogglingResourceGateway(true);
 
-            if (!newValue && request.previousRequestId && typeof request.previousRequestId === 'object' && request.previousRequestId.isResourceGatewayPublic) {
-                const prevId = request.previousRequestId._id || request.previousRequestId;
-                await api.patch(`/ta/hiring-request/${prevId}/visibility`, { isResourceGatewayPublic: false });
+            if (!newValue && request.previousRequestId) {
+                const prevId = request.previousRequestId?._id || request.previousRequestId;
+                if (prevId) {
+                    await api.patch(`/ta/hiring-request/${prevId}/visibility`, { isResourceGatewayPublic: false }).catch(() => {});
+                }
+            }
+
+            if (!newValue && request.reopenedToId) {
+                const reopenedId = request.reopenedToId?._id || request.reopenedToId;
+                if (reopenedId) {
+                    await api.patch(`/ta/hiring-request/${reopenedId}/visibility`, { isResourceGatewayPublic: false }).catch(() => {});
+                }
             }
 
             const res = await api.patch(`/ta/hiring-request/${id}/visibility`, {
@@ -331,8 +364,11 @@ const HiringRequestDetails = () => {
                 ...updatedReq,
                 isResourceGatewayPublic: updatedReq.isResourceGatewayPublic !== undefined ? updatedReq.isResourceGatewayPublic : newValue,
                 previousRequestId: typeof prev?.previousRequestId === 'object'
-                    ? { ...prev.previousRequestId, isResourceGatewayPublic: false }
-                    : prev?.previousRequestId
+                    ? { ...prev.previousRequestId, isResourceGatewayPublic: newValue ? prev.previousRequestId.isResourceGatewayPublic : false }
+                    : prev?.previousRequestId,
+                reopenedToId: typeof prev?.reopenedToId === 'object'
+                    ? { ...prev.reopenedToId, isResourceGatewayPublic: newValue ? prev.reopenedToId.isResourceGatewayPublic : false }
+                    : prev?.reopenedToId
             }));
             toast.success(res.data.message);
             invalidateTACaches({ requestId: id, client: updatedReq.client || request?.client });
@@ -391,25 +427,25 @@ const HiringRequestDetails = () => {
                         {/* Left: Back button + Title */}
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(request.client)}`)}
+                                onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(request?.client || '')}`)}
                                 className="p-2 hover:bg-slate-100/80 rounded-full text-slate-500 hover:text-slate-700 transition-all duration-200 group"
                                 aria-label="Go back"
                             >
                                 <ArrowLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
                             </button>
                             <div className="flex flex-col">
-                                <h1 className="text-lg font-bold text-slate-900 leading-tight">{request.roleDetails.title}</h1>
+                                <h1 className="text-lg font-bold text-slate-900 leading-tight">{request?.roleDetails?.title || request?.roleDetails?.jobTitle || 'Requisition Details'}</h1>
                                 <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                                    <span className="flex items-center gap-1"><Building size={10} /> {request.roleDetails.department}</span>
+                                    <span className="flex items-center gap-1"><Building size={10} /> {request?.roleDetails?.department || '-'}</span>
                                     <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                    <span>#{request.requestId.slice(-6).toUpperCase()}</span>
+                                    <span>#{request?.requestId ? request.requestId.slice(-6).toUpperCase() : ''}</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', ...((request.status === 'Approved' || request.status === 'Closed') ? ['applications'] : []), ...((request.status === 'Approved' || request.status === 'Closed') && (request.wasEverPublished || request.isPublic || request.isResourceGatewayPublic || (request.publicApplicationsCount > 0)) ? ['public applications'] : []), ...(request.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
+                            {['overview', ...((request?.status === 'Approved' || request?.status === 'Closed') ? ['applications'] : []), ...((request?.status === 'Approved' || request?.status === 'Closed') && (request?.wasEverPublished || request?.isPublic || request?.isResourceGatewayPublic || (request?.publicApplicationsCount > 0) || isJobBoardLive || isResourceGatewayLive) ? ['public applications'] : []), ...(request?.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -445,43 +481,43 @@ const HiringRequestDetails = () => {
                                         </div>
                                         Role Information
                                     </h3>
-                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${request.hiringDetails.priority === 'High' ? 'bg-red-50 text-red-600 border border-red-100' :
-                                        request.hiringDetails.priority === 'Medium' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${request?.hiringDetails?.priority === 'High' ? 'bg-red-50 text-red-600 border border-red-100' :
+                                        request?.hiringDetails?.priority === 'Medium' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
                                             'bg-blue-50 text-blue-600 border border-blue-100'
                                         }`}>
-                                        {request.hiringDetails.priority} Priority
+                                        {request?.hiringDetails?.priority || 'Normal'} Priority
                                     </span>
                                 </div>
                                 <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Client / Project</h4>
-                                        <p className="text-slate-900 font-bold text-base">{request.client}</p>
-                                        {request.clientConfidential ? (
+                                        <p className="text-slate-900 font-bold text-base">{request?.client || '-'}</p>
+                                        {request?.clientConfidential ? (
                                             <p className="mt-1 text-xs font-semibold text-amber-600">Public listing will hide the client name.</p>
                                         ) : null}
                                     </div>
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Job Title</h4>
-                                        <p className="text-slate-800 font-semibold text-sm">{request.roleDetails.title}</p>
+                                        <p className="text-slate-800 font-semibold text-sm">{request?.roleDetails?.title || request?.roleDetails?.jobTitle || '-'}</p>
                                     </div>
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Department</h4>
-                                        <p className="text-slate-800 font-medium text-sm">{request.roleDetails.department}</p>
+                                        <p className="text-slate-800 font-medium text-sm">{request?.roleDetails?.department || '-'}</p>
                                     </div>
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Employment Type</h4>
                                         <p className="text-slate-800 font-medium text-sm flex items-center gap-2">
                                             <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                            {request.roleDetails.employmentType}
+                                            {request?.roleDetails?.employmentType || '-'}
                                         </p>
                                     </div>
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Interview Template</h4>
-                                        <p className="text-slate-800 font-medium text-sm">{request.interviewWorkflowId?.name || 'Custom (None)'}</p>
+                                        <p className="text-slate-800 font-medium text-sm">{request?.interviewWorkflowId?.name || 'Custom (None)'}</p>
                                     </div>
                                     <div className="group">
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Hiring Purpose</h4>
-                                        <p className="text-slate-800 font-medium text-sm">{request.purpose}</p>
+                                        <p className="text-slate-800 font-medium text-sm">{request?.purpose || '-'}</p>
                                     </div>
                                 </div>
                             </section>
@@ -501,12 +537,12 @@ const HiringRequestDetails = () => {
                                         <div>
                                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills (Technical)</h4>
                                             <div className="flex flex-wrap gap-1.5">
-                                                {(Array.isArray(request.requirements.mustHaveSkills) ? request.requirements.mustHaveSkills : request.requirements.mustHaveSkills?.technical)?.map(s => (
+                                                {(Array.isArray(request?.requirements?.mustHaveSkills) ? request.requirements.mustHaveSkills : request?.requirements?.mustHaveSkills?.technical)?.map(s => (
                                                     <span key={s} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
                                                         {s}
                                                     </span>
                                                 ))}
-                                                {(!(Array.isArray(request.requirements.mustHaveSkills) ? request.requirements.mustHaveSkills : request.requirements.mustHaveSkills?.technical)?.length) && (
+                                                {(!(Array.isArray(request?.requirements?.mustHaveSkills) ? request.requirements.mustHaveSkills : request?.requirements?.mustHaveSkills?.technical)?.length) && (
                                                     <span className="text-slate-400 italic text-xs">None specified</span>
                                                 )}
                                             </div>
@@ -514,12 +550,12 @@ const HiringRequestDetails = () => {
                                         <div>
                                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Must-Have Skills (Soft Skills)</h4>
                                             <div className="flex flex-wrap gap-1.5">
-                                                {request.requirements.mustHaveSkills?.softSkills?.map(s => (
+                                                {request?.requirements?.mustHaveSkills?.softSkills?.map(s => (
                                                     <span key={s} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-semibold shadow-sm hover:shadow transition-shadow cursor-default">
                                                         {s}
                                                     </span>
                                                 ))}
-                                                {!request.requirements.mustHaveSkills?.softSkills?.length && (
+                                                {!request?.requirements?.mustHaveSkills?.softSkills?.length && (
                                                     <span className="text-slate-400 italic text-xs">None specified</span>
                                                 )}
                                             </div>
@@ -528,32 +564,32 @@ const HiringRequestDetails = () => {
                                     <div>
                                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nice-To-Have Skills</h4>
                                         <div className="flex flex-wrap gap-1.5">
-                                            {request.requirements.niceToHaveSkills?.map(s => (
+                                            {request?.requirements?.niceToHaveSkills?.map(s => (
                                                 <span key={s} className="px-2.5 py-1 bg-slate-50 text-slate-600 border border-slate-200 rounded-full text-xs font-medium hover:bg-slate-100 transition-colors cursor-default">
                                                     {s}
                                                 </span>
                                             ))}
-                                            {!request.requirements.niceToHaveSkills?.length && <span className="text-slate-400 italic text-xs">None specified</span>}
+                                            {!request?.requirements?.niceToHaveSkills?.length && <span className="text-slate-400 italic text-xs">None specified</span>}
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-5 pt-4 border-t border-slate-100">
                                         <div>
                                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Experience Range</h4>
-                                            <p className="text-slate-900 font-bold text-sm">{request.requirements.experienceMin} - {request.requirements.experienceMax} <span className="text-xs font-medium text-slate-500">Years</span></p>
+                                            <p className="text-slate-900 font-bold text-sm">{request?.requirements?.experienceMin ?? '-'} - {request?.requirements?.experienceMax ?? '-'} <span className="text-xs font-medium text-slate-500">Years</span></p>
                                         </div>
-                                        {request.requirements.shift && (
+                                        {request?.requirements?.shift && (
                                             <div>
                                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Shift</h4>
                                                 <p className="text-slate-900 font-semibold text-sm">{request.requirements.shift}</p>
                                             </div>
                                         )}
-                                        {request.requirements.workPlace && (
+                                        {request?.requirements?.workPlace && (
                                             <div>
                                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Work Place</h4>
                                                 <p className="text-slate-900 font-semibold text-sm">{request.requirements.workPlace}</p>
                                             </div>
                                         )}
-                                        {request.requirements.clientWorkLocation && request.requirements.clientWorkLocation.length > 0 && (
+                                        {request?.requirements?.clientWorkLocation && request.requirements.clientWorkLocation.length > 0 && (
                                             <div className="col-span-2">
                                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Client Work Location</h4>
                                                 <div className="flex flex-wrap gap-1.5">
@@ -565,7 +601,7 @@ const HiringRequestDetails = () => {
                                                 </div>
                                             </div>
                                         )}
-                                        {request.requirements.workMode && (
+                                        {request?.requirements?.workMode && (
                                             <div>
                                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Work Mode</h4>
                                                 <p className="text-slate-900 font-semibold text-sm">{request.requirements.workMode}</p>
@@ -575,10 +611,10 @@ const HiringRequestDetails = () => {
                                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Work Location</h4>
                                             <div className="flex items-center gap-1.5 text-slate-900 font-medium text-sm">
                                                 <MapPin size={13} className="text-slate-400" />
-                                                {request.requirements.location}
+                                                {request?.requirements?.location || '-'}
                                             </div>
                                         </div>
-                                        {request.requirements.workingDaysPerWeek && (
+                                        {request?.requirements?.workingDaysPerWeek && (
                                             <div>
                                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Working Days/Week</h4>
                                                 <p className="text-slate-900 font-semibold text-sm">{request.requirements.workingDaysPerWeek} Days</p>
@@ -711,12 +747,12 @@ const HiringRequestDetails = () => {
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-slate-500 text-xs font-medium">Expected Joining</span>
-                                        <span className="text-slate-900 font-semibold text-xs text-right">{request.hiringDetails.expectedJoiningDate ? format(new Date(request.hiringDetails.expectedJoiningDate), 'MMM dd, yyyy') : '-'}</span>
+                                        <span className="text-slate-900 font-semibold text-xs text-right">{request?.hiringDetails?.expectedJoiningDate ? format(new Date(request.hiringDetails.expectedJoiningDate), 'MMM dd, yyyy') : '-'}</span>
                                     </div>
                                     <div className="pt-3 border-t border-slate-50">
                                         <p className="text-xs font-bold text-slate-400 uppercase mb-1.5">Budget Range</p>
                                         <div className="flex items-baseline gap-1">
-                                            <span className="text-sm font-bold text-slate-800">{formatBudgetLabel(request.hiringDetails?.budgetRange)}</span>
+                                            <span className="text-sm font-bold text-slate-800">{formatBudgetLabel(request?.hiringDetails?.budgetRange)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -809,7 +845,7 @@ const HiringRequestDetails = () => {
                                 </div>
                             </div>
 
-                            {canUpdateRequisition && (request.status === 'Approved' || request.status === 'Closed' || isJobBoardLive) && (
+                            {canUpdateRequisition && (request.status === 'Approved' || request.status === 'Closed' || isJobBoardLive || Boolean(request.previousRequestId)) && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                     <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2 pb-3 border-b border-slate-50">
                                         <div className={`p-1.5 rounded-md ${isJobBoardLive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
@@ -836,7 +872,7 @@ const HiringRequestDetails = () => {
                                                 {togglingVisibility ? <Loader className="animate-spin" size={16} /> : <Globe size={16} />}
                                                 Unpublish from Job Board
                                             </button>
-                                        ) : request.status === 'Approved' ? (
+                                        ) : (request.status === 'Approved' || (request.status === 'Closed' && !request.reopenedToId)) ? (
                                             <button
                                                 onClick={handleTogglePublic}
                                                 disabled={togglingVisibility}
@@ -911,10 +947,10 @@ const HiringRequestDetails = () => {
                                         <div className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center shadow-inner">
                                             <p className="text-xs font-semibold text-slate-600 mb-2">Superseded By</p>
                                             <button
-                                                onClick={() => navigate(`/ta/view/${request.reopenedToId}`)}
+                                                onClick={() => navigate(`/ta/view/${request.reopenedToId?._id || request.reopenedToId}`)}
                                                 className="text-blue-600 hover:text-blue-800 font-bold text-sm underline transition-colors"
                                             >
-                                                View Active Requisition
+                                                View Active Requisition {typeof request.reopenedToId === 'object' && request.reopenedToId.requestId ? `(${request.reopenedToId.requestId})` : ''}
                                             </button>
                                         </div>
                                     )}

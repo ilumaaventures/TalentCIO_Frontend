@@ -170,7 +170,11 @@ const CreateHiringRequest = () => {
         jobDescription: '',
         jobDescriptionFile: '',
         assignedUsers: [],
-        analyticsViewers: []
+        analyticsViewers: [],
+        isPublic: false,
+        isJobVisible: false,
+        isResourceGatewayPublic: false,
+        wasEverPublished: false
     });
 
     const [searchParams] = useSearchParams();
@@ -282,7 +286,11 @@ const CreateHiringRequest = () => {
                             : [],
                         analyticsViewers: Array.isArray(data.analyticsViewers)
                             ? data.analyticsViewers.map((viewer) => viewer?._id || viewer).filter(Boolean)
-                            : []
+                            : [],
+                        isPublic: Boolean(data.isPublic),
+                        isJobVisible: Boolean(data.isJobVisible ?? data.isPublic),
+                        isResourceGatewayPublic: Boolean(data.isResourceGatewayPublic),
+                        wasEverPublished: Boolean(data.wasEverPublished || data.isPublic)
                     });
                     setSelectedPhaseTemplateId(
                         data.useDynamicPhases && data.phaseTemplateId
@@ -458,7 +466,11 @@ const CreateHiringRequest = () => {
                     priority: formData.priority
                 },
                 jobDescription: formData.jobDescription,
-                jobDescriptionFile: formData.jobDescriptionFile
+                jobDescriptionFile: formData.jobDescriptionFile,
+                isPublic: Boolean(formData.isPublic),
+                isJobVisible: Boolean(formData.isJobVisible ?? formData.isPublic),
+                isResourceGatewayPublic: Boolean(formData.isResourceGatewayPublic),
+                wasEverPublished: Boolean(formData.wasEverPublished || formData.isPublic)
             };
 
             if (id) {
