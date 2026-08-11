@@ -83,6 +83,57 @@ const HiringRequestDetails = () => {
     const [closeMode, setCloseMode] = useState('all');
     const [partialCloseCount, setPartialCloseCount] = useState(1);
     const [activeTab, setActiveTab] = useState('overview'); // overview, applications, reviews
+    const [usersMap, setUsersMap] = useState({});
+
+    useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                const res = await api.get('/admin/users');
+                const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+                const map = {};
+                list.forEach((u) => {
+                    if (u && (u._id || u.id)) {
+                        map[String(u._id || u.id)] = u;
+                    }
+                });
+                setUsersMap(map);
+            } catch {
+                // non-blocking
+            }
+        };
+        loadUsers();
+    }, []);
+
+    const mergeHiringRequest = useCallback((prev, updated) => {
+        if (!prev) return updated;
+        if (!updated) return prev;
+        return {
+            ...prev,
+            ...updated,
+            createdBy: typeof updated.createdBy === 'object' && updated.createdBy !== null ? updated.createdBy : prev.createdBy,
+            requestor: typeof updated.requestor === 'object' && updated.requestor !== null ? updated.requestor : prev.requestor,
+            ownership: {
+                ...prev.ownership,
+                ...updated.ownership,
+                hiringManager: typeof updated.ownership?.hiringManager === 'object' && updated.ownership?.hiringManager !== null
+                    ? updated.ownership.hiringManager
+                    : prev.ownership?.hiringManager
+            },
+            recruitmentTeam: {
+                ...prev.recruitmentTeam,
+                ...updated.recruitmentTeam,
+                hiringManager: typeof updated.recruitmentTeam?.hiringManager === 'object' && updated.recruitmentTeam?.hiringManager !== null
+                    ? updated.recruitmentTeam.hiringManager
+                    : prev.recruitmentTeam?.hiringManager
+            },
+            previousRequestId: typeof updated.previousRequestId === 'object' && updated.previousRequestId !== null
+                ? updated.previousRequestId
+                : prev.previousRequestId,
+            reopenedToId: typeof updated.reopenedToId === 'object' && updated.reopenedToId !== null
+                ? updated.reopenedToId
+                : prev.reopenedToId
+        };
+    }, []);
 
     useEffect(() => {
         const tab = searchParams.get('tab');
@@ -176,13 +227,13 @@ const HiringRequestDetails = () => {
             if (action === 'APPROVE') {
                 const response = await api.patch(`/ta/hiring-request/${id}/approve`, payload);
                 const updatedRequest = response.data?.hiringRequest || response.data;
-                setRequest((prev) => ({ ...prev, ...updatedRequest }));
+                setRequest((prev) => mergeHiringRequest(prev, updatedRequest));
                 toast.success('Approved successfully');
                 invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
             } else {
                 const response = await api.patch(`/ta/hiring-request/${id}/reject`, payload);
                 const updatedRequest = response.data?.hiringRequest || response.data;
-                setRequest((prev) => ({ ...prev, ...updatedRequest }));
+                setRequest((prev) => mergeHiringRequest(prev, updatedRequest));
                 toast.success('Rejected successfully');
                 invalidateTACaches({ requestId: id, client: updatedRequest?.client || request?.client });
             }
@@ -225,7 +276,7 @@ const HiringRequestDetails = () => {
                 unpublishFromJobBoard
             });
             const updatedRequest = response.data?.hiringRequest || response.data;
-            setRequest((prev) => ({ ...prev, ...updatedRequest }));
+            setRequest((prev) => mergeHiringRequest(prev, updatedRequest));
             setShowCloseModal(false);
             setShowUnpublishPrompt(false);
             setCloseMode('all');
@@ -759,26 +810,54 @@ const HiringRequestDetails = () => {
                             </div>
 
                             {/* Position Created By Card */}
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2 pb-3 border-b border-slate-50">
-                                    <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-md">
-                                        <User size={14} />
+                            {(() => {
+                                const creatorId = typeof request?.createdBy === 'string'
+                                    ? request.createdBy
+                                    : (request?.createdBy?._id || request?.createdBy?.id || (typeof request?.requestor === 'string' ? request.requestor : request?.requestor?._id));
+
+                                const lookedUpUser = (creatorId && usersMap[String(creatorId)]) ? usersMap[String(creatorId)] : null;
+
+                                const creatorObj = (typeof request?.createdBy === 'object' && request?.createdBy)
+                                    || lookedUpUser
+                                    || (typeof request?.requestor === 'object' && request?.requestor)
+                                    || (typeof request?.ownership?.hiringManager === 'object' && request?.ownership?.hiringManager)
+                                    || (user && (user._id === creatorId || user.id === creatorId) ? user : null);
+
+                                const creatorName = [creatorObj?.firstName, creatorObj?.lastName].filter(Boolean).join(' ')
+                                    || creatorObj?.name
+                                    || creatorObj?.fullName
+                                    || creatorObj?.email
+                                    || (user && [user.firstName, user.lastName].filter(Boolean).join(' '))
+                                    || user?.name
+                                    || user?.email
+                                    || 'Talent Acquisition Team';
+
+                                const creatorEmail = creatorObj?.email || (creatorName === [user?.firstName, user?.lastName].filter(Boolean).join(' ') ? user?.email : '');
+                                const creatorInitial = (creatorName?.charAt(0) || 'T').toUpperCase();
+
+                                return (
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                        <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2 pb-3 border-b border-slate-50">
+                                            <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-md">
+                                                <User size={14} />
+                                            </div>
+                                            Created By
+                                        </h3>
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-blue-50">
+                                                {creatorInitial}
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-800">{creatorName}</p>
+                                                {creatorEmail ? <p className="text-xs text-slate-500">{creatorEmail}</p> : null}
+                                                <p className="text-xs text-slate-400 mt-0.5">
+                                                    on {request?.createdAt ? format(new Date(request.createdAt), 'MMM dd, yyyy') : '-'}
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    Created By
-                                </h3>
-                                <div className="flex items-center gap-3">
-                                    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-blue-50">
-                                        {request.createdBy?.firstName?.charAt(0)}
-                                    </div>
-                                    <div>
-                                        <p className="text-xs font-bold text-slate-800">{request.createdBy?.firstName} {request.createdBy?.lastName}</p>
-                                        <p className="text-xs text-slate-500">{request.createdBy?.email}</p>
-                                        <p className="text-xs text-slate-400 mt-0.5">
-                                            on {format(new Date(request.createdAt), 'MMM dd, yyyy')}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                                );
+                            })()}
 
                             {Array.isArray(request.assignedUsers) && request.assignedUsers.length > 0 && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">

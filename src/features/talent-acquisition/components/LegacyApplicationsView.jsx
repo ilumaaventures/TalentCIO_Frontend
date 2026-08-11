@@ -774,7 +774,9 @@ const LegacyApplicationsView = ({ hiringRequestId }) => {
     const handleTransfer = async (candidateId) => {
         if (!window.confirm('Transfer this candidate to the newest active requisition? This creates a fresh copy.')) return;
         try {
-            const res = await api.post(`/ta/hiring-request/transfer-candidate/${candidateId}`);
+            const res = await api.post(`/ta/hiring-request/transfer-candidate/${candidateId}`, {
+                targetRequisitionId: hiringRequestId
+            });
             toast.success(res.data.message || 'Candidate transferred successfully');
             fetchLegacy();
         } catch (e) {
