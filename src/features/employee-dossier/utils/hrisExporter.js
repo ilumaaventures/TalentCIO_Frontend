@@ -4,7 +4,9 @@ import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-export const exportCandidateHRIS = async (selectedEmployeeIds) => {
+// hrisSections: Set of section keys to include — undefined means include all.
+export const exportCandidateHRIS = async (selectedEmployeeIds, hrisSections) => {
+    const includeSection = (key) => !hrisSections || hrisSections.has(key);
     if (selectedEmployeeIds.length === 0) {
         toast.error('Select at least one employee/candidate to export.');
         return;
@@ -25,17 +27,9 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
         const workbook = new ExcelJS.Workbook();
 
         // 1. Create Summary Sheet
+        // Columns are set dynamically on the first dossier pass (dossierIdx === 0)
+        // so that only the selected sections are included.
         const summarySheet = workbook.addWorksheet('Summary');
-        summarySheet.columns = [
-            { header: 'Employee Code', key: 'empCode', width: 20 },
-            { header: 'Employee Name', key: 'fullName', width: 30 },
-            { header: 'Email', key: 'email', width: 35 },
-            { header: 'Department', key: 'department', width: 25 },
-            { header: 'HRIS Status', key: 'hrisStatus', width: 25 },
-            { header: 'Profile Fields Filled', key: 'fieldsStats', width: 30 },
-            { header: 'Required Docs Uploaded', key: 'docsStats', width: 30 }
-        ];
-        // (Header row styling will be handled dynamically inside the first pass configuration block)
 
         // Required Document Checklist Definition
         const REQUIRED_DOCUMENTS = [
@@ -80,35 +74,29 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
             const hasDisability = dossier.personal?.disabilityStatus === true || dossier.personal?.disabilityStatus === 'Yes';
             const isUanApplicable = dossier.compensation?.isUanApplicable === true || dossier.compensation?.isUanApplicable === 'Yes';
 
-            const fieldsToCheck = [
+            const allFields = [
                 // General Account Info
                 { label: 'Roles', val: dossier.user?.roles?.map(r => r.name).join(', '), section: 'General' },
                 { label: 'Work Location (Account)', val: dossier.user?.workLocation, section: 'General' },
 
                 // Personal Profile Details
                 { label: 'First Name (Personal)', val: dossier.personal?.firstName, section: 'Personal' },
-                // Middle Name: N/A if not provided
                 { label: 'Middle Name (Personal)', val: dossier.personal?.middleName, section: 'Personal', notApplicable: !dossier.personal?.middleName },
                 { label: 'Last Name (Personal)', val: dossier.personal?.lastName, section: 'Personal' },
                 { label: 'Full Name (Personal)', val: dossier.personal?.fullName, section: 'Personal' },
                 { label: 'Gender', val: dossier.personal?.gender, section: 'Personal' },
                 { label: 'Date of Birth', val: dossier.personal?.dob, section: 'Personal', type: 'date' },
                 { label: 'Marital Status', val: dossier.personal?.maritalStatus, section: 'Personal' },
-                // Date of Marriage: N/A if not married
                 { label: 'Date of Marriage', val: dossier.personal?.dateOfMarriage, section: 'Personal', type: 'date', notApplicable: !isMarried },
                 { label: 'Blood Group', val: dossier.personal?.bloodGroup, section: 'Personal' },
                 { label: 'Nationality', val: dossier.personal?.nationality, section: 'Personal' },
                 { label: 'Disability Status', val: dossier.personal?.disabilityStatus ? 'Yes' : 'No', section: 'Personal' },
-                // Disability Details: N/A if disability status is not Yes
                 { label: 'Disability Details', val: dossier.personal?.disabilityDetails, section: 'Personal', notApplicable: !hasDisability },
-
 
                 // Identity Details
                 { label: 'Aadhaar Number', val: dossier.identity?.aadhaarNumber, section: 'Identity' },
                 { label: 'PAN Number', val: dossier.identity?.panNumber, section: 'Identity' },
-                // Passport Number: N/A if not provided
                 { label: 'Passport Number', val: dossier.identity?.passportNumber, section: 'Identity', notApplicable: !dossier.identity?.passportNumber },
-
 
                 // Contact Details & Address
                 { label: 'Personal Email', val: dossier.contact?.personalEmail, section: 'Contact' },
@@ -116,17 +104,14 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 { label: 'Mobile Number', val: dossier.contact?.mobileNumber, section: 'Contact' },
                 { label: 'Alternate Number', val: dossier.contact?.alternateNumber, section: 'Contact' },
                 { label: 'Emergency Number', val: dossier.contact?.emergencyNumber, section: 'Contact' },
-                // Landline Number: N/A if not provided
                 { label: 'Landline Number', val: dossier.contact?.landlineNumber, section: 'Contact', notApplicable: !dossier.contact?.landlineNumber },
                 { label: 'Current Address', val: formatFullAddr(currentAddr), section: 'Contact' },
                 { label: 'Permanent Address', val: formatFullAddr(permanentAddr), section: 'Contact' },
-                // Mailing Address: N/A if not provided
                 { label: 'Mailing Address', val: formatFullAddr(mailingAddr), section: 'Contact', notApplicable: !formatFullAddr(mailingAddr) },
                 { label: 'Emergency Contact Name', val: dossier.contact?.emergencyContact?.name, section: 'Contact' },
                 { label: 'Emergency Contact Relation', val: dossier.contact?.emergencyContact?.relation, section: 'Contact' },
                 { label: 'Emergency Contact Phone', val: dossier.contact?.emergencyContact?.phone, section: 'Contact' },
                 { label: 'Emergency Contact Alternate Phone', val: dossier.contact?.emergencyContact?.alternatePhone, section: 'Contact' },
-                // Emergency Contact Email: N/A if not provided
                 { label: 'Emergency Contact Email', val: dossier.contact?.emergencyContact?.email, section: 'Contact', notApplicable: !dossier.contact?.emergencyContact?.email },
 
                 // Family Details
@@ -138,9 +123,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 { label: 'Mother Occupation', val: dossier.family?.motherOccupation, section: 'Family' },
                 { label: 'Parents Marital Status', val: dossier.family?.parentsMaritalStatus, section: 'Family' },
                 { label: 'Total Siblings', val: dossier.family?.totalSiblings, section: 'Family' },
-                // Spouse Name: N/A if not married or not provided
                 { label: 'Spouse Name', val: dossier.family?.spouseName, section: 'Family', notApplicable: !isMarried || !dossier.family?.spouseName },
-                // Spouse DOB: N/A if not married or not provided
                 { label: 'Spouse DOB', val: dossier.family?.spouseDob, section: 'Family', type: 'date', notApplicable: !isMarried || !dossier.family?.spouseDob },
 
                 // Employment Details
@@ -158,9 +141,11 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 { label: 'IFSC Code', val: dossier.compensation?.bankDetails?.ifscCode, section: 'Bank' },
                 { label: 'Branch Address', val: dossier.compensation?.bankDetails?.branchAddress, section: 'Bank' },
                 { label: 'UAN Applicable', val: dossier.compensation?.isUanApplicable ? 'Yes' : 'No', section: 'Bank' },
-                // UAN Number: N/A if UAN not applicable; blank if applicable but not yet provided
                 { label: 'UAN Number', val: dossier.compensation?.uanNumber, section: 'Bank', notApplicable: !isUanApplicable }
             ];
+
+            // Filter fields to only the selected sections
+            const fieldsToCheck = allFields.filter(f => includeSection(f.section));
 
             const isFilled = (val) => {
                 if (val === null || val === undefined || String(val).trim() === '') return false;
@@ -209,15 +194,19 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                     cols.push({ header: f.label, key: `field_${idx}`, width: w });
                 });
 
-                REQUIRED_DOCUMENTS.forEach((rd, idx) => {
-                    cols.push({ header: `${rd.title} Status`, key: `doc_${idx}`, width: 30 });
-                });
+                if (includeSection('Documents')) {
+                    REQUIRED_DOCUMENTS.forEach((rd, idx) => {
+                        cols.push({ header: `${rd.title} Status`, key: `doc_${idx}`, width: 30 });
+                    });
+                }
 
-                cols.push({ header: 'Educational Qualifications', key: 'educationList', width: 50 });
-                cols.push({ header: 'Work Experience History', key: 'experienceList', width: 50 });
-                cols.push({ header: 'Technical Skills', key: 'techSkills', width: 35 });
-                cols.push({ header: 'Behavioral Skills', key: 'behavSkills', width: 35 });
-                cols.push({ header: 'Learning Interests', key: 'learningInterests', width: 35 });
+                if (includeSection('Education')) cols.push({ header: 'Educational Qualifications', key: 'educationList', width: 50 });
+                if (includeSection('Experience')) cols.push({ header: 'Work Experience History', key: 'experienceList', width: 50 });
+                if (includeSection('Skills')) {
+                    cols.push({ header: 'Technical Skills', key: 'techSkills', width: 35 });
+                    cols.push({ header: 'Behavioral Skills', key: 'behavSkills', width: 35 });
+                    cols.push({ header: 'Learning Interests', key: 'learningInterests', width: 35 });
+                }
 
                 summarySheet.columns = cols;
 
@@ -246,7 +235,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                     { key: 'Family', label: 'Family Details' },
                     { key: 'Employment', label: 'Employment Details' },
                     { key: 'Bank', label: 'Bank Details' }
-                ];
+                ].filter(sec => includeSection(sec.key));
 
                 sectionsOrder.forEach(sec => {
                     const count = fieldsToCheck.filter(f => f.section === sec.key).length;
@@ -260,9 +249,9 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                     }
                 });
 
-                // 3. Required Documents Status (REQUIRED_DOCUMENTS.length)
+                // 3. Required Documents Status (REQUIRED_DOCUMENTS.length) — only if Documents section selected
                 const docCount = REQUIRED_DOCUMENTS.length;
-                if (docCount > 0) {
+                if (includeSection('Documents') && docCount > 0) {
                     groups.push({
                         title: 'Required Documents Status',
                         start: currentCol,
@@ -271,12 +260,22 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                     currentCol += docCount;
                 }
 
-                // 4. Additional Info (5 columns)
-                groups.push({
-                    title: 'Additional Info',
-                    start: currentCol,
-                    end: currentCol + 4
-                });
+                // 4. Additional Info (Education, Experience, Skills) — only if those sections selected
+                const additionalCols = [
+                    includeSection('Education') && 'educationList',
+                    includeSection('Experience') && 'experienceList',
+                    includeSection('Skills') && 'techSkills',
+                    includeSection('Skills') && 'behavSkills',
+                    includeSection('Skills') && 'learningInterests',
+                ].filter(Boolean);
+
+                if (additionalCols.length > 0) {
+                    groups.push({
+                        title: 'Additional Info',
+                        start: currentCol,
+                        end: currentCol + additionalCols.length - 1
+                    });
+                }
 
                 // Merge cells for each group in Row 1
                 groups.forEach(group => {
@@ -335,34 +334,37 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 }
             });
 
-            // Map each required document checklist to its column key
-            REQUIRED_DOCUMENTS.forEach((reqDoc, idx) => {
-                const match = uploadedDocs.find(upDoc =>
-                    !upDoc.isDeleted &&
-                    upDoc.title &&
-                    (upDoc.title.toLowerCase().includes(reqDoc.title.toLowerCase()) ||
-                        reqDoc.title.toLowerCase().includes(upDoc.title.toLowerCase()))
-                );
+            // Map each required document checklist to its column key (only if Documents section selected)
+            if (includeSection('Documents')) {
+                REQUIRED_DOCUMENTS.forEach((reqDoc, idx) => {
+                    const match = uploadedDocs.find(upDoc =>
+                        !upDoc.isDeleted &&
+                        upDoc.title &&
+                        (upDoc.title.toLowerCase().includes(reqDoc.title.toLowerCase()) ||
+                            reqDoc.title.toLowerCase().includes(upDoc.title.toLowerCase()))
+                    );
+                    summaryRowData[`doc_${idx}`] = match
+                        ? `Uploaded (${match.verificationStatus || 'Pending Review'})`
+                        : 'Pending Upload';
+                });
+            }
 
-                if (match) {
-                    summaryRowData[`doc_${idx}`] = `Uploaded (${match.verificationStatus || 'Pending Review'})`;
-                } else {
-                    summaryRowData[`doc_${idx}`] = 'Pending Upload';
-                }
-            });
-
-            // Map serialized lists
-            summaryRowData.educationList = dossier.education && dossier.education.length > 0
-                ? dossier.education.map(edu => `${edu.courseName || edu.degree || 'Degree'} from ${edu.institution || 'N/A'} (${edu.grade || '-'})`).join('; ')
-                : 'None';
-
-            summaryRowData.experienceList = dossier.experience && dossier.experience.length > 0
-                ? dossier.experience.map(exp => `${exp.designation || 'Role'} at ${exp.companyName || 'N/A'} (${exp.totalExperience || '-'})`).join('; ')
-                : 'None';
-
-            summaryRowData.techSkills = dossier.skills?.technical?.join(', ') || 'None';
-            summaryRowData.behavSkills = dossier.skills?.behavioral?.join(', ') || 'None';
-            summaryRowData.learningInterests = dossier.skills?.learningInterests?.join(', ') || 'None';
+            // Map serialized lists (only if those sections are selected)
+            if (includeSection('Education')) {
+                summaryRowData.educationList = dossier.education?.length > 0
+                    ? dossier.education.map(edu => `${edu.courseName || edu.degree || 'Degree'} from ${edu.institution || 'N/A'} (${edu.grade || '-'})`).join('; ')
+                    : 'None';
+            }
+            if (includeSection('Experience')) {
+                summaryRowData.experienceList = dossier.experience?.length > 0
+                    ? dossier.experience.map(exp => `${exp.designation || 'Role'} at ${exp.companyName || 'N/A'} (${exp.totalExperience || '-'})`).join('; ')
+                    : 'None';
+            }
+            if (includeSection('Skills')) {
+                summaryRowData.techSkills = dossier.skills?.technical?.join(', ') || 'None';
+                summaryRowData.behavSkills = dossier.skills?.behavioral?.join(', ') || 'None';
+                summaryRowData.learningInterests = dossier.skills?.learningInterests?.join(', ') || 'None';
+            }
 
             const summaryRow = summarySheet.addRow(summaryRowData);
 
@@ -404,19 +406,21 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 }
             });
 
-            // Style Document Upload Checklist columns
-            const docStartIndex = 8 + fieldsToCheck.length;
-            REQUIRED_DOCUMENTS.forEach((reqDoc, idx) => {
-                const cell = summaryRow.getCell(docStartIndex + idx);
-                const statusVal = summaryRowData[`doc_${idx}`];
-                if (statusVal.startsWith('Uploaded')) {
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } }; // Light green
-                    cell.font = { color: { argb: 'FF274E13' }, bold: true };
-                } else {
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } }; // Light red
-                    cell.font = { color: { argb: 'FF660000' }, bold: true };
-                }
-            });
+            // Style Document Upload Checklist columns (only if Documents section is included)
+            if (includeSection('Documents')) {
+                const docStartIndex = 8 + fieldsToCheck.length;
+                REQUIRED_DOCUMENTS.forEach((reqDoc, idx) => {
+                    const cell = summaryRow.getCell(docStartIndex + idx);
+                    const statusVal = summaryRowData[`doc_${idx}`];
+                    if (statusVal && statusVal.startsWith('Uploaded')) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } }; // Light green
+                        cell.font = { color: { argb: 'FF274E13' }, bold: true };
+                    } else {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } }; // Light red
+                        cell.font = { color: { argb: 'FF660000' }, bold: true };
+                    }
+                });
+            }
 
             // 2. Add Candidate-specific Sheet
             let sheetName = `${dossier.user?.firstName || ''}_${dossier.user?.lastName || ''}`.trim() || 'Employee';
@@ -508,183 +512,192 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                 row.getCell(3).alignment = { horizontal: 'center' };
             };
 
-            // Section 1: Account & General Info
-            const sec1 = ws.addRow(['1. Account & General Information', '', '', '', '', '']);
-            ws.mergeCells(sec1.number, 1, sec1.number, 6);
-            sec1.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            sec1.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+            // Section 1: Account & General Info (always included as it has employee identifiers)
+            {
+                const sec1 = ws.addRow(['1. Account & General Information', '', '', '', '', '']);
+                ws.mergeCells(sec1.number, 1, sec1.number, 6);
+                sec1.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                sec1.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
 
-            // Manually add the core account info to the candidate sheet's Section 1
-            addHRISRow(ws, 'First Name (Account)', dossier.user?.firstName);
-            addHRISRow(ws, 'Last Name (Account)', dossier.user?.lastName);
-            addHRISRow(ws, 'Email (Account)', dossier.user?.email);
-            addHRISRow(ws, 'Employee Code', dossier.user?.employeeCode);
-            addHRISRow(ws, 'Department (Account)', dossier.user?.department);
-            addHRISRow(ws, 'Joining Date (Account)', dossier.user?.joiningDate, true);
-            addHRISRow(ws, 'Employment Type (Account)', dossier.user?.employmentType);
+                addHRISRow(ws, 'First Name (Account)', dossier.user?.firstName);
+                addHRISRow(ws, 'Last Name (Account)', dossier.user?.lastName);
+                addHRISRow(ws, 'Email (Account)', dossier.user?.email);
+                addHRISRow(ws, 'Employee Code', dossier.user?.employeeCode);
+                addHRISRow(ws, 'Department (Account)', dossier.user?.department);
+                addHRISRow(ws, 'Joining Date (Account)', dossier.user?.joiningDate, true);
+                addHRISRow(ws, 'Employment Type (Account)', dossier.user?.employmentType);
 
-            fieldsToCheck.filter(f => f.section === 'General').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
-            });
+                if (includeSection('General')) {
+                    fieldsToCheck.filter(f => f.section === 'General').forEach(f => {
+                        addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
+                    });
+                }
+            }
 
             ws.addRow([]);
 
             // Section 2: Personal Profile Details
-            const sec2 = ws.addRow(['2. Personal Profile Details', '', '', '', '', '']);
-            ws.mergeCells(sec2.number, 1, sec2.number, 6);
-            sec2.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            sec2.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-
-            fieldsToCheck.filter(f => f.section === 'Personal').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
-            });
-
-            ws.addRow([]);
+            if (includeSection('Personal')) {
+                const sec2 = ws.addRow(['2. Personal Profile Details', '', '', '', '', '']);
+                ws.mergeCells(sec2.number, 1, sec2.number, 6);
+                sec2.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                sec2.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+                fieldsToCheck.filter(f => f.section === 'Personal').forEach(f => {
+                    addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
+                });
+                ws.addRow([]);
+            }
 
             // Section 3: Identity Documents Info
-            const sec3 = ws.addRow(['3. Identity Documents Info', '', '', '', '', '']);
-            ws.mergeCells(sec3.number, 1, sec3.number, 6);
-            sec3.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            sec3.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-
-            fieldsToCheck.filter(f => f.section === 'Identity').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
-            });
-
-            ws.addRow([]);
+            if (includeSection('Identity')) {
+                const sec3 = ws.addRow(['3. Identity Documents Info', '', '', '', '', '']);
+                ws.mergeCells(sec3.number, 1, sec3.number, 6);
+                sec3.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                sec3.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+                fieldsToCheck.filter(f => f.section === 'Identity').forEach(f => {
+                    addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
+                });
+                ws.addRow([]);
+            }
 
             // Section 4: Contact Details & Addresses
-            const sec4 = ws.addRow(['4. Contact Details & Addresses', '', '', '', '', '']);
-            ws.mergeCells(sec4.number, 1, sec4.number, 6);
-            sec4.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            sec4.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-
-            fieldsToCheck.filter(f => f.section === 'Contact').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
-            });
-
-            ws.addRow([]);
+            if (includeSection('Contact')) {
+                const sec4 = ws.addRow(['4. Contact Details & Addresses', '', '', '', '', '']);
+                ws.mergeCells(sec4.number, 1, sec4.number, 6);
+                sec4.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                sec4.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+                fieldsToCheck.filter(f => f.section === 'Contact').forEach(f => {
+                    addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
+                });
+                ws.addRow([]);
+            }
 
             // Section 5: Family Details
-            const sec5 = ws.addRow(['5. Family Details', '', '', '', '', '']);
-            ws.mergeCells(sec5.number, 1, sec5.number, 6);
-            sec5.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            sec5.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+            if (includeSection('Family')) {
+                const sec5 = ws.addRow(['5. Family Details', '', '', '', '', '']);
+                ws.mergeCells(sec5.number, 1, sec5.number, 6);
+                sec5.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                sec5.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+                fieldsToCheck.filter(f => f.section === 'Family').forEach(f => {
+                    addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
+                });
+                if (dossier.family?.children?.length > 0) {
+                    dossier.family.children.forEach((child, cIdx) => {
+                        addHRISRow(ws, `Child ${cIdx + 1} Name`, child.name);
+                        addHRISRow(ws, `Child ${cIdx + 1} DOB`, child.dob, true);
+                    });
+                }
+                ws.addRow([]);
+            }
 
-            fieldsToCheck.filter(f => f.section === 'Family').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
-            });
+            // Section 6: Employment Details
+            if (includeSection('Employment')) {
+                const sec6 = ws.addRow(['6. Employment Details', '', '', '', '', '']);
+                ws.mergeCells(sec6.number, 1, sec6.number, 6);
+                sec6.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                sec6.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+                fieldsToCheck.filter(f => f.section === 'Employment').forEach(f => {
+                    addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
+                });
+                ws.addRow([]);
+            }
 
-            // Display Children if present
-            if (dossier.family?.children && dossier.family.children.length > 0) {
-                dossier.family.children.forEach((child, cIdx) => {
-                    addHRISRow(ws, `Child ${cIdx + 1} Name`, child.name);
-                    addHRISRow(ws, `Child ${cIdx + 1} DOB`, child.dob, true);
+            // Section 7: Compensation & Bank Details
+            if (includeSection('Bank')) {
+                const sec7 = ws.addRow(['7. Compensation & Bank Details', '', '', '', '', '']);
+                ws.mergeCells(sec7.number, 1, sec7.number, 6);
+                sec7.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                sec7.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+                fieldsToCheck.filter(f => f.section === 'Bank').forEach(f => {
+                    addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
                 });
             }
 
-            ws.addRow([]);
-
-            // Section 6: Employment Details
-            const sec6 = ws.addRow(['6. Employment Details', '', '', '', '', '']);
-            ws.mergeCells(sec6.number, 1, sec6.number, 6);
-            sec6.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            sec6.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-
-            fieldsToCheck.filter(f => f.section === 'Employment').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
-            });
-
-            ws.addRow([]);
-
-            // Section 7: Compensation & Bank Details
-            const sec7 = ws.addRow(['7. Compensation & Bank Details', '', '', '', '', '']);
-            ws.mergeCells(sec7.number, 1, sec7.number, 6);
-            sec7.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            sec7.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-
-            fieldsToCheck.filter(f => f.section === 'Bank').forEach(f => {
-                addHRISRow(ws, f.label, f.val, f.type === 'date', f.notApplicable);
-            });
-
             // Section 8: Educational Qualifications
-            ws.addRow([]);
-            const eduHeader = ws.addRow(['8. Educational Qualifications', '', '', '', '', '']);
-            ws.mergeCells(eduHeader.number, 1, eduHeader.number, 6);
-            eduHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            eduHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+            if (includeSection('Education')) {
+                ws.addRow([]);
+                const eduHeader = ws.addRow(['8. Educational Qualifications', '', '', '', '', '']);
+                ws.mergeCells(eduHeader.number, 1, eduHeader.number, 6);
+                eduHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                eduHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
 
-            const eduCols = ws.addRow(['Institution', 'Degree / Course', 'University', 'From Date', 'To Date', 'Grade / CGPA']);
-            eduCols.font = { bold: true };
-            eduCols.alignment = { horizontal: 'center' };
-            eduCols.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } });
+                const eduCols = ws.addRow(['Institution', 'Degree / Course', 'University', 'From Date', 'To Date', 'Grade / CGPA']);
+                eduCols.font = { bold: true };
+                eduCols.alignment = { horizontal: 'center' };
+                eduCols.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } });
 
-            if (dossier.education && dossier.education.length > 0) {
-                dossier.education.forEach(edu => {
-                    ws.addRow([
-                        edu.institution || '-',
-                        edu.courseName || edu.degree || '-',
-                        edu.university || '-',
-                        edu.fromDate ? format(new Date(edu.fromDate), 'dd MMM yyyy') : '-',
-                        edu.toDate ? format(new Date(edu.toDate), 'dd MMM yyyy') : '-',
-                        edu.grade || '-'
-                    ]);
-                });
-            } else {
-                const noEduRow = ws.addRow(['No educational qualification details added.', '', '', '', '', '']);
-                ws.mergeCells(noEduRow.number, 1, noEduRow.number, 6);
-                noEduRow.getCell(1).font = { italic: true };
+                if (dossier.education?.length > 0) {
+                    dossier.education.forEach(edu => {
+                        ws.addRow([
+                            edu.institution || '-',
+                            edu.courseName || edu.degree || '-',
+                            edu.university || '-',
+                            edu.fromDate ? format(new Date(edu.fromDate), 'dd MMM yyyy') : '-',
+                            edu.toDate ? format(new Date(edu.toDate), 'dd MMM yyyy') : '-',
+                            edu.grade || '-'
+                        ]);
+                    });
+                } else {
+                    const noEduRow = ws.addRow(['No educational qualification details added.', '', '', '', '', '']);
+                    ws.mergeCells(noEduRow.number, 1, noEduRow.number, 6);
+                    noEduRow.getCell(1).font = { italic: true };
+                }
             }
 
             // Section 9: Work Experience History
-            ws.addRow([]);
-            const expHeader = ws.addRow(['9. Work Experience History', '', '', '', '', '']);
-            ws.mergeCells(expHeader.number, 1, expHeader.number, 6);
-            expHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            expHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+            if (includeSection('Experience')) {
+                ws.addRow([]);
+                const expHeader = ws.addRow(['9. Work Experience History', '', '', '', '', '']);
+                ws.mergeCells(expHeader.number, 1, expHeader.number, 6);
+                expHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                expHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
 
-            const expCols = ws.addRow(['Company Name', 'Designation', 'Start Date', 'End Date', 'Reason for Leaving', 'Total Experience']);
-            expCols.font = { bold: true };
-            expCols.alignment = { horizontal: 'center' };
-            expCols.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } });
+                const expCols = ws.addRow(['Company Name', 'Designation', 'Start Date', 'End Date', 'Reason for Leaving', 'Total Experience']);
+                expCols.font = { bold: true };
+                expCols.alignment = { horizontal: 'center' };
+                expCols.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } });
 
-            if (dossier.experience && dossier.experience.length > 0) {
-                dossier.experience.forEach(exp => {
-                    ws.addRow([
-                        exp.companyName || '-',
-                        exp.designation || '-',
-                        exp.startDate ? format(new Date(exp.startDate), 'dd MMM yyyy') : '-',
-                        exp.endDate ? format(new Date(exp.endDate), 'dd MMM yyyy') : '-',
-                        exp.reasonForLeaving || '-',
-                        exp.totalExperience || '-'
-                    ]);
-                });
-            } else {
-                const noExpRow = ws.addRow(['No work experience history details added.', '', '', '', '', '']);
-                ws.mergeCells(noExpRow.number, 1, noExpRow.number, 6);
-                noExpRow.getCell(1).font = { italic: true };
+                if (dossier.experience?.length > 0) {
+                    dossier.experience.forEach(exp => {
+                        ws.addRow([
+                            exp.companyName || '-',
+                            exp.designation || '-',
+                            exp.startDate ? format(new Date(exp.startDate), 'dd MMM yyyy') : '-',
+                            exp.endDate ? format(new Date(exp.endDate), 'dd MMM yyyy') : '-',
+                            exp.reasonForLeaving || '-',
+                            exp.totalExperience || '-'
+                        ]);
+                    });
+                } else {
+                    const noExpRow = ws.addRow(['No work experience history details added.', '', '', '', '', '']);
+                    ws.mergeCells(noExpRow.number, 1, noExpRow.number, 6);
+                    noExpRow.getCell(1).font = { italic: true };
+                }
             }
 
             // Section 10: Skills & Competencies
-            ws.addRow([]);
-            const skillsHeader = ws.addRow(['10. Skills & Competencies', '', '', '', '', '']);
-            ws.mergeCells(skillsHeader.number, 1, skillsHeader.number, 6);
-            skillsHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            skillsHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+            if (includeSection('Skills')) {
+                ws.addRow([]);
+                const skillsHeader = ws.addRow(['10. Skills & Competencies', '', '', '', '', '']);
+                ws.mergeCells(skillsHeader.number, 1, skillsHeader.number, 6);
+                skillsHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                skillsHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
 
-            const techRow = ws.addRow(['Technical Skills', dossier.skills?.technical?.join(', ') || 'None', '', '', '', '']);
-            ws.mergeCells(techRow.number, 2, techRow.number, 6);
-            techRow.getCell(1).font = { bold: true };
+                const techRow = ws.addRow(['Technical Skills', dossier.skills?.technical?.join(', ') || 'None', '', '', '', '']);
+                ws.mergeCells(techRow.number, 2, techRow.number, 6);
+                techRow.getCell(1).font = { bold: true };
 
-            const behavRow = ws.addRow(['Behavioral Skills', dossier.skills?.behavioral?.join(', ') || 'None', '', '', '', '']);
-            ws.mergeCells(behavRow.number, 2, behavRow.number, 6);
-            behavRow.getCell(1).font = { bold: true };
+                const behavRow = ws.addRow(['Behavioral Skills', dossier.skills?.behavioral?.join(', ') || 'None', '', '', '', '']);
+                ws.mergeCells(behavRow.number, 2, behavRow.number, 6);
+                behavRow.getCell(1).font = { bold: true };
 
-            const learnRow = ws.addRow(['Learning Interests', dossier.skills?.learningInterests?.join(', ') || 'None', '', '', '', '']);
-            ws.mergeCells(learnRow.number, 2, learnRow.number, 6);
-            learnRow.getCell(1).font = { bold: true };
+                const learnRow = ws.addRow(['Learning Interests', dossier.skills?.learningInterests?.join(', ') || 'None', '', '', '', '']);
+                ws.mergeCells(learnRow.number, 2, learnRow.number, 6);
+                learnRow.getCell(1).font = { bold: true };
+            }
 
             // Section 11: Document Checklist & Submission Details
+            if (includeSection('Documents')) {
             ws.addRow([]);
             const docHeader = ws.addRow(['11. Document Checklist & Submission Details', '', '', '', '', '']);
             ws.mergeCells(docHeader.number, 1, docHeader.number, 6);
@@ -771,6 +784,7 @@ export const exportCandidateHRIS = async (selectedEmployeeIds) => {
                     }
                 }
             });
+            } // end if (includeSection('Documents'))
         });
 
         // Write and download
