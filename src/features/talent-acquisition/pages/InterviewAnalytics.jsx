@@ -323,11 +323,30 @@ const InterviewAnalytics = () => {
                             className="bg-transparent font-medium text-slate-700 focus:outline-none max-w-[220px] truncate"
                         >
                             <option value="" title="All Requisitions">All Requisitions</option>
-                            {requisitions.map(r => (
-                                <option key={r._id} value={r._id} title={`${r.title} (${r.client})`}>
-                                    {r.title} ({r.client})
-                                </option>
-                            ))}
+                            {requisitions.map(r => {
+                                const isClosed = r.status === 'Closed';
+                                let dateStr = null;
+                                if (r.closedAt) {
+                                    try {
+                                        dateStr = format(new Date(r.closedAt), 'dd MMM yyyy');
+                                    } catch (e) {
+                                        dateStr = null;
+                                    }
+                                } else if (isClosed && r.updatedAt) {
+                                    try {
+                                        dateStr = format(new Date(r.updatedAt), 'dd MMM yyyy');
+                                    } catch (e) {
+                                        dateStr = null;
+                                    }
+                                }
+                                const statusSuffix = isClosed ? (dateStr ? ` [Closed: ${dateStr}]` : ' [Closed]') : (r.previousRequestId ? ' [Reopened]' : '');
+                                const label = `${r.title || 'Untitled'} (${r.client || 'Internal'})${statusSuffix}${r.requestId ? ` - ${r.requestId}` : ''}`;
+                                return (
+                                    <option key={r._id} value={r._id} title={label}>
+                                        {label}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
 

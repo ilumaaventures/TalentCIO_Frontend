@@ -15,6 +15,7 @@ import {
   Mail,
   Paperclip,
   RefreshCw,
+  RotateCw,
   Search,
   Send,
   User,
@@ -81,6 +82,52 @@ const getRecipientDisplayName = (log) => {
   return 'Candidate';
 };
 
+const formatRequisitionOptionLabel = (req) => {
+  if (!req) return '';
+  const title = req.roleDetails?.title || req.roleDetails?.jobTitle || req.requestId || 'Untitled Position';
+  const clientName = req.client || 'Internal';
+  const reqCode = req.requestId ? ` - ${req.requestId}` : '';
+
+  const isClosed = req.status === 'Closed';
+  let dateStr = null;
+
+  if (req.closedAt) {
+    try {
+      dateStr = format(new Date(req.closedAt), 'dd MMM yyyy');
+    } catch (e) {
+      dateStr = null;
+    }
+  } else if (isClosed && req.updatedAt) {
+    try {
+      dateStr = format(new Date(req.updatedAt), 'dd MMM yyyy');
+    } catch (e) {
+      dateStr = null;
+    }
+  }
+
+  const prevClosedAt = req.previousRequestId?.closedAt || (req.previousRequestId?.status === 'Closed' ? req.previousRequestId?.updatedAt : null);
+  let prevDateStr = null;
+  if (prevClosedAt) {
+    try {
+      prevDateStr = format(new Date(prevClosedAt), 'dd MMM yyyy');
+    } catch (e) {
+      prevDateStr = null;
+    }
+  }
+
+  let statusBadge = '';
+  if (isClosed) {
+    statusBadge = dateStr ? ` [Closed: ${dateStr}]` : ' [Closed]';
+    if (req.reopenedToId) {
+      statusBadge += ' (Reopened)';
+    }
+  } else if (req.previousRequestId) {
+    statusBadge = prevDateStr ? ` [Reopened | Prev Closed: ${prevDateStr}]` : ' [Reopened]';
+  }
+
+  return `${title} (${clientName})${statusBadge}${reqCode}`;
+};
+
 const resolveAttachmentUrl = (urlOrPath) => {
   if (!urlOrPath) return '';
   const str = String(urlOrPath).trim();
@@ -125,6 +172,7 @@ const TAEmailHistory = () => {
   const [emailDetail, setEmailDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [viewTab, setViewTab] = useState('preview'); // 'preview' | 'raw'
+  const [resendingId, setResendingId] = useState(null);
 
   const fetchRequisitions = useCallback(async () => {
     try {
@@ -217,6 +265,32 @@ const TAEmailHistory = () => {
     if (!email) return;
     navigator.clipboard.writeText(email);
     toast.success(`Copied ${email} to clipboard!`);
+  };
+
+  const handleResendEmail = async (log) => {
+    if (!log) return;
+    const recipientName = getRecipientDisplayName(log);
+    const recipientEmail = log.recipientEmail || log.candidateId?.email || 'the candidate';
+
+    const confirmed = window.confirm(
+      `Are you sure you want to resend this email to ${recipientName} (${recipientEmail})?\n\nSubject: ${log.subject || 'No Subject'}`
+    );
+    if (!confirmed) return;
+
+    try {
+      setResendingId(log._id);
+      const res = await api.post(`/ta/email-history/${log._id}/resend`, {});
+      toast.success(res.data?.message || `Email resent successfully to ${recipientEmail}`);
+      fetchEmailHistory();
+      if (selectedEmailId === log._id) {
+        handleOpenEmailDetail(log._id);
+      }
+    } catch (err) {
+      console.error('Failed to resend email:', err);
+      toast.error(err.response?.data?.message || 'Failed to resend email');
+    } finally {
+      setResendingId(null);
+    }
   };
 
   const handleDownloadAttachment = async (logId, attachmentIndex, filename, directUrl) => {
@@ -371,7 +445,7 @@ const TAEmailHistory = () => {
               <option value="All">All Requisitions</option>
               {requisitionOptions.map((req) => (
                 <option key={req._id} value={req._id}>
-                  {req.roleDetails?.title || req.requestId} ({req.client || 'Internal'})
+                  {formatRequisitionOptionLabel(req)}
                 </option>
               ))}
             </select>
@@ -524,12 +598,24 @@ const TAEmailHistory = () => {
 
                     {/* Actions */}
                     <td className="py-3.5 px-4 align-top text-center">
-                      <button
-                        onClick={() => handleOpenEmailDetail(log._id)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-bold rounded-lg text-xs transition-all shadow-2xs"
-                      >
-                        <Eye size={13} /> View Email
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEmailDetail(log._id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-bold rounded-lg text-xs transition-all shadow-2xs cursor-pointer"
+                          title="View Full Email"
+                        >
+                          <Eye size={13} /> View
+                        </button>
+                        <button
+                          onClick={() => handleResendEmail(log)}
+                          disabled={resendingId === log._id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 font-bold rounded-lg text-xs transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
+                          title="Resend Email to Candidate"
+                        >
+                          <RotateCw size={13} className={resendingId === log._id ? 'animate-spin' : ''} />
+                          {resendingId === log._id ? 'Resending...' : 'Resend'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -744,15 +830,27 @@ const TAEmailHistory = () => {
               <span className="text-slate-400">
                 Email Log ID: {selectedEmailId}
               </span>
-              <button
-                onClick={() => {
-                  setSelectedEmailId(null);
-                  setEmailDetail(null);
-                }}
-                className="px-4 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-all"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                {emailDetail && (
+                  <button
+                    onClick={() => handleResendEmail(emailDetail)}
+                    disabled={resendingId === emailDetail._id}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    <RotateCw size={14} className={resendingId === emailDetail._id ? 'animate-spin' : ''} />
+                    {resendingId === emailDetail._id ? 'Resending...' : 'Resend Email'}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedEmailId(null);
+                    setEmailDetail(null);
+                  }}
+                  className="px-4 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
