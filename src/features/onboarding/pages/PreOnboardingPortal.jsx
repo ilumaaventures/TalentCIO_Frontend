@@ -88,7 +88,7 @@ const PreOnboardingPortal = () => {
       if (reqSectionsLabels.length > 0 || reqDocsLabels.length > 0) {
         filtered = ALL_STEPS.filter(step => {
           if (reqSectionsLabels.includes(step.hrLabel)) return true;
-          if (step.id === 'documents') return profile.documents?.some(d => reqDocsLabels.includes(d.label));
+          if (step.id === 'documents') return profile.documents?.some(d => reqDocsLabels.includes(d.label) || reqDocsLabels.includes(d.type));
           if (step.id === 'policies') return profile.companyPolicies?.some(p => reqDocsLabels.includes(p.name));
           if (step.id === 'offerDeclaration') {
             if (reqSectionsLabels.includes('Offer Declaration')) return true;
@@ -222,6 +222,7 @@ const PreOnboardingPortal = () => {
       setProfile(res.data);
       setPersonalDetails(res.data.personalDetails || {});
       setEmergencyContact(res.data.emergencyContact || {});
+      setBankDetails(res.data.bankDetails || {});
       setOfferDeclaration(res.data.offerDeclaration || {});
       if (res.data.offerDeclaration?.eSignStyle) {
         setInlineSignatureStyle(res.data.offerDeclaration.eSignStyle);
@@ -1103,7 +1104,10 @@ const PreOnboardingPortal = () => {
                 (profile?.documents || []).forEach(d => { if (!typeOrder.includes(d.type)) typeOrder.push(d.type); });
 
                 const filteredDocs = (profile?.documents?.filter(d => {
-                  return reqDocsLabels.length === 0 || reqDocsLabels.includes(d.label) || reqDocsLabels.some(rl => d.label.startsWith(rl));
+                  return reqDocsLabels.length === 0 ||
+                    reqDocsLabels.includes(d.label) ||
+                    reqDocsLabels.includes(d.type) ||
+                    reqDocsLabels.some(rl => d.label.startsWith(rl));
                 }) || []).sort((a, b) => {
                   const orderA = typeOrder.indexOf(a.type);
                   const orderB = typeOrder.indexOf(b.type);
@@ -1125,7 +1129,7 @@ const PreOnboardingPortal = () => {
                         const isUploaded = doc.status === 'Uploaded';
                         const needsUpload = doc.status === 'Pending' || doc.status === 'Mail Sent' || doc.status === 'Re-upload Required';
                         const isSharedCustomFile = doc.type === 'custom_file';
-                        const isDocRequested = reqDocsLabels.includes(doc.label) || reqDocsLabels.some(rl => doc.label.startsWith(rl));
+                        const isDocRequested = reqDocsLabels.includes(doc.label) || reqDocsLabels.includes(doc.type) || reqDocsLabels.some(rl => doc.label.startsWith(rl));
                         const canUpload = !isSharedCustomFile && ((doc.status === 'Re-upload Required') || (!isGlobalReadOnly && needsUpload && isDocRequested));
                         const isLiveRequired = doc.type === 'live_photo';
                         const badgeColor = isUploaded ? { bg: '#dbeafe', text: '#1d4ed8' } : isApproved ? { bg: '#dcfce7', text: '#16a34a' } : doc.status === 'Re-upload Required' ? { bg: '#fee2e2', text: '#dc2626' } : { bg: '#f1f5f9', text: '#64748b' };
@@ -1667,7 +1671,7 @@ const PreOnboardingPortal = () => {
               {/* Step 5: Offer Declaration */}
               {visibleSteps[currentStep]?.id === 'offerDeclaration' && (() => {
                 const sRO = isSectionReadOnly('offerDeclaration');
-                const hasDynamicTemplate = reqDocsLabels.includes('Offer Letter') || profile.dynamicTemplates?.some(t => reqDocsLabels.includes(t.name));
+                const hasDynamicTemplate = reqDocsLabels.includes('Offer Letter') || profile?.dynamicTemplates?.some(t => reqDocsLabels.includes(t.name));
                 return (
                   <div>
                     <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Offer & Declaration Documents</h3>
