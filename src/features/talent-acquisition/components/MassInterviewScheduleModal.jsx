@@ -33,7 +33,8 @@ const MassInterviewScheduleModal = ({
         phase: activePhase || 1,
         assignedTo: [],
         customFields: [],
-        sendEmail: true,
+        sendCandidateEmail: true,
+        sendInterviewerEmail: true,
         emailRecipientIds: initialSelectedIds,
         emailTemplateId: '',
         selectedEmailAccountId: '',
@@ -57,6 +58,7 @@ const MassInterviewScheduleModal = ({
 
     // Email Preview and Editing States
     const [previewCandidateId, setPreviewCandidateId] = useState('');
+    const [previewTarget, setPreviewTarget] = useState('candidate'); // 'candidate' | 'interviewer'
     const [viewMode, setViewMode] = useState('details'); // 'details' | 'email' | 'preview'
 
     const activeRound = useMemo(() => rounds[activeRoundIndex] || rounds[0], [rounds, activeRoundIndex]);
@@ -91,15 +93,9 @@ const MassInterviewScheduleModal = ({
         setActiveRoundIndex(0);
         setInterviewerSearch('');
         setPreviewCandidateId('');
+        setPreviewTarget('candidate');
         setViewMode('details');
     }, [isOpen, initialSelectedIds, createNewRound]);
-
-    const handleToggleSendEmail = (value) => {
-        updateActiveRound('sendEmail', value);
-        if (!value) {
-            setViewMode('details');
-        }
-    };
 
     useEffect(() => {
         if (!isOpen) return;
@@ -311,15 +307,36 @@ const MassInterviewScheduleModal = ({
     <p style="margin-top: 20px; color: #64748b; font-size: 12px;">Thank you,<br/>Talent Acquisition Team</p>
 </div>`;
 
+    const defaultInterviewerSubject = `[Interviewer Notice] Interview Scheduled: ${activeRound?.levelName || 'Interview Round'} - ${currentPreviewCandidate?.candidateName || 'Candidate'}`;
+
+    const defaultInterviewerBody = `<div style="font-family: Arial, sans-serif; color: #334155; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+    <h2 style="color: #2563eb; margin-top: 0;">New Interview Assignment</h2>
+    <p>Hello <strong>{{interviewerName}}</strong>,</p>
+    <p>You have been assigned to conduct an interview for candidate <strong>{{candidateName}}</strong> for <strong>{{roundName}}</strong> ({{jobTitle}}).</p>
+    <div style="background: #f1f5f9; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
+        <p style="margin: 4px 0;"><strong>Candidate:</strong> {{candidateName}} ({{email}})</p>
+        <p style="margin: 4px 0;"><strong>Date & Time:</strong> {{interviewDate}}</p>
+        <p style="margin: 4px 0;"><strong>Role:</strong> {{jobTitle}}</p>
+    </div>
+    {{additionalDetails}}
+    <p style="margin-top: 20px; color: #64748b; font-size: 12px;">Please log in to your portal to submit evaluation feedback after the interview.</p>
+</div>`;
+
     const previewSubject = useMemo(() => {
+        if (previewTarget === 'interviewer') {
+            return resolveTemplate(defaultInterviewerSubject, previewData);
+        }
         const raw = activeRound?.customSubject || activeTemplate?.subject || defaultSubject;
         return resolveTemplate(raw, previewData);
-    }, [activeRound?.customSubject, activeTemplate, defaultSubject, previewData]);
+    }, [previewTarget, activeRound?.customSubject, activeTemplate, defaultSubject, defaultInterviewerSubject, previewData]);
 
     const previewHtml = useMemo(() => {
+        if (previewTarget === 'interviewer') {
+            return renderTemplateBody(defaultInterviewerBody, previewData);
+        }
         const raw = activeRound?.customHtmlBody || activeTemplate?.htmlBody || defaultCandidateBody;
         return renderTemplateBody(raw, previewData);
-    }, [activeRound?.customHtmlBody, activeTemplate, defaultCandidateBody, previewData]);
+    }, [previewTarget, activeRound?.customHtmlBody, activeTemplate, defaultCandidateBody, defaultInterviewerBody, previewData]);
 
     const canProceedStep1 = selectedIds.length >= 1;
     const canProceedStep2 = rounds.length > 0;
@@ -341,22 +358,30 @@ const MassInterviewScheduleModal = ({
             setScheduling(true);
             const payload = {
                 candidateIds: selectedIds,
-                rounds: rounds.map((r, idx) => ({
-                    levelName: (r.levelName || `Round ${idx + 1}`).trim() || `Round ${idx + 1}`,
-                    assignAfterStage: r.assignAfterStage || (Number(activePhase) === 2 ? 'Shortlisted' : 'Interested'),
-                    assignedTo: r.assignedTo || [],
-                    scheduledDate: r.scheduledDate || undefined,
-                    phase: r.phase || 1,
-                    sendEmail: r.sendEmail,
-                    emailCandidateIds: r.sendEmail ? (r.emailRecipientIds || selectedIds) : [],
-                    emailTemplateId: r.sendEmail && r.emailTemplateId ? r.emailTemplateId : undefined,
-                    emailAccountId: r.sendEmail && r.selectedEmailAccountId ? r.selectedEmailAccountId : undefined,
-                    cc: r.sendEmail && r.cc ? r.cc.trim() : undefined,
-                    bcc: r.sendEmail && r.bcc ? r.bcc.trim() : undefined,
-                    customFields: (r.customFields || []).filter((f) => f.key && f.key.trim()),
-                    customSubject: r.sendEmail && r.customSubject ? r.customSubject.trim() : undefined,
-                    customHtmlBody: r.sendEmail && r.customHtmlBody ? r.customHtmlBody.trim() : undefined
-                }))
+                rounds: rounds.map((r, idx) => {
+                    const sendCandidate = r.sendCandidateEmail !== false;
+                    const sendInterviewer = r.sendInterviewerEmail !== false;
+                    const anyEmail = sendCandidate || sendInterviewer;
+
+                    return {
+                        levelName: (r.levelName || `Round ${idx + 1}`).trim() || `Round ${idx + 1}`,
+                        assignAfterStage: r.assignAfterStage || (Number(activePhase) === 2 ? 'Shortlisted' : 'Interested'),
+                        assignedTo: r.assignedTo || [],
+                        scheduledDate: r.scheduledDate || undefined,
+                        phase: r.phase || 1,
+                        sendEmail: anyEmail,
+                        sendCandidateEmail: sendCandidate,
+                        sendInterviewerEmail: sendInterviewer,
+                        emailCandidateIds: sendCandidate ? (r.emailRecipientIds || selectedIds) : [],
+                        emailTemplateId: anyEmail && r.emailTemplateId ? r.emailTemplateId : undefined,
+                        emailAccountId: anyEmail && r.selectedEmailAccountId ? r.selectedEmailAccountId : undefined,
+                        cc: anyEmail && r.cc ? r.cc.trim() : undefined,
+                        bcc: anyEmail && r.bcc ? r.bcc.trim() : undefined,
+                        customFields: (r.customFields || []).filter((f) => f.key && f.key.trim()),
+                        customSubject: anyEmail && r.customSubject ? r.customSubject.trim() : undefined,
+                        customHtmlBody: anyEmail && r.customHtmlBody ? r.customHtmlBody.trim() : undefined
+                    };
+                })
             };
 
             const response = await api.post('/ta/candidates/bulk-schedule-interview', payload);
@@ -433,7 +458,7 @@ const MassInterviewScheduleModal = ({
                     </div>
 
                     {/* Step 2 View Mode Toggle */}
-                    {step === 2 && activeRound?.sendEmail && (
+                    {step === 2 && (activeRound?.sendCandidateEmail !== false || activeRound?.sendInterviewerEmail !== false) && (
                         <div className="inline-flex rounded-xl bg-slate-200/80 p-1">
                             <button
                                 type="button"
@@ -579,23 +604,57 @@ const MassInterviewScheduleModal = ({
                             {viewMode === 'details' && (
                                 <div className="grid gap-6 lg:grid-cols-2">
                                     <div className="space-y-5">
-                                        {/* Send Email Toggle */}
-                                        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                            <div>
-                                                <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                                    <Mail size={16} className="text-blue-600" />
-                                                    Send Email Invitation to Candidates
-                                                </label>
-                                                <p className="text-xs text-slate-500 mt-0.5">
-                                                    Automatically send interview invitation emails to candidates for this round.
-                                                </p>
+                                        {/* Email Dispatch Options */}
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3.5">
+                                            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                                    <Mail size={14} className="text-blue-600" />
+                                                    Email Dispatch Options
+                                                </span>
+                                                <span className="text-[11px] text-slate-400 font-medium">Select recipients for this round</span>
                                             </div>
-                                            <input
-                                                type="checkbox"
-                                                checked={activeRound?.sendEmail !== false}
-                                                onChange={(e) => handleToggleSendEmail(e.target.checked)}
-                                                className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                            />
+
+                                            {/* Send to Candidates Option */}
+                                            <label className={`flex items-start justify-between p-3.5 rounded-xl border transition cursor-pointer ${
+                                                activeRound?.sendCandidateEmail !== false ? 'bg-blue-50/40 border-blue-200' : 'bg-slate-50/60 border-slate-200 opacity-75'
+                                            }`}>
+                                                <div className="pr-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-bold text-slate-900">Send Email to Candidate(s)</span>
+                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Candidate Invitation</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1">
+                                                        Automatically dispatch interview invitation email with date, time, and instructions to candidate(s).
+                                                    </p>
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={activeRound?.sendCandidateEmail !== false}
+                                                    onChange={(e) => updateActiveRound('sendCandidateEmail', e.target.checked)}
+                                                    className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer mt-0.5"
+                                                />
+                                            </label>
+
+                                            {/* Send to Interviewer Option */}
+                                            <label className={`flex items-start justify-between p-3.5 rounded-xl border transition cursor-pointer ${
+                                                activeRound?.sendInterviewerEmail !== false ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-50/60 border-slate-200 opacity-75'
+                                            }`}>
+                                                <div className="pr-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-bold text-slate-900">Send Email to Assigned Interviewer(s)</span>
+                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Interviewer Brief</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1">
+                                                        Send candidate details and evaluation instructions to the assigned team members.
+                                                    </p>
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={activeRound?.sendInterviewerEmail !== false}
+                                                    onChange={(e) => updateActiveRound('sendInterviewerEmail', e.target.checked)}
+                                                    className="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer mt-0.5"
+                                                />
+                                            </label>
                                         </div>
 
                                         {/* Round Name */}
@@ -836,33 +895,61 @@ const MassInterviewScheduleModal = ({
                             {/* View Mode 2: Edit Email */}
                             {viewMode === 'email' && (
                                 <div className="space-y-5">
-                                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5">
-                                        <div>
-                                            <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                                <Mail size={16} className="text-blue-600" />
-                                                Send Email Invitation to Candidates
-                                            </label>
-                                            <p className="text-xs text-slate-500 mt-0.5">
-                                                Automatically dispatch email invitations to scheduled candidates for this round.
-                                            </p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            checked={activeRound?.sendEmail !== false}
-                                            onChange={(e) => handleToggleSendEmail(e.target.checked)}
-                                            className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                        />
+                                    {/* Email Dispatch Targets */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* Candidate Toggle */}
+                                        <label className={`flex items-start justify-between p-4 rounded-2xl border transition cursor-pointer ${
+                                            activeRound?.sendCandidateEmail !== false ? 'bg-white border-blue-300 shadow-xs' : 'bg-slate-50 border-slate-200 opacity-70'
+                                        }`}>
+                                            <div className="pr-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Mail size={15} className="text-blue-600" />
+                                                    <span className="text-sm font-bold text-slate-800">Candidate Email</span>
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Invitation</span>
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    Send invitation with scheduled date/time and custom details.
+                                                </p>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={activeRound?.sendCandidateEmail !== false}
+                                                onChange={(e) => updateActiveRound('sendCandidateEmail', e.target.checked)}
+                                                className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer mt-0.5"
+                                            />
+                                        </label>
+
+                                        {/* Interviewer Toggle */}
+                                        <label className={`flex items-start justify-between p-4 rounded-2xl border transition cursor-pointer ${
+                                            activeRound?.sendInterviewerEmail !== false ? 'bg-white border-indigo-300 shadow-xs' : 'bg-slate-50 border-slate-200 opacity-70'
+                                        }`}>
+                                            <div className="pr-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Users size={15} className="text-indigo-600" />
+                                                    <span className="text-sm font-bold text-slate-800">Interviewer Email</span>
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">Assignment</span>
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    Send candidate brief and schedule notification to assigned team members.
+                                                </p>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={activeRound?.sendInterviewerEmail !== false}
+                                                onChange={(e) => updateActiveRound('sendInterviewerEmail', e.target.checked)}
+                                                className="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer mt-0.5"
+                                            />
+                                        </label>
                                     </div>
 
-                                    {activeRound?.sendEmail !== false && (
-                                    <>
-                                        {/* Candidate Recipient Selector */}
+                                    {/* Candidate Recipient Selector (shown if Candidate Email is ON) */}
+                                    {activeRound?.sendCandidateEmail !== false && (
                                         <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-2">
                                                         <Users size={14} className="text-blue-600" />
-                                                        Select Email Recipients ({(activeRound?.emailRecipientIds || selectedIds).length} of {selectedCandidates.length} selected)
+                                                        Select Candidate Recipients ({(activeRound?.emailRecipientIds || selectedIds).length} of {selectedCandidates.length} selected)
                                                     </label>
                                                     <p className="text-xs text-slate-500 mt-0.5">
                                                         Choose which candidates should receive the email invite for this interview round.
@@ -916,7 +1003,9 @@ const MassInterviewScheduleModal = ({
                                                 })}
                                             </div>
                                         </div>
+                                    )}
 
+                                    {(activeRound?.sendCandidateEmail !== false || activeRound?.sendInterviewerEmail !== false) ? (
                                         <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {/* Email Template Select */}
@@ -1031,7 +1120,12 @@ const MassInterviewScheduleModal = ({
                                                 />
                                             </div>
                                         </div>
-                                    </>
+                                    ) : (
+                                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+                                            <Mail className="mx-auto text-slate-400 mb-2" size={24} />
+                                            <p className="text-sm font-semibold text-slate-700">Email dispatch is disabled for both candidates and interviewers</p>
+                                            <p className="text-xs text-slate-500 mt-1">Enable candidate or interviewer email above to customize templates, subject, and message body.</p>
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -1039,31 +1133,56 @@ const MassInterviewScheduleModal = ({
                             {/* View Mode 3: Live Email Preview */}
                             {viewMode === 'preview' && (
                                 <div className="space-y-4">
-                                    {/* Candidate Preview Selector */}
-                                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+                                    {/* Preview Target & Candidate Selector Header */}
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
                                         <div className="flex items-center gap-3">
-                                            <Mail size={18} className="text-blue-600" />
+                                            <Mail size={18} className="text-blue-600 shrink-0" />
                                             <div>
                                                 <p className="text-xs font-bold uppercase text-slate-500">Live Email Preview</p>
-                                                <p className="text-sm font-semibold text-slate-800">Previewing email invitation as recipient will see it</p>
+                                                <p className="text-sm font-semibold text-slate-800">
+                                                    {previewTarget === 'interviewer' ? 'Previewing interviewer assignment notice' : 'Previewing candidate interview invitation'}
+                                                </p>
                                             </div>
                                         </div>
-                                        {selectedCandidates.length > 1 && (
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs font-medium text-slate-500">Preview For:</span>
-                                                <select
-                                                    value={previewCandidateId}
-                                                    onChange={(e) => setPreviewCandidateId(e.target.value)}
-                                                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                                                >
-                                                    {selectedCandidates.map((c) => (
-                                                        <option key={c._id} value={c._id}>
-                                                            {c.candidateName} ({c.email})
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        )}
+
+                                        <div className="flex flex-wrap items-center gap-2.5">
+                                            {/* Preview Target Switch (Candidate vs Interviewer) */}
+                                            {activeRound?.sendCandidateEmail !== false && activeRound?.sendInterviewerEmail !== false && (
+                                                <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs font-bold">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewTarget('candidate')}
+                                                        className={`px-3 py-1 rounded-md transition ${previewTarget === 'candidate' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                    >
+                                                        Candidate Invitation
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewTarget('interviewer')}
+                                                        className={`px-3 py-1 rounded-md transition ${previewTarget === 'interviewer' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                    >
+                                                        Interviewer Notice
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {selectedCandidates.length > 1 && (
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-xs font-medium text-slate-400">For:</span>
+                                                    <select
+                                                        value={previewCandidateId}
+                                                        onChange={(e) => setPreviewCandidateId(e.target.value)}
+                                                        className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                                    >
+                                                        {selectedCandidates.map((c) => (
+                                                            <option key={c._id} value={c._id}>
+                                                                {c.candidateName}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Email Card Container */}
@@ -1072,12 +1191,16 @@ const MassInterviewScheduleModal = ({
                                         <div className="border-b border-slate-200 bg-slate-50/80 px-6 py-4 space-y-2 text-xs">
                                             <div className="flex items-center gap-2">
                                                 <span className="w-16 font-bold uppercase text-slate-400">To:</span>
-                                                <span className="font-medium text-slate-800">{previewData.candidateName} &lt;{previewData.email}&gt;</span>
+                                                <span className="font-medium text-slate-800">
+                                                    {previewTarget === 'interviewer'
+                                                        ? `${previewData.interviewerName || 'Assigned Interviewer(s)'} <interviewer@company.com>`
+                                                        : `${previewData.candidateName} <${previewData.email}>`}
+                                                </span>
                                             </div>
-                                            {(cc || bcc) && (
+                                            {(activeRound?.cc || activeRound?.bcc) && (
                                                 <div className="flex items-center gap-2">
                                                     <span className="w-16 font-bold uppercase text-slate-400">CC / BCC:</span>
-                                                    <span className="text-slate-600">{[cc, bcc].filter(Boolean).join(', ')}</span>
+                                                    <span className="text-slate-600">{[activeRound?.cc, activeRound?.bcc].filter(Boolean).join(', ')}</span>
                                                 </div>
                                             )}
                                             <div className="flex items-center gap-2 border-t border-slate-200/60 pt-2 mt-2">
@@ -1111,14 +1234,19 @@ const MassInterviewScheduleModal = ({
                                     </h4>
                                     <div className="space-y-3 max-h-[260px] overflow-y-auto">
                                         {rounds.map((r, idx) => (
-                                            <div key={r.id || idx} className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-1.5">
-                                                <div className="flex items-center justify-between">
+                                            <div key={r.id || idx} className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2">
+                                                <div className="flex flex-wrap items-center justify-between gap-1.5">
                                                     <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
                                                         Round {idx + 1}: {r.levelName || 'Untitled Round'}
                                                     </span>
-                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.sendEmail !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                                                        {r.sendEmail !== false ? `Email Enabled (${(r.emailRecipientIds || selectedIds).length} candidate(s))` : 'Email Disabled'}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.sendCandidateEmail !== false ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}`}>
+                                                            {r.sendCandidateEmail !== false ? `Candidate Email (${(r.emailRecipientIds || selectedIds).length})` : 'Candidate Email: Off'}
+                                                        </span>
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.sendInterviewerEmail !== false ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'}`}>
+                                                            {r.sendInterviewerEmail !== false ? `Interviewer Email (${(r.assignedTo || []).length})` : 'Interviewer Email: Off'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
                                                     <div>
