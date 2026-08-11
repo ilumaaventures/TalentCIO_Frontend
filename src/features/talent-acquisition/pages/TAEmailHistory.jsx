@@ -173,6 +173,8 @@ const TAEmailHistory = () => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [viewTab, setViewTab] = useState('preview'); // 'preview' | 'raw'
   const [resendingId, setResendingId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkResending, setBulkResending] = useState(false);
 
   const fetchRequisitions = useCallback(async () => {
     try {
@@ -302,6 +304,42 @@ const TAEmailHistory = () => {
       toast.error(err.response?.data?.message || 'Failed to resend email');
     } finally {
       setResendingId(null);
+    }
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      const allIds = logs.map((log) => log._id);
+      setSelectedIds(allIds);
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleToggleSelect = (logId) => {
+    setSelectedIds((prev) =>
+      prev.includes(logId) ? prev.filter((id) => id !== logId) : [...prev, logId]
+    );
+  };
+
+  const handleBulkResend = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to resend ${selectedIds.length} selected email(s)?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setBulkResending(true);
+      const res = await api.post('/ta/email-history/bulk-resend', { logIds: selectedIds });
+      toast.success(res.data?.message || `Successfully processed bulk resend`);
+      setSelectedIds([]);
+      fetchEmailHistory();
+    } catch (err) {
+      console.error('Bulk resend failed:', err);
+      toast.error(err.response?.data?.message || 'Failed to bulk resend emails');
+    } finally {
+      setBulkResending(false);
     }
   };
 
@@ -498,6 +536,38 @@ const TAEmailHistory = () => {
         </div>
       </div>
 
+      {/* Bulk Selection Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-indigo-50/90 border border-indigo-200/80 rounded-2xl px-5 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs animate-in fade-in duration-150">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center justify-center bg-indigo-600 text-white text-xs font-bold w-6 h-6 rounded-full shadow-2xs">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs font-bold text-indigo-950">
+              {selectedIds.length} email{selectedIds.length > 1 ? 's' : ''} selected
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedIds([])}
+              className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all cursor-pointer shadow-2xs"
+            >
+              Deselect All
+            </button>
+
+            <button
+              onClick={handleBulkResend}
+              disabled={bulkResending}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+            >
+              <RotateCw size={13} className={bulkResending ? 'animate-spin' : ''} />
+              {bulkResending ? 'Resending...' : `Resend Selected (${selectedIds.length})`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Per-Candidate Email Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {loading ? (
@@ -519,6 +589,15 @@ const TAEmailHistory = () => {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                  <th className="py-3.5 px-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={logs.length > 0 && selectedIds.length === logs.length}
+                      onChange={handleSelectAll}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer align-middle"
+                      title="Select All on Page"
+                    />
+                  </th>
                   <th className="py-3.5 px-4">Candidate (Recipient)</th>
                   <th className="py-3.5 px-4">Template Used</th>
                   <th className="py-3.5 px-4">Requisition & Subject</th>
@@ -530,7 +609,18 @@ const TAEmailHistory = () => {
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
                 {logs.map((log) => (
-                  <tr key={log._id} className="hover:bg-slate-50/80 transition-colors">
+                  <tr key={log._id} className={`hover:bg-slate-50/80 transition-colors ${selectedIds.includes(log._id) ? 'bg-indigo-50/30' : ''}`}>
+                    {/* Row Select Checkbox */}
+                    <td className="py-3.5 px-4 align-top text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(log._id)}
+                        onChange={() => handleToggleSelect(log._id)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer mt-1"
+                        title="Select email log"
+                      />
+                    </td>
+
                     {/* Recipient Candidate */}
                     <td className="py-3.5 px-4 align-top">
                       <div className="flex flex-col">
