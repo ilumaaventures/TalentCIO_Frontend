@@ -25,6 +25,8 @@ import {
     getDisplayInterviewRoundsForPhase,
     hasPhase2InterviewActivity,
     matchesInterviewFilter,
+    isRoundScheduledStatus,
+    isRoundPassedStatus,
     normalizeMultiValueFilter,
     matchesMultiValueFilter,
     getPresetDateRange,

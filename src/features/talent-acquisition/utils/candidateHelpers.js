@@ -153,6 +153,23 @@ export const getRoundExportInterviewStatus = (round = {}) => {
 
 export const getPhase2InterviewStatusExportValue = (candidate = {}) => getPhase2InterviewStatusValue(candidate);
 
+export const isRoundScheduledStatus = (status = '') => {
+    const s = String(status || '').trim();
+    if (!s || s === 'Pending' || s === 'Scheduled') return true;
+    const closedStatuses = [
+        'passed', 'pass', 'shortlisted',
+        'failed', 'fail', 'rejected',
+        'did not turn up', 'did not turnup', 'dntu', 'skipped', 'no show',
+        'left in between', 'lib'
+    ];
+    return !closedStatuses.includes(s.toLowerCase());
+};
+
+export const isRoundPassedStatus = (status = '') => {
+    const s = String(status || '').trim().toLowerCase();
+    return s === 'passed' || s === 'pass' || s === 'shortlisted';
+};
+
 export const matchesInterviewFilter = (rounds = [], filterValue = 'All') => {
     if (filterValue === 'All') {
         return true;
