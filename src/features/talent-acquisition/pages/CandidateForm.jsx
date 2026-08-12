@@ -132,6 +132,7 @@ const CandidateForm = () => {
         offerJoiningDate: '',
         preference: 'Neutral / Average',
         totalExperience: '',
+        relevantExperience: '',
         qualification: '',
         currentCompany: '',
         pastExperience: [{ companyName: '', experienceYears: '', role: '' }],
@@ -308,6 +309,7 @@ const CandidateForm = () => {
                     offerJoiningDate: candidate.offerJoiningDate ? new Date(candidate.offerJoiningDate).toISOString().split('T')[0] : '',
                     preference: candidate.preference || 'Neutral / Average',
                     totalExperience: candidate.totalExperience || '',
+                    relevantExperience: candidate.relevantExperience || '',
                     qualification: candidate.qualification || '',
                     currentCompany: candidate.currentCompany || '',
                     pastExperience: candidate.pastExperience && candidate.pastExperience.length > 0
@@ -634,6 +636,7 @@ const CandidateForm = () => {
                 preference: formData.preference || undefined,
                 pastExperience: formData.pastExperience.filter(exp => exp.companyName && exp.experienceYears),
                 totalExperience: Number(formData.totalExperience),
+                relevantExperience: formData.relevantExperience !== '' && formData.relevantExperience !== null ? Number(formData.relevantExperience) : 0,
                 tatToJoin: formData.tatToJoin ? Number(formData.tatToJoin) : undefined,
                 noticePeriod: formData.noticePeriod ? Number(formData.noticePeriod) : undefined,
                 lastWorkingDay: formData.lastWorkingDay || undefined,
@@ -879,6 +882,10 @@ const CandidateForm = () => {
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Total Exp (Years) *</label>
                                             <input type="number" step="0.1" name="totalExperience" value={formData.totalExperience} onChange={handleChange} onWheel={(e) => e.target.blur()} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" required disabled={isViewMode} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-slate-600 mb-1">Relevant Exp (Years)</label>
+                                            <input type="number" step="0.1" name="relevantExperience" value={formData.relevantExperience} onChange={handleChange} onWheel={(e) => e.target.blur()} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium" disabled={isViewMode} />
                                         </div>
                                         <div>
                                             <label className="block text-[11px] font-bold text-slate-600 mb-1">Current Company</label>
