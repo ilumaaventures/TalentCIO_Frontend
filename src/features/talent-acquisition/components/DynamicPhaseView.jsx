@@ -270,6 +270,7 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
     const debouncedSearch = useDebouncedValue(search, 200);
     const [statusFilter, setStatusFilter] = useState('All');
     const [decisionFilter, setDecisionFilter] = useState('All');
+    const [interviewSubStatusFilter, setInterviewSubStatusFilter] = useState('All');
     const [pulledByFilter, setPulledByFilter] = useState('All');
     const [uploadedByFilter, setUploadedByFilter] = useState('All');
     const [uploadTypeFilter, setUploadTypeFilter] = useState('All');
@@ -602,9 +603,23 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
             const matchesPulledBy = pulledByFilter === 'All' || String(candidate.profilePulledBy || '').trim() === pulledByFilter;
             const matchesUploadedBy = uploadedByFilter === 'All' || getCandidateUploadedByName(candidate) === uploadedByFilter;
             const matchesUploadType = uploadTypeFilter === 'All' || getCandidateUploadType(candidate) === uploadTypeFilter;
-            return matchesSearch && matchesStatus && matchesDecision && matchesPulledBy && matchesUploadedBy && matchesUploadType;
+            let matchesInterviewSub = true;
+            if (interviewSubStatusFilter !== 'All') {
+                const rounds = candidate.interviewRounds || [];
+                const targetRound = String(filterInterviewRound || '').trim().toLowerCase();
+                const targetRounds = targetRound
+                    ? rounds.filter(r => Number(r.phase || 1) === Number(activePhase?.order || 1) && String(r.levelName || '').trim().toLowerCase() === targetRound)
+                    : rounds.filter(r => Number(r.phase || 1) === Number(activePhase?.order || 1));
+                const norm = String(interviewSubStatusFilter).trim().toLowerCase();
+                if (norm === 'passed') matchesInterviewSub = targetRounds.some(r => ['passed', 'pass', 'shortlisted'].includes(String(r.status || '').trim()));
+                else if (norm === 'failed') matchesInterviewSub = targetRounds.some(r => ['failed', 'fail', 'rejected'].includes(String(r.status || '').trim()));
+                else if (norm === 'did not turn up') matchesInterviewSub = targetRounds.some(r => ['did not turn up', 'did not turnup', 'skipped', 'no show', 'dntu'].includes(String(r.status || '').trim()));
+                else if (norm === 'left in between') matchesInterviewSub = targetRounds.some(r => ['left in between', 'lib'].includes(String(r.status || '').trim()));
+                else if (norm === 'pending') matchesInterviewSub = targetRounds.some(r => !['passed', 'pass', 'shortlisted', 'failed', 'fail', 'rejected', 'did not turn up', 'did not turnup', 'skipped', 'no show', 'dntu', 'left in between', 'lib'].includes(String(r.status || '').trim()));
+            }
+            return matchesSearch && matchesStatus && matchesDecision && matchesPulledBy && matchesUploadedBy && matchesUploadType && matchesInterviewSub;
         })
-    ), [activePhase, debouncedSearch, decisionFilter, phaseCandidates, pulledByFilter, statusFilter, uploadedByFilter, uploadTypeFilter]);
+    ), [activePhase, debouncedSearch, decisionFilter, filterInterviewRound, interviewSubStatusFilter, phaseCandidates, pulledByFilter, statusFilter, uploadedByFilter, uploadTypeFilter]);
 
     const sortedCandidates = useMemo(() => {
         if (!sortColumn) return filteredCandidates;
@@ -2020,29 +2035,53 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
 
                     {filterInterviewRound && (
                         <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-700 self-center">
-                            <div className="flex items-center gap-1.5">
+                            <div
+                                onClick={() => setInterviewSubStatusFilter('All')}
+                                className={`flex items-center gap-1.5 cursor-pointer hover:bg-slate-200/60 px-2 py-1 rounded-lg transition-all ${interviewSubStatusFilter === 'All' ? 'bg-slate-200/80 font-bold ring-1 ring-slate-300' : ''}`}
+                                title="Click to show all candidates of this round"
+                            >
                                 <Calendar className="text-slate-500 size-4" />
                                 <span>Total Interview Scheduled:</span>
                                 <span className="font-extrabold text-slate-900">
-                                    {candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase())).length}
+                                    {candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase?.order || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase())).length}
                                 </span>
                             </div>
                             <span className="text-slate-300 font-normal">|</span>
-                            <div className="flex items-center gap-2 font-extrabold text-xs">
-                                <span className="text-emerald-600" title="Shortlisted">
-                                    SH:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Passed', 'Pass', 'Shortlisted'].includes(String(r.status || '').trim()))).length}
+                            <div className="flex items-center gap-1.5 font-extrabold text-xs">
+                                <span
+                                    onClick={() => setInterviewSubStatusFilter(interviewSubStatusFilter === 'Passed' ? 'All' : 'Passed')}
+                                    className={`text-emerald-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${interviewSubStatusFilter === 'Passed' ? 'bg-emerald-100 ring-1 ring-emerald-400/80' : 'hover:bg-emerald-50'}`}
+                                    title="Click to filter Shortlisted / Passed candidates"
+                                >
+                                    SH:{candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase?.order || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Passed', 'Pass', 'Shortlisted'].includes(String(r.status || '').trim()))).length}
                                 </span>
-                                <span className="text-rose-600" title="Rejected">
-                                    RJ:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Failed', 'Fail', 'Rejected'].includes(String(r.status || '').trim()))).length}
+                                <span
+                                    onClick={() => setInterviewSubStatusFilter(interviewSubStatusFilter === 'Failed' ? 'All' : 'Failed')}
+                                    className={`text-rose-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${interviewSubStatusFilter === 'Failed' ? 'bg-rose-100 ring-1 ring-rose-400/80' : 'hover:bg-rose-50'}`}
+                                    title="Click to filter Rejected / Failed candidates"
+                                >
+                                    RJ:{candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase?.order || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Failed', 'Fail', 'Rejected'].includes(String(r.status || '').trim()))).length}
                                 </span>
-                                <span className="text-orange-600" title="Did Not Turn Up">
-                                    DNTU:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Did Not Turn Up', 'Did Not Turnup', 'Did Not Turn up', 'Skipped', 'No Show', 'DNTU'].includes(String(r.status || '').trim()))).length}
+                                <span
+                                    onClick={() => setInterviewSubStatusFilter(interviewSubStatusFilter === 'Did Not Turn Up' ? 'All' : 'Did Not Turn Up')}
+                                    className={`text-orange-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${interviewSubStatusFilter === 'Did Not Turn Up' ? 'bg-orange-100 ring-1 ring-orange-400/80' : 'hover:bg-orange-50'}`}
+                                    title="Click to filter Did Not Turn Up candidates"
+                                >
+                                    DNTU:{candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase?.order || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Did Not Turn Up', 'Did Not Turnup', 'Did Not Turn up', 'Skipped', 'No Show', 'DNTU'].includes(String(r.status || '').trim()))).length}
                                 </span>
-                                <span className="text-purple-600" title="Left In Between">
-                                    LIB:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Left in between', 'Left In Between', 'LIB'].includes(String(r.status || '').trim()))).length}
+                                <span
+                                    onClick={() => setInterviewSubStatusFilter(interviewSubStatusFilter === 'Left in between' ? 'All' : 'Left in between')}
+                                    className={`text-purple-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${interviewSubStatusFilter === 'Left in between' ? 'bg-purple-100 ring-1 ring-purple-400/80' : 'hover:bg-purple-50'}`}
+                                    title="Click to filter Left In Between candidates"
+                                >
+                                    LIB:{candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase?.order || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && ['Left in between', 'Left In Between', 'LIB'].includes(String(r.status || '').trim()))).length}
                                 </span>
-                                <span className="text-amber-600" title="Pending">
-                                    P:{filteredCandidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && !['Passed', 'Pass', 'Shortlisted', 'Failed', 'Fail', 'Rejected', 'Did Not Turn Up', 'Did Not Turnup', 'Did Not Turn up', 'Skipped', 'No Show', 'DNTU', 'Left in between', 'Left In Between', 'LIB'].includes(String(r.status || '').trim()))).length}
+                                <span
+                                    onClick={() => setInterviewSubStatusFilter(interviewSubStatusFilter === 'Pending' ? 'All' : 'Pending')}
+                                    className={`text-amber-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${interviewSubStatusFilter === 'Pending' ? 'bg-amber-100 ring-1 ring-amber-400/80' : 'hover:bg-amber-50'}`}
+                                    title="Click to filter Pending / Scheduled candidates"
+                                >
+                                    P:{candidates.filter(c => (c.interviewRounds || []).some(r => Number(r.phase || 1) === (activePhase?.order || 1) && String(r.levelName || '').trim().toLowerCase() === filterInterviewRound.trim().toLowerCase() && !['Passed', 'Pass', 'Shortlisted', 'Failed', 'Fail', 'Rejected', 'Did Not Turn Up', 'Did Not Turnup', 'Did Not Turn up', 'Skipped', 'No Show', 'DNTU', 'Left in between', 'Left In Between', 'LIB'].includes(String(r.status || '').trim()))).length}
                                 </span>
                             </div>
                         </div>

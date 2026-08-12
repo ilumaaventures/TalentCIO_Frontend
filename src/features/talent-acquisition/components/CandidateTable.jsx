@@ -217,18 +217,52 @@ const CandidateTable = ({
 
                 {activeRoundStats ? (
                     <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-700 self-center">
-                        <div className="flex items-center gap-1.5">
+                        <div
+                            onClick={() => setFilterInterviewStatus?.('All')}
+                            className={`flex items-center gap-1.5 cursor-pointer hover:bg-slate-200/60 px-2 py-1 rounded-lg transition-all ${filterInterviewStatus === 'All' ? 'bg-slate-200/80 font-bold ring-1 ring-slate-300' : ''}`}
+                            title="Click to show all candidates of this round"
+                        >
                             <Calendar className="text-slate-500 size-4" />
                             <span>Total Interview Scheduled:</span>
                             <span className="font-extrabold text-slate-900">{activeRoundStats.total}</span>
                         </div>
                         <span className="text-slate-300 font-normal">|</span>
-                        <div className="flex items-center gap-2 font-extrabold text-xs">
-                            <span className="text-emerald-600" title="Shortlisted">SH:{activeRoundStats.shortlisted}</span>
-                            <span className="text-rose-600" title="Rejected">RJ:{activeRoundStats.rejected}</span>
-                            <span className="text-orange-600" title="Did Not Turn Up">DNTU:{activeRoundStats.didNotTurnUp}</span>
-                            <span className="text-purple-600" title="Left In Between">LIB:{activeRoundStats.leftInBetween}</span>
-                            <span className="text-amber-600" title="Pending">P:{activeRoundStats.pending}</span>
+                        <div className="flex items-center gap-1.5 font-extrabold text-xs">
+                            <span
+                                onClick={() => setFilterInterviewStatus?.(filterInterviewStatus === 'Passed' ? 'All' : 'Passed')}
+                                className={`text-emerald-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${filterInterviewStatus === 'Passed' ? 'bg-emerald-100 ring-1 ring-emerald-400/80' : 'hover:bg-emerald-50'}`}
+                                title="Click to filter Shortlisted / Passed candidates"
+                            >
+                                SH:{activeRoundStats.shortlisted}
+                            </span>
+                            <span
+                                onClick={() => setFilterInterviewStatus?.(filterInterviewStatus === 'Failed' ? 'All' : 'Failed')}
+                                className={`text-rose-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${filterInterviewStatus === 'Failed' ? 'bg-rose-100 ring-1 ring-rose-400/80' : 'hover:bg-rose-50'}`}
+                                title="Click to filter Rejected / Failed candidates"
+                            >
+                                RJ:{activeRoundStats.rejected}
+                            </span>
+                            <span
+                                onClick={() => setFilterInterviewStatus?.(filterInterviewStatus === 'Did Not Turn Up' ? 'All' : 'Did Not Turn Up')}
+                                className={`text-orange-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${filterInterviewStatus === 'Did Not Turn Up' ? 'bg-orange-100 ring-1 ring-orange-400/80' : 'hover:bg-orange-50'}`}
+                                title="Click to filter Did Not Turn Up candidates"
+                            >
+                                DNTU:{activeRoundStats.didNotTurnUp}
+                            </span>
+                            <span
+                                onClick={() => setFilterInterviewStatus?.(filterInterviewStatus === 'Left in between' ? 'All' : 'Left in between')}
+                                className={`text-purple-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${filterInterviewStatus === 'Left in between' ? 'bg-purple-100 ring-1 ring-purple-400/80' : 'hover:bg-purple-50'}`}
+                                title="Click to filter Left In Between candidates"
+                            >
+                                LIB:{activeRoundStats.leftInBetween}
+                            </span>
+                            <span
+                                onClick={() => setFilterInterviewStatus?.(filterInterviewStatus === 'Pending' ? 'All' : 'Pending')}
+                                className={`text-amber-600 cursor-pointer px-2 py-0.5 rounded-md transition-all ${filterInterviewStatus === 'Pending' ? 'bg-amber-100 ring-1 ring-amber-400/80' : 'hover:bg-amber-50'}`}
+                                title="Click to filter Pending / Scheduled candidates"
+                            >
+                                P:{activeRoundStats.pending}
+                            </span>
                         </div>
                     </div>
                 ) : (filterStatus && filterStatus !== 'All' && filterStatus !== 'Total Sourced' && ['Interested', 'Not Interested', 'Not Relevant', 'Not Picking', 'High expectation', 'Long Notice period', 'Location Not suitable', 'Other', 'None', 'OTH'].includes(filterStatus)) ? (
