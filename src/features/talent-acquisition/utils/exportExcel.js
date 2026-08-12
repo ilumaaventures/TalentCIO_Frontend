@@ -197,7 +197,7 @@ export const exportCandidatesToExcel = async ({
         const excelSections = [
             { title: 'Basic Info', subHeaders: ['S.no', 'Submission Date', 'Source', 'Profile pulled by', 'Calling by', 'Name of Candidate', 'Total Experience'], width: 7 },
             { title: 'Internal Round', subHeaders: ['TAT', 'Rate', 'Remarks'], width: 3 },
-            { title: 'Experience & Skills', subHeaders: ['Relevant Experience', 'All Skills & Experience'], width: 2 },
+            { title: 'Experience', subHeaders: ['Relevant Experience'], width: 1 },
             { title: 'Technical Skills (Experience)', subHeaders: techSkillsHeaders, width: techSkillsHeaders.length },
             { title: 'Education & Employment', subHeaders: ['Qualification', 'Company'], width: 2 },
             { title: 'Compensation', subHeaders: ['CTC', 'Expected CTC'], width: 2 },
@@ -508,7 +508,6 @@ export const exportCandidatesToExcel = async ({
                 toEmptyCell(candidate.remark),
 
                 toEmptyCell(candidate.relevantExperience !== undefined && candidate.relevantExperience !== null ? `${candidate.relevantExperience} yrs` : null),
-                toEmptyCell(allCandidateSkillsSummary),
                 ...techSkillRatings,
 
                 toEmptyCell(candidate.qualification),
