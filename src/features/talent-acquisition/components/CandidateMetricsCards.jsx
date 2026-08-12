@@ -266,19 +266,6 @@ const CandidateMetricsCards = ({
 
 
 
-        if (filterInterviewStatus !== 'All' && filterInterviewStatus !== 'Scheduled' && !filterProfileShared) {
-            const interviewCount = basePhase1Candidates.filter(candidate => {
-                const rounds = getRoundsForPhase(candidate, 1);
-                return matchesInterviewFilter(rounds, filterInterviewStatus);
-            }).length;
-            dynamicCards.push({
-                label: filterInterviewStatus,
-                value: interviewCount,
-                icon: Clock,
-                color: 'amber',
-                onClick: () => { }
-            });
-        }
 
         if (filterExperience) {
             const expCount = basePhase1Candidates.filter(c => c.totalExperience && Number(c.totalExperience) >= Number(filterExperience)).length;

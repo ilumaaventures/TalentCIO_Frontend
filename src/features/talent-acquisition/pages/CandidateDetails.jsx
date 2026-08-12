@@ -397,13 +397,19 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             bcc: round.bcc || '',
             customFields: initialCustomFields,
             customSubject: '',
-            customHtmlBody: ''
+            customHtmlBody: '',
+            sendCandidateEmail: true,
+            sendInterviewerEmail: true
         });
         fetchMailPreview(round._id, initialTpl, initialCustomFields);
     }, [fetchMailPreview, fetchSenderOptions, selectedEmailAccountId, senderOptions]);
 
     const handleSendRoundEmail = useCallback(async () => {
         if (!sendingMailRound) return;
+        if (sendMailForm.sendCandidateEmail === false && sendMailForm.sendInterviewerEmail === false) {
+            toast.error('Please select at least one recipient option (Candidate or Interviewer)');
+            return;
+        }
         try {
             setIsSendingMail(true);
             await api.post(`/ta/candidates/${candidateId}/rounds/${sendingMailRound._id}/send-mail`, {
@@ -413,7 +419,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 bcc: sendMailForm.bcc?.trim() || undefined,
                 customFields: Array.isArray(sendMailForm.customFields) ? sendMailForm.customFields.filter(f => f.key && f.key.trim()) : [],
                 customSubject: sendMailForm.customSubject || undefined,
-                customHtmlBody: sendMailForm.customHtmlBody || undefined
+                customHtmlBody: sendMailForm.customHtmlBody || undefined,
+                sendCandidateEmail: sendMailForm.sendCandidateEmail !== false,
+                sendInterviewerEmail: sendMailForm.sendInterviewerEmail !== false
             });
             toast.success(`Interview email sent for ${sendingMailRound.levelName}`);
             setSendingMailRound(null);
@@ -2252,6 +2260,39 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                 onChange={(e) => setSendMailForm(prev => ({ ...prev, bcc: e.target.value }))}
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-indigo-500"
                                             />
+                                        </div>
+                                    </div>
+
+                                    {/* Email Recipients Options */}
+                                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2">
+                                        <span className="block font-bold text-slate-700 text-xs uppercase tracking-wider">
+                                            Email Recipients Configuration
+                                        </span>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer ${sendMailForm.sendCandidateEmail !== false ? 'bg-indigo-50/60 border-indigo-200' : 'bg-white border-slate-200 opacity-75'}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={sendMailForm.sendCandidateEmail !== false}
+                                                    onChange={(e) => setSendMailForm(prev => ({ ...prev, sendCandidateEmail: e.target.checked }))}
+                                                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <div className="text-xs">
+                                                    <span className="font-bold text-slate-800 block">Send to Candidate</span>
+                                                    <span className="text-[11px] text-slate-500 block truncate">{candidate?.candidateName || 'Candidate'} ({candidate?.email || 'No email'})</span>
+                                                </div>
+                                            </label>
+                                            <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer ${sendMailForm.sendInterviewerEmail !== false ? 'bg-indigo-50/60 border-indigo-200' : 'bg-white border-slate-200 opacity-75'}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={sendMailForm.sendInterviewerEmail !== false}
+                                                    onChange={(e) => setSendMailForm(prev => ({ ...prev, sendInterviewerEmail: e.target.checked }))}
+                                                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <div className="text-xs">
+                                                    <span className="font-bold text-slate-800 block">Send to Interviewer(s)</span>
+                                                    <span className="text-[11px] text-slate-500 block truncate">Assigned Evaluators</span>
+                                                </div>
+                                            </label>
                                         </div>
                                     </div>
 

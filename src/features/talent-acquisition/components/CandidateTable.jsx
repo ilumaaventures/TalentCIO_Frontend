@@ -292,6 +292,8 @@ const CandidateTable = ({
                         }}
                         className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
                         <option value={50}>50</option>
                         <option value={100}>100</option>
                         <option value={150}>150</option>
@@ -442,6 +444,8 @@ const CandidateTable = ({
                             }}
                             className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
+                            <option value={10}>10</option>
+                            <option value={25}>25</option>
                             <option value={50}>50</option>
                             <option value={100}>100</option>
                             <option value={150}>150</option>

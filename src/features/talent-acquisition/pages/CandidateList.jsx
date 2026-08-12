@@ -152,6 +152,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     useEffect(() => {
         setFilterDynamicStage('All');
+        setPage(1);
+        if (filterInterviewRound) {
+            setItemsPerPage((prev) => Math.max(prev, 50));
+        }
     }, [filterInterviewRound]);
     const [users, setUsers] = useState([]);
     const debouncedCandidateNameSearch = useDebouncedValue(candidateNameSearch, 200);
