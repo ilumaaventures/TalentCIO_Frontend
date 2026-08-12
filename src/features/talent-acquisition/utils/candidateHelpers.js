@@ -170,16 +170,51 @@ export const isRoundPassedStatus = (status = '') => {
     return s === 'passed' || s === 'pass' || s === 'shortlisted';
 };
 
-export const matchesInterviewFilter = (rounds = [], filterValue = 'All') => {
+export const matchesInterviewFilter = (rounds = [], filterValue = 'All', targetRoundName = '') => {
     if (filterValue === 'All') {
         return true;
     }
 
-    if (filterValue === 'Scheduled') {
-        return Array.isArray(rounds) && rounds.length > 0;
+    if (!Array.isArray(rounds) || rounds.length === 0) {
+        return false;
     }
 
-    return getInterviewFilterValue(rounds) === filterValue;
+    if (filterValue === 'Scheduled') {
+        return rounds.length > 0;
+    }
+
+    const targetRound = String(targetRoundName || '').trim().toLowerCase();
+    const targetRounds = targetRound
+        ? rounds.filter(r => String(r.levelName || '').trim().toLowerCase() === targetRound)
+        : rounds;
+
+    if (targetRounds.length === 0) {
+        return false;
+    }
+
+    const normFilter = String(filterValue || '').trim().toLowerCase();
+
+    if (normFilter === 'passed' || normFilter === 'shortlisted') {
+        return targetRounds.some(r => ['passed', 'pass', 'shortlisted'].includes(String(r.status || '').trim().toLowerCase()));
+    }
+
+    if (normFilter === 'failed' || normFilter === 'rejected') {
+        return targetRounds.some(r => ['failed', 'fail', 'rejected'].includes(String(r.status || '').trim().toLowerCase()));
+    }
+
+    if (normFilter === 'did not turn up' || normFilter === 'did not turnup' || normFilter === 'dntu' || normFilter === 'skipped') {
+        return targetRounds.some(r => ['did not turn up', 'did not turnup', 'skipped', 'no show', 'dntu'].includes(String(r.status || '').trim().toLowerCase()));
+    }
+
+    if (normFilter === 'left in between' || normFilter === 'lib') {
+        return targetRounds.some(r => ['left in between', 'lib'].includes(String(r.status || '').trim().toLowerCase()));
+    }
+
+    if (normFilter === 'pending' || normFilter === 'in_process') {
+        return targetRounds.some(r => isRoundScheduledStatus(r.status));
+    }
+
+    return getInterviewFilterValue(targetRounds) === filterValue;
 };
 
 export const normalizeMultiValueFilter = (values = []) => [...new Set(

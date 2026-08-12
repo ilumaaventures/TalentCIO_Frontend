@@ -651,7 +651,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = getRoundsForPhase(candidate, 1);
-                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
+                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus, filterInterviewRound);
             }
 
             const isNotScheduledFilter = filterDynamicStage && filterDynamicStage.startsWith('NotScheduled_');
@@ -783,7 +783,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             if (filterInterviewStatus !== 'All') {
                 matchInterviewStatus = filterInterviewStatus === 'Scheduled'
                     ? hasPhase2InterviewActivity(candidate)
-                    : matchesInterviewFilter(getDisplayInterviewRoundsForPhase(candidate, 2), filterInterviewStatus);
+                    : matchesInterviewFilter(getDisplayInterviewRoundsForPhase(candidate, 2), filterInterviewStatus, filterInterviewRound);
             }
             let matchDynamicStage = true;
             if (filterDynamicStage && filterDynamicStage !== 'All') {
@@ -889,7 +889,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 const rounds = getRoundsForPhase(candidate, 3);
-                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus);
+                matchInterviewStatus = matchesInterviewFilter(rounds, filterInterviewStatus, filterInterviewRound);
             }
             return matchDecision && matchInterviewStatus;
         });
