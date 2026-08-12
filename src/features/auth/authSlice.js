@@ -313,7 +313,10 @@ export const selectWorkspace = (state) => state.auth.workspace;
 export const selectInvalidWorkspace = (state) => state.auth.invalidWorkspace;
 
 export const selectHasModule = (state, moduleName) => {
-  return hasModuleEnabled(state.auth.user?.company?.enabledModules || [], moduleName);
+  const user = state.auth.user;
+  if (!user) return false;
+  if (isAdminUser(user)) return true;
+  return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
 };
 
 export const selectIsDossierComplete = (state) => {

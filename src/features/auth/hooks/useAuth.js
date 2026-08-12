@@ -16,6 +16,7 @@ import {
   selectDossierMissingFields
 } from '@/features/auth/authSlice';
 import { hasModuleEnabled } from '@/config/enabledModules';
+import { isAdminUser } from '@/config/accessPolicies';
 
 export const useAuth = () => {
   const dispatch = useAppDispatch();
@@ -49,8 +50,10 @@ export const useAuth = () => {
   }, [dispatch]);
 
   const hasModule = useCallback((moduleName) => {
+    if (!user) return false;
+    if (isAdminUser(user)) return true;
     return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
-  }, [user?.company?.enabledModules]);
+  }, [user]);
 
   return {
     user,

@@ -2789,33 +2789,33 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 </select>
                                                             </div>
                                                             <div>
-                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module</label>
-                                                                <select
-                                                                    value={editModuleId}
-                                                                    onChange={(e) => handleEditModuleChange(e.target.value)}
-                                                                    disabled={isSaving || isDeleting || !editProjectId}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                                                                >
-                                                                    <option value="">Select Module</option>
-                                                                    {editFilteredModules.map(m => (
-                                                                        <option key={m._id} value={m._id}>{m.name}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task</label>
-                                                                <select
-                                                                    value={editTaskId}
-                                                                    onChange={(e) => setEditTaskId(e.target.value)}
-                                                                    disabled={isSaving || isDeleting || !editModuleId}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                                                                >
-                                                                    <option value="">Select Task</option>
-                                                                    {editFilteredTasks.map(t => (
-                                                                        <option key={t._id} value={t._id}>{t.name}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
+                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module</label>
+                                                                 <select
+                                                                     value={editModuleId}
+                                                                     onChange={(e) => handleEditModuleChange(e.target.value)}
+                                                                     disabled={isSaving || isDeleting || !editProjectId}
+                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                                 >
+                                                                     <option value="">{editProjectId && editFilteredModules.length === 0 ? 'No Modules (Direct Project Log)' : 'Select Module (Optional)'}</option>
+                                                                     {editFilteredModules.map(m => (
+                                                                         <option key={m._id} value={m._id}>{m.name}</option>
+                                                                     ))}
+                                                                 </select>
+                                                             </div>
+                                                             <div>
+                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task</label>
+                                                                 <select
+                                                                     value={editTaskId}
+                                                                     onChange={(e) => setEditTaskId(e.target.value)}
+                                                                     disabled={isSaving || isDeleting || !editProjectId || (editFilteredTasks.length === 0 && !editModuleId)}
+                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                                 >
+                                                                     <option value="">{editFilteredTasks.length === 0 ? 'No Tasks (Direct Project Log)' : 'Select Task (Optional)'}</option>
+                                                                     {editFilteredTasks.map(t => (
+                                                                         <option key={t._id} value={t._id}>{t.name}</option>
+                                                                     ))}
+                                                                 </select>
+                                                             </div>
                                                         </div>
                                                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                                                             <div className="col-span-1 grid grid-cols-2 gap-1">

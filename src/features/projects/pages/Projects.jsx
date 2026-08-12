@@ -19,11 +19,12 @@ const Projects = () => {
     const [submitLoading, setSubmitLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState(null); // stores the id of the project being acted on
     const [showModal, setShowModal] = useState(false);
-    const [formData, setFormData] = useState({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
+    const [formData, setFormData] = useState({ name: '', client: '', businessUnit: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
     const initialFetchDoneRef = useRef(false);
     const PROJECT_CACHE_TTL_MS = 30 * 1000;
     const cacheKey = `project_data_${user?._id}`;
     const [employees, setEmployees] = useState([]);
+    const [businessUnits, setBusinessUnits] = useState([]);
 
     const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
@@ -34,6 +35,7 @@ const Projects = () => {
                 setProjects(data.projects || []);
                 setClients(data.clients || []);
                 setEmployees(data.employees || []);
+                setBusinessUnits(data.businessUnits || []);
                 setLoading(false);
                 if (!force && isCacheFresh(cachedData, PROJECT_CACHE_TTL_MS)) return;
             }
@@ -51,13 +53,15 @@ const Projects = () => {
             const projData = bootstrapRes.data?.projects || [];
             const clientsData = bootstrapRes.data?.clients || [];
             const employeesData = bootstrapRes.data?.employees || [];
+            const buData = bootstrapRes.data?.businessUnits || [];
 
-            const newFingerprint = JSON.stringify({ p: projData.length, c: clientsData.length, e: employeesData.length, lp: projData[0]?._id });
+            const newFingerprint = JSON.stringify({ p: projData.length, c: clientsData.length, e: employeesData.length, bu: buData.length, lp: projData[0]?._id });
             const oldFingerprint = cachedData?.fingerprint || null;
 
             setProjects(projData);
             setClients(clientsData);
             setEmployees(employeesData);
+            setBusinessUnits(buData);
 
             if (newFingerprint !== oldFingerprint || force) {
                 const minimalProjects = projData.map(p => ({
@@ -65,14 +69,17 @@ const Projects = () => {
                     name: p.name,
                     status: p.status,
                     isActive: p.isActive,
+                    hasModules: p.hasModules !== false,
                     description: p.description,
                     startDate: p.startDate,
                     dueDate: p.dueDate,
                     client: p.client ? { _id: p.client._id, name: p.client.name } : null,
+                    businessUnit: p.businessUnit ? { _id: p.businessUnit._id, name: p.businessUnit.name } : null,
                     members: p.members?.map(m => ({ _id: m._id }))
                 }));
 
                 const minimalClients = clientsData.map(c => ({ _id: c._id, name: c.name }));
+                const minimalBusinessUnits = buData.map(b => ({ _id: b._id, name: b.name }));
                 const minimalEmployees = employeesData.map(employee => ({
                     _id: employee._id,
                     firstName: employee.firstName,
@@ -83,6 +90,7 @@ const Projects = () => {
                 const payload = createCachePayload({
                     projects: minimalProjects,
                     clients: minimalClients,
+                    businessUnits: minimalBusinessUnits,
                     employees: minimalEmployees
                 }, newFingerprint);
 
@@ -126,6 +134,7 @@ const Projects = () => {
             // Prepare payload: Convert empty strings to null for ObjectId/Date fields
             const payload = { ...formData };
             if (!payload.client) payload.client = null;
+            if (!payload.businessUnit) payload.businessUnit = null;
             if (!payload.startDate) payload.startDate = null;
             if (!payload.dueDate) payload.dueDate = null;
 
@@ -138,7 +147,7 @@ const Projects = () => {
             }
             sessionStorage.removeItem(`project_data_${user?._id}`);
             setShowModal(false);
-            setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
+            setFormData({ name: '', client: '', businessUnit: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
             setEditingId(null);
             fetchData({ force: true });
         } catch {
@@ -152,8 +161,10 @@ const Projects = () => {
         setFormData({
             name: proj.name,
             client: proj.client?._id || '',
+            businessUnit: proj.businessUnit?._id || '',
             description: proj.description || '',
             status: proj.status || (proj.isActive ? 'Active' : 'Completed'),
+            hasModules: proj.hasModules !== false,
             startDate: proj.startDate ? new Date(proj.startDate).toISOString().split('T')[0] : '',
             dueDate: proj.dueDate ? new Date(proj.dueDate).toISOString().split('T')[0] : '',
             members: proj.members?.map(m => m._id) || []
@@ -163,7 +174,7 @@ const Projects = () => {
     };
 
     const openCreateModal = () => {
-        setFormData({ name: '', client: '', description: '', status: 'Active', startDate: '', dueDate: '', members: [] });
+        setFormData({ name: '', client: '', businessUnit: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
         setEditingId(null);
         setShowModal(true);
     };
@@ -211,8 +222,8 @@ const Projects = () => {
                             <thead className="bg-slate-50 text-slate-500 font-medium">
                                 <tr>
                                     <th className="px-6 py-3">Project Name</th>
-
-
+                                    <th className="px-6 py-3">Client</th>
+                                    <th className="px-6 py-3">Business Unit</th>
                                     <th className="px-6 py-3">Status</th>
                                     <th className="px-6 py-3 text-right">Action</th>
                                 </tr>
@@ -222,8 +233,8 @@ const Projects = () => {
                                     Array.from({ length: 5 }).map((_, i) => (
                                         <tr key={i}>
                                             <td className="px-6 py-3"><Skeleton className="h-8 w-48" /></td>
-
-
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-24" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-24" /></td>
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-16" /></td>
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-24 ml-auto" /></td>
                                         </tr>
@@ -239,10 +250,27 @@ const Projects = () => {
                                                             <Briefcase size={16} />
                                                         </div>
                                                         <span>{project.name}</span>
+                                                        {project.hasModules === false && (
+                                                            <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                                                                No Modules
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </td>
 
+                                                <td className="px-6 py-3 text-slate-600">
+                                                    {project.client?.name || <span className="text-slate-400 italic">Internal</span>}
+                                                </td>
 
+                                                <td className="px-6 py-3 text-slate-600">
+                                                    {project.businessUnit?.name ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                                            {project.businessUnit.name}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 italic">N/A</span>
+                                                    )}
+                                                </td>
 
                                                 <td className="px-6 py-3">
                                                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${displayStatus === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
@@ -458,6 +486,20 @@ const Projects = () => {
                                             </select>
                                         </div>
 
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Business Unit</label>
+                                            <select
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                value={formData.businessUnit}
+                                                onChange={e => setFormData({ ...formData, businessUnit: e.target.value })}
+                                            >
+                                                <option value="">None / Select Business Unit</option>
+                                                {businessUnits.map(bu => (
+                                                    <option key={bu._id} value={bu._id}>{bu.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
                                         {editingId && (
                                             <div>
                                                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>
@@ -474,7 +516,7 @@ const Projects = () => {
                                             </div>
                                         )}
 
-                                        <div className={editingId ? 'col-span-2' : 'col-span-1'}>
+                                        <div className="col-span-2">
                                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
                                             <textarea
                                                 placeholder="Briefly describe the project scope and goals..."
@@ -483,6 +525,26 @@ const Projects = () => {
                                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
                                                 rows="3"
                                             />
+                                        </div>
+
+                                        <div className="col-span-2 flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                                            <div>
+                                                <span className="block text-sm font-semibold text-slate-800">Contains Modules</span>
+                                                <span className="block text-xs text-slate-500 mt-0.5">
+                                                    {formData.hasModules
+                                                        ? 'Project uses modules for time tracking.'
+                                                        : 'Project has no modules. Team members log time directly to the project.'}
+                                                </span>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={Boolean(formData.hasModules)}
+                                                    onChange={e => setFormData({ ...formData, hasModules: e.target.checked })}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
