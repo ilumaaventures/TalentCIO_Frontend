@@ -2097,6 +2097,8 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                             }}
                             className="bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         >
+                            <option value={10}>10</option>
+                            <option value={25}>25</option>
                             <option value={50}>50</option>
                             <option value={100}>100</option>
                             <option value={150}>150</option>
@@ -2367,6 +2369,8 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                 }}
                                 className="bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                             >
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
                                 <option value={50}>50</option>
                                 <option value={100}>100</option>
                                 <option value={150}>150</option>
