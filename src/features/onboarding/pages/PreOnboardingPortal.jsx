@@ -1,0 +1,2099 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import toast, { Toaster } from 'react-hot-toast';
+import { CheckCircle, Clock, Upload, ChevronRight, ChevronLeft, LogOut, FileText, AlertTriangle, User, Phone, Building, CreditCard, FileSignature, Loader, Eye, Plus, X, Camera, ZapOff } from 'lucide-react';
+
+axios.defaults.withCredentials = true;
+
+const resolveApiUrl = (rawUrl) => {
+  if (!rawUrl || typeof window === 'undefined') return rawUrl;
+  try {
+    const parsedUrl = new URL(rawUrl);
+    const browserHost = window.location.hostname;
+    if (browserHost.endsWith('.localhost') && (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1')) {
+      parsedUrl.hostname = browserHost;
+    }
+    return parsedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return rawUrl;
+  }
+};
+
+const API_URL = `${resolveApiUrl(import.meta.env.VITE_API_URL)}/api/onboarding`;
+const FOLLOW_UP_DOCUMENT_REDIRECT_GRACE_MS = 1000;
+
+const ALL_STEPS = [
+  { id: 'personalDetails', label: 'Personal & Contact', icon: <User size={18} />, hrLabel: 'Personal Details' },
+  { id: 'emergencyContact', label: 'Emergency Contact', icon: <Phone size={18} />, hrLabel: 'Emergency Contact' },
+  { id: 'documents', label: 'Documents', icon: <FileText size={18} />, hrLabel: 'Documents' },
+  { id: 'bankDetails', label: 'Bank Details', icon: <CreditCard size={18} />, hrLabel: 'Bank Details' },
+  { id: 'policies', label: 'Company Policies', icon: <FileText size={18} />, hrLabel: 'Policies' },
+  { id: 'offerDeclaration', label: 'Offer Declaration', icon: <FileSignature size={18} />, hrLabel: 'Offer Declaration' }
+];
+
+const getLatestEmailSentTimestamp = (items = []) => (
+  items.reduce((latest, item) => {
+    const sentAt = item?.emailSentAt ? new Date(item.emailSentAt).getTime() : 0;
+    return Number.isFinite(sentAt) ? Math.max(latest, sentAt) : latest;
+  }, 0)
+);
+
+const PreOnboardingPortal = () => {
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const autoSaveTimer = useRef(null);
+  const [unsavedChanges, setUnsavedChanges] = useState(false);
+  const [showExtensionModal, setShowExtensionModal] = useState(false);
+  const [extensionRequest, setExtensionRequest] = useState({ reason: '', requestedDays: 7 });
+  const [docPreview, setDocPreview] = useState({}); // { docId: { file, previewUrl } }
+
+  // Live Photo Capture Modal state
+  const [livePhotoModal, setLivePhotoModal] = useState(null); // { docId, docLabel } or null
+  const [cameraStream, setCameraStream] = useState(null);
+  const [capturedImageData, setCapturedImageData] = useState(null); // base64 data URL
+  const [cameraError, setCameraError] = useState('');
+  const [uploadingLivePhoto, setUploadingLivePhoto] = useState(false);
+  const [gpsLocation, setGpsLocation] = useState(null); // { lat, lon, address, coords }
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const videoRef = useRef(null);
+  const captureCanvasRef = useRef(null);
+
+  // Filtered Steps based on HR selection
+  const [visibleSteps, setVisibleSteps] = useState(ALL_STEPS);
+
+  // Memoized requested labels for easy access
+  const reqSectionsLabels = React.useMemo(() => (profile?.requestedSections || []).map(rs => typeof rs === 'string' ? rs : rs.label), [profile]);
+  const reqDocsLabels = React.useMemo(() => (profile?.requestedDocuments || []).map(rd => typeof rd === 'string' ? rd : rd.label), [profile]);
+
+  const [offerAcceptedCheckbox, setOfferAcceptedCheckbox] = useState(false);
+  const [showSuccessScreen, setShowSuccessScreen] = useState(false);
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [eSignName, setESignName] = useState('');
+  const [eSignType, setESignType] = useState('typed'); // 'typed' or 'drawn'
+  const [signatureStyle, setSignatureStyle] = useState('"Brush Script MT", cursive');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef(null);
+  // REMOVED: logoutCountdown
+
+  useEffect(() => {
+    if (profile) {
+      // Use pre-calculated memo labels
+      let filtered = ALL_STEPS;
+
+      if (reqSectionsLabels.length > 0 || reqDocsLabels.length > 0) {
+        filtered = ALL_STEPS.filter(step => {
+          if (reqSectionsLabels.includes(step.hrLabel)) return true;
+          if (step.id === 'documents') return profile.documents?.some(d => reqDocsLabels.includes(d.label) || reqDocsLabels.includes(d.type));
+          if (step.id === 'policies') return profile.companyPolicies?.some(p => reqDocsLabels.includes(p.name));
+          if (step.id === 'offerDeclaration') {
+            if (reqSectionsLabels.includes('Offer Declaration')) return true;
+            return profile.dynamicTemplates?.some(t => reqDocsLabels.includes(t.name)) || reqDocsLabels.includes('Offer Letter');
+          }
+          return false;
+        });
+        if (filtered.length === 0) filtered = ALL_STEPS;
+      }
+
+      // Only update if the IDs have changed to avoid redundant re-renders
+      setVisibleSteps(prev => {
+        const prevIds = prev.map(s => s.id).join(',');
+        const nextIds = filtered.map(s => s.id).join(',');
+        return prevIds === nextIds ? prev : filtered;
+      });
+    }
+  }, [profile, reqDocsLabels, reqSectionsLabels]);
+
+  // Safety clamp to ensure currentStep is always within bounds of visibleSteps
+  useEffect(() => {
+    if (visibleSteps.length > 0 && currentStep >= visibleSteps.length) {
+      setCurrentStep(visibleSteps.length - 1);
+    }
+  }, [visibleSteps, currentStep]);
+
+
+  // Handle landing on specific step (e.g. Documents if flagged or specifically requested)
+  const hasNavigatedInitial = useRef(false);
+  useEffect(() => {
+    if (profile && visibleSteps.length > 0 && !hasNavigatedInitial.current) {
+      const flaggedDocs = profile.documents?.filter(d => d.status === 'Re-upload Required') || [];
+      const docStepIndex = visibleSteps.findIndex(s => s.id === 'documents');
+      const latestSectionRequestAt = getLatestEmailSentTimestamp(profile.requestedSections || []);
+      const latestDocumentRequestAt = getLatestEmailSentTimestamp(profile.requestedDocuments || []);
+      const hasFollowUpDocumentRequest = reqDocsLabels.length > 0 && (
+        latestSectionRequestAt === 0 ||
+        (latestDocumentRequestAt - latestSectionRequestAt) > FOLLOW_UP_DOCUMENT_REDIRECT_GRACE_MS
+      );
+
+      if (flaggedDocs && flaggedDocs.length > 0) {
+        if (docStepIndex !== -1) setCurrentStep(docStepIndex);
+      } else if (hasFollowUpDocumentRequest && docStepIndex !== -1) {
+        const targetDocs = profile?.documents?.filter(d => reqDocsLabels.includes(d.label)) || [];
+        const isComplete = targetDocs.length > 0 && targetDocs.every(d =>
+          d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport'
+        );
+
+        if (!isComplete) setCurrentStep(docStepIndex);
+      }
+      hasNavigatedInitial.current = true;
+    }
+  }, [profile, reqDocsLabels, visibleSteps]);
+
+  // Form states
+  const [personalDetails, setPersonalDetails] = useState({});
+  const [emergencyContact, setEmergencyContact] = useState({});
+  const [bankDetails, setBankDetails] = useState({});
+  const [offerDeclaration, setOfferDeclaration] = useState({});
+  const [validationErrors, setValidationErrors] = useState({});
+
+  const inlineCanvasRef = useRef(null);
+  const [isInlineDrawing, setIsInlineDrawing] = useState(false);
+  const [inlineSignatureStyle, setInlineSignatureStyle] = useState('"Brush Script MT", cursive');
+
+  const startInlineDrawing = (e) => {
+    const canvas = inlineCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1e3a8a';
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsInlineDrawing(true);
+  };
+
+  const drawInline = (e) => {
+    if (!isInlineDrawing) return;
+    const canvas = inlineCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    e.preventDefault();
+  };
+
+  const stopInlineDrawing = () => {
+    setIsInlineDrawing(false);
+  };
+
+  const clearInlineCanvas = () => {
+    const canvas = inlineCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const getHeaders = useCallback(() => {
+    const headers = {};
+    const hostname = window.location.hostname;
+    const urlParams = new URLSearchParams(window.location.search);
+    let tenant = urlParams.get('tenant');
+    const parts = hostname.split('.');
+    if (!tenant && hostname.endsWith('localhost') && parts.length > 1 && parts[0] !== 'localhost') {
+      tenant = parts[0];
+    }
+    if (tenant && !['telentcio', 'telentcio-demo', 'talentcio'].includes(tenant.toLowerCase())) {
+      headers['x-tenant-id'] = tenant.toLowerCase();
+    }
+    return headers;
+  }, []);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/my-profile`, { headers: getHeaders() });
+      setProfile(res.data);
+      setPersonalDetails(res.data.personalDetails || {});
+      setEmergencyContact(res.data.emergencyContact || {});
+      setBankDetails(res.data.bankDetails || {});
+      setOfferDeclaration(res.data.offerDeclaration || {});
+      if (res.data.offerDeclaration?.eSignStyle) {
+        setInlineSignatureStyle(res.data.offerDeclaration.eSignStyle);
+      }
+    } catch (err) {
+      if (err.response?.status === 401) {
+        toast.error(err.response?.data?.message || 'Session expired');
+        localStorage.removeItem('onboardingEmployee');
+        navigate('/pre-onboarding/login');
+      } else {
+        toast.error('Failed to load profile');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [getHeaders, navigate]);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  // Refresh token periodically (before 15 min expiry)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        await axios.post(`${API_URL}/refresh-token`, {}, { headers: getHeaders() });
+      } catch { /* ignore */ }
+    }, 12 * 60 * 1000); // every 12 min
+    return () => clearInterval(interval);
+  }, [getHeaders]);
+
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    if (!unsavedChanges || !profile || profile.submittedAt) return;
+    autoSaveTimer.current = setTimeout(() => {
+      if (visibleSteps[currentStep]) {
+        handleSaveSection(visibleSteps[currentStep].id, true);
+      }
+    }, 30000);
+    return () => clearTimeout(autoSaveTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unsavedChanges, personalDetails, emergencyContact, bankDetails, offerDeclaration, currentStep]);
+
+  // Removed countdown logic for success screen
+
+  const getSectionData = (sectionId) => {
+    switch (sectionId) {
+      case 'personalDetails': return personalDetails;
+      case 'emergencyContact': return emergencyContact;
+      case 'bankDetails': return bankDetails;
+      case 'offerDeclaration': return offerDeclaration;
+      default: return {};
+    }
+  };
+
+  const handleSaveSection = async (sectionId, isAuto = false, dataOverride = null) => {
+    if (sectionId === 'documents') return; // docs are saved via uploads
+    try {
+      setSaving(true);
+      let data = dataOverride || getSectionData(sectionId);
+      if (sectionId === 'offerDeclaration' && data.eSignType === 'drawn') {
+        const canvas = inlineCanvasRef.current;
+        if (canvas) {
+          const blank = document.createElement('canvas');
+          blank.width = canvas.width;
+          blank.height = canvas.height;
+          if (canvas.toDataURL() !== blank.toDataURL()) {
+            data.eSignValue = canvas.toDataURL('image/png');
+          }
+        }
+      }
+      await axios.patch(`${API_URL}/my-profile/${sectionId}`, data, { headers: getHeaders() });
+      setUnsavedChanges(false);
+      if (!isAuto) toast.success('Saved!');
+      if (data.isComplete || data.hasReadPolicies) fetchProfile();
+    } catch (err) {
+      if (err.response?.status === 401) {
+        navigate('/pre-onboarding/login');
+      } else if (!isAuto) {
+        toast.error('Failed to save');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUploadDocument = async (docId, file) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be under 5MB');
+      return;
+    }
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowed.includes(file.type)) {
+      toast.error('Only PDF, JPG, PNG allowed');
+      return;
+    }
+    const fd = new FormData();
+    fd.append('document', file);
+    if (gpsLocation) {
+      fd.append('address', gpsLocation.address || '');
+    }
+    try {
+      toast.loading('Uploading...', { id: `upload-${docId}` });
+      await axios.post(`${API_URL}/my-profile/upload/${docId}`, fd, {
+        headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
+      });
+      toast.dismiss(`upload-${docId}`);
+      toast.success('Uploaded!');
+      fetchProfile();
+    } catch (err) {
+      toast.dismiss(`upload-${docId}`);
+      toast.error(err.response?.data?.message || 'Upload failed');
+    }
+  };
+
+  const handleAddDocSlot = async (type, label) => {
+    try {
+      await axios.post(`${API_URL}/my-profile/add-document-slot`, { type, label }, { headers: getHeaders() });
+      toast.success('Additional slot added!');
+      fetchProfile();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to add slot');
+    }
+  };
+
+  const handleDeleteDocSlot = async (docId) => {
+    try {
+      await axios.delete(`${API_URL}/my-profile/delete-document-slot/${docId}`, { headers: getHeaders() });
+      toast.success('Slot removed');
+      fetchProfile();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove slot');
+    }
+  };
+
+  const handleDownloadDynamicTemplate = async (templateId, name) => {
+    try {
+      toast.loading(`Preparing ${name}...`, { id: 'template-dl' });
+      const res = await axios.get(`${API_URL}/my-profile/download-template/${templateId}`, {
+        headers: getHeaders(),
+        responseType: 'blob'
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${name.replace(/\s+/g, '_')}.docx`;
+      link.click();
+      window.URL.revokeObjectURL(blobUrl);
+      toast.success('Downloaded!', { id: 'template-dl' });
+    } catch {
+      toast.error('Download failed', { id: 'template-dl' });
+    }
+  };
+
+  const handleAcceptTemplate = async (templateId) => {
+    try {
+      await axios.post(`${API_URL}/my-profile/templates/${templateId}/accept`, {}, { headers: getHeaders() });
+      toast.success('Document accepted!');
+      fetchProfile();
+    } catch {
+      toast.error('Failed to accept document');
+    }
+  };
+
+  const handleUploadCheque = async (file) => {
+    if (!file) return;
+    if (file.size === 0) {
+      toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) { toast.error('File size must be under 5MB'); return; }
+    let fileType = file.type;
+    if ((!fileType || fileType === 'application/octet-stream') && file.name) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'pdf') fileType = 'application/pdf';
+      else if (ext === 'jpg' || ext === 'jpeg') fileType = 'image/jpeg';
+      else if (ext === 'png') fileType = 'image/png';
+    }
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowed.includes(fileType)) { toast.error('Only PDF, JPG, PNG files are allowed'); return; }
+
+    const fd = new FormData();
+    fd.append('document', file);
+    try {
+      toast.loading('Uploading...', { id: 'cheque' });
+      const res = await axios.post(`${API_URL}/my-profile/upload-cheque`, fd, {
+        headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
+      });
+      toast.dismiss('cheque');
+      toast.success('Uploaded!');
+      setBankDetails(prev => ({ ...prev, cancelledChequeUrl: res.data.url }));
+      fetchProfile();
+    } catch {
+      toast.dismiss('cheque');
+      toast.error('Upload failed');
+    }
+  };
+
+  const handleAcceptPolicy = async (policyId) => {
+    try {
+      await axios.post(`${API_URL}/my-profile/policies/${policyId}/accept`, {}, { headers: getHeaders() });
+      toast.success('Policy accepted');
+      fetchProfile();
+    } catch {
+      toast.error('Failed to accept policy');
+    }
+  };
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      // Save current section first
+      if (visibleSteps[currentStep]?.id !== 'documents') {
+        await handleSaveSection(visibleSteps[currentStep].id);
+      }
+      await axios.post(`${API_URL}/my-profile/submit`, {}, { headers: getHeaders() });
+      toast.success('Submitted successfully!');
+      fetchProfile();
+    } catch (err) {
+      if (err.response?.data?.errors) {
+        err.response.data.errors.forEach(e => toast.error(e));
+      } else {
+        toast.error(err.response?.data?.message || 'Submission failed');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const jumpToSubmit = async () => {
+    if (visibleSteps[currentStep]?.id !== 'documents' && unsavedChanges) {
+      await handleSaveSection(visibleSteps[currentStep].id, true);
+    }
+    setCurrentStep(visibleSteps.length - 1);
+    setTimeout(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }, 100);
+  };
+
+  const handleLogout = () => {
+    axios.post(`${API_URL}/logout`, {}, { headers: getHeaders() })
+      .catch(() => {})
+      .finally(() => {
+        localStorage.removeItem('onboardingEmployee');
+        navigate('/pre-onboarding/login');
+      });
+  };
+
+  const handleRequestExtension = async (e) => {
+    e.preventDefault();
+    if (!extensionRequest.reason || !extensionRequest.requestedDays) return;
+    try {
+      setLoading(true);
+      await axios.post(`${API_URL}/my-profile/request-extension`, extensionRequest, { headers: getHeaders() });
+      toast.success('Extension request submitted! HR will review it soon.');
+      setShowExtensionModal(false);
+      fetchProfile();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to request extension');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [accepting, setAccepting] = useState(false);
+
+  const handleDownloadDocx = async () => {
+    try {
+      toast.loading(`Downloading offer letter...`, { id: 'docx' });
+      const res = await axios.get(`${API_URL}/my-offer-letter`, { headers: getHeaders(), responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `OfferLetter.docx`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      toast.dismiss('docx');
+      toast.success('Downloaded!');
+    } catch {
+      toast.dismiss('docx');
+      toast.error('Download failed');
+    }
+  };
+
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1e3a8a';
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    e.preventDefault();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleAcceptOffer = () => {
+    const fullName = profile ? `${profile.firstName} ${profile.lastName || ''}`.trim() : '';
+    setESignName(fullName);
+    setShowSignModal(true);
+  };
+
+  const submitSignature = async (e) => {
+    e.preventDefault();
+    let signValue = '';
+    if (eSignType === 'drawn') {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width;
+      blank.height = canvas.height;
+      if (canvas.toDataURL() === blank.toDataURL()) {
+        toast.error('Please draw your signature before submitting.');
+        return;
+      }
+      signValue = canvas.toDataURL('image/png');
+    } else {
+      if (!eSignName.trim()) {
+        toast.error('Please type your name before submitting.');
+        return;
+      }
+      signValue = eSignName;
+    }
+
+    try {
+      setAccepting(true);
+      await axios.post(`${API_URL}/my-profile/accept-offer`, {
+        eSignName,
+        eSignType,
+        eSignValue: signValue
+      }, { headers: getHeaders() });
+      toast.success('Offer Accepted and Signed!');
+      setShowSignModal(false);
+
+      const res = await axios.get(`${API_URL}/my-profile`, { headers: getHeaders() });
+      setProfile(res.data);
+
+      const updatedProgress = calculateProgress(res.data);
+      if (updatedProgress === 100) {
+        setShowSuccessScreen(true);
+      } else {
+        const newVisibleSteps = ALL_STEPS.filter(step => {
+          const rsLabels = (res.data.requestedSections || []).map(rs => typeof rs === 'string' ? rs : rs.label);
+          const rdLabels = (res.data.requestedDocuments || []).map(rd => typeof rd === 'string' ? rd : rd.label);
+          if (rsLabels.includes(step.hrLabel)) return true;
+          if (step.id === 'documents') return res.data.documents?.some(d => rdLabels.includes(d.label));
+          if (step.id === 'policies') return res.data.companyPolicies?.some(p => rdLabels.includes(p.name));
+          if (step.id === 'offerDeclaration') return res.data.dynamicTemplates?.some(t => rdLabels.includes(t.name)) || rdLabels.includes('Offer Letter');
+          return false;
+        });
+
+        const firstIncompleteIdx = newVisibleSteps.findIndex(step => !isStepComplete(step, res.data));
+        if (firstIncompleteIdx !== -1) setCurrentStep(firstIncompleteIdx);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to accept offer');
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const getDeadlineInfo = () => {
+    if (!profile?.documentDeadline) return null;
+    const deadline = new Date(profile.documentDeadline);
+    const now = new Date();
+    const diff = deadline - now;
+    if (diff <= 0) return { text: 'Deadline passed!', color: '#ef4444', urgent: true };
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    return {
+      text: `${days}d ${hours}h remaining`,
+      color: days <= 2 ? '#f59e0b' : '#10b981',
+      urgent: days <= 2,
+      passed: false
+    };
+  };
+
+  const hasPendingExtension = profile?.extensionRequests?.some(r => r.status === 'Pending');
+  const isGlobalReadOnly = profile?.status === 'Submitted' || profile?.status === 'Reviewed';
+
+  const isSectionReadOnly = (sectionId) => {
+    const labelMap = { personalDetails: 'Personal Details', emergencyContact: 'Emergency Contact', bankDetails: 'Bank Details', offerDeclaration: 'Offer Declaration' };
+    const reqLabels = (profile?.requestedSections || []).map(rs => typeof rs === 'string' ? rs : rs.label);
+
+    // PRIORITY 1: If the section was marked as complete by the candidate, it's read-only.
+    // (This ensures previously filled sections stay locked even during document resubmission)
+    // We check local state first for immediate UI responsiveness.
+    let isComplete = false;
+    if (sectionId === 'personalDetails') isComplete = !!personalDetails?.isComplete;
+    else if (sectionId === 'emergencyContact') isComplete = !!emergencyContact?.isComplete;
+    else if (sectionId === 'bankDetails') isComplete = !!bankDetails?.isComplete;
+    else if (sectionId === 'offerDeclaration') isComplete = !!offerDeclaration?.isComplete;
+    else {
+      // Fallback to profile for non-form sections
+      isComplete = sectionId === 'personalDetails' ? !!profile?.personalDetails?.isComplete :
+        sectionId === 'emergencyContact' ? !!profile?.emergencyContact?.isComplete :
+          sectionId === 'bankDetails' ? !!profile?.bankDetails?.isComplete :
+            sectionId === 'offerDeclaration' ? !!profile?.offerDeclaration?.isComplete : false;
+    }
+
+    if (isComplete) return true;
+
+    // PRIORITY 2: If HR explicitly requested this section (and it is NOT complete), it MUST be editable.
+    if (reqLabels.includes(labelMap[sectionId])) return false;
+
+    // PRIORITY 3: Global read-only status for submitted/reviewed profiles.
+    return isGlobalReadOnly;
+  };
+  const isReadOnly = isGlobalReadOnly;
+  const deadlineInfo = getDeadlineInfo();
+
+  const isStepComplete = (step, customProfile = null) => {
+    const p = customProfile || profile;
+    if (!p) return false;
+    const rdLabels = (p.requestedDocuments || []).map(rd => typeof rd === 'string' ? rd : rd.label);
+
+    switch (step.id) {
+      case 'personalDetails': return !!p.personalDetails?.isComplete;
+      case 'emergencyContact': return !!p.emergencyContact?.isComplete;
+      case 'bankDetails': return !!p.bankDetails?.isComplete;
+      case 'offerDeclaration': return !!p.offerDeclaration?.isComplete;
+      case 'documents': {
+        const targetDocs = p.documents?.filter(d => rdLabels.length === 0 || rdLabels.includes(d.label)) || [];
+        if (targetDocs.length === 0) return true;
+        return targetDocs.every(d => d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport' || d.type === 'character_certificate');
+      }
+      case 'policies': {
+        const targetPolicies = p.companyPolicies?.filter(p => rdLabels.length === 0 || rdLabels.includes(p.name)) || [];
+        if (targetPolicies.length === 0) return true;
+        return targetPolicies.every(pol => !pol.isRequired || p.offerDeclaration?.acceptedPolicies?.some(ap => ap.policyId === pol._id));
+      }
+      default: return false;
+    }
+  };
+
+  const calculateProgress = (customProfile = null) => {
+    const p = customProfile || profile;
+    if (!p || visibleSteps.length === 0) return 0;
+
+    let completedCount = 0;
+    visibleSteps.forEach(step => {
+      if (isStepComplete(step, p)) completedCount++;
+    });
+
+    return Math.round((completedCount / visibleSteps.length) * 100);
+  };
+
+  const currentProgress = calculateProgress();
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+        <Loader className="animate-spin" size={32} style={{ color: '#3b82f6' }} />
+      </div>
+    );
+  }
+
+  const inputStyle = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: isReadOnly ? '#f1f5f9' : '#fff' };
+  const errorInputStyle = { ...inputStyle, border: '1px solid #ef4444', background: '#fef2f2' };
+  const labelStyle = { display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' };
+  const getFieldStyle = (fieldKey) => validationErrors[fieldKey] ? errorInputStyle : inputStyle;
+
+  const validatePersonalDetails = (data) => {
+    const missing = [];
+    if (!data.fullName?.trim()) missing.push('Full Name');
+    if (!data.dateOfBirth) missing.push('Date of Birth');
+    if (!data.gender) missing.push('Gender');
+    if (!data.bloodGroup?.trim()) missing.push('Blood Group');
+    if (!data.personalEmail?.trim()) missing.push('Personal Email');
+    if (!data.personalMobile?.trim()) missing.push('Personal Mobile');
+    if (!data.currentAddress?.line1?.trim()) missing.push('Current Address Street');
+    if (!data.currentAddress?.city?.trim()) missing.push('Current Address City');
+    if (!data.currentAddress?.state?.trim()) missing.push('Current Address State');
+    if (!data.currentAddress?.pincode?.trim()) missing.push('Current Address Pincode');
+    if (!data.sameAsCurrent) {
+      if (!data.permanentAddress?.line1?.trim()) missing.push('Permanent Address Street');
+      if (!data.permanentAddress?.city?.trim()) missing.push('Permanent Address City');
+      if (!data.permanentAddress?.state?.trim()) missing.push('Permanent Address State');
+      if (!data.permanentAddress?.pincode?.trim()) missing.push('Permanent Address Pincode');
+    }
+    return missing;
+  };
+
+  const validateEmergencyContact = (data) => {
+    const missing = [];
+    if (!data.contactName?.trim()) missing.push('Contact Person Name');
+    if (!data.relationship?.trim()) missing.push('Relationship');
+    if (!data.phoneNumber?.trim()) missing.push('Phone Number');
+    if (!data.address?.trim()) missing.push('Address');
+    return missing;
+  };
+
+  const validateBankDetails = (data) => {
+    const missing = [];
+    if (!data.bankName?.trim()) missing.push('Bank Name');
+    if (!data.accountNumber?.trim()) missing.push('Account Number');
+    if (!data.confirmAccountNumber?.trim()) missing.push('Confirm Account Number');
+    if (data.accountNumber?.trim() && data.confirmAccountNumber?.trim() && data.accountNumber.trim() !== data.confirmAccountNumber.trim()) missing.push('Account Numbers do not match');
+    if (!data.ifscCode?.trim()) missing.push('IFSC Code');
+    if (!data.branchName?.trim()) missing.push('Branch Name');
+    if (!data.accountType) missing.push('Account Type');
+    return missing;
+  };
+
+  const buildValidationErrorMap = (missing, prefix) => {
+    const errors = {};
+    const fieldMap = {
+      'Full Name': 'fullName', 'Date of Birth': 'dateOfBirth', 'Gender': 'gender',
+      'Blood Group': 'bloodGroup', 'Personal Email': 'personalEmail', 'Personal Mobile': 'personalMobile',
+      'Current Address Street': 'currentAddress.line1', 'Current Address City': 'currentAddress.city',
+      'Current Address State': 'currentAddress.state', 'Current Address Pincode': 'currentAddress.pincode',
+      'Permanent Address Street': 'permanentAddress.line1', 'Permanent Address City': 'permanentAddress.city',
+      'Permanent Address State': 'permanentAddress.state', 'Permanent Address Pincode': 'permanentAddress.pincode',
+      'Contact Person Name': 'contactName', 'Relationship': 'relationship', 'Phone Number': 'phoneNumber', 'Address': 'address',
+      'Bank Name': 'bankName', 'Account Number': 'accountNumber', 'Confirm Account Number': 'confirmAccountNumber',
+      'IFSC Code': 'ifscCode', 'Branch Name': 'branchName', 'Account Type': 'accountType'
+    };
+    missing.forEach(label => {
+      const key = fieldMap[label];
+      if (key) errors[`${prefix}.${key}`] = true;
+    });
+    return errors;
+  };
+
+  const markChange = () => setUnsavedChanges(true);
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
+
+      {/* Top Bar */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50, flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <User size={18} color="white" />
+          </div>
+          <div>
+            <div style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{profile?.firstName} {profile?.lastName}</div>
+            <div style={{ fontSize: '12px', color: '#64748b' }}>{profile?.tempEmployeeId} • {profile?.designation}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {deadlineInfo && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', background: deadlineInfo.urgent ? '#fef2f2' : '#f0fdf4', border: `1px solid ${deadlineInfo.urgent ? '#fecaca' : '#bbf7d0'}` }}>
+                <Clock size={14} style={{ color: deadlineInfo.color }} />
+                <span style={{ fontSize: '13px', fontWeight: '600', color: deadlineInfo.color }}>{deadlineInfo.text}</span>
+              </div>
+              {!isReadOnly && (deadlineInfo.urgent || deadlineInfo.passed) && (
+                <button
+                  onClick={() => setShowExtensionModal(true)}
+                  disabled={hasPendingExtension}
+                  style={{ background: 'none', border: 'none', color: hasPendingExtension ? '#94a3b8' : '#3b82f6', fontSize: '11px', fontWeight: '600', cursor: hasPendingExtension ? 'not-allowed' : 'pointer', marginTop: '4px', textDecoration: 'underline' }}
+                >
+                  {hasPendingExtension ? 'Extension Requested' : 'Request Extension'}
+                </button>
+              )}
+            </div>
+          )}
+          {saving && <span style={{ fontSize: '12px', color: '#94a3b8' }}>Auto-saving...</span>}
+          <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
+            <LogOut size={14} /> Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Submitted Banner */}
+      {isReadOnly && (
+        <div style={{ background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff', padding: '16px 24px', textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <CheckCircle size={20} />
+            <strong>Your onboarding form has been submitted!</strong>
+          </div>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.9 }}>
+            Submitted on {new Date(profile.submittedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}. Your form is now read-only.
+          </p>
+        </div>
+      )}
+
+      {/* Ready to Submit Banner */}
+      {!isReadOnly && currentProgress === 100 && (
+        <div style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)', color: '#fff', padding: '16px 24px', textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <CheckCircle size={20} />
+            <strong>You've completed all sections!</strong>
+            <button
+              onClick={currentStep === visibleSteps.length - 1 ? handleSubmit : jumpToSubmit}
+              disabled={submitting}
+              style={{ background: '#fff', color: '#2563eb', border: 'none', padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: submitting ? 'wait' : 'pointer', marginLeft: '12px' }}
+            >
+              {submitting ? 'Submitting...' : currentStep === visibleSteps.length - 1 ? 'Submit Now' : 'Go to Final Step & Submit'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px' }}>
+        {showSuccessScreen ? (
+          <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.1)', padding: '60px 40px', textAlign: 'center', maxWidth: '600px', margin: '40px auto', animation: 'fadeIn 0.5s ease-out' }}>
+            <div style={{ width: '80px', height: '80px', background: '#ecfdf5', color: '#10b981', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+              <CheckCircle size={48} />
+            </div>
+            <h2 style={{ fontSize: '32px', fontWeight: '800', color: '#0f172a', margin: '0 0 12px' }}>Welcome to the Team!</h2>
+            <p style={{ fontSize: '18px', color: '#475569', margin: '0 0 32px', lineHeight: '1.6' }}>
+              Your offer has been successfully accepted. We are thrilled to have you on board!
+            </p>
+            <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>
+                Your offer has been accepted. We are thrilled to have you on board!
+              </p>
+              <button onClick={handleLogout} style={{ marginTop: '16px', background: 'none', border: 'none', color: '#3b82f6', fontWeight: '600', cursor: 'pointer', fontSize: '14px', textDecoration: 'underline' }}>
+                Logout Now
+              </button>
+            </div>
+          </div>
+        ) : ((profile?.offerStatus === 'Pending' && (reqDocsLabels.includes('Offer Letter') || profile.dynamicTemplates?.some(t => reqDocsLabels.includes(t.name)) || (reqDocsLabels.length === 0 && reqSectionsLabels.length === 0))) || profile?.offerStatus === 'Rejected') ? (
+          <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '40px', textAlign: 'center' }}>
+            {profile?.offerStatus === 'Rejected' ? (
+              <>
+                <div style={{ width: '80px', height: '80px', background: '#fef2f2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+                  <XCircle size={40} />
+                </div>
+                <h2 style={{ fontSize: '24px', color: '#0f172a', margin: '0 0 16px' }}>Offer Declined</h2>
+                <p style={{ color: '#475569', fontSize: '15px', marginBottom: '32px' }}>You have declined the offer. If this was a mistake, please contact HR.</p>
+              </>
+            ) : (
+              <>
+                <h2 style={{ fontSize: '24px', color: '#0f172a', margin: '0 0 16px' }}>Welcome to Resource Gateway!</h2>
+                <p style={{ color: '#475569', fontSize: '15px', marginBottom: '32px' }}>Please review and accept your Offer Letter and associated documents to proceed.</p>
+
+                <div style={{ display: 'grid', gap: '12px', marginBottom: '32px', maxWidth: '500px', margin: '0 auto 32px' }}>
+                  {/* Primary Offer Letter */}
+                  {(reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter')) && (
+                    <button onClick={() => handleDownloadDocx('offer-letter')} style={{ width: '100%', padding: '14px', background: '#eff6ff', color: '#2563eb', border: '1px solid #3b82f6', borderRadius: '12px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                      <FileText size={20} /> Download Offer Letter
+                    </button>
+                  )}
+
+                  {/* Dynamic Templates (like demo) */}
+                  {profile.dynamicTemplates?.filter(t => reqDocsLabels.includes(t.name)).map(temp => (
+                    <button key={temp._id} onClick={() => handleDownloadDynamicTemplate(temp._id, temp.name)} style={{ width: '100%', padding: '14px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #c4b5fd', borderRadius: '12px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                      <FileText size={20} /> Download {temp.name}
+                    </button>
+                  ))}
+
+                  {/* Fallback if nothing requested, show mandatory text */}
+                  {reqDocsLabels.length === 0 && !profile.dynamicTemplates?.length && (
+                    <p style={{ fontSize: '14px', color: '#64748b', fontStyle: 'italic' }}>Please acknowledge our standard employment terms below.</p>
+                  )}
+                </div>
+
+                <div style={{ padding: '24px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '32px', textAlign: 'left' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={offerAcceptedCheckbox} style={{ marginTop: '4px', width: '18px', height: '18px', accentColor: '#10b981' }} onChange={(e) => setOfferAcceptedCheckbox(e.target.checked)} />
+                    <span style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5' }}>
+                      I acknowledge that I have downloaded, read, and understood the Offer Letter. I accept the terms and conditions outlined within, and agree to proceed with the onboarding process.
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+                  <button disabled={!offerAcceptedCheckbox || accepting} onClick={handleAcceptOffer} style={{ padding: '12px 32px', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: '700', cursor: (!offerAcceptedCheckbox || accepting) ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(16,185,129,0.3)', opacity: !offerAcceptedCheckbox ? 0.7 : 1 }}>
+                    {accepting ? 'Accepting...' : 'I Accept the Offer'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Step Progress */}
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '28px', overflowX: 'auto', paddingBottom: '4px' }}>
+              {visibleSteps.map((step, i) => {
+                const sectionComplete =
+                  step.id === 'personalDetails' ? profile?.personalDetails?.isComplete :
+                    step.id === 'emergencyContact' ? profile?.emergencyContact?.isComplete :
+                      step.id === 'documents' ? (() => {
+                        const targetDocs = profile?.documents?.filter(d => reqDocsLabels.length === 0 || reqDocsLabels.includes(d.label)) || [];
+                        if (targetDocs.length === 0) return true;
+                        // Section is only complete if ALL requested docs are Uploaded or Approved (and not flagged)
+                        return targetDocs.every(d => (d.type === 'custom_file' || d.status === 'Uploaded' || d.status === 'Approved' || d.type === 'passport' || d.type === 'character_certificate'));
+                      })() :
+                        step.id === 'bankDetails' ? profile?.bankDetails?.isComplete :
+                          step.id === 'policies' ? (() => {
+                            const targetPolicies = profile?.companyPolicies?.filter(p => reqDocsLabels.length === 0 || reqDocsLabels.includes(p.name)) || [];
+                            if (targetPolicies.length === 0) return true;
+                            return targetPolicies.every(p => !p.isRequired || profile?.offerDeclaration?.acceptedPolicies?.some(ap => ap.policyId === p._id));
+                          })() :
+                            step.id === 'offerDeclaration' ? profile?.offerDeclaration?.isComplete : false;
+
+                return (
+                  <button key={step.id} onClick={() => { if (visibleSteps[currentStep].id !== 'documents' && unsavedChanges) handleSaveSection(visibleSteps[currentStep].id, true); setCurrentStep(i); }}
+                    style={{
+                      flex: 1,
+                      minWidth: '120px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '12px 8px',
+                      borderRadius: '12px',
+                      border: currentStep === i ? '2px solid #3b82f6' : '2px solid transparent',
+                      background: currentStep === i ? '#eff6ff' : sectionComplete ? '#f0fdf4' : '#fff',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                      transition: 'all 0.2s',
+                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: currentStep === i ? '#2563eb' : sectionComplete ? '#16a34a' : '#94a3b8' }}>
+                      {sectionComplete ? <CheckCircle size={16} /> : step.icon}
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: currentStep === i ? '#1e40af' : sectionComplete ? '#16a34a' : '#475569', textAlign: 'center' }}>{step.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Form Content */}
+            <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '28px', marginBottom: '24px' }}>
+
+              {/* Step 0: Personal Details */}
+              {visibleSteps[currentStep]?.id === 'personalDetails' && (() => {
+                const sRO = isSectionReadOnly('personalDetails'); return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Personal & Contact Details</h3>
+                    {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>Full Name *</label><input style={getFieldStyle('pd.fullName')} readOnly={sRO} value={personalDetails.fullName || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, fullName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.fullName']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Date of Birth *</label><input type="date" style={getFieldStyle('pd.dateOfBirth')} readOnly={sRO} value={personalDetails.dateOfBirth?.split('T')[0] || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, dateOfBirth: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.dateOfBirth']; return n; }); markChange(); }} /></div>
+                      <div>
+                        <label style={labelStyle}>Gender *</label>
+                        <select style={getFieldStyle('pd.gender')} disabled={sRO} value={personalDetails.gender || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, gender: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.gender']; return n; }); markChange(); }}>
+                          <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div><label style={labelStyle}>Blood Group *</label><input style={getFieldStyle('pd.bloodGroup')} readOnly={sRO} value={personalDetails.bloodGroup || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, bloodGroup: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.bloodGroup']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Personal Email *</label><input type="email" style={getFieldStyle('pd.personalEmail')} readOnly={sRO} value={personalDetails.personalEmail || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalEmail: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.personalEmail']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Personal Mobile *</label><input style={getFieldStyle('pd.personalMobile')} readOnly={sRO} value={personalDetails.personalMobile || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, personalMobile: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.personalMobile']; return n; }); markChange(); }} /></div>
+                    </div>
+
+                    <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Current Address</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Street *</label><input style={getFieldStyle('pd.currentAddress.line1')} readOnly={sRO} value={personalDetails.currentAddress?.line1 || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, line1: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.line1']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.line1']; return n; }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Line 2</label><input style={getFieldStyle('pd.currentAddress.line2')} readOnly={sRO} value={personalDetails.currentAddress?.line2 || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, line2: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>City *</label><input style={getFieldStyle('pd.currentAddress.city')} readOnly={sRO} value={personalDetails.currentAddress?.city || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, city: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.city']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.city']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>State *</label><input style={getFieldStyle('pd.currentAddress.state')} readOnly={sRO} value={personalDetails.currentAddress?.state || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, state: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.state']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.state']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Pincode *</label><input style={getFieldStyle('pd.currentAddress.pincode')} readOnly={sRO} value={personalDetails.currentAddress?.pincode || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, pincode: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.currentAddress.pincode']; if (personalDetails.sameAsCurrent) delete n['pd.permanentAddress.pincode']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Country</label><input style={getFieldStyle('pd.currentAddress.country')} readOnly={sRO} value={personalDetails.currentAddress?.country || ''} onChange={(e) => { const val = e.target.value; setPersonalDetails(prev => { const currentAddress = { ...prev.currentAddress, country: val }; const permanentAddress = prev.sameAsCurrent ? { ...currentAddress } : prev.permanentAddress; return { ...prev, currentAddress, permanentAddress }; }); markChange(); }} /></div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '20px 0 12px' }}>
+                      <input type="checkbox" id="sameAddr" disabled={sRO} checked={personalDetails.sameAsCurrent || false} onChange={(e) => {
+                        const checked = e.target.checked;
+                        setPersonalDetails(prev => ({
+                          ...prev, sameAsCurrent: checked,
+                          permanentAddress: checked ? { ...prev.currentAddress } : { line1: '', line2: '', city: '', state: '', pincode: '', country: '' }
+                        }));
+                        markChange();
+                      }} />
+                      <label htmlFor="sameAddr" style={{ fontSize: '14px', color: '#475569', cursor: 'pointer' }}>Permanent address same as current</label>
+                    </div>
+
+                    <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>Permanent Address</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Street *</label><input style={getFieldStyle('pd.permanentAddress.line1')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.line1 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, line1: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.line1']; return n; }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Line 2</label><input style={getFieldStyle('pd.permanentAddress.line2')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.line2 || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, line2: e.target.value } }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>City *</label><input style={getFieldStyle('pd.permanentAddress.city')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.city || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, city: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.city']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>State *</label><input style={getFieldStyle('pd.permanentAddress.state')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.state || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, state: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.state']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Pincode *</label><input style={getFieldStyle('pd.permanentAddress.pincode')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.pincode || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, pincode: e.target.value } }); setValidationErrors(prev => { const n = {...prev}; delete n['pd.permanentAddress.pincode']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Country</label><input style={getFieldStyle('pd.permanentAddress.country')} readOnly={sRO || personalDetails.sameAsCurrent} value={personalDetails.permanentAddress?.country || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, permanentAddress: { ...personalDetails.permanentAddress, country: e.target.value } }); markChange(); }} /></div>
+                    </div>
+
+                    <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', margin: '24px 0 12px' }}>Social Links (Optional)</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>LinkedIn URL</label><input style={inputStyle} readOnly={sRO} value={personalDetails.linkedinUrl || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, linkedinUrl: e.target.value }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Portfolio URL</label><input style={inputStyle} readOnly={sRO} value={personalDetails.portfolioUrl || ''} onChange={(e) => { setPersonalDetails({ ...personalDetails, portfolioUrl: e.target.value }); markChange(); }} /></div>
+                    </div>
+
+                    {!isGlobalReadOnly && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                        <input type="checkbox" id="pd_complete" checked={personalDetails.isComplete || false} onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          if (isChecked) {
+                            const missing = validatePersonalDetails(personalDetails);
+                            if (missing.length > 0) {
+                              toast.error(`Please fill all mandatory fields: ${missing.join(', ')}`);
+                              setValidationErrors(buildValidationErrorMap(missing, 'pd'));
+                              return;
+                            }
+                            setValidationErrors({});
+                          }
+                          const updated = { ...personalDetails, isComplete: isChecked };
+                          setPersonalDetails(updated);
+                          if (isChecked) handleSaveSection('personalDetails', false, updated);
+                          else markChange();
+                        }} />
+                        <label htmlFor="pd_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Step 1: Emergency Contact */}
+              {visibleSteps[currentStep]?.id === 'emergencyContact' && (() => {
+                const sRO = isSectionReadOnly('emergencyContact'); return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Emergency Contact</h3>
+                    {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>Contact Person Name *</label><input style={getFieldStyle('ec.contactName')} readOnly={sRO} value={emergencyContact.contactName || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, contactName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.contactName']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Relationship *</label><input style={getFieldStyle('ec.relationship')} readOnly={sRO} value={emergencyContact.relationship || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, relationship: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.relationship']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Phone Number *</label><input style={getFieldStyle('ec.phoneNumber')} readOnly={sRO} value={emergencyContact.phoneNumber || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, phoneNumber: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.phoneNumber']; return n; }); markChange(); }} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Address *</label><textarea style={{ ...(validationErrors['ec.address'] ? errorInputStyle : inputStyle), minHeight: '80px', resize: 'vertical' }} readOnly={sRO} value={emergencyContact.address || ''} onChange={(e) => { setEmergencyContact({ ...emergencyContact, address: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['ec.address']; return n; }); markChange(); }} /></div>
+                    </div>
+                    {!isGlobalReadOnly && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                        <input type="checkbox" id="ec_complete" checked={emergencyContact.isComplete || false} onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          if (isChecked) {
+                            const missing = validateEmergencyContact(emergencyContact);
+                            if (missing.length > 0) {
+                              toast.error(`Please fill all mandatory fields: ${missing.join(', ')}`);
+                              setValidationErrors(buildValidationErrorMap(missing, 'ec'));
+                              return;
+                            }
+                            setValidationErrors({});
+                          }
+                          const updated = { ...emergencyContact, isComplete: isChecked };
+                          setEmergencyContact(updated);
+                          if (isChecked) handleSaveSection('emergencyContact', false, updated);
+                          else markChange();
+                        }} />
+                        <label htmlFor="ec_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Step 2: Documents */}
+              {visibleSteps[currentStep]?.id === 'documents' && (() => {
+                const multiFileTypes = ['salary_slip', 'graduation'];
+
+                // Get original order of types to preserve base section layout
+                const typeOrder = [];
+                (profile?.documents || []).forEach(d => { if (!typeOrder.includes(d.type)) typeOrder.push(d.type); });
+
+                const filteredDocs = (profile?.documents?.filter(d => {
+                  return reqDocsLabels.length === 0 ||
+                    reqDocsLabels.includes(d.label) ||
+                    reqDocsLabels.includes(d.type) ||
+                    reqDocsLabels.some(rl => d.label.startsWith(rl));
+                }) || []).sort((a, b) => {
+                  const orderA = typeOrder.indexOf(a.type);
+                  const orderB = typeOrder.indexOf(b.type);
+                  if (orderA !== orderB) return orderA - orderB;
+                  // Within same type, sort numerically by label if possible (e.g. Slip (2) after Slip)
+                  return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+                });
+
+                const docsByType = {};
+                filteredDocs.forEach(d => { if (!docsByType[d.type]) docsByType[d.type] = []; docsByType[d.type].push(d); });
+
+                return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Document Upload</h3>
+                    <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Upload PDF, JPG, or PNG files (max 5MB each). Live photo documents require camera capture.</p>
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      {filteredDocs.map((doc) => {
+                        const isApproved = doc.status === 'Approved';
+                        const isUploaded = doc.status === 'Uploaded';
+                        const needsUpload = doc.status === 'Pending' || doc.status === 'Mail Sent' || doc.status === 'Re-upload Required';
+                        const isSharedCustomFile = doc.type === 'custom_file';
+                        const isDocRequested = reqDocsLabels.includes(doc.label) || reqDocsLabels.includes(doc.type) || reqDocsLabels.some(rl => doc.label.startsWith(rl));
+                        const canUpload = !isSharedCustomFile && ((doc.status === 'Re-upload Required') || (!isGlobalReadOnly && needsUpload && isDocRequested));
+                        const isLiveRequired = doc.type === 'live_photo';
+                        const badgeColor = isUploaded ? { bg: '#dbeafe', text: '#1d4ed8' } : isApproved ? { bg: '#dcfce7', text: '#16a34a' } : doc.status === 'Re-upload Required' ? { bg: '#fee2e2', text: '#dc2626' } : { bg: '#f1f5f9', text: '#64748b' };
+                        const preview = docPreview[doc._id];
+                        const isLastOfMultiType = multiFileTypes.includes(doc.type) && docsByType[doc.type]?.[docsByType[doc.type].length - 1]?._id === doc._id;
+                        const isDynamicSlot = /\(\d+\)$/.test(doc.label);
+
+                        return (
+                          <React.Fragment key={doc._id}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px',
+                              border: isApproved ? '1px solid #bbf7d0' : doc.status === 'Re-upload Required' ? '1px solid #fecaca' : isLiveRequired ? '1px solid #fbbf24' : '1px solid #e2e8f0',
+                              borderRadius: '10px',
+                              background: isApproved ? '#f0fdf4' : doc.status === 'Re-upload Required' ? '#fef2f2' : isLiveRequired ? '#fffbf0' : '#fff',
+                              flexWrap: 'wrap'
+                            }}>
+                              {isLiveRequired ? <Camera size={16} style={{ color: '#d97706', flexShrink: 0 }} /> : <FileText size={16} style={{ color: isApproved ? '#16a34a' : '#64748b', flexShrink: 0 }} />}
+                              <div style={{ flex: 1, minWidth: '120px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>{doc.label}</div>
+                                {isLiveRequired && <div style={{ fontSize: '11px', color: '#92400e', marginTop: '2px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}><Camera size={10} /> Live camera capture required</div>}
+                                {isSharedCustomFile && <div style={{ fontSize: '11px', color: '#0369a1', marginTop: '2px', fontWeight: '600' }}>Shared by HR for your reference</div>}
+                                {doc.rejectionReason && <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '1px' }}><AlertTriangle size={10} style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {doc.rejectionReason}</div>}
+                                {preview && !isLiveRequired && <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '1px' }}>📄 {preview.fileName} ({(preview.file.size / 1024).toFixed(0)} KB)</div>}
+                                {doc.livePhotoMetadata?.capturedAt && <div style={{ fontSize: '11px', color: '#7c3aed', marginTop: '1px' }}>📷 Captured: {new Date(doc.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>}
+                              </div>
+
+                              {doc.status !== 'Mail Sent' && (
+                                <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', background: badgeColor.bg, color: badgeColor.text, whiteSpace: 'nowrap' }}>{doc.status}</span>
+                              )}
+
+                              {/* Action Buttons */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                {/* View uploaded file */}
+                                {doc.url && (
+                                  <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#3b82f6', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}><Eye size={12} /> View</a>
+                                )}
+
+                                {/* Live Photo button — replaces file chooser */}
+                                {canUpload && isLiveRequired && (
+                                  <button
+                                    onClick={() => {
+                                      setCapturedImageData(null);
+                                      setCameraError('');
+                                      setGpsLocation(null);
+                                      setLivePhotoModal({ docId: doc._id, docLabel: doc.label });
+
+                                      // Start camera + GPS simultaneously
+                                      setTimeout(async () => {
+                                        // 1. Start camera
+                                        try {
+                                          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
+                                          setCameraStream(stream);
+                                          if (videoRef.current) {
+                                            videoRef.current.srcObject = stream;
+                                            videoRef.current.play();
+                                          }
+                                        } catch {
+                                          setCameraError('Camera access denied. Please allow camera permission and try again.');
+                                        }
+
+                                        // 2. Get GPS location + reverse geocode
+                                        if (navigator.geolocation) {
+                                          setGpsLoading(true);
+                                          navigator.geolocation.getCurrentPosition(
+                                            async (pos) => {
+                                              const lat = pos.coords.latitude.toFixed(5);
+                                              const lon = pos.coords.longitude.toFixed(5);
+                                              let address = '';
+                                              try {
+                                                const resp = await fetch(
+                                                  `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`,
+                                                  { headers: { 'Accept-Language': 'en' } }
+                                                );
+                                                const geo = await resp.json();
+                                                address = geo.display_name || '';
+                                              } catch { /* silently use coords only */ }
+                                              setGpsLocation({ lat, lon, address });
+                                              setGpsLoading(false);
+                                            },
+                                            () => { setGpsLoading(false); }, // user denied GPS — fine, proceed without
+                                            { enableHighAccuracy: true, timeout: 10000 }
+                                          );
+                                        }
+                                      }, 100);
+                                    }}
+                                    style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid #f59e0b', background: 'linear-gradient(135deg, #fef3c7, #fde68a)', color: '#92400e', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  >
+                                    <Camera size={13} /> Take Live Photo
+                                  </button>
+                                )}
+
+                                {/* Choose / Replace file (normal upload, allowed if not live required) */}
+                                {canUpload && !isLiveRequired && (
+                                  <label style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #d1d5db', color: '#475569', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#fff' }}>
+                                    <Upload size={12} /> {preview ? 'Replace' : 'Choose'}
+                                    <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => {
+                                      const file = e.target.files[0];
+                                      if (!file) return;
+                                      if (file.size === 0) {
+                                        toast.error('The selected file is empty or unreadable. If this is a cloud file (e.g. Google Drive), please download it to your device first.');
+                                        e.target.value = '';
+                                        return;
+                                      }
+                                      if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); e.target.value = ''; return; }
+                                      let fileType = file.type;
+                                      if ((!fileType || fileType === 'application/octet-stream') && file.name) {
+                                        const ext = file.name.split('.').pop().toLowerCase();
+                                        if (ext === 'pdf') fileType = 'application/pdf';
+                                        else if (ext === 'jpg' || ext === 'jpeg') fileType = 'image/jpeg';
+                                        else if (ext === 'png') fileType = 'image/png';
+                                      }
+                                      const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+                                      if (!allowed.includes(fileType)) { toast.error('Only PDF, JPG, PNG'); e.target.value = ''; return; }
+                                      const previewUrl = URL.createObjectURL(file);
+                                      setDocPreview(prev => ({ ...prev, [doc._id]: { file, previewUrl, fileName: file.name, fileType } }));
+                                    }} />
+                                  </label>
+                                )}
+
+                                {/* View chosen file (before upload) */}
+                                {preview && !isLiveRequired && (
+                                  <button onClick={() => window.open(preview.previewUrl, '_blank')} style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #c7d2fe', color: '#4f46e5', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#eef2ff' }}>
+                                    <Eye size={12} /> View
+                                  </button>
+                                )}
+
+                                {/* Upload button */}
+                                {preview && !isLiveRequired && (
+                                  <button onClick={() => { handleUploadDocument(doc._id, preview.file); setDocPreview(prev => { const n = { ...prev }; if (n[doc._id]?.previewUrl) URL.revokeObjectURL(n[doc._id].previewUrl); delete n[doc._id]; return n; }); }}
+                                    style={{ padding: '5px 12px', borderRadius: '6px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', border: 'none', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <Upload size={12} /> Upload
+                                  </button>
+                                )}
+
+                                {/* Cancel chosen file selection */}
+                                {preview && !isLiveRequired && (
+                                  <button onClick={() => { setDocPreview(prev => { const n = { ...prev }; if (n[doc._id]?.previewUrl) URL.revokeObjectURL(n[doc._id].previewUrl); delete n[doc._id]; return n; }); }}
+                                    style={{ padding: '5px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', background: '#fff' }}>
+                                    <X size={12} />
+                                  </button>
+                                )}
+
+                                {/* Delete dynamic slot - same visibility logic as Choose button */}
+                                {isDynamicSlot && canUpload && !isUploaded && !isApproved && (
+                                  <button onClick={() => handleDeleteDocSlot(doc._id)}
+                                    style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fee2e2', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', background: '#fef2f2' }}
+                                    title="Delete added field">
+                                    <X size={12} /> Delete Slot
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Add More button - show only if not submitted OR if explicitly requested via flagging */}
+                            {isLastOfMultiType && (!isGlobalReadOnly || (isDocRequested && docsByType[doc.type]?.some(d => d.status === 'Re-upload Required'))) && (
+                              <button onClick={() => handleAddDocSlot(doc.type, doc.type === 'salary_slip' ? 'Salary Slip' : 'Graduation Marksheet / Certificate')}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', marginLeft: '30px', borderRadius: '8px', border: '1px dashed #cbd5e1', background: '#f8fafc', color: '#64748b', fontSize: '12px', fontWeight: '500', cursor: 'pointer', marginTop: '4px' }}>
+                                <Plus size={14} /> Add More {doc.type === 'salary_slip' ? 'Salary Slips' : 'Certificates'}
+                              </button>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+
+                    {/* ===== LIVE PHOTO CAPTURE MODAL ===== */}
+                    {livePhotoModal && (
+                      <div style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+                      }}>
+                        <div style={{
+                          background: '#0f172a', borderRadius: '20px', width: '100%', maxWidth: '560px',
+                          overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
+                          border: '1px solid #1e293b'
+                        }}>
+                          {/* Modal Header */}
+                          <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Camera size={18} color="#fff" />
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '15px', fontWeight: '700', color: '#f8fafc' }}>Live Photo Capture</div>
+                                <div style={{ fontSize: '12px', color: '#64748b' }}>{livePhotoModal.docLabel}</div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); setCameraStream(null); }
+                                setLivePhotoModal(null);
+                                setCapturedImageData(null);
+                                setCameraError('');
+                              }}
+                              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', borderRadius: '6px' }}
+                            >
+                              <X size={20} />
+                            </button>
+                          </div>
+
+                          {/* Camera / Capture area */}
+                          <div style={{ padding: '20px 24px' }}>
+                            {cameraError ? (
+                              <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                                <ZapOff size={40} style={{ color: '#ef4444', marginBottom: '12px' }} />
+                                <p style={{ color: '#fca5a5', fontSize: '14px', margin: 0 }}>{cameraError}</p>
+                              </div>
+                            ) : capturedImageData ? (
+                              // Preview captured image
+                              <div style={{ textAlign: 'center' }}>
+                                <div style={{ position: 'relative', display: 'inline-block', borderRadius: '12px', overflow: 'hidden', border: '2px solid #22c55e', marginBottom: '16px' }}>
+                                  <img src={capturedImageData} alt="Captured" style={{ display: 'block', maxWidth: '100%', maxHeight: '320px', objectFit: 'contain' }} />
+                                  {/* Stamp overlay preview */}
+                                  <div style={{
+                                    position: 'absolute', bottom: 0, left: 0, right: 0,
+                                    background: 'rgba(0,0,0,0.68)', padding: '7px 10px',
+                                    fontSize: '10px', color: '#fff', textAlign: 'left', lineHeight: '1.6'
+                                  }}>
+                                    <div style={{ fontWeight: '700', fontSize: '11px' }}>
+                                      📷 {new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    </div>
+                                    {gpsLocation ? (
+                                      <>
+                                        <div style={{ color: '#86efac' }}>
+                                          📍 {gpsLocation.lat}° N, {gpsLocation.lon}° E
+                                        </div>
+                                        {gpsLocation.address && (
+                                          <div style={{ color: '#bae6fd', fontSize: '9.5px' }}>
+                                            {gpsLocation.address.length > 90 ? gpsLocation.address.slice(0, 87) + '...' : gpsLocation.address}
+                                          </div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <div style={{ color: '#fde68a', fontSize: '9.5px' }}>
+                                        {gpsLoading ? '📡 Acquiring GPS...' : '📍 GPS unavailable'}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px' }}>Photo will be stamped with timestamp, GPS coordinates and address.</p>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={() => { setCapturedImageData(null); }}
+                                    style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid #334155', background: '#1e293b', color: '#94a3b8', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                                  >
+                                    Retake
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      setUploadingLivePhoto(true);
+                                      try {
+                                        // Draw final stamped image on canvas
+                                        const img = new Image();
+                                        img.src = capturedImageData;
+                                        await new Promise(res => { img.onload = res; });
+
+                                        const canvas = document.createElement('canvas');
+                                        canvas.width = img.width;
+                                        canvas.height = img.height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0);
+
+                                        // --- Stamp bar ---
+                                        // 3 lines: timestamp / GPS coords / address
+                                        const hasAddress = Boolean(gpsLocation?.address);
+                                        const lineCount = gpsLocation ? (hasAddress ? 3 : 2) : 1;
+                                        const fontSize = Math.max(11, Math.round(img.height * 0.026));
+                                        const lineH = fontSize + 6;
+                                        const stampHeight = lineH * lineCount + 14;
+
+                                        ctx.fillStyle = 'rgba(0,0,0,0.70)';
+                                        ctx.fillRect(0, img.height - stampHeight, img.width, stampHeight);
+
+                                        const maxW = img.width - 24;
+                                        const baseY = img.height - stampHeight + lineH;
+
+                                        // Line 1: Timestamp
+                                        ctx.fillStyle = '#ffffff';
+                                        ctx.font = `bold ${fontSize}px Arial`;
+                                        const now = new Date();
+                                        const timeStr = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                        ctx.fillText(`\u{1F4F7} ${timeStr}`, 12, baseY);
+
+                                        if (gpsLocation) {
+                                          // Line 2: GPS coordinates
+                                          ctx.fillStyle = '#86efac';
+                                          ctx.font = `${fontSize}px Arial`;
+                                          ctx.fillText(`\u{1F4CD} ${gpsLocation.lat}\u00b0 N, ${gpsLocation.lon}\u00b0 E`, 12, baseY + lineH);
+
+                                          // Line 3: Address (truncated)
+                                          if (hasAddress) {
+                                            ctx.fillStyle = '#bae6fd';
+                                            ctx.font = `${fontSize - 1}px Arial`;
+                                            let addrText = gpsLocation.address;
+                                            while (ctx.measureText(addrText).width > maxW && addrText.length > 10) {
+                                              addrText = addrText.slice(0, -4) + '...';
+                                            }
+                                            ctx.fillText(addrText, 12, baseY + lineH * 2);
+                                          }
+                                        }
+
+                                        // Convert stamped canvas to blob
+                                        canvas.toBlob(async (blob) => {
+                                          if (!blob) { toast.error('Failed to process image'); setUploadingLivePhoto(false); return; }
+                                          const stampedFile = new File([blob], `live_photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                                          await handleUploadDocument(livePhotoModal.docId, stampedFile);
+
+                                          // Stop camera and close modal
+                                          if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); setCameraStream(null); }
+                                          setLivePhotoModal(null);
+                                          setCapturedImageData(null);
+                                          setGpsLocation(null);
+                                          setUploadingLivePhoto(false);
+                                        }, 'image/jpeg', 0.92);
+                                      } catch {
+                                        toast.error('Failed to upload live photo');
+                                        setUploadingLivePhoto(false);
+                                      }
+                                    }}
+                                    disabled={uploadingLivePhoto}
+                                    style={{ padding: '10px 24px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: uploadingLivePhoto ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', opacity: uploadingLivePhoto ? 0.7 : 1 }}
+                                  >
+                                    <Upload size={14} />{uploadingLivePhoto ? 'Uploading...' : 'Upload Photo'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              // Live viewfinder
+                              <div style={{ textAlign: 'center' }}>
+                                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#000', marginBottom: '16px', aspectRatio: '16/9' }}>
+                                  <video
+                                    ref={videoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }}
+                                  />
+                                  {/* Guide overlay */}
+                                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div style={{ width: '180px', height: '200px', border: '2px dashed rgba(251,191,36,0.7)', borderRadius: '50% 50% 45% 45%', boxShadow: '0 0 0 4000px rgba(0,0,0,0.3)' }} />
+                                  </div>
+                                  {/* Live indicator */}
+                                  {cameraStream && (
+                                    <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '20px' }}>
+                                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.2s infinite' }} />
+                                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff', letterSpacing: '1px' }}>LIVE</span>
+                                    </div>
+                                  )}
+                                </div>
+                                {!cameraStream && !cameraError && (
+                                  <div style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                    <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Starting camera...
+                                  </div>
+                                )}
+                                <div style={{ marginBottom: '12px' }}>
+                                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px' }}>Position your face within the guide and click Capture.</p>
+                                  <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Photo will be stamped with timestamp and your current address.</p>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    if (!videoRef.current || !cameraStream) return;
+                                    const video = videoRef.current;
+                                    const canvas = document.createElement('canvas');
+                                    canvas.width = video.videoWidth || 640;
+                                    canvas.height = video.videoHeight || 480;
+                                    const ctx = canvas.getContext('2d');
+                                    ctx.translate(canvas.width, 0);
+                                    ctx.scale(-1, 1);
+                                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                                    setCapturedImageData(dataUrl);
+                                  }}
+                                  disabled={!cameraStream}
+                                  style={{
+                                    width: '72px', height: '72px', borderRadius: '50%',
+                                    background: cameraStream ? 'linear-gradient(135deg, #f59e0b, #d97706)' : '#334155',
+                                    border: '4px solid rgba(255,255,255,0.15)',
+                                    color: '#fff', cursor: cameraStream ? 'pointer' : 'not-allowed',
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: cameraStream ? '0 0 0 6px rgba(245,158,11,0.25)' : 'none',
+                                    transition: 'all 0.2s'
+                                  }}
+                                  title="Capture photo"
+                                >
+                                  <Camera size={28} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Notice */}
+                          <div style={{ padding: '12px 24px 20px', borderTop: '1px solid #1e293b' }}>
+                            <p style={{ margin: 0, fontSize: '11px', color: '#475569', lineHeight: '1.5' }}>
+                              🔒 Your camera is only used to capture this live photo. The capture is stamped with the current time and your address on file for verification purposes.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Hidden canvas for live photo capture (unused but kept as ref) */}
+                    <canvas ref={captureCanvasRef} style={{ display: 'none' }} />
+                  </div>
+                );
+              })()}
+
+              {/* Step 3: Bank Details */}
+              {visibleSteps[currentStep]?.id === 'bankDetails' && (() => {
+                const sRO = isSectionReadOnly('bankDetails'); return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '20px' }}>Bank / Payroll Details</h3>
+                    {sRO && <div style={{ padding: '8px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>✅ This section has been completed and is now read-only.</div>}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                      <div><label style={labelStyle}>Bank Name *</label><input style={getFieldStyle('bd.bankName')} readOnly={sRO} value={bankDetails.bankName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, bankName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.bankName']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Account Number *</label><input style={getFieldStyle('bd.accountNumber')} readOnly={sRO} value={bankDetails.accountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountNumber: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.accountNumber']; delete n['bd.confirmAccountNumber']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Confirm Account Number *</label><input style={getFieldStyle('bd.confirmAccountNumber')} readOnly={sRO} value={bankDetails.confirmAccountNumber || ''} onChange={(e) => { setBankDetails({ ...bankDetails, confirmAccountNumber: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.confirmAccountNumber']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>IFSC Code *</label><input style={getFieldStyle('bd.ifscCode')} readOnly={sRO} value={bankDetails.ifscCode || ''} onChange={(e) => { setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.ifscCode']; return n; }); markChange(); }} /></div>
+                      <div><label style={labelStyle}>Branch Name *</label><input style={getFieldStyle('bd.branchName')} readOnly={sRO} value={bankDetails.branchName || ''} onChange={(e) => { setBankDetails({ ...bankDetails, branchName: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.branchName']; return n; }); markChange(); }} /></div>
+                      <div>
+                        <label style={labelStyle}>Account Type *</label>
+                        <select style={getFieldStyle('bd.accountType')} disabled={sRO} value={bankDetails.accountType || ''} onChange={(e) => { setBankDetails({ ...bankDetails, accountType: e.target.value }); setValidationErrors(prev => { const n = {...prev}; delete n['bd.accountType']; return n; }); markChange(); }}>
+                          <option value="">Select</option><option value="Savings">Savings</option><option value="Current">Current</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: '20px' }}>
+                      <label style={labelStyle}>Cancelled Cheque / Passbook Front Page</label>
+                      {bankDetails.cancelledChequeUrl || profile?.bankDetails?.cancelledChequeUrl ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <a href={bankDetails.cancelledChequeUrl || profile?.bankDetails?.cancelledChequeUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', fontSize: '13px' }}>View uploaded file</a>
+                          {!sRO && (
+                            <label style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '12px', cursor: 'pointer', fontWeight: '600', color: '#475569' }}>
+                              Re-upload <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { if (e.target.files[0]) handleUploadCheque(e.target.files[0]); }} />
+                            </label>
+                          )}
+                        </div>
+                      ) : !sRO ? (
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', border: '2px dashed #d1d5db', cursor: 'pointer', fontSize: '13px', color: '#64748b' }}>
+                          <Upload size={16} /> Upload cheque / passbook
+                          <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { if (e.target.files[0]) handleUploadCheque(e.target.files[0]); }} />
+                        </label>
+                      ) : <span style={{ color: '#94a3b8', fontSize: '13px' }}>Not uploaded</span>}
+                    </div>
+
+                    {!isGlobalReadOnly && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                        <input type="checkbox" id="bd_complete" checked={bankDetails.isComplete || false} onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          if (isChecked) {
+                            const missing = validateBankDetails(bankDetails);
+                            if (missing.length > 0) {
+                              toast.error(`Please fill all mandatory fields: ${missing.join(', ')}`);
+                              setValidationErrors(buildValidationErrorMap(missing, 'bd'));
+                              return;
+                            }
+                            setValidationErrors({});
+                          }
+                          const updated = { ...bankDetails, isComplete: isChecked };
+                          setBankDetails(updated);
+                          if (isChecked) handleSaveSection('bankDetails', false, updated);
+                          else markChange();
+                        }} />
+                        <label htmlFor="bd_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Step 4: Company Policies */}
+              {visibleSteps[currentStep]?.id === 'policies' && (
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Company Policies</h3>
+                  <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Please review and accept modern workplace policies before proceeding.</p>
+
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {profile?.companyPolicies?.filter(p => {
+                      return reqDocsLabels.length === 0 || reqDocsLabels.includes(p.name);
+                    }).map((policy) => {
+                      const isAccepted = profile?.offerDeclaration?.acceptedPolicies?.some(p => p.policyId === policy._id);
+                      return (
+                        <div key={policy._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: isAccepted ? '#f0fdf4' : '#fff' }}>
+                          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isAccepted ? '#dcfce7' : '#f1f5f9', color: isAccepted ? '#16a34a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <FileText size={20} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>{policy.name}</div>
+                            <div style={{ fontSize: '12px', color: '#64748b' }}>{policy.isRequired ? 'Mandatory acknowledgment' : 'Optional review'}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <a href={policy.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#3b82f6', textDecoration: 'none', fontSize: '13px', fontWeight: '600', background: '#fff' }}>
+                              View Policy ↗
+                            </a>
+                            {!isAccepted && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '4px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc' }}>
+                                <input type="checkbox" style={{ width: '16px', height: '16px', accentColor: '#10b981' }} onChange={() => handleAcceptPolicy(policy._id)} />
+                                <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Accept the policy / Mark as read</span>
+                              </label>
+                            )}
+                            {isAccepted && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontSize: '13px', fontWeight: '600', padding: '8px' }}>
+                                <CheckCircle size={16} /> Accepted
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {(() => {
+                      const targetPolicies = profile?.companyPolicies?.filter(p => reqDocsLabels.length === 0 || reqDocsLabels.includes(p.name)) || [];
+                      if (targetPolicies.length === 0) {
+                        return (
+                          <div style={{ padding: '40px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                            <CheckCircle size={32} style={{ color: '#10b981', marginBottom: '12px' }} />
+                            <p style={{ color: '#475569', margin: 0 }}>No specific policies require your attention at this time.</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+
+                  {!isReadOnly && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '24px', padding: '16px', background: '#fffbeb', borderRadius: '12px', border: '1px solid #fde68a' }}>
+                      <input type="checkbox" id="policies_complete" checked={offerDeclaration.hasReadPolicies || false} onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        const updated = { ...offerDeclaration, hasReadPolicies: isChecked };
+                        setOfferDeclaration(updated);
+                        if (isChecked) handleSaveSection('offerDeclaration', false, updated);
+                        else markChange();
+                      }} />
+                      <label htmlFor="policies_complete" style={{ fontSize: '14px', fontWeight: '600', color: '#92400e' }}>I confirm that I have reviewed all the policies listed above.</label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 5: Offer Declaration */}
+              {visibleSteps[currentStep]?.id === 'offerDeclaration' && (() => {
+                const sRO = isSectionReadOnly('offerDeclaration');
+                const hasDynamicTemplate = reqDocsLabels.includes('Offer Letter') || profile?.dynamicTemplates?.some(t => reqDocsLabels.includes(t.name));
+                return (
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginTop: 0, marginBottom: '6px' }}>Offer & Declaration Documents</h3>
+                    <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Please download, review, and acknowledge the following dynamic documents.</p>
+
+                    <div style={{ display: 'grid', gap: '12px', marginBottom: '24px' }}>
+                      {(() => {
+                        if (reqDocsLabels.length === 0 || reqDocsLabels.includes('Offer Letter')) {
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: offerDeclaration.hasReadOfferLetter ? '#f0fdf4' : '#fff' }}>
+                              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#f0f9ff', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <FileText size={20} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>Primary Offer Letter</div>
+                                <div style={{ fontSize: '12px', color: '#64748b' }}>System Generated document</div>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <a href={profile.offerLetterUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#3b82f6', textDecoration: 'none', fontSize: '13px', fontWeight: '600', background: '#fff' }}>View</a>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      {profile?.dynamicTemplates?.filter(t => {
+                        return reqDocsLabels.length === 0 || reqDocsLabels.includes(t.name);
+                      }).map((temp) => {
+                        const isAccepted = profile?.offerDeclaration?.acceptedTemplates?.some(t => t.templateId === temp._id);
+                        return (
+                          <div key={temp._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: isAccepted ? '#f0fdf4' : '#fff' }}>
+                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isAccepted ? '#dcfce7' : '#f8fafc', color: isAccepted ? '#16a34a' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <FileText size={20} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}>{temp.name}</div>
+                              <div style={{ fontSize: '12px', color: '#64748b' }}>Customized for you</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button onClick={() => handleDownloadDynamicTemplate(temp._id, temp.name)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #3b82f6', color: '#3b82f6', background: '#fff', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                                Download
+                              </button>
+                              {(!sRO && !isAccepted) && (
+                                <button onClick={() => handleAcceptTemplate(temp._id)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#10b981', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                                  Acknowledge
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '12px', marginBottom: '24px' }}>
+                      {
+                        (() => {
+                          return [
+                            { key: 'hasReadOfferLetter', label: 'I have read and understood the terms of my offer letter', show: profile.offerLetterUrl || reqDocsLabels.length === 0 || reqDocsLabels.some(label => /offer\s*letter/i.test(label)) },
+                            { key: 'hasProvidedTrueInfo', label: 'All information I have provided is true and accurate', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate },
+                            { key: 'agreesToOriginalVerification', label: 'I agree to submit original documents for verification on joining day', show: reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate }
+                          ].filter(item => item.show).map((item) => (
+                            <label key={item.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', border: '1px solid #e2e8f0', borderRadius: '10px', cursor: sRO ? 'default' : 'pointer', background: offerDeclaration[item.key] ? '#f0fdf4' : '#fff' }}>
+                              <input type="checkbox" disabled={sRO} checked={offerDeclaration[item.key] || false} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, [item.key]: e.target.checked }); markChange(); }} style={{ marginTop: '2px', accentColor: '#16a34a' }} />
+                              <span style={{ fontSize: '14px', color: '#1e293b', fontWeight: '500' }}>{item.label}</span>
+                            </label>
+                          ));
+                        })()
+                      }
+                    </div>
+
+                    {(() => {
+                      if (sRO) {
+                        return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate) && (
+                          <div style={{ marginTop: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', background: '#f8fafc' }}>
+                            <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>Signature Acknowledgment</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                              <div>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed By</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>{offerDeclaration.eSignName}</span>
+                              </div>
+                              <div>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed On</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>
+                                  {offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
+                                </span>
+                              </div>
+                              <div>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signature Mode</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155', textTransform: 'capitalize' }}>{offerDeclaration.eSignType || 'typed'} Signature</span>
+                              </div>
+                              <div style={{ gridColumn: '1 / -1' }}>
+                                <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>Digital Signature Preview</span>
+                                {offerDeclaration.eSignType === 'drawn' && offerDeclaration.eSignValue ? (
+                                  <img src={offerDeclaration.eSignValue} alt="Digital Signature" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px', maxWidth: '240px', height: '80px', display: 'block' }} />
+                                ) : (
+                                  <span style={{ fontFamily: inlineSignatureStyle, fontSize: '24px', color: '#1e3a8a', padding: '8px 16px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'inline-block', minWidth: '180px', textAlign: 'center' }}>{offerDeclaration.eSignName || 'Signature'}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (reqSectionsLabels.length === 0 || reqSectionsLabels.includes('Offer Declaration') || hasDynamicTemplate) && (
+                        <div>
+                          <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>E-Signature</h4>
+                          <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '10px', marginBottom: '20px', maxWidth: '280px' }}>
+                            <button type="button" onClick={() => { setOfferDeclaration({ ...offerDeclaration, eSignType: 'typed' }); markChange(); }} style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: offerDeclaration.eSignType !== 'drawn' ? '#fff' : 'transparent', color: offerDeclaration.eSignType !== 'drawn' ? '#1e293b' : '#64748b', boxShadow: offerDeclaration.eSignType !== 'drawn' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none', outline: 'none' }}>Type Signature</button>
+                            <button type="button" onClick={() => { setOfferDeclaration({ ...offerDeclaration, eSignType: 'drawn' }); markChange(); }} style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: offerDeclaration.eSignType === 'drawn' ? '#fff' : 'transparent', color: offerDeclaration.eSignType === 'drawn' ? '#1e293b' : '#64748b', boxShadow: offerDeclaration.eSignType === 'drawn' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none', outline: 'none' }}>Draw Signature</button>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                            <div><label style={labelStyle}>Full Name *</label><input style={inputStyle} placeholder="Type your full name" value={offerDeclaration.eSignName || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignName: e.target.value, eSignValue: offerDeclaration.eSignType === 'drawn' ? offerDeclaration.eSignValue : e.target.value }); markChange(); }} /></div>
+                            <div><label style={labelStyle}>Date *</label><input type="date" style={inputStyle} value={offerDeclaration.eSignDate?.split('T')[0] || ''} onChange={(e) => { setOfferDeclaration({ ...offerDeclaration, eSignDate: e.target.value }); markChange(); }} /></div>
+                          </div>
+                          {offerDeclaration.eSignType === 'drawn' ? (
+                            <div style={{ marginBottom: '20px' }}>
+                              <label style={labelStyle}>Draw your signature below *</label>
+                              <div style={{ border: '1px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc', padding: '12px', position: 'relative', maxWidth: '480px' }}>
+                                <canvas ref={inlineCanvasRef} width={450} height={160} onMouseDown={startInlineDrawing} onMouseMove={drawInline} onMouseUp={stopInlineDrawing} onMouseLeave={stopInlineDrawing} onTouchStart={startInlineDrawing} onTouchMove={drawInline} onTouchEnd={stopInlineDrawing} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'crosshair', display: 'block', width: '100%', height: '160px', touchAction: 'none' }} />
+                                <button type="button" onClick={clearInlineCanvas} style={{ position: 'absolute', top: '20px', right: '20px', padding: '6px 12px', background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>Clear</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ marginBottom: '20px' }}>
+                              <label style={labelStyle}>Signature font preview style</label>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', maxWidth: '600px' }}>
+                                {[
+                                  { font: '"Brush Script MT", cursive', label: 'Classic Script' },
+                                  { font: '"Lucida Handwriting", cursive', label: 'Handwriting' },
+                                  { font: '"Segoe Print", cursive', label: 'Casual Print' },
+                                  { font: 'Courier New, monospace', label: 'Block Print' }
+                                ].map(style => (
+                                  <div key={style.font} onClick={() => { 
+                                    setInlineSignatureStyle(style.font); 
+                                    setOfferDeclaration({ ...offerDeclaration, eSignStyle: style.font });
+                                    markChange(); 
+                                  }} style={{ padding: '12px 10px', border: inlineSignatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', background: inlineSignatureStyle === style.font ? '#eff6ff' : '#fff', textAlign: 'center' }}>
+                                    <span style={{ fontFamily: style.font, fontSize: '15px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{offerDeclaration.eSignName || 'Signature'}</span>
+                                    <span style={{ fontSize: '9px', color: '#64748b', marginTop: '4px', display: 'block' }}>{style.label}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {!isGlobalReadOnly && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                              <input type="checkbox" id="od_complete" checked={offerDeclaration.isComplete || false} onChange={(e) => {
+                                const isChecked = e.target.checked;
+                                const canvas = inlineCanvasRef.current;
+                                let signValue = offerDeclaration.eSignValue || '';
+                                if (isChecked) {
+                                  if (!offerDeclaration.eSignName?.trim()) {
+                                    toast.error('Signature name is required.');
+                                    return;
+                                  }
+                                  if (offerDeclaration.eSignType === 'drawn' && canvas) {
+                                    const blank = document.createElement('canvas');
+                                    blank.width = canvas.width;
+                                    blank.height = canvas.height;
+                                    if (canvas.toDataURL() === blank.toDataURL()) {
+                                      toast.error('Please draw your signature before marking complete.');
+                                      return;
+                                    }
+                                    signValue = canvas.toDataURL('image/png');
+                                  } else if (offerDeclaration.eSignType !== 'drawn') {
+                                    signValue = offerDeclaration.eSignName;
+                                  }
+                                  if (!offerDeclaration.eSignDate) {
+                                    toast.error('Signature date is required.');
+                                    return;
+                                  }
+                                }
+                                const updated = { 
+                                  ...offerDeclaration, 
+                                  isComplete: isChecked, 
+                                  eSignValue: signValue,
+                                  eSignDate: isChecked ? new Date().toISOString() : offerDeclaration.eSignDate 
+                                };
+                                setOfferDeclaration(updated);
+                                if (isChecked) handleSaveSection('offerDeclaration', false, updated);
+                                else markChange();
+                              }} />
+                              <label htmlFor="od_complete" style={{ fontSize: '13px', fontWeight: '600', color: '#16a34a', cursor: 'pointer' }}>Mark this section as complete</label>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Navigation */}
+            {(!isReadOnly || (profile?.requestedSections?.length > 0 || profile?.requestedDocuments?.length > 0)) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <button disabled={currentStep === 0} onClick={() => { if (unsavedChanges && visibleSteps[currentStep]?.id && !['documents', 'policies'].includes(visibleSteps[currentStep].id)) handleSaveSection(visibleSteps[currentStep].id, true); setCurrentStep(s => s - 1); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', borderRadius: '10px', border: '1px solid #d1d5db', background: '#fff', cursor: currentStep === 0 ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569', opacity: currentStep === 0 ? 0.5 : 1 }}>
+                  <ChevronLeft size={18} /> Previous
+                </button>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {visibleSteps[currentStep]?.id && !['documents', 'policies'].includes(visibleSteps[currentStep].id) && !isSectionReadOnly(visibleSteps[currentStep].id) && (
+                    <button onClick={() => handleSaveSection(visibleSteps[currentStep].id)} style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#475569' }}>
+                      Save
+                    </button>
+                  )}
+
+                  {currentStep < visibleSteps.length - 1 ? (
+                    <button onClick={() => { if (unsavedChanges && visibleSteps[currentStep]?.id && !['documents', 'policies'].includes(visibleSteps[currentStep].id)) handleSaveSection(visibleSteps[currentStep].id, true); setCurrentStep(s => s + 1); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #2563eb, #3b82f6)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '14px', boxShadow: '0 4px 12px rgba(37,99,235,0.25)' }}>
+                      Next <ChevronRight size={18} />
+                    </button>
+                  ) : (
+                    !isGlobalReadOnly && (
+                      <button onClick={handleSubmit} disabled={submitting}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 24px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff', cursor: submitting ? 'wait' : 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 12px rgba(16,185,129,0.3)', opacity: submitting ? 0.7 : 1 }}>
+                        <CheckCircle size={18} /> {submitting ? 'Submitting...' : 'Submit Onboarding'}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )
+        }
+      </div>
+
+      {/* Extension Modal */}
+      {showExtensionModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '18px', color: '#0f172a' }}>Request Deadline Extension</h3>
+            <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: '13px' }}>If you need more time to gather your documents, you can request an extension from HR.</p>
+
+            <form onSubmit={handleRequestExtension}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Reason for extension</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={extensionRequest.reason}
+                  onChange={(e) => setExtensionRequest({ ...extensionRequest, reason: e.target.value })}
+                  placeholder="E.g., Waiting for university degree certificate..."
+                  style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', resize: 'vertical' }}
+                />
+              </div>
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Additional days needed</label>
+                <select
+                  value={extensionRequest.requestedDays}
+                  onChange={(e) => setExtensionRequest({ ...extensionRequest, requestedDays: parseInt(e.target.value) })}
+                  style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff' }}
+                >
+                  <option value={3}>3 Days</option>
+                  <option value={7}>1 Week</option>
+                  <option value={14}>2 Weeks</option>
+                  <option value={30}>1 Month</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowExtensionModal(false)} style={{ padding: '10px 16px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" disabled={loading} style={{ padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Submit Request</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* E-Signature Modal */}
+      {showSignModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '520px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileSignature style={{ color: '#2563eb' }} /> Digital Signature
+              </h3>
+              <button onClick={() => setShowSignModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ margin: '0 0 24px', color: '#475569', fontSize: '14px', lineHeight: '1.6' }}>
+              Please digitally sign below to finalize your acceptance of the Offer Letter and standard employment conditions.
+            </p>
+
+            <form onSubmit={submitSignature}>
+              {/* Toggle Drawing vs. Typing */}
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '10px', marginBottom: '24px' }}>
+                <button
+                  type="button"
+                  onClick={() => setESignType('typed')}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    background: eSignType === 'typed' ? '#fff' : 'transparent',
+                    color: eSignType === 'typed' ? '#1e293b' : '#64748b',
+                    boxShadow: eSignType === 'typed' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Type Signature
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setESignType('drawn')}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    background: eSignType === 'drawn' ? '#fff' : 'transparent',
+                    color: eSignType === 'drawn' ? '#1e293b' : '#64748b',
+                    boxShadow: eSignType === 'drawn' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Draw Signature
+                </button>
+              </div>
+
+              {eSignType === 'drawn' ? (
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Draw your signature below</label>
+                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc', padding: '12px', position: 'relative' }}>
+                    <canvas
+                      ref={canvasRef}
+                      width={450}
+                      height={160}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                      style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'crosshair', display: 'block', width: '100%', height: '160px', touchAction: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={clearCanvas}
+                      style={{ position: 'absolute', top: '20px', right: '20px', padding: '6px 12px', background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginBottom: '24px' }}>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Your Name (for Signature)</label>
+                    <input
+                      type="text"
+                      required
+                      value={eSignName}
+                      onChange={(e) => setESignName(e.target.value)}
+                      placeholder="Type your full name"
+                      style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Select signature font style</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                    {[
+                      { font: '"Brush Script MT", cursive', label: 'Classic Script' },
+                      { font: '"Lucida Handwriting", cursive', label: 'Handwriting' },
+                      { font: '"Segoe Print", cursive', label: 'Casual Print' },
+                      { font: 'Courier New, monospace', label: 'Block Print' }
+                    ].map(style => (
+                      <div
+                        key={style.font}
+                        onClick={() => setSignatureStyle(style.font)}
+                        style={{
+                          padding: '16px 10px',
+                          border: signatureStyle === style.font ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          background: signatureStyle === style.font ? '#eff6ff' : '#fff',
+                          textAlign: 'center',
+                          boxSizing: 'border-box',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'center',
+                          minHeight: '70px'
+                        }}
+                      >
+                        <span style={{ fontFamily: style.font, fontSize: '16px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {eSignName || 'Signature'}
+                        </span>
+                        <span style={{ fontSize: '9px', color: '#64748b', marginTop: '4px' }}>{style.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '24px', fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
+                By clicking "Confirm & Sign", I agree that this signature is as legally binding as my handwritten signature.
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowSignModal(false)} style={{ padding: '12px 20px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" disabled={accepting} style={{ padding: '12px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16,185,129,0.2)' }}>
+                  {accepting ? 'Signing...' : 'Confirm & Sign'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PreOnboardingPortal;
