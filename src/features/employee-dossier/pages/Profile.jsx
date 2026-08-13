@@ -846,14 +846,8 @@ const Profile = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Column 1 */}
                             <div className="space-y-4">
-                                <div>
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Role</label>
-                                    <div className="flex items-center mt-1 text-slate-700">
-                                        <Shield size={18} className="mr-2 text-blue-500" />
-                                        <span className="font-medium">{profile.roles?.map(r => r.name).join(', ') || 'No Role'}</span>
-                                    </div>
-                                </div>
                                 <div>
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Employee ID</label>
                                     <div className="flex items-center mt-1 text-slate-700">
@@ -868,8 +862,16 @@ const Profile = () => {
                                         <span>{profile.employmentType || 'Full Time'}</span>
                                     </div>
                                 </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Work Email</label>
+                                    <div className="flex items-center mt-1 text-slate-700">
+                                        <Mail size={18} className="mr-2 text-slate-400" />
+                                        <span>{profile.email}</span>
+                                    </div>
+                                </div>
                             </div>
 
+                            {/* Column 2 */}
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Department</label>
@@ -882,18 +884,19 @@ const Profile = () => {
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Location</label>
                                     <div className="flex items-center mt-1 text-slate-700">
                                         <MapPin size={18} className="mr-2 text-slate-400" />
-                                        <span>{profile.workLocation || ''}</span>
+                                        <span>{profile.workLocation || 'N/A'}</span>
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Work Email</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Date of Joining</label>
                                     <div className="flex items-center mt-1 text-slate-700">
-                                        <Mail size={18} className="mr-2 text-slate-400" />
-                                        <span>{profile.email}</span>
+                                        <Calendar size={18} className="mr-2 text-slate-400" />
+                                        <span className="font-medium">{profile.joiningDate ? new Date(profile.joiningDate).toLocaleDateString() : 'N/A'}</span>
                                     </div>
                                 </div>
                             </div>
 
+                            {/* Column 3 */}
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Reporting To</label>
@@ -914,13 +917,6 @@ const Profile = () => {
                                     ) : (
                                         <div className="mt-1 text-slate-400 text-sm italic">No Reporting Manager</div>
                                     )}
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Date of Joining</label>
-                                    <div className="flex items-center mt-1 text-slate-700">
-                                        <Calendar size={18} className="mr-2 text-slate-400" />
-                                        <span className="font-medium">{profile.joiningDate ? new Date(profile.joiningDate).toLocaleDateString() : 'N/A'}</span>
-                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -98,7 +98,8 @@ const Users = () => {
         employmentType: 'Full Time',
         workLocation: '',
         attendanceMode: 'clock_in_out',
-        attendanceShiftCode: 'general'
+        attendanceShiftCode: 'general',
+        isTotalWorkforce: true,
     });
 
     const handleDownloadAttendanceZip = async () => {
@@ -1095,6 +1096,7 @@ const Users = () => {
             workLocation: '',
             attendanceMode: 'clock_in_out',
             attendanceShiftCode: 'general',
+            isTotalWorkforce: true,
             directReports: [],
             reportingManagers: [],
             salary: salaryData

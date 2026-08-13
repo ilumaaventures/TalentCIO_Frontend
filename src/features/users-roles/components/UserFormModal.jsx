@@ -1,6 +1,19 @@
-import React from 'react';
-import { Eye, EyeOff, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState } from 'react';
+import { Eye, EyeOff, Settings2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
+import EmploymentTypeSelect from './EmploymentTypeSelect';
+
+const DEFAULT_EMPLOYMENT_TYPES = [
+    'Full Time',
+    'Part Time',
+    'Contract',
+    'Intern',
+    'Consultant',
+    'Freelance',
+    'Probation'
+];
 
 const UserFormModal = ({
     showModal,
@@ -19,11 +32,13 @@ const UserFormModal = ({
     setShowSalarySection,
     calculateSalaryBreakdown,
 }) => {
+    const navigate = useNavigate();
+
     if (!showModal) return null;
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-5">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden animate-blob max-h-[94vh] overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden animate-blob max-h-[94vh] overflow-y-auto relative">
                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <h3 className="font-bold text-slate-800">{editingUser ? 'Edit Employee' : 'Add New Employee'}</h3>
                     <button
@@ -90,15 +105,11 @@ const UserFormModal = ({
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employment Type</label>
-                            <select name="employmentType" value={formData.employmentType} onChange={handleChange} className="zoho-input">
-                                <option value="Full Time">Full Time</option>
-                                <option value="Part Time">Part Time</option>
-                                <option value="Contract">Contract</option>
-                                <option value="Intern">Intern</option>
-                                <option value="Consultant">Consultant</option>
-                                <option value="Freelance">Freelance</option>
-                                <option value="Probation">Probation</option>
-                            </select>
+                            <EmploymentTypeSelect
+                                value={formData.employmentType}
+                                onChange={handleChange}
+                                name="employmentType"
+                            />
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -125,11 +136,57 @@ const UserFormModal = ({
                                 ))}
                             </select>
                         </div>
+
+                        {/* 1. Total Workforce Toggle */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Total Workforce</label>
+                            <div className="flex items-center gap-3 mt-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, isTotalWorkforce: true })}
+                                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                                        formData.isTotalWorkforce !== false
+                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    Yes
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, isTotalWorkforce: false })}
+                                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                                        formData.isTotalWorkforce === false
+                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    No
+                                </button>
+                                <span className="text-[11px] text-slate-400 leading-tight">
+                                    {formData.isTotalWorkforce !== false ? 'Count in headcount' : 'Exclude from headcount'}
+                                </span>
+                            </div>
+                        </div>
                     </div>
+
+                    {/* 2. System Permission */}
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Role</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-bold text-slate-500 uppercase">System Permission</label>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowModal(false);
+                                    navigate('/roles');
+                                }}
+                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 hover:underline"
+                            >
+                                <Plus size={12} /> Add New +
+                            </button>
+                        </div>
                         <select name="roleId" required value={formData.roleId} onChange={handleChange} className="zoho-input">
-                            <option value="">Select Role</option>
+                            <option value="">Select System Permission</option>
                             {roles.map(r => (
                                 <option key={r._id} value={r._id}>{r.name}</option>
                             ))}
@@ -205,6 +262,7 @@ const UserFormModal = ({
                         <button type="submit" className="zoho-btn-primary">{editingUser ? 'Update User' : 'Create User'}</button>
                     </div>
                 </form>
+
             </div>
         </div>
     );
