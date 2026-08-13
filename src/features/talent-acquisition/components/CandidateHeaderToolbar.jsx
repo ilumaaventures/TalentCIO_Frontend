@@ -38,8 +38,7 @@ const CandidateHeaderToolbar = ({
     setShowToolbarMenu,
     handleExportExcel,
     canMassMail,
-    setPage
-}) => {
+    setPage,
     isLegacyView,
     openMassMailModal,
     selectedCandidateIds,
