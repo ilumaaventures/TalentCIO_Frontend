@@ -282,10 +282,22 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
             if (dateVal instanceof Date) {
                 finalDate = dateVal;
             } else if (typeof dateVal === 'string') {
-                const parsed = new Date(dateVal);
-                if (!isNaN(parsed.getTime())) finalDate = parsed;
+                const str = dateVal.trim();
+                const parsed = new Date(str);
+                if (!isNaN(parsed.getTime())) {
+                    finalDate = parsed;
+                } else {
+                    const parts = str.split(/[-/]/);
+                    if (parts.length === 3) {
+                        const [p1, p2, p3] = parts.map(Number);
+                        if (p3 > 1000) {
+                            finalDate = new Date(p3, p2 - 1, p1);
+                        } else if (p1 > 1000) {
+                            finalDate = new Date(p1, p2 - 1, p3);
+                        }
+                    }
+                }
             } else if (typeof dateVal === 'number') {
-                // Excel serial date handle
                 const excelEpoch = new Date(1899, 11, 30);
                 finalDate = new Date(excelEpoch.getTime() + dateVal * 86400000);
             }
@@ -312,8 +324,8 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
 
     const parseYesNo = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
-        if (normalized === 'yes') return true;
-        if (normalized === 'no') return false;
+        if (['yes', 'true', '1', 'shortlisted', 'passed', 'pass', 'selected'].includes(normalized)) return true;
+        if (['no', 'false', '0', 'rejected', 'failed', 'fail'].includes(normalized)) return false;
         return null;
     };
 
@@ -447,6 +459,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 inHandOffer: ['any offer in hand', 'offer in hand', 'counter offer'],
                 status: ['status', 'round 1', 'initial status'],
                 remark: ['remark', 'remarks', 'comments'],
+                customRemark: ['custom remark', 'custom remarks'],
                 offerCompany: ['offer company', 'company offered'],
                 offerJoiningDate: ['date of joining new company', 'date of joining new company', 'joining date new company', 'new company doj'],
                 lastWorkingDay: ['last working day', 'lwd', 'date of exit', 'last working date'],
@@ -454,10 +467,11 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 interviewRemark: ['interview remark', 'evaluator feedback', 'interview summary'],
                 compSkillAssessment: ['comprehensive skill assessment', 'skill assessment', 'detailed ratings'],
                 interviewerName: ['interviewer name', 'panel name', 'evaluated by'],
-                isShortlisted: ['profile shortlisted (yes/no)', 'shortlisted', 'shortlisted?', 'profile shortlisted', 'is shortlisted'],
+                isShortlisted: ['profile shortlisted (yes/no)', 'profile shortlisted', 'is shortlisted', 'phase 1 shortlisted'],
                 profileShared: ['profile shared', 'profile shared (yes/no)', 'shared profile', 'shared with client'],
-                phase2Shortlisted: ['shortlisted (phase 2)', 'phase 2 shortlisted', 'shortlisted phase 2'],
+                phase2Shortlisted: ['shortlisted (phase 2)', 'phase 2 shortlisted', 'shortlisted phase 2', 'phase 2 shortlisted (yes/no)'],
                 phase2Selected: ['selected (phase 2)', 'phase 2 selected', 'selected phase 2'],
+                phase2Decision: ['phase 2 decision', 'phase2 decision', 'decision (phase 2)', 'phase 2 decision status', 'phase 2 final decision'],
                 phase2InterviewerFeedback: ['interviewer feedback (phase 2)', 'phase 2 interviewer feedback', 'phase 2 feedback'],
                 phase2InterviewStatus: ['interview status (phase2)', 'phase 2 interview status', 'interview status phase 2']
             };
@@ -513,10 +527,10 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                         }
                     }
 
-                    // 1.5 Fuzzy matching for shortlist/decision fields
+                    // 1.5 Fuzzy matching for shortlist/decision fields (ensuring profile is present so it never matches Phase 2)
                     if (keys.includes('profile shortlisted (yes/no)')) {
                         const fuzzyKey = Object.keys(headers).find(h => 
-                            h.includes('shortlisted') || (h.includes('profile') && h.includes('yes/no'))
+                            (h.includes('profile') && h.includes('shortlisted')) || (h.includes('profile') && h.includes('yes/no'))
                         );
                         if (fuzzyKey) {
                             return sanitizeCellValue(row.getCell(headers[fuzzyKey]).value);
@@ -543,6 +557,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 const rawProfileSharedValue = getCellValue(columnMapping.profileShared);
                 const rawPhase2ShortlistedValue = getCellValue(columnMapping.phase2Shortlisted);
                 const rawPhase2SelectedValue = getCellValue(columnMapping.phase2Selected);
+                const rawPhase2DecisionValue = toStr(getCellValue(columnMapping.phase2Decision));
                 const normalizedProfileShortlisted = normalizeProfileShortlistedValue(rawShortlistedValue);
                 const profileSharedFlag = parseYesNo(rawProfileSharedValue);
                 const phase2ShortlistedFlag = parseYesNo(rawPhase2ShortlistedValue);
@@ -551,21 +566,33 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                 const rawPhase2InterviewStatus = toStr(getCellValue(columnMapping.phase2InterviewStatus));
                 const normalizedPhase2InterviewStatus = normalizePhase2InterviewStatus(rawPhase2InterviewStatus);
                 const derivedPhase2Decision = (() => {
+                    // Explicit phase2Decision column takes highest priority
+                    if (rawPhase2DecisionValue) {
+                        const norm = rawPhase2DecisionValue.trim().toLowerCase();
+                        if (norm === 'shortlisted') return 'Shortlisted';
+                        if (norm === 'selected') return 'Selected';
+                        if (norm === 'rejected') return 'Rejected';
+                        if (norm === 'on hold') return 'On Hold';
+                        if (norm === 'did not turn up') return 'Did Not Turn Up';
+                        if (norm === 'left in between') return 'Left in between';
+                    }
+                    // "Selected (Phase 2)" = Yes → Selected
                     if (phase2SelectedFlag === true) return 'Selected';
+                    // "Shortlisted (Phase 2)" = Yes → Shortlisted, = No → Rejected
                     if (phase2ShortlistedFlag === true) return 'Shortlisted';
+                    if (phase2ShortlistedFlag === false) return 'Rejected';
+                    // Interview status fallbacks
                     if (normalizedPhase2InterviewStatus.value === 'Rejected') return 'Rejected';
                     if (normalizedPhase2InterviewStatus.value === 'Shortlisted') return 'Shortlisted';
-                    return '';
+                    // No phase2 data at all — return undefined so backend doesn't overwrite existing value
+                    return undefined;
                 })();
+                // phase2InterviewStatus only comes from the explicit "Interview Status (Phase2)" column.
+                // "Shortlisted (Phase 2)" / "Selected (Phase 2)" columns drive phase2Decision, NOT phase2InterviewStatus.
                 const derivedPhase2InterviewStatus = (() => {
                     if (normalizedPhase2InterviewStatus.value && normalizedPhase2InterviewStatus.value !== 'None') {
                         return normalizedPhase2InterviewStatus.value;
                     }
-
-                    if (phase2SelectedFlag === true || phase2ShortlistedFlag === true) {
-                        return 'Shortlisted';
-                    }
-
                     return 'None';
                 })();
 
@@ -596,13 +623,20 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     status: normalizedCandidateStatus.value || '',
 
                     remark: toStr(getCellValue(columnMapping.remark)),
+                    customRemark: toStr(getCellValue(columnMapping.customRemark)),
                     offerCompany: toStr(getCellValue(columnMapping.offerCompany)),
                     offerJoiningDate: getCellValue(columnMapping.offerJoiningDate),
                     lastWorkingDay: getCellValue(columnMapping.lastWorkingDay),
                     hiringRequestId: hiringRequestId,
                     resumeUrl: 'bulk-imported-placeholder',
                     resumePublicId: 'bulk-imported-placeholder',
-                    profileShared: profileSharedFlag === true || phase2ShortlistedFlag === true || phase2SelectedFlag === true || Boolean((phase2InterviewerFeedback || '').trim()) || ['Scheduled', 'Rejected', 'Shortlisted', 'Did not Turn up'].includes(derivedPhase2InterviewStatus),
+                    // profileShared: explicit Yes/No from column wins; blank = auto-detect from phase2 data
+                    profileShared: profileSharedFlag === true
+                        ? true
+                        : profileSharedFlag === false
+                            ? false
+                            : (phase2ShortlistedFlag === true || phase2SelectedFlag === true || derivedPhase2Decision === 'Shortlisted' || derivedPhase2Decision === 'Selected' || Boolean((phase2InterviewerFeedback || '').trim()) || ['Scheduled', 'Did not Turn up'].includes(derivedPhase2InterviewStatus)),
+                    // undefined = no phase2 data in Excel - backend will skip force-update (preserve existing)
                     phase2Decision: derivedPhase2Decision,
                     phase2InterviewerFeedback: phase2InterviewerFeedback || '',
                     phase2InterviewStatus: derivedPhase2InterviewStatus,
@@ -613,8 +647,11 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     invalidPhase2InterviewStatus: !normalizedPhase2InterviewStatus.isValid ? normalizedPhase2InterviewStatus.value : '',
                     invalidProfileShortlistedValue: !normalizedProfileShortlisted.isValid ? normalizedProfileShortlisted.value : '',
                     invalidProfileSharedValue: hasInvalidYesNoValue(rawProfileSharedValue, profileSharedFlag),
-                    invalidPhase2ShortlistedValue: hasInvalidYesNoValue(rawPhase2ShortlistedValue, phase2ShortlistedFlag),
-                    invalidPhase2SelectedValue: hasInvalidYesNoValue(rawPhase2SelectedValue, phase2SelectedFlag)
+                    // phase2ShortlistedFlag can be true/false/null - false ('No') is valid, only null with non-empty raw is invalid
+                    invalidPhase2ShortlistedValue: rawPhase2ShortlistedValue !== null && rawPhase2ShortlistedValue !== undefined && String(rawPhase2ShortlistedValue).trim() !== '' && phase2ShortlistedFlag === null,
+                    invalidPhase2SelectedValue: hasInvalidYesNoValue(rawPhase2SelectedValue, phase2SelectedFlag),
+                    // True when Profile Shared column had an explicit Yes or No (not blank) - backend uses this to decide whether to downgrade
+                    _explicitProfileShared: profileSharedFlag !== null
                 };
 
                 // Parse date fields
@@ -943,7 +980,9 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                     _id: row.matchedCandidate?._id,
                     allowOwnedDuplicateUpdate: true,
                     status: normalizeDynamicImportStatus(row.data.status),
-                    interviewRounds: processedRounds
+                    interviewRounds: processedRounds,
+                    // Signal to backend that profileShared was explicitly set from the column (not auto-derived)
+                    _explicitProfileShared: row.data._explicitProfileShared
                 };
 
                 const response = await api.post('/ta/candidates', importPayload);

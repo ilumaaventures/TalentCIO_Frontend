@@ -38,6 +38,8 @@ const CandidateHeaderToolbar = ({
     setShowToolbarMenu,
     handleExportExcel,
     canMassMail,
+    setPage
+}) => {
     isLegacyView,
     openMassMailModal,
     selectedCandidateIds,
@@ -133,6 +135,7 @@ const CandidateHeaderToolbar = ({
                     <button
                         type="button"
                         onClick={() => {
+                            setPage?.(1);
                             if (filterInterviewStatus === 'Scheduled' && !filterInterviewRound) {
                                 setFilterStatus('All');
                                 setFilterDecision('All');

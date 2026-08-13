@@ -162,7 +162,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedCandidateId = searchParams.get('candidateId');
-    const initialPhaseParam = searchParams.get('phase');
+    const initialPhaseParam = searchParams.get('phase') || searchParams.get('activePhase');
     const initialPhase = initialPhaseParam ? parseInt(initialPhaseParam, 10) : (savedFilters?.activePhase || 1);
 
     // Menu State
@@ -782,7 +782,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchDecision = filterDecision === 'All' ||
                 (filterDecision === 'Shortlisted_Selected'
                     ? (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected')
-                    : (candidate.phase2Decision || 'None') === filterDecision);
+                    : filterDecision === 'Shortlisted'
+                        ? candidate.phase2Decision === 'Shortlisted'
+                        : (candidate.phase2Decision || 'None') === filterDecision);
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 matchInterviewStatus = filterInterviewStatus === 'Scheduled'
@@ -834,9 +836,10 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
         return {
             totalShortlisted: structuralPhase2Candidates.length,
-            totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected' || c.decision === 'Shortlisted' || c.decision === 'Selected').length,
-            selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected' || c.decision === 'Selected').length,
-            rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected' || c.decision === 'Rejected').length,
+            shortlisted: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted').length,
+            totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted').length,
+            selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
+            rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
             interviewScheduled: structuralPhase2Candidates.filter(hasPhase2InterviewActivity).length
         };
     }, [cardMetrics, structuralPhase2Candidates, usesBackendPagination]);
@@ -1180,6 +1183,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         setLoading(true);
         setSearchParams((prev) => {
             const next = new URLSearchParams(prev);
+            next.set('tab', 'applications');
             next.set('phase', phase);
             return next;
         }, { replace: true });
@@ -1270,8 +1274,11 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         if (!window.confirm('Move this candidate back to Phase 1? This will clear Phase 2 status, feedback, and Phase 2 interview rounds.')) return;
 
         try {
-            await api.patch(`/ta/candidates/${candidateId}/move-back-phase`);
+            const res = await api.patch(`/ta/candidates/${candidateId}/move-back-phase`);
             toast.success('Candidate moved back to Phase 1');
+            if (res.data?.candidate) {
+                setCandidates(prev => prev.map(c => c._id === candidateId ? res.data.candidate : c));
+            }
             fetchCandidates();
         } catch (error) {
             console.error('Error moving candidate back to previous phase:', error);
@@ -1522,6 +1529,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                 requestMeta={requestMeta}
                 handleAddNew={handleAddNew}
                 roundSummary={roundSummary}
+                setPage={setPage}
             />
 
             <div className={`flex flex-col lg:flex-row gap-6 items-start transition-all duration-300 ${selectedCandidateId ? 'relative' : ''}`}>
@@ -1557,6 +1565,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         basePhase3Candidates={basePhase3Candidates}
                         usesBackendPagination={usesBackendPagination}
                         selectedCandidateId={selectedCandidateId}
+                        setPage={setPage}
                     />
 
                     <CandidateFilters

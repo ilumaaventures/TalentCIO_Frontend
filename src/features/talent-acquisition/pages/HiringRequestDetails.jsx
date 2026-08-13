@@ -69,7 +69,7 @@ const getHiringPositionSummary = (request) => {
 const HiringRequestDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
     const [request, setRequest] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -82,8 +82,27 @@ const HiringRequestDetails = () => {
     const [showUnpublishPrompt, setShowUnpublishPrompt] = useState(false);
     const [closeMode, setCloseMode] = useState('all');
     const [partialCloseCount, setPartialCloseCount] = useState(1);
-    const [activeTab, setActiveTab] = useState('overview'); // overview, applications, reviews
+    const initialTab = searchParams.get('tab') || ((searchParams.get('phase') || searchParams.get('activePhase')) ? 'applications' : 'overview');
+    const [activeTab, setActiveTab] = useState(initialTab); // overview, applications, reviews
     const [usersMap, setUsersMap] = useState({});
+
+    const handleTabChange = useCallback((tab) => {
+        setActiveTab(tab);
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', tab);
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
+
+    useEffect(() => {
+        const tab = searchParams.get('tab');
+        if (tab) {
+            setActiveTab(tab);
+        } else if (searchParams.get('phase') || searchParams.get('activePhase')) {
+            setActiveTab('applications');
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         const loadUsers = async () => {
@@ -499,7 +518,7 @@ const HiringRequestDetails = () => {
                             {['overview', ...((request?.status === 'Approved' || request?.status === 'Closed') ? ['applications'] : []), ...((request?.status === 'Approved' || request?.status === 'Closed') && (request?.wasEverPublished || request?.isPublic || request?.isResourceGatewayPublic || (request?.publicApplicationsCount > 0) || isJobBoardLive || isResourceGatewayLive) ? ['public applications'] : []), ...(request?.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
-                                    onClick={() => setActiveTab(tab)}
+                                    onClick={() => handleTabChange(tab)}
                                     className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 capitalize ${activeTab === tab
                                         ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
                                         : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
