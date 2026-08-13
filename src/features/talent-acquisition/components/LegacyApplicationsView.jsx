@@ -106,7 +106,8 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
 
     const phase2Metrics = {
         totalShortlisted: candidates.filter(c => isProfileSharedCandidate(c)).length,
-        totalScreened: candidates.filter(c => isProfileSharedCandidate(c) && (c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected')).length,
+        shortlisted: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Shortlisted').length,
+        totalScreened: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Shortlisted').length,
         interviewScheduled: candidates.filter(c => {
             const cDec = c.phase2Decision || 'None';
             const rounds = getDisplayInterviewRoundsForPhase(c, 2);
@@ -464,7 +465,7 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
                         ) : activePhase === 2 ? (
                             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                                 <MetricCard label="Total Sent" val={phase2Metrics.totalShortlisted} icon={<Users />} color="purple" onClick={() => setFilterDecision('All')} />
-                                <MetricCard label="Shortlisted" val={phase2Metrics.totalScreened} icon={<UserCheck />} color="sky" onClick={() => setFilterDecision('Shortlisted_Selected')} />
+                                <MetricCard label="Shortlisted" val={phase2Metrics.shortlisted !== undefined ? phase2Metrics.shortlisted : phase2Metrics.totalScreened} icon={<UserCheck />} color="sky" onClick={() => setFilterDecision('Shortlisted')} />
                                 <MetricCard label="Interviews" val={phase2Metrics.interviewScheduled} icon={<Clock />} color="amber" onClick={() => { setFilterDecision('None'); setFilterInterviewStatus('In_Process'); }} />
                                 <MetricCard label="Selected" val={phase2Metrics.selected} icon={<CheckCircle />} color="emerald" onClick={() => setFilterDecision('Selected')} />
                                 <MetricCard label="Rejected" val={phase2Metrics.rejected} icon={<ThumbsDown />} color="rose" onClick={() => setFilterDecision('Rejected')} />

@@ -489,7 +489,12 @@ export const exportCandidatesToExcel = async ({
                         : candidate.decision === 'On Hold'
                             ? 'On Hold'
                             : '';
-            const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected') ? 'Yes' : null;
+            // "Shortlisted (Phase 2)" = Yes if shortlisted/selected, No if rejected — so round-trip import restores phase2Decision correctly
+            const phase2Shortlisted = (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected')
+                ? 'Yes'
+                : (candidate.phase2Decision === 'Rejected' || candidate.phase2Decision === 'On Hold' || candidate.phase2Decision === 'Left in between')
+                    ? 'No'
+                    : null;
             const phase2Selected = candidate.phase2Decision === 'Selected' ? 'Yes' : null;
             const phase2InterviewStatus = getPhase2InterviewStatusExportValue(candidate);
 
@@ -535,7 +540,7 @@ export const exportCandidatesToExcel = async ({
 
                 toEmptyCell(profileShortlisted),
                 null, // Final Scoring
-                isProfileSharedCandidate(candidate) ? 'Yes' : null, // Profile Shared
+                candidate.profileShared === true ? 'Yes' : null, // Profile Shared
                 phase2Shortlisted,
                 phase2Selected,
                 toEmptyCell(candidate.phase2InterviewerFeedback),

@@ -37,11 +37,13 @@ const CandidateMetricsCards = ({
     basePhase2Candidates,
     basePhase3Candidates,
     usesBackendPagination,
-    selectedCandidateId
+    selectedCandidateId,
+    setPage
 }) => {
     if (selectedCandidateId) return null;
 
     const clearRoundFilter = () => {
+        setPage?.(1);
         setFilterStatus('All');
         setFilterDecision('All');
         setFilterInterviewStatus('All');
@@ -334,6 +336,7 @@ const CandidateMetricsCards = ({
                             <div
                                 key={node}
                                 onClick={() => {
+                                    setPage?.(1);
                                     if (isCurrentActive) {
                                         setFilterInterviewRound('');
                                     } else {
@@ -426,11 +429,11 @@ const CandidateMetricsCards = ({
             'Shortlisted': {
                 id: 'screened',
                 label: 'Shortlisted',
-                value: phase2Metrics.totalScreened,
+                value: phase2Metrics.shortlisted !== undefined ? phase2Metrics.shortlisted : phase2Metrics.totalScreened,
                 icon: ThumbsUp,
                 color: 'sky',
-                isActive: (filterDecision === 'Shortlisted' || filterDecision === 'Shortlisted_Selected') && !filterInterviewRound,
-                onClick: () => { clearRoundFilter(); setFilterDecision('Shortlisted_Selected'); }
+                isActive: filterDecision === 'Shortlisted' && !filterInterviewRound,
+                onClick: () => { clearRoundFilter(); setFilterDecision('Shortlisted'); }
             },
             'Selected': {
                 id: 'selected',
@@ -505,6 +508,7 @@ const CandidateMetricsCards = ({
                             <div
                                 key={node}
                                 onClick={() => {
+                                    setPage?.(1);
                                     if (isCurrentActive) {
                                         setFilterInterviewRound('');
                                     } else {
@@ -555,7 +559,7 @@ const CandidateMetricsCards = ({
                 icon: Users,
                 color: 'purple',
                 isActive: filterDecision === 'All' && filterStatus === 'All',
-                onClick: () => { setFilterDecision('All'); setFilterStatus('All'); }
+                onClick: () => { setPage?.(1); setFilterDecision('All'); setFilterStatus('All'); }
             },
             {
                 id: 'offerSent',
@@ -564,7 +568,7 @@ const CandidateMetricsCards = ({
                 icon: FileText,
                 color: 'sky',
                 isActive: filterDecision === 'Offer Sent',
-                onClick: () => { setFilterDecision('Offer Sent'); setFilterStatus('All'); }
+                onClick: () => { setPage?.(1); setFilterDecision('Offer Sent'); setFilterStatus('All'); }
             },
             {
                 id: 'offerAccepted',
@@ -573,7 +577,7 @@ const CandidateMetricsCards = ({
                 icon: ThumbsUp,
                 color: 'amber',
                 isActive: filterDecision === 'Offer Accepted',
-                onClick: () => { setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }
+                onClick: () => { setPage?.(1); setFilterDecision('Offer Accepted'); setFilterInterviewStatus('All'); }
             },
             {
                 id: 'joined',
@@ -582,7 +586,7 @@ const CandidateMetricsCards = ({
                 icon: CheckCircle,
                 color: 'emerald',
                 isActive: filterDecision === 'Joined',
-                onClick: () => { setFilterDecision('Joined'); setFilterInterviewStatus('All'); }
+                onClick: () => { setPage?.(1); setFilterDecision('Joined'); setFilterInterviewStatus('All'); }
             },
             {
                 id: 'noShow',
@@ -591,7 +595,7 @@ const CandidateMetricsCards = ({
                 icon: XCircle,
                 color: 'rose',
                 isActive: filterDecision === 'No Show_Offer Declined',
-                onClick: () => { setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }
+                onClick: () => { setPage?.(1); setFilterDecision('No Show_Offer Declined'); setFilterInterviewStatus('All'); }
             }
         ];
 

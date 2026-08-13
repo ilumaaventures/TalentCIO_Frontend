@@ -15,9 +15,10 @@ const MotionDiv = motion.div;
 const TODAY_DATE_STRING = format(new Date(), 'yyyy-MM-dd');
 
 const LocationLink = ({ location }) => {
-    const coordsKey = location ? `${location.lat},${location.lng}` : null;
+    const hasCoords = location?.lat != null && location?.lng != null;
+    const coordsKey = hasCoords ? `${location.lat},${location.lng}` : null;
     const [cityName, setCityName] = useState(() => (
-        coordsKey && locationCache[coordsKey] ? locationCache[coordsKey] : '...'
+        coordsKey && locationCache[coordsKey] ? locationCache[coordsKey] : (location?.name || location?.address || '...')
     ));
 
     useEffect(() => {
@@ -44,7 +45,20 @@ const LocationLink = ({ location }) => {
         fetchCity();
     }, [coordsKey, location?.lat, location?.lng]);
 
-    if (!location || !location.lat) return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Unknown</span>;
+    if (!location) return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Unknown</span>;
+
+    if (!hasCoords) {
+        const textDisplay = location.name || location.address || (typeof location === 'string' ? location : null);
+        if (textDisplay) {
+            return (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-tight" title={textDisplay}>
+                    <MapPin size={10} className="shrink-0" />
+                    <span className="truncate max-w-[90px]">{textDisplay}</span>
+                </span>
+            );
+        }
+        return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Unknown</span>;
+    }
 
     return (
         <a
@@ -82,7 +96,8 @@ const Dashboard = () => {
     const showProjectModule = hasModule('projects');
     const showLocation = attendanceSettings.requireLocationCheckIn || 
                        attendanceSettings.requireLocationCheckOut || 
-                       attendanceSettings.locationCheck;
+                       attendanceSettings.locationCheck ||
+                       recentActivity.some(r => !!r.location);
 
     useEffect(() => {
         const attendanceLimit = '10';
