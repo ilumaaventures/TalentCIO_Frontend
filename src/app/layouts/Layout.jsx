@@ -8,6 +8,8 @@ import api from '@/lib/apiClient';
 import socket from '@/lib/socket';
 import AnnouncementUnreadModal from '@/features/announcements/components/AnnouncementUnreadModal';
 import BirthdayCelebrationModal from '@/components/common/BirthdayCelebrationModal';
+import IndependenceDayCelebrationModal from '@/components/celebration/IndependenceDayCelebrationModal';
+import useIndependenceDayCelebration from '@/hooks/useIndependenceDayCelebration';
 import DossierGateBanner from '@/features/employee-dossier/components/DossierGateBanner';
 import {
     getAcknowledgedAnnouncementIds,
@@ -32,6 +34,11 @@ const Layout = () => {
     const location = useLocation();
     const timerRef = useRef(null);
     const { user } = useAuth();
+    const {
+        showCelebration: showIndependenceDayModal,
+        celebrationData: independenceDayData,
+        handleAcknowledge: handleIndependenceDayAcknowledge
+    } = useIndependenceDayCelebration(user);
     const isMountedRef = useRef(true);
 
     useEffect(() => {
@@ -281,6 +288,15 @@ const Layout = () => {
                 <BirthdayCelebrationModal
                     employeeName={birthdayEmployeeName}
                     onClose={() => setShowBirthdayModal(false)}
+                />
+            )}
+
+            {showIndependenceDayModal && (
+                <IndependenceDayCelebrationModal
+                    employeeName={independenceDayData.employeeName}
+                    companyName={independenceDayData.companyName}
+                    year={independenceDayData.year}
+                    onClose={handleIndependenceDayAcknowledge}
                 />
             )}
         </div>
