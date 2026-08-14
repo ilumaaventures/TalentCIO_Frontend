@@ -390,11 +390,6 @@ const CreateHiringRequest = () => {
                     setLoading(false);
                     return;
                 }
-                if (!formData.location?.trim()) {
-                    toast.error('Work Location is required');
-                    setLoading(false);
-                    return;
-                }
                 if (!formData.openPositions || isNaN(Number(formData.openPositions)) || Number(formData.openPositions) <= 0) {
                     toast.error('Number of Open Positions is required');
                     setLoading(false);

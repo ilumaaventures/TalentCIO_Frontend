@@ -5,7 +5,7 @@ import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar,
     ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck, Eye, EyeOff, X,
-    Settings2, ChevronUp, ChevronDown, TrendingUp, Info
+    Settings2, ChevronUp, ChevronDown, TrendingUp, Info, Plus, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
@@ -16,6 +16,7 @@ import EmployeeDossier from '@/features/employee-dossier/pages/EmployeeDossier';
 import { restoreBinItem } from '@/features/recycle-bin/api/bin';
 import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData } from '@/features/payroll/utils/payroll';
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
+import EmploymentTypeSelect from '@/features/users-roles/components/EmploymentTypeSelect';
 
 const parseBool = (val, defaultVal = true) => {
     if (val === false || val === 'false') return false;
@@ -26,6 +27,16 @@ const parseBool = (val, defaultVal = true) => {
 const DEFAULT_ATTENDANCE_SHIFTS = [
     { code: 'general', name: 'General' },
     { code: 'any', name: 'Any Time' }
+];
+
+const DEFAULT_EMPLOYMENT_TYPES = [
+    'Full Time',
+    'Part Time',
+    'Contract',
+    'Intern',
+    'Consultant',
+    'Freelance',
+    'Probation'
 ];
 
 const EmployeeProfile = () => {
@@ -57,6 +68,7 @@ const EmployeeProfile = () => {
         workLocation: '',
         attendanceMode: 'clock_in_out',
         attendanceShiftCode: 'general',
+        isTotalWorkforce: true,
         directReports: [],
         reportingManagers: []
     });
@@ -306,6 +318,7 @@ const EmployeeProfile = () => {
                 workLocation: userData.workLocation || '',
                 attendanceMode: userData.attendanceMode || 'clock_in_out',
                 attendanceShiftCode: userData.attendanceShiftCode || 'general',
+                isTotalWorkforce: userData.isTotalWorkforce !== false,
                 directReports: userData.directReports?.map(u => u._id) || [],
                 reportingManagers: userData.reportingManagers?.map(u => u._id) || [],
                 salary: salaryData
@@ -510,11 +523,6 @@ const EmployeeProfile = () => {
                                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${profile.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                                     {profile.isActive ? 'Active' : (profile.isDeleted ? 'In Bin' : 'Inactive')}
                                 </span>
-                                {profile.roles?.map(role => (
-                                    <span key={role._id} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                                        <Shield size={12} /> {role.name}
-                                    </span>
-                                ))}
                                 {isProtectedPrimaryAdmin && (
                                     <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                                         Primary Admin
@@ -796,20 +804,25 @@ const EmployeeProfile = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employment Type</label>
-                                        <select name="employmentType" value={formData.employmentType} onChange={handleFormChange} className="zoho-input">
-                                            <option value="Full Time">Full Time</option>
-                                            <option value="Part Time">Part Time</option>
-                                            <option value="Contract">Contract</option>
-                                            <option value="Intern">Intern</option>
-                                            <option value="Consultant">Consultant</option>
-                                            <option value="Freelance">Freelance</option>
-                                            <option value="Probation">Probation</option>
-                                        </select>
+                                        <EmploymentTypeSelect
+                                            value={formData.employmentType}
+                                            onChange={handleFormChange}
+                                            name="employmentType"
+                                        />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">System Role</label>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase">System Permission</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate('/roles')}
+                                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 hover:underline"
+                                            >
+                                                <Plus size={12} /> Add New +
+                                            </button>
+                                        </div>
                                         <select name="roleId" required value={formData.roleId} onChange={handleFormChange} className="zoho-input">
-                                            <option value="">Select Role</option>
+                                            <option value="">Select System Permission</option>
                                             {roles.map(r => (
                                                 <option key={r._id} value={r._id}>{r.name}</option>
                                             ))}
@@ -834,6 +847,39 @@ const EmployeeProfile = () => {
                                                 </option>
                                             ))}
                                         </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Total Workforce</label>
+                                        <div className="flex items-center gap-3 mt-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, isTotalWorkforce: true })}
+                                                className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                                                    formData.isTotalWorkforce !== false
+                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                Yes
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, isTotalWorkforce: false })}
+                                                className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                                                    formData.isTotalWorkforce === false
+                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                No
+                                            </button>
+                                            <span className="text-[11px] text-slate-400 leading-tight">
+                                                {formData.isTotalWorkforce !== false ? 'Count in headcount' : 'Exclude from headcount'}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
 

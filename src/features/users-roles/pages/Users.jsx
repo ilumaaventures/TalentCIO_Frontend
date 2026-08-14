@@ -1,42 +1,32 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { UserPlus, Search, Shield, Download, ArrowUpDown, ListFilter, X, ChevronLeft, ChevronRight, Eye, EyeOff, Settings2, HelpCircle, Check, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { UserPlus, Download } from 'lucide-react';
 import Skeleton from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useNavigate } from 'react-router-dom';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { format } from 'date-fns';
 import { createCachePayload, readSessionCache } from '@/lib/cache';
 import { exportCandidateHRIS } from '@/features/employee-dossier/utils/hrisExporter';
-import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData, parseBool } from '@/features/payroll/utils/payroll';
-import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
+import { buildMasterSalaryStructure, createDefaultSalaryData, parseBool } from '@/features/payroll/utils/payroll';
 
-
-const DEFAULT_ATTENDANCE_SHIFTS = [
-    { code: 'general', name: 'General' },
-    { code: 'any', name: 'Any Time' }
-];
-
-const PAGE_SIZE_OPTIONS = [50, 100];
-
-const buildUserListFingerprint = (users = []) => users
-    .map((listedUser) => ([
-        listedUser._id,
-        listedUser.updatedAt || '',
-        listedUser.createdAt || '',
-        listedUser.isActive ? '1' : '0',
-        listedUser.isDeleted ? '1' : '0',
-        (listedUser.roles || []).map((role) => role?._id || role?.name || '').join(','),
-        (listedUser.reportingManagers || []).map((manager) => manager?._id || manager || '').join(',')
-    ].join(':')))
-    .join('|');
-
-const buildRoleListFingerprint = (roles = []) => roles
-    .map((role) => `${role._id}:${role.name || ''}`)
-    .join('|');
+import {
+    DEFAULT_ATTENDANCE_SHIFTS,
+    ALL_HRIS_SECTIONS,
+    buildUserListFingerprint,
+    buildRoleListFingerprint,
+    toDateKey,
+    sanitizeFileNamePart,
+    sanitizeZipFileName,
+    fetchFileBlob,
+    isAttendanceApproved,
+} from '../utils/userExportUtils';
+import UsersTable from '../components/UsersTable';
+import UserExportModal from '../components/UserExportModal';
+import UserFormModal from '../components/UserFormModal';
 
 const Users = () => {
     const navigate = useNavigate();
@@ -46,10 +36,9 @@ const Users = () => {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState(null);
-    const [_holidays, _setHolidays] = useState([]);
     const [payrollConfig, setPayrollConfig] = useState(null);
     const [showSalarySection, setShowSalarySection] = useState(false);
-    const [ctcPeriod, setCtcPeriod] = useState('monthly');
+    const [_ctcPeriod, setCtcPeriod] = useState('monthly');
 
     useEffect(() => {
         const fetchPayrollConfig = async () => {
@@ -74,9 +63,10 @@ const Users = () => {
         hrisProfiles: false,
         userDocuments: false
     });
-    const ALL_HRIS_SECTIONS = ['General', 'Personal', 'Identity', 'Contact', 'Family', 'Employment', 'Bank', 'Education', 'Experience', 'Skills', 'Documents'];
     const [hrisSections, setHrisSections] = useState(new Set(ALL_HRIS_SECTIONS));
     const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
+
+    // Filter & Sort & Pagination State
     const [searchTerm, setSearchTerm] = useState('');
     const [sortField, setSortField] = useState('joiningDate');
     const [sortDirection, setSortDirection] = useState('desc');
@@ -91,262 +81,26 @@ const Users = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
     const [showPassword, setShowPassword] = useState(false);
+    const filterDate = '';
 
-    // Helpers for Export
-    const formatTime = (dateString, istString) => {
-        if (istString && istString.includes(',')) return istString.split(',')[1]?.trim() || '';
-        if (!dateString) return '--:--';
-        return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    };
-
-    const calculateDuration = (start, end, recordDate) => {
-        if (!start) return '--';
-        const startTime = new Date(start);
-        let endTime;
-
-        if (end) {
-            endTime = new Date(end);
-        } else {
-            const today = new Date();
-            const rDate = recordDate ? new Date(recordDate) : today;
-
-            // If it's today and no checkout, use current time
-            // If it's a past date and no checkout, auto-checkout at 11:59:59 PM
-            const isToday = rDate.toDateString() === today.toDateString();
-
-            if (isToday) {
-                endTime = today;
-            } else {
-                endTime = new Date(rDate);
-                endTime.setHours(23, 59, 59, 999);
-            }
-        }
-
-        if (endTime < startTime) return '0h 0m';
-        const diffString = Math.abs(endTime - startTime);
-        const hours = Math.floor(diffString / (1000 * 60 * 60));
-        const minutes = Math.floor((diffString % (1000 * 60 * 60)) / (1000 * 60));
-        return `${hours}h ${minutes}m`;
-    };
-
-    const toDateKey = (value) => format(new Date(value), 'yyyy-MM-dd');
-    const sanitizeFileNamePart = (value) => {
-        const normalized = String(value || 'user')
-            .replace(/[<>:"/\\|?*]/g, '')
-            .trim()
-            .replace(/\s+/g, '_');
-
-        return normalized || 'user';
-    };
-
-    const getMimeExtension = (mimeType = '') => {
-        if (!mimeType) return '';
-        const lower = String(mimeType).toLowerCase();
-        if (lower.includes('image/jpeg') || lower.includes('image/jpg') || lower.includes('jpeg')) return '.jpg';
-        if (lower.includes('image/png') || lower.includes('png')) return '.png';
-        if (lower.includes('image/webp') || lower.includes('webp')) return '.webp';
-        if (lower.includes('image/gif') || lower.includes('gif')) return '.gif';
-        if (lower.includes('image/bmp') || lower.includes('bmp')) return '.bmp';
-        if (lower.includes('image/svg') || lower.includes('svg')) return '.svg';
-        if (lower.includes('image/heic') || lower.includes('heic')) return '.heic';
-        if (lower.includes('image/heif') || lower.includes('heif')) return '.heif';
-        if (lower.includes('application/pdf') || lower.includes('pdf')) return '.pdf';
-        if (lower.includes('wordprocessingml') || lower.includes('docx')) return '.docx';
-        if (lower.includes('msword') || lower.includes('doc')) return '.doc';
-        if (lower.includes('spreadsheetml') || lower.includes('xlsx')) return '.xlsx';
-        if (lower.includes('excel') || lower.includes('xls')) return '.xls';
-        if (lower.includes('text/plain') || lower.includes('txt')) return '.txt';
-        if (lower.includes('text/csv') || lower.includes('csv')) return '.csv';
-        if (lower.includes('zip')) return '.zip';
-        return '';
-    };
-
-    const getFileExtension = (fileName = '', url = '', mimeType = '') => {
-        const mimeExt = getMimeExtension(mimeType);
-        if (mimeExt) return mimeExt;
-
-        if (fileName && fileName.includes('.')) {
-            const ext = fileName.split('.').pop().trim().toLowerCase();
-            if (ext && ext.length <= 5 && /^[a-z0-9]+$/.test(ext)) {
-                return `.${ext}`;
-            }
-        }
-        if (url) {
-            const cleanUrl = url.split('?')[0].split('#')[0];
-            const parts = cleanUrl.split('/');
-            const lastPart = parts[parts.length - 1];
-            if (lastPart && lastPart.includes('.')) {
-                const ext = lastPart.split('.').pop().trim().toLowerCase();
-                if (ext && ext.length <= 5 && /^[a-z0-9]+$/.test(ext)) {
-                    return `.${ext}`;
-                }
-            }
-        }
-        return '';
-    };
-
-    const sanitizeZipFileName = (value, url = '', mimeType = '', fallback = 'document') => {
-        const original = String(value || fallback).trim();
-        let baseName = original;
-        let existingExt = '';
-        const extensionIndex = original.lastIndexOf('.');
-
-        if (extensionIndex > 0 && extensionIndex < original.length - 1) {
-            const potentialExt = original.slice(extensionIndex + 1).toLowerCase();
-            if (potentialExt.length <= 5 && /^[a-z0-9]+$/.test(potentialExt)) {
-                baseName = original.slice(0, extensionIndex);
-                existingExt = `.${potentialExt}`;
-            }
-        }
-
-        const extension = getFileExtension(original, url, mimeType) || existingExt;
-        const safeBaseName = sanitizeFileNamePart(baseName || fallback);
-        return `${safeBaseName}${extension}`;
-    };
-
-    const fetchFileBlob = async (targetUrl) => {
-        if (!targetUrl) throw new Error('Missing file URL');
-
-        // 1. Try backend Cloudinary proxy if it's a Cloudinary URL or external HTTP/HTTPS URL
-        if (targetUrl.includes('cloudinary') || targetUrl.startsWith('http')) {
-            try {
-                const res = await api.get('/dossier/proxy-pdf', {
-                    params: { url: targetUrl, download: true },
-                    responseType: 'blob'
-                });
-                if (res.data && res.data.size > 0 && !res.data.type?.includes('text/html')) {
-                    return res.data;
-                }
-            } catch (proxyErr) {
-                console.warn('Proxy fetch failed, trying direct api.get...', proxyErr);
-            }
-        }
-
-        // 2. Fallback to direct api.get with responseType blob
-        try {
-            const res = await api.get(targetUrl, { responseType: 'blob' });
-            if (res.data && res.data.size > 0 && !res.data.type?.includes('text/html')) {
-                return res.data;
-            }
-        } catch (apiErr) {
-            console.warn('Direct api.get failed, trying window.fetch...', apiErr);
-        }
-
-        // 3. Fallback to native window.fetch
-        const response = await fetch(targetUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}`);
-        }
-        const blob = await response.blob();
-        if (blob.type?.includes('text/html')) {
-            throw new Error('Received HTML error response instead of file');
-        }
-        return blob;
-    };
-
-    const isAttendanceApproved = (record) =>
-        record?.approvalStatus === 'APPROVED' || Boolean(record?.approvedBy);
-
-    const buildAttendanceWorkbook = async (targetUser, year, month, holidaysDataOverride = null) => {
-        const [historyRes, holidaysRes] = await Promise.all([
-            api.get(`/attendance/history?year=${year}&month=${month}&userId=${targetUser._id}`),
-            holidaysDataOverride ? Promise.resolve({ data: holidaysDataOverride }) : api.get('/holidays')
-        ]);
-
-        const history = historyRes.data?.history || historyRes.data || [];
-        const holidaysData = holidaysRes.data || [];
-        const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet('Attendance Report');
-        const reportDate = new Date(year, month - 1, 1);
-
-        sheet.mergeCells('A1:C1');
-        sheet.getCell('A1').value = `User Name: ${targetUser.firstName} ${targetUser.lastName || ''}`;
-        sheet.getCell('A1').font = { bold: true, size: 14 };
-
-        sheet.mergeCells('A2:C2');
-        sheet.getCell('A2').value = `Joining Date: ${targetUser.joiningDate ? new Date(targetUser.joiningDate).toLocaleDateString() : 'N/A'}`;
-
-        sheet.mergeCells('A3:C3');
-        const managers = targetUser.reportingManagers || [];
-        const mgrNames = managers.length > 0 ? managers.map(m => `${m.firstName} ${m.lastName}`).join(', ') : 'N/A';
-        sheet.getCell('A3').value = `Supervisor(s): ${mgrNames}`;
-
-        sheet.addRow([]);
-
-        const headerRow = sheet.addRow(['Date', 'Day', 'Status', 'In Time', 'Out Time', 'Duration']);
-        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
-        headerRow.alignment = { horizontal: 'center' };
-
-        const start = startOfMonth(reportDate);
-        const end = endOfMonth(reportDate);
-        const days = eachDayOfInterval({ start, end });
-
-        days.forEach(day => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const record = history.find(h => toDateKey(h.date) === dateStr);
-            const weeklyOffDays = historyRes.data?.weeklyOff || user?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
-            const isWeeklyOff = weeklyOffDays.includes(format(day, 'EEEE'));
-            let status = 'Absent';
-            let rowColor = 'FFF2DCDB';
-
-            const joiningDate = targetUser.joiningDate ? new Date(targetUser.joiningDate) : null;
-            if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
-
-            const holiday = holidaysData.find(h => toDateKey(h.date) === dateStr);
-
-            if (joiningDate && day < joiningDate) {
-                status = 'Not Applicable';
-                rowColor = 'FFFFFFFF';
-            } else if (isAttendanceApproved(record)) {
-                status = 'Present';
-                rowColor = 'FFEBF1DE';
-            } else if (holiday) {
-                status = holiday.name;
-                rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
-            } else if (isWeeklyOff) {
-                status = 'Weekoff';
-                rowColor = 'FFF2F2F2';
-            }
-
-            const row = sheet.addRow([
-                format(day, 'dd-MMM-yyyy'),
-                format(day, 'EEEE'),
-                status,
-                record ? formatTime(record.clockIn, record.clockInIST) : '-',
-                record ? formatTime(record.clockOut, record.clockOutIST) : '-',
-                record ? calculateDuration(record.clockIn, record.clockOut, day) : '-'
-            ]);
-
-            row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
-            row.alignment = { horizontal: 'center' };
-        });
-
-        sheet.columns = [
-            { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }
-        ];
-
-        const buffer = await workbook.xlsx.writeBuffer();
-        const userLabel = sanitizeFileNamePart(`${targetUser.firstName || ''}_${targetUser.lastName || ''}_${targetUser.employeeCode || ''}`);
-
-        return {
-            buffer,
-            fileName: `Attendance_${format(start, 'MMMM_yyyy')}_${userLabel}.xlsx`
-        };
-    };
-
-    const _handleExportAttendance = async (targetUser) => {
-        const toastId = toast.loading('Generating Report...');
-        try {
-            const [year, month] = exportMonth.split('-').map(Number);
-            const { buffer, fileName } = await buildAttendanceWorkbook(targetUser, year, month);
-            saveAs(new Blob([buffer]), fileName);
-            toast.success('Report Downloaded', { id: toastId });
-        } catch (error) {
-            console.error(error);
-            toast.error('Failed to generate report', { id: toastId });
-        }
-    };
+    // Form State
+    const [formData, setFormData] = useState({
+        firstName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        roleId: '',
+        department: '',
+        employeeCode: '',
+        joiningDate: '',
+        directReports: [],
+        reportingManagers: [],
+        employmentType: 'Full Time',
+        workLocation: '',
+        attendanceMode: 'clock_in_out',
+        attendanceShiftCode: 'general',
+        isTotalWorkforce: true,
+    });
 
     const handleDownloadAttendanceZip = async () => {
         const toastId = toast.loading('Preparing support documents ZIP...');
@@ -544,7 +298,7 @@ const Users = () => {
 
             const zipBlob = await masterZip.generateAsync({ type: 'blob' });
             let zipFileName = 'Employee_Documents.zip';
-            
+
             if (selectedUsers.length === 1) {
                 const singleUser = selectedUsers[0];
                 const singleUserFolder = sanitizeFileNamePart(
@@ -566,6 +320,233 @@ const Users = () => {
         } catch (error) {
             console.error(error);
             toast.error('Failed to download employee documents ZIP.', { id: toastId });
+        }
+    };
+
+    const handleExportTeamAttendance = async () => {
+        const toastId = toast.loading('Generating Team Report...');
+        try {
+            if (selectedEmployeeIds.length === 0) {
+                toast.error('Select at least one employee to export.', { id: toastId });
+                return;
+            }
+
+            const [year, month] = exportMonth.split('-');
+
+            const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
+            const { teamMembers, attendanceRecords, leaveRecords, holidays, weeklyOff } = res.data;
+
+            if (!teamMembers || teamMembers.length === 0) {
+                toast.error('No team members found', { id: toastId });
+                return;
+            }
+
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Team Attendance');
+
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const dateColumns = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                const date = new Date(year, month - 1, d);
+                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                dateColumns.push({ header: `${String(d).padStart(2, '0')}-${dayName}`, key: `day_${d}`, width: 15 });
+            }
+
+            worksheet.columns = [
+                { header: 'Employee / Details', key: 'name', width: 35 },
+                ...dateColumns
+            ];
+
+            worksheet.views = [
+                { state: 'frozen', xSplit: 1, ySplit: 1 }
+            ];
+
+            const headerRow = worksheet.getRow(1);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+
+            const attendanceMap = {};
+            attendanceRecords.forEach(record => {
+                const userId = record.user.toString();
+                const dateStr = toDateKey(record.date);
+                if (!attendanceMap[userId]) attendanceMap[userId] = {};
+                attendanceMap[userId][dateStr] = record;
+            });
+
+            const leaveMap = {};
+            if (leaveRecords && leaveRecords.length > 0) {
+                leaveRecords.forEach(leave => {
+                    const userId = leave.user.toString();
+                    if (!leaveMap[userId]) leaveMap[userId] = {};
+
+                    const start = new Date(leave.startDate);
+                    const end = new Date(leave.endDate);
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                        const dStr = toDateKey(d);
+                        leaveMap[userId][dStr] = { type: leave.leaveType, sandwich: leave.sandwichRule };
+                    }
+                });
+            }
+
+            const holidayMap = {};
+            if (holidays && holidays.length > 0) {
+                holidays.forEach(h => {
+                    const dateStr = toDateKey(h.date);
+                    holidayMap[dateStr] = h.name;
+                });
+            }
+
+            const extractTime = (istString) => istString.split(',')[1]?.trim() || istString;
+            const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+            const usersToExport = teamMembers.filter((teamMember) =>
+                selectedEmployeeIds.includes(teamMember._id)
+            );
+
+            if (usersToExport.length === 0) {
+                toast.error('None of the selected employees are available in this export view.', { id: toastId });
+                return;
+            }
+
+            usersToExport.forEach(targetUser => {
+                const userLogs = attendanceMap[targetUser._id] || {};
+                const userLeaves = leaveMap[targetUser._id] || {};
+
+                const parentRow = worksheet.addRow({
+                    name: `${targetUser.firstName} ${targetUser.lastName || ''}${targetUser.employeeCode ? ` (${targetUser.employeeCode})` : ''}`
+                });
+                parentRow.font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
+                parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+
+                const rowsToAdd = [];
+                const statusRow = { name: '   ↳ Status' };
+                const checkInRow = { name: '   ↳ Check In' };
+                const checkOutRow = { name: '   ↳ Check Out' };
+                const durationRow = { name: '   ↳ Duration' };
+                const leavesRow = { name: '   ↳ Leaves' };
+                const approvedRow = { name: '   ↳ Approved' };
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateObj = new Date(year, month - 1, d);
+                    const dateStr = toDateKey(dateObj);
+                    const record = userLogs[dateStr];
+                    const colKey = `day_${d}`;
+
+                    const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                    const dayName = format(dateObj, 'EEEE');
+                    const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
+                    const leaveData = userLeaves[dateStr];
+                    const holidayName = holidayMap[dateStr];
+
+                    let statusShort = 'Absent';
+
+                    const isOffDay = !!holidayName || isWeeklyOff;
+                    const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
+
+                    if (isAttendanceApproved(record)) {
+                        statusShort = 'Present';
+                    } else if (showLeave || holidayName || isWeeklyOff) {
+                        statusShort = '';
+                    }
+
+                    if (exportOptions.status) {
+                        statusRow[colKey] = statusShort;
+                    }
+
+                    if (exportOptions.leaves) {
+                        leavesRow[colKey] = leaveData?.type || '-';
+                    }
+
+                    if (record) {
+                        if (record.clockInIST) checkInRow[colKey] = extractTime(record.clockInIST);
+                        else if (record.clockIn) checkInRow[colKey] = formatTimeSimple(record.clockIn);
+                        else checkInRow[colKey] = '-';
+
+                        if (record.clockOutIST) checkOutRow[colKey] = extractTime(record.clockOutIST);
+                        else if (record.clockOut) checkOutRow[colKey] = formatTimeSimple(record.clockOut);
+                        else checkOutRow[colKey] = '-';
+
+                        const startTime = new Date(record.clockIn);
+                        let endTime = record.clockOut ? new Date(record.clockOut) : new Date(dateObj);
+                        if (!record.clockOut) endTime.setHours(23, 59, 59, 999);
+
+                        let durStr = '--';
+                        if (record.clockIn) {
+                            const diffString = Math.abs(endTime - startTime);
+                            const hours = Math.floor(diffString / (1000 * 60 * 60));
+                            const minutes = Math.floor((diffString % (1000 * 60 * 60)) / (1000 * 60));
+                            durStr = `${hours}h ${minutes}m`;
+                            const durHrs = diffString / 3600000;
+                            if (durHrs >= 5 && durHrs < 8) {
+                                durStr += ' (Half Day)';
+                            }
+                        }
+                        durationRow[colKey] = durStr;
+                        approvedRow[colKey] = isAttendanceApproved(record) ? 'Approved' : '';
+                    } else {
+                        checkInRow[colKey] = '-';
+                        checkOutRow[colKey] = '-';
+                        durationRow[colKey] = '-';
+                        approvedRow[colKey] = '';
+                    }
+                }
+
+                if (exportOptions.status) rowsToAdd.push(statusRow);
+                if (exportOptions.checkInOut) {
+                    rowsToAdd.push(checkInRow);
+                    rowsToAdd.push(checkOutRow);
+                }
+                if (exportOptions.duration) rowsToAdd.push(durationRow);
+                if (exportOptions.leaves) rowsToAdd.push(leavesRow);
+                rowsToAdd.push(approvedRow);
+
+                rowsToAdd.forEach(rowData => {
+                    const row = worksheet.addRow(rowData);
+                    row.outlineLevel = 1;
+                    row.getCell('name').font = { italic: true, color: { argb: 'FF64748B' } };
+                    row.alignment = { horizontal: 'center' };
+                    row.getCell('name').alignment = { horizontal: 'left' };
+
+                    if (rowData.name === '   ↳ Status') {
+                        for (let d = 1; d <= daysInMonth; d++) {
+                            const dateObj = new Date(year, month - 1, d);
+                            const dateStr = toDateKey(dateObj);
+                            const record = userLogs[dateStr];
+                            const leaveData = userLeaves[dateStr];
+                            const holidayName = holidayMap[dateStr];
+                            const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
+                            const dayName = format(dateObj, 'EEEE');
+                            const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
+
+                            let cellColor = 'FFF2DCDB';
+
+                            const isOffDay = !!holidayName || isWeeklyOff;
+                            const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
+
+                            if (isAttendanceApproved(record)) cellColor = 'FFEBF1DE';
+                            else if (showLeave || holidayName || isWeeklyOff) cellColor = 'FFFFFFFF';
+
+                            const colKey = `day_${d}`;
+                            const cell = row.getCell(colKey);
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor } };
+                        }
+                    }
+                });
+            });
+
+            worksheet.properties.outlineProperties = {
+                summaryBelow: false,
+                summaryRight: false,
+            };
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Team_Attendance_${format(new Date(year, month - 1), 'MMMM_yyyy')}.xlsx`;
+            saveAs(new Blob([buffer]), fileName);
+            toast.success('Downloaded', { id: toastId });
+
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to export', { id: toastId });
         }
     };
 
@@ -592,7 +573,6 @@ const Users = () => {
         }
 
         if (shouldDownloadHRIS) {
-            // Pass the selected sub-sections set (undefined = all, specific Set = filtered)
             const sectionsToExport = hrisSections.size === ALL_HRIS_SECTIONS.length ? undefined : hrisSections;
             await exportCandidateHRIS(selectedEmployeeIds, sectionsToExport);
         }
@@ -604,314 +584,25 @@ const Users = () => {
         setShowExportModal(false);
     };
 
-    const handleExportTeamAttendance = async () => {
-        const toastId = toast.loading('Generating Team Report...');
-        try {
-            if (selectedEmployeeIds.length === 0) {
-                toast.error('Select at least one employee to export.', { id: toastId });
-                return;
-            }
-
-            const [year, month] = exportMonth.split('-');
-
-            // Fetch data
-            const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
-            const { teamMembers, attendanceRecords, leaveRecords, holidays, weeklyOff } = res.data;
-
-            if (!teamMembers || teamMembers.length === 0) {
-                toast.error('No team members found', { id: toastId });
-                return;
-            }
-
-            const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet('Team Attendance');
-
-            // 1. Generate Date Columns (Horizontal)
-            const daysInMonth = new Date(year, month, 0).getDate();
-            const dateColumns = [];
-            for (let d = 1; d <= daysInMonth; d++) {
-                const date = new Date(year, month - 1, d);
-                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                dateColumns.push({ header: `${String(d).padStart(2, '0')}-${dayName}`, key: `day_${d}`, width: 15 });
-            }
-
-            // Set Columns: Employee Name + Date Columns
-            worksheet.columns = [
-                { header: 'Employee / Details', key: 'name', width: 35 },
-                ...dateColumns
-            ];
-
-            // Freeze first row and first column
-            worksheet.views = [
-                { state: 'frozen', xSplit: 1, ySplit: 1 }
-            ];
-
-            // Style Header
-            const headerRow = worksheet.getRow(1);
-            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }; // Dark Slate
-
-            // 2. Prepare Data Map
-            const attendanceMap = {};
-            attendanceRecords.forEach(record => {
-                const userId = record.user.toString();
-                const dateStr = toDateKey(record.date);
-                if (!attendanceMap[userId]) attendanceMap[userId] = {};
-                attendanceMap[userId][dateStr] = record;
-            });
-
-            // 3. Prepare Leave Map
-            const leaveMap = {};
-            if (leaveRecords && leaveRecords.length > 0) {
-                leaveRecords.forEach(leave => {
-                    const userId = leave.user.toString();
-                    if (!leaveMap[userId]) leaveMap[userId] = {};
-
-                    const start = new Date(leave.startDate);
-                    const end = new Date(leave.endDate);
-                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                        const dStr = toDateKey(d);
-                        leaveMap[userId][dStr] = { type: leave.leaveType, sandwich: leave.sandwichRule };
-                    }
-                });
-            }
-
-            // 4. Prepare Holiday Map
-            const holidayMap = {};
-            if (holidays && holidays.length > 0) {
-                holidays.forEach(h => {
-                    const dateStr = toDateKey(h.date);
-                    holidayMap[dateStr] = h.name;
-                });
-            }
-
-            // Helpers for this export
-            const extractTime = (istString) => istString.split(',')[1]?.trim() || istString;
-            const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-
-            // 3. Add Data Rows (Grouped)
-            const usersToExport = teamMembers.filter((teamMember) =>
-                selectedEmployeeIds.includes(teamMember._id)
-            );
-
-            if (usersToExport.length === 0) {
-                toast.error('None of the selected employees are available in this export view.', { id: toastId });
-                return;
-            }
-
-            usersToExport.forEach(user => {
-                const userLogs = attendanceMap[user._id] || {};
-                const userLeaves = leaveMap[user._id] || {};
-
-                // --- PARENT ROW (Employee Name) ---
-                const parentRow = worksheet.addRow({
-                    name: `${user.firstName} ${user.lastName || ''}${user.employeeCode ? ` (${user.employeeCode})` : ''}`
-                });
-                parentRow.font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
-                parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; // Light Slate
-
-                // --- CHILD ROWS ---
-                const rowsToAdd = [];
-                const statusRow = { name: '   ↳ Status' };
-                const checkInRow = { name: '   ↳ Check In' };
-                const checkOutRow = { name: '   ↳ Check Out' };
-                const durationRow = { name: '   ↳ Duration' };
-                const leavesRow = { name: '   ↳ Leaves' };
-                const approvedRow = { name: '   ↳ Approved' };
-
-                // Color Map for Cells
-                const _cellRefMap = {}; // store cell refs to apply color later (or apply directly if possible)
-
-                for (let d = 1; d <= daysInMonth; d++) {
-                    const dateObj = new Date(year, month - 1, d);
-                    const dateStr = toDateKey(dateObj);
-                    const record = userLogs[dateStr];
-                    const colKey = `day_${d}`;
-
-                    const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
-                    const dayName = format(dateObj, 'EEEE');
-                    const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
-                    const leaveData = userLeaves[dateStr];
-                    const holidayName = holidayMap[dateStr];
-
-                    // -- Calculate Duration First --
-                    let _durationHours = 0;
-                    if (record && record.clockIn && record.clockOut) {
-                        const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                        _durationHours = dur / 3600000; // milliseconds to hours
-                    }
-
-                    // -- 1. Status Logic --
-                    let statusShort = 'Absent'; // Default
-                    let _cellColor = 'FFF2DCDB'; // Red (Absent)
-
-                    const isOffDay = !!holidayName || isWeeklyOff;
-                    const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
-
-                    if (isAttendanceApproved(record)) {
-                        statusShort = 'Present';
-                        _cellColor = 'FFEBF1DE'; // Light Green
-                    } else if (showLeave || holidayName || isWeeklyOff) {
-                        statusShort = '';
-                        _cellColor = 'FFFFFFFF';
-                    }
-
-                    if (exportOptions.status) {
-                        statusRow[colKey] = statusShort;
-                        // We need row index to style specific cells, but here we only have row object *before* adding to sheet.
-                        // Solution: Store needed colors in a parallel structure or style after adding.
-                        // Better: Apply check and style *after* adding logic below.
-                    }
-
-                    // -- 2. Leaves Logic --
-                    if (exportOptions.leaves) {
-                        leavesRow[colKey] = leaveData?.type || '-';
-                    }
-
-                    // -- 3. Time/Duration Data --
-                    if (record) {
-                        // Check In
-                        if (record.clockInIST) checkInRow[colKey] = extractTime(record.clockInIST);
-                        else if (record.clockIn) checkInRow[colKey] = formatTimeSimple(record.clockIn);
-                        else checkInRow[colKey] = '-';
-
-                        // Check Out
-                        if (record.clockOutIST) checkOutRow[colKey] = extractTime(record.clockOutIST);
-                        else if (record.clockOut) checkOutRow[colKey] = formatTimeSimple(record.clockOut);
-                        else checkOutRow[colKey] = '-';
-
-                        // Duration
-                        durationRow[colKey] = calculateDuration(record.clockIn, record.clockOut, dateObj);
-
-                        // Half Day Suffix Logic
-                        if (record.clockIn) {
-                            const start = new Date(record.clockIn);
-                            const end = record.clockOut ? new Date(record.clockOut) : new Date(dateObj).setHours(23, 59, 59, 999);
-                            const durHrs = Math.abs(end - start) / 3600000;
-                            if (durHrs >= 5 && durHrs < 8) {
-                                durationRow[colKey] += ' (Half Day)';
-                            }
-                        }
-                        approvedRow[colKey] = isAttendanceApproved(record) ? 'Approved' : '';
-                    } else {
-                        checkInRow[colKey] = '-';
-                        checkOutRow[colKey] = '-';
-                        durationRow[colKey] = '-';
-                        approvedRow[colKey] = '';
-                    }
-                }
-
-                // Push selected rows to array in specific order
-                if (exportOptions.status) rowsToAdd.push(statusRow);
-                if (exportOptions.checkInOut) {
-                    rowsToAdd.push(checkInRow);
-                    rowsToAdd.push(checkOutRow);
-                }
-                if (exportOptions.duration) rowsToAdd.push(durationRow);
-                if (exportOptions.leaves) rowsToAdd.push(leavesRow);
-                rowsToAdd.push(approvedRow);
-
-                // Add to Worksheet and Style
-                rowsToAdd.forEach(rowData => {
-                    const row = worksheet.addRow(rowData);
-                    row.outlineLevel = 1; // Grouping
-                    row.getCell('name').font = { italic: true, color: { argb: 'FF64748B' } };
-                    row.alignment = { horizontal: 'center' };
-                    row.getCell('name').alignment = { horizontal: 'left' };
-
-                    // Apply Color Logic for Status Row
-                    if (rowData.name === '   ↳ Status') {
-                        for (let d = 1; d <= daysInMonth; d++) {
-                            const dateObj = new Date(year, month - 1, d);
-                            const dateStr = toDateKey(dateObj);
-                            const record = userLogs[dateStr];
-                            const leaveData = userLeaves[dateStr];
-                            const holidayName = holidayMap[dateStr];
-                            const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
-                            const dayName = format(dateObj, 'EEEE');
-                            const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
-                            // -- Apply Same Logic for Coloring --
-                            let _durationHours = 0;
-                            if (record && record.clockIn && record.clockOut) {
-                                const dur = Math.abs(new Date(record.clockOut) - new Date(record.clockIn));
-                                _durationHours = dur / 3600000;
-                            }
-
-                            let cellColor = 'FFF2DCDB'; // Red
-
-                            const isOffDay = !!holidayName || isWeeklyOff;
-                            const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
-
-                            if (isAttendanceApproved(record)) cellColor = 'FFEBF1DE';
-                            else if (showLeave || holidayName || isWeeklyOff) cellColor = 'FFFFFFFF';
-
-                            const colKey = `day_${d}`;
-                            // This library might not support key-based cell access directly on 'row' object efficiently if strictly column indexed?
-                            // Actually row.getCell(colKey) works if columns defined.
-                            const cell = row.getCell(colKey);
-                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor } };
-                        }
-                    }
-                });
-            });
-
-            // Enable Outline Property
-            worksheet.properties.outlineProperties = {
-                summaryBelow: false,
-                summaryRight: false,
-            };
-
-            const buffer = await workbook.xlsx.writeBuffer();
-            const fileName = `Team_Attendance_${format(new Date(year, month - 1), 'MMMM_yyyy')}.xlsx`;
-            saveAs(new Blob([buffer]), fileName);
-            toast.success('Downloaded', { id: toastId });
-
-        } catch (error) {
-            console.error(error);
-            toast.error('Failed to export', { id: toastId });
-        }
-    };
-
-    // Form State
-    const [formData, setFormData] = useState({
-        firstName: '',
-        lastName: '',
-        email: '',
-        password: '',
-        roleId: '',
-        department: '',
-        employeeCode: '',
-        joiningDate: '',
-        directReports: [],
-        reportingManagers: [],
-        employmentType: 'Full Time',
-        workLocation: '',
-        attendanceMode: 'clock_in_out',
-        attendanceShiftCode: 'general'
-    });
-
     const fetchData = useCallback(async () => {
         try {
             const isAdmin = user?.roles?.includes('Admin') || user?.roles?.some(r => r.name === 'Admin');
             const canReadUsers = user?.permissions?.includes('user.read');
             const canReadRoles = user?.permissions?.includes('role.read') || isAdmin;
 
-            // Session Caching Logic
             const cacheKey = `user_data_${user?._id}`;
             const cachedPayload = readSessionCache(cacheKey);
 
             if (cachedPayload) {
-                // Use .data if it exists (new format), else fallback to top-level (old format)
                 const data = cachedPayload.data || cachedPayload;
                 setUsers((data.users || []).filter((listedUser) => listedUser.isDeleted !== true));
                 setRoles(data.roles || []);
-                setLoading(false); // Immediate UI update
+                setLoading(false);
             }
 
             let usersData = [];
             let rolesData = [];
 
-            // 1. Fetch Users
             if (isAdmin || canReadUsers) {
                 try {
                     const res = await api.get('/admin/users');
@@ -920,7 +611,6 @@ const Users = () => {
                     console.error('Admin users fetch failed', err);
                 }
             } else {
-                // Fallback for Managers/Team View
                 try {
                     const teamRes = await api.get('/admin/users/team');
                     usersData = teamRes.data;
@@ -929,7 +619,6 @@ const Users = () => {
                 }
             }
 
-            // 2. Fetch Roles (Admin only)
             if (canReadRoles) {
                 try {
                     const rolesRes = await api.get('/admin/roles');
@@ -943,8 +632,6 @@ const Users = () => {
             setUsers(visibleUsers);
             setRoles(rolesData);
 
-            // Always refresh the cache with the latest server ids so profile links cannot
-            // keep pointing at stale records after onboarding transfers.
             const newFingerprint = JSON.stringify({
                 users: buildUserListFingerprint(usersData),
                 roles: buildRoleListFingerprint(rolesData)
@@ -985,9 +672,6 @@ const Users = () => {
             setLoading(false);
         }
     }, [user]);
-
-
-    const [filterDate, _setFilterDate] = useState('');
 
     const departmentOptions = useMemo(
         () => [...new Set(users.map((listedUser) => listedUser.department).filter(Boolean))].sort((left, right) => left.localeCompare(right)),
@@ -1041,6 +725,9 @@ const Users = () => {
                     const nameA = `${left.firstName || ''} ${left.lastName || ''}`.trim();
                     const nameB = `${right.firstName || ''} ${right.lastName || ''}`.trim();
                     comparison = nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+                    if (comparison === 0) {
+                        comparison = String(left.employeeCode || '').localeCompare(String(right.employeeCode || ''), undefined, { numeric: true, sensitivity: 'base' });
+                    }
                     break;
                 }
                 case 'email': {
@@ -1087,6 +774,11 @@ const Users = () => {
                 }
                 case 'employeeCode': {
                     comparison = String(left.employeeCode || '').localeCompare(String(right.employeeCode || ''), undefined, { numeric: true, sensitivity: 'base' });
+                    if (comparison === 0) {
+                        const nameA = `${left.firstName || ''} ${left.lastName || ''}`.trim();
+                        const nameB = `${right.firstName || ''} ${right.lastName || ''}`.trim();
+                        comparison = nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+                    }
                     break;
                 }
                 case 'createdAt': {
@@ -1166,7 +858,7 @@ const Users = () => {
         setSelectedEmployeeIds((current) => current.filter((id) => users.some((listedUser) => listedUser._id === id)));
     }, [users]);
 
-    const canEdit = roles.length > 0; // If we can see roles, we are likely Admin
+    const canEdit = roles.length > 0;
     const userRoles = user?.roles?.map(r => typeof r === 'string' ? r : r?.name) || [];
     const hasAdminOrHR = userRoles.some(r => ['Admin', 'Super Admin', 'System Admin', 'HR Admin', 'HR'].includes(r));
     const canExportHRIS = hasAdminOrHR
@@ -1207,10 +899,10 @@ const Users = () => {
             const mergedSalary = { ...prev.salary, ...updatedSalaryFields };
             const compType = mergedSalary.compensationType || mergedSalary.payType || 'monthly_salary';
             const payType = (compType === 'hourly') ? 'hourly' : (compType === 'flat_project' || compType === 'project_based') ? 'flat' : 'salaried';
-            
+
             let annualCTC = parseFloat(String(mergedSalary.annualCTC).replace(/[^0-9.]/g, '')) || 0;
             let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
-            
+
             switch (compType) {
                 case 'hourly': {
                     const hourlyRate = parseFloat(String(mergedSalary.hourlyRate).replace(/[^0-9.]/g, '')) || 0;
@@ -1335,7 +1027,7 @@ const Users = () => {
                 hraVal = String(master.hraMaster || 0);
                 specialVal = String(master.specialAllowance || 0);
                 grossVal = String(master.totalEarnings || (monthlyCTC + customAllowancesSum));
-                
+
                 mergedSalary.basicMaster = basicVal;
                 mergedSalary.hraMaster = hraVal;
                 mergedSalary.basic = basicVal;
@@ -1353,7 +1045,7 @@ const Users = () => {
                 mergedSalary.tds = String(master.tds || 0);
                 const estNet = Math.max(0, (master.netTakeHome || 0) - customDeductionsSum);
                 mergedSalary.netTakeHome = String(estNet);
-                
+
                 if (master.earningsMap) {
                     Object.entries(master.earningsMap).forEach(([id, val]) => {
                         mergedSalary[id] = String(val);
@@ -1386,124 +1078,6 @@ const Users = () => {
         });
     };
 
-    const _handleEdit = async (user) => {
-        setEditingUser(user);
-        setShowPassword(false);
-        setCtcPeriod('monthly');
-        // Find users who currently report to this user
-        const currentReports = users.filter(u => u.reportingManagers?.some(rm => rm._id === user._id || rm === user._id)).map(u => u._id);
-
-        let salaryData = createDefaultSalaryData({}, {}, user, payrollConfig);
-
-        try {
-            const dossierRes = await api.get(`/dossier/${user._id}`);
-            const comp = dossierRes.data?.compensation || {};
-            const breakup = comp.salaryBreakup || {};
-            
-            // Map breakup fields cleanly via canonical factory
-            salaryData = createDefaultSalaryData(breakup, comp, user, payrollConfig);
-        } catch (err) {
-            console.error('Failed to fetch user dossier compensation:', err);
-        }
-
-        // Recalculate salary breakdown on open to ensure computed components are updated
-        let annualCTC = parseFloat(String(salaryData.annualCTC).replace(/[^0-9.]/g, '')) || 0;
-        let monthlyCTC = parseFloat(String(salaryData.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
-
-        if (annualCTC > 0 && !monthlyCTC) {
-            monthlyCTC = Math.round(annualCTC / 12);
-        } else if (monthlyCTC > 0 && !annualCTC) {
-            annualCTC = monthlyCTC * 12;
-        }
-
-        if (payrollConfig && (annualCTC > 0 || monthlyCTC > 0)) {
-            const source = {
-                monthlyCTC,
-                compensationType: salaryData.compensationType || 'monthly_salary',
-                payType: salaryData.payType,
-                attendanceMode: salaryData.attendanceMode || 'attendance',
-                pfEnabled: parseBool(salaryData.pfEnabled, true),
-                esiEnabled: parseBool(salaryData.esiEnabled, true),
-                ptEnabled: parseBool(salaryData.ptEnabled, true),
-                lwfEnabled: parseBool(salaryData.lwfEnabled, true),
-                gratuityEnabled: parseBool(salaryData.gratuityEnabled, true),
-                tdsEnabled: parseBool(salaryData.tdsEnabled, true),
-                includePfInCTC: parseBool(salaryData.includePfInCTC, false),
-                includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
-                basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : 50,
-                hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : 50,
-                vpfPercent: salaryData.vpfPercent !== undefined && salaryData.vpfPercent !== null ? Number(salaryData.vpfPercent) : 0,
-                useSalaryComponents: salaryData.payType !== 'flat' && salaryData.payType !== 'hourly' && parseBool(salaryData.useSalaryComponents, true),
-                insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
-                employerNPS: parseFloat(salaryData.employerNPS) || 0,
-                flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
-                ptState: salaryData.ptState || '',
-                customAllowances: salaryData.customAllowances || [],
-                customDeductions: salaryData.customDeductions || [],
-                otherAllowances: salaryData.customAllowances || [],
-                otherDeductions: salaryData.customDeductions || [],
-                deductions: {
-                    professionalTax: salaryData.ptState === 'custom' ? (parseFloat(salaryData.professionalTax) || 0) : 0,
-                }
-            };
-            if (payrollConfig.salaryComponents) {
-                payrollConfig.salaryComponents.forEach(c => {
-                    if (c.linkedTo === 'fixed') {
-                        const val = salaryData[c.id] !== undefined ? salaryData[c.id] : (c.linkValue || 0);
-                        source[c.id] = parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
-                    }
-                });
-            }
-            const master = buildMasterSalaryStructure(source, payrollConfig);
-            if (master) {
-                salaryData.annualCTC = String(annualCTC);
-                salaryData.monthlyCTC = String(monthlyCTC);
-                salaryData.basic = String(master.basicMaster);
-                salaryData.hra = String(master.hraMaster);
-                salaryData.specialAllowance = String(master.specialAllowance || 0);
-                salaryData.monthlyGross = String(master.totalEarnings);
-                
-                salaryData.pfEmployer = String(master.pfEmployer || 0);
-                salaryData.pfEmployee = String(master.pfEmployee || 0);
-                salaryData.gratuity = String(master.gratuity || 0);
-                salaryData.lwfEmployer = String(master.lwfEmployer || 0);
-                salaryData.lwfEmployee = String(master.lwfEmployee || 0);
-                salaryData.esiEmployer = String(master.esiEmployer || 0);
-                salaryData.esiEmployee = String(master.esiEmployee || 0);
-                salaryData.professionalTax = String(master.professionalTax || 0);
-                salaryData.tds = String(master.tds || 0);
-                const customDedSum = (salaryData.customDeductions || []).reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
-                salaryData.netTakeHome = String(Math.max(0, (master.netTakeHome || 0) - customDedSum));
-                
-                if (master.earningsMap) {
-                    Object.entries(master.earningsMap).forEach(([id, val]) => {
-                        salaryData[id] = String(val);
-                    });
-                }
-            }
-        }
-
-        setFormData({
-            firstName: user.firstName,
-            lastName: user.lastName || '',
-            email: user.email,
-            password: '',
-            roleId: user.roles[0]?._id || '',
-            department: user.department || '',
-            employeeCode: user.employeeCode || '',
-            joiningDate: user.joiningDate ? new Date(user.joiningDate).toISOString().split('T')[0] : '',
-            employmentType: user.employmentType || 'Full Time',
-            workLocation: user.workLocation || '',
-            attendanceMode: user.attendanceMode || salaryData.attendanceMode || 'clock_in_out',
-            attendanceShiftCode: user.attendanceShiftCode || 'general',
-            directReports: currentReports,
-            reportingManagers: user.reportingManagers?.map(rm => rm._id) || [],
-            salary: salaryData
-        });
-        setShowSalarySection(false);
-        setShowModal(true);
-    };
-
     const handleAdd = () => {
         setEditingUser(null);
         setShowPassword(false);
@@ -1522,6 +1096,7 @@ const Users = () => {
             workLocation: '',
             attendanceMode: 'clock_in_out',
             attendanceShiftCode: 'general',
+            isTotalWorkforce: true,
             directReports: [],
             reportingManagers: [],
             salary: salaryData
@@ -1540,7 +1115,6 @@ const Users = () => {
                 await api.post('/admin/users', formData);
                 toast.success('User Created Successfully');
             }
-            // Clear all related caches for instant reflection
             sessionStorage.removeItem(`user_data_${user?._id}`);
             sessionStorage.removeItem(`role_data_${user?._id}`);
             setShowPassword(false);
@@ -1552,35 +1126,34 @@ const Users = () => {
     };
 
     const handleSort = (field) => {
+        if (field === 'employee') {
+            if (sortField === 'employee') {
+                if (sortDirection === 'asc') {
+                    setSortDirection('desc');
+                } else {
+                    setSortField('employeeCode');
+                    setSortDirection('asc');
+                }
+            } else if (sortField === 'employeeCode') {
+                if (sortDirection === 'asc') {
+                    setSortDirection('desc');
+                } else {
+                    setSortField('employee');
+                    setSortDirection('asc');
+                }
+            } else {
+                setSortField('employee');
+                setSortDirection('asc');
+            }
+            return;
+        }
+
         if (sortField === field) {
             setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
         } else {
             setSortField(field);
             setSortDirection(field === 'joiningDate' ? 'desc' : 'asc');
         }
-    };
-
-    const renderSortHeader = (field, label, extraClass = '') => {
-        const isActive = sortField === field;
-        return (
-            <th
-                key={field}
-                onClick={() => handleSort(field)}
-                className={`px-2.5 py-1.5 cursor-pointer select-none transition hover:bg-slate-100 hover:text-slate-900 group whitespace-nowrap ${extraClass}`}
-                title={`Sort by ${label} (${isActive && sortDirection === 'asc' ? 'Click for Descending' : 'Click for Ascending'})`}
-            >
-                <div className="inline-flex items-center gap-1 font-semibold text-[10.5px]">
-                    <span>{label}</span>
-                    <span className={`inline-flex transition-colors ${isActive ? 'text-blue-600 font-bold' : 'text-slate-300 group-hover:text-slate-500'}`}>
-                        {isActive ? (
-                            sortDirection === 'asc' ? <ChevronUp size={12} className="stroke-[2.5]" /> : <ChevronDown size={12} className="stroke-[2.5]" />
-                        ) : (
-                            <ArrowUpDown size={10} className="opacity-60 group-hover:opacity-100" />
-                        )}
-                    </span>
-                </div>
-            </th>
-        );
     };
 
     if (loading) return (
@@ -1650,760 +1223,86 @@ const Users = () => {
                     </div>
                 </div>
 
-                {/* ── Custom Export Modal ── */}
-                {showExportModal && (
-                    <div
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4"
-                        style={{ backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(2px)' }}
-                        onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}
-                    >
-                        <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+                {/* Export Modal */}
+                <UserExportModal
+                    showExportModal={showExportModal}
+                    setShowExportModal={setShowExportModal}
+                    exportMonth={exportMonth}
+                    setExportMonth={setExportMonth}
+                    exportOptions={exportOptions}
+                    setExportOptions={setExportOptions}
+                    hrisSections={hrisSections}
+                    setHrisSections={setHrisSections}
+                    hasSelection={hasSelection}
+                    selectedEmployeeIds={selectedEmployeeIds}
+                    hasAttendanceDocumentFeature={hasAttendanceDocumentFeature}
+                    canExportHRIS={canExportHRIS}
+                    handleExportDownload={handleExportDownload}
+                />
 
-                            {/* Modal Header */}
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-9 w-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                                        <Download size={18} />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-base font-bold text-slate-800">Custom Export</h2>
-                                        <p className="text-xs text-slate-500">
-                                            {hasSelection
-                                                ? `Exporting data for ${selectedEmployeeIds.length} selected employee${selectedEmployeeIds.length !== 1 ? 's' : ''}`
-                                                : 'Select employees in the table first, then choose what to export'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setShowExportModal(false)}
-                                    className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-
-                            {/* Modal Body */}
-                            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-
-                                {/* Export Period */}
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Export Period</p>
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex-1">
-                                            <label className="block text-xs font-medium text-slate-600 mb-1">Select Month</label>
-                                            <input
-                                                type="month"
-                                                value={exportMonth}
-                                                onChange={(e) => setExportMonth(e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
-                                            />
-                                        </div>
-                                        <p className="text-xs text-slate-400 pt-5">Used for Attendance &amp; Timesheet data</p>
-                                    </div>
-                                </div>
-
-                                {/* Attendance Columns */}
-                                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                    <div className="bg-blue-50 px-4 py-2.5 flex items-center gap-2 border-b border-slate-200">
-                                        <div className="h-5 w-5 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">A</div>
-                                        <span className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Attendance Columns</span>
-                                    </div>
-                                    <div className="p-4 grid grid-cols-2 gap-2">
-                                        {[
-                                            { key: 'status', label: 'Status (Present / Absent)', desc: 'Daily attendance status' },
-                                            { key: 'checkInOut', label: 'Check-In & Check-Out', desc: 'Clock-in and clock-out times' },
-                                            { key: 'duration', label: 'Total Duration', desc: 'Total working hours logged' },
-                                            { key: 'leaves', label: 'Leaves (SL, CL)', desc: 'Sick and casual leave counts' },
-                                        ].map(({ key, label, desc }) => (
-                                            <label key={key} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${exportOptions[key] ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                                                <input type="checkbox" checked={exportOptions[key]} onChange={e => setExportOptions({ ...exportOptions, [key]: e.target.checked })} className="h-4 w-4 mt-0.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 shrink-0" />
-                                                <div className="min-w-0">
-                                                    <div className="text-sm font-semibold text-slate-700 leading-tight">{label}</div>
-                                                    <div className="text-[11px] text-slate-400 leading-snug mt-0.5">{desc}</div>
-                                                </div>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Attendance Documents */}
-                                {hasAttendanceDocumentFeature && (
-                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                        <div className="bg-amber-50 px-4 py-2.5 flex items-center gap-2 border-b border-slate-200">
-                                            <div className="h-5 w-5 rounded bg-amber-100 text-amber-600 flex items-center justify-center text-[10px] font-bold">D</div>
-                                            <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Attendance Documents</span>
-                                        </div>
-                                        <div className="p-4">
-                                            <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${exportOptions.documents ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                                                <input type="checkbox" checked={exportOptions.documents} onChange={e => setExportOptions({ ...exportOptions, documents: e.target.checked })} className="h-4 w-4 mt-0.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 shrink-0" />
-                                                <div>
-                                                    <div className="text-sm font-semibold text-slate-700">Uploaded Support Documents</div>
-                                                    <div className="text-[11px] text-slate-400 mt-0.5">Download attendance attachment ZIP for the selected period</div>
-                                                </div>
-                                            </label>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* HRIS Profiles with sub-section picker */}
-                                {canExportHRIS && (
-                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                        <div className="bg-purple-50 px-4 py-2.5 flex items-center justify-between border-b border-slate-200">
-                                            <div className="flex items-center gap-2">
-                                                <div className="h-5 w-5 rounded bg-purple-100 text-purple-600 flex items-center justify-center text-[10px] font-bold">H</div>
-                                                <span className="text-xs font-semibold text-purple-800 uppercase tracking-wide">Profiles &amp; HRIS</span>
-                                            </div>
-                                            {exportOptions.hrisProfiles && (
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setHrisSections(new Set(ALL_HRIS_SECTIONS))}
-                                                        className="text-[10px] font-medium text-purple-600 hover:text-purple-800 underline"
-                                                    >Select All</button>
-                                                    <span className="text-purple-300 text-xs">|</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setHrisSections(new Set())}
-                                                        className="text-[10px] font-medium text-purple-600 hover:text-purple-800 underline"
-                                                    >Clear</button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="p-4 space-y-3">
-                                            {/* Enable toggle */}
-                                            <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${exportOptions.hrisProfiles ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                                                <input type="checkbox" checked={exportOptions.hrisProfiles} onChange={e => setExportOptions({ ...exportOptions, hrisProfiles: e.target.checked })} className="h-4 w-4 mt-0.5 text-purple-600 rounded border-slate-300 focus:ring-purple-500 shrink-0" />
-                                                <div>
-                                                    <div className="text-sm font-semibold text-slate-700">Candidate / HRIS Profiles</div>
-                                                    <div className="text-[11px] text-slate-400 mt-0.5">Full HR profile export — choose which sections to include below</div>
-                                                </div>
-                                            </label>
-
-                                            {/* Section picker — shown only when HRIS export is enabled */}
-                                            {exportOptions.hrisProfiles && (
-                                                <div className="mt-2 pt-3 border-t border-purple-100">
-                                                    <p className="text-[11px] font-semibold text-purple-700 uppercase tracking-wider mb-2">Select sections to include in export:</p>
-                                                    <div className="grid grid-cols-2 gap-1.5">
-                                                        {[
-                                                            { key: 'General', label: 'General Info', desc: 'Roles, work location' },
-                                                            { key: 'Personal', label: 'Personal Details', desc: 'Name, DOB, gender, blood group, marital status' },
-                                                            { key: 'Identity', label: 'Identity Details', desc: 'Aadhaar, PAN, Passport' },
-                                                            { key: 'Contact', label: 'Contact Details', desc: 'Phones, emails, addresses, emergency contact' },
-                                                            { key: 'Family', label: 'Family Details', desc: 'Father, mother, spouse, children' },
-                                                            { key: 'Employment', label: 'Employment Details', desc: 'Designation, department, manager, joining date' },
-                                                            { key: 'Bank', label: 'Bank Details', desc: 'Account, IFSC, UAN number' },
-                                                            { key: 'Education', label: 'Education', desc: 'Qualifications, degrees, institutions' },
-                                                            { key: 'Experience', label: 'Work Experience', desc: 'Past employers, designations, tenure' },
-                                                            { key: 'Skills', label: 'Skills', desc: 'Technical, behavioral, learning interests' },
-                                                            { key: 'Documents', label: 'Document Checklist', desc: 'ID proof, education docs, offer letters etc.' },
-                                                        ].map(({ key, label, desc }) => {
-                                                            const checked = hrisSections.has(key);
-                                                            return (
-                                                                <label key={key} className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-all ${checked ? 'border-purple-300 bg-purple-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={checked}
-                                                                        onChange={() => {
-                                                                            setHrisSections(prev => {
-                                                                                const next = new Set(prev);
-                                                                                if (next.has(key)) next.delete(key);
-                                                                                else next.add(key);
-                                                                                return next;
-                                                                            });
-                                                                        }}
-                                                                        className="h-3.5 w-3.5 mt-0.5 text-purple-600 rounded border-slate-300 focus:ring-purple-500 shrink-0"
-                                                                    />
-                                                                    <div className="min-w-0">
-                                                                        <div className="text-xs font-semibold text-slate-700 leading-tight">{label}</div>
-                                                                        <div className="text-[10px] text-slate-400 leading-snug mt-0.5 truncate">{desc}</div>
-                                                                    </div>
-                                                                </label>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                    {hrisSections.size === 0 && (
-                                                        <p className="mt-2 text-[11px] text-amber-600 font-medium">⚠ Select at least one section to export</p>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Employee Documents ZIP */}
-                                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                    <div className="bg-rose-50 px-4 py-2.5 flex items-center gap-2 border-b border-slate-200">
-                                        <div className="h-5 w-5 rounded bg-rose-100 text-rose-600 flex items-center justify-center text-[10px] font-bold">E</div>
-                                        <span className="text-xs font-semibold text-rose-800 uppercase tracking-wide">Employee Documents</span>
-                                    </div>
-                                    <div className="p-4">
-                                        <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${exportOptions.userDocuments ? 'border-rose-300 bg-rose-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                                            <input type="checkbox" checked={exportOptions.userDocuments} onChange={e => setExportOptions({ ...exportOptions, userDocuments: e.target.checked })} className="h-4 w-4 mt-0.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 shrink-0" />
-                                            <div>
-                                                <div className="text-sm font-semibold text-slate-700">Download Employee Documents ZIP</div>
-                                                <div className="text-[11px] text-slate-400 mt-0.5">All uploaded employee documents packed into a ZIP file</div>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                {/* No-selection warning */}
-                                {!hasSelection && (
-                                    <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                                        <span>⚠</span> No employees selected — go back and check at least one employee row before exporting.
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Modal Footer */}
-                            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-                                <div className="text-xs text-slate-400 truncate">
-                                    {(() => {
-                                        const parts = [
-                                            exportOptions.status && 'Status',
-                                            exportOptions.checkInOut && 'Check-In/Out',
-                                            exportOptions.duration && 'Duration',
-                                            exportOptions.leaves && 'Leaves',
-                                            exportOptions.documents && 'Att.Docs',
-                                            exportOptions.hrisProfiles && `HRIS (${hrisSections.size} section${hrisSections.size !== 1 ? 's' : ''})`,
-                                            exportOptions.userDocuments && 'Emp.Docs',
-                                        ].filter(Boolean);
-                                        return parts.length === 0 ? 'No sections selected' : `${parts.join(', ')} will be exported`;
-                                    })()}
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                    <button onClick={() => setShowExportModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition">Cancel</button>
-                                    <button
-                                        onClick={handleExportDownload}
-                                        disabled={!hasSelection || (exportOptions.hrisProfiles && hrisSections.size === 0)}
-                                        className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow transition-all"
-                                    >
-                                        <Download size={14} /> Download Export
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-
-                {/* Users List */}
-                <div className="zoho-card overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:space-x-4">
-                            <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                                <input
-                                    type="text"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    placeholder="Search employees..."
-                                    className="pl-9 pr-4 py-2.5 w-72 bg-white border border-slate-200 rounded-lg text-sm outline-none transition-all shadow-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
-                                />
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowSortMenu((current) => !current);
-                                            setShowFilterMenu(false);
-                                        }}
-                                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                                    >
-                                        <ArrowUpDown size={15} />
-                                        Sort
-                                    </button>
-                                    {showSortMenu && (
-                                        <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-                                            {[
-                                                { value: 'joining_recent', label: 'Joining date: recent first', field: 'joiningDate', dir: 'desc' },
-                                                { value: 'joining_oldest', label: 'Joining date: oldest first', field: 'joiningDate', dir: 'asc' },
-                                                { value: 'alphabetical_az', label: 'Employee Name: A-Z', field: 'employee', dir: 'asc' },
-                                                { value: 'alphabetical_za', label: 'Employee Name: Z-A', field: 'employee', dir: 'desc' },
-                                                { value: 'email_az', label: 'Email: A-Z', field: 'email', dir: 'asc' },
-                                                { value: 'role_az', label: 'Role: A-Z', field: 'role', dir: 'asc' },
-                                                { value: 'department_az', label: 'Department: A-Z', field: 'department', dir: 'asc' },
-                                                { value: 'type_az', label: 'Employment Type: A-Z', field: 'employmentType', dir: 'asc' },
-                                                { value: 'reporting_az', label: 'Reporting To: A-Z', field: 'reportingTo', dir: 'asc' },
-                                                { value: 'status_active', label: 'Status: Active first', field: 'status', dir: 'desc' },
-                                                { value: 'employee_code', label: 'Employee Code: Ascending', field: 'employeeCode', dir: 'asc' },
-                                                { value: 'newest', label: 'Created: Newest first', field: 'createdAt', dir: 'desc' },
-                                                { value: 'oldest', label: 'Created: Oldest first', field: 'createdAt', dir: 'asc' }
-                                            ].map((option) => (
-                                                <button
-                                                    key={option.value}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSortField(option.field);
-                                                        setSortDirection(option.dir);
-                                                        setSortOption(option.value);
-                                                        setShowSortMenu(false);
-                                                    }}
-                                                    className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                                                        sortField === option.field && sortDirection === option.dir
-                                                            ? 'bg-blue-50 font-semibold text-blue-700'
-                                                            : 'text-slate-700 hover:bg-slate-50'
-                                                    }`}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowFilterMenu((current) => !current);
-                                            setShowSortMenu(false);
-                                        }}
-                                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                                    >
-                                        <ListFilter size={15} />
-                                        Filter
-                                        {hasActiveFilters ? (
-                                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">On</span>
-                                        ) : null}
-                                    </button>
-                                    {showFilterMenu && (
-                                        <div className="absolute left-0 top-full z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
-                                            <div className="grid gap-3">
-                                                <div>
-                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Status</label>
-                                                    <select
-                                                        value={filterStatus}
-                                                        onChange={(e) => setFilterStatus(e.target.value)}
-                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
-                                                    >
-                                                        <option value="all">All statuses</option>
-                                                        <option value="active">Active</option>
-                                                        <option value="inactive">Inactive</option>
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Department</label>
-                                                    <select
-                                                        value={filterDepartment}
-                                                        onChange={(e) => setFilterDepartment(e.target.value)}
-                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
-                                                    >
-                                                        <option value="all">All departments</option>
-                                                        {departmentOptions.map((department) => (
-                                                            <option key={department} value={department}>{department}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Employment Type</label>
-                                                    <select
-                                                        value={filterEmploymentType}
-                                                        onChange={(e) => setFilterEmploymentType(e.target.value)}
-                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
-                                                    >
-                                                        <option value="all">All types</option>
-                                                        {employmentTypeOptions.map((employmentType) => (
-                                                            <option key={employmentType} value={employmentType}>{employmentType}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Joining Date</label>
-                                                    <input
-                                                        type="date"
-                                                        value={filterJoiningDate}
-                                                        onChange={(e) => setFilterJoiningDate(e.target.value)}
-                                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="mt-4 flex items-center justify-between">
-                                                <button
-                                                    type="button"
-                                                    onClick={clearFilters}
-                                                    className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                                                >
-                                                    <X size={14} />
-                                                    Clear
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowFilterMenu(false)}
-                                                    className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-                                                >
-                                                    Done
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                            </div>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
-                                <tr className="text-[10.5px] uppercase tracking-wider">
-                                    <th className="px-2.5 py-1.5 w-8">
-                                        <input
-                                            type="checkbox"
-                                            checked={allVisibleSelected}
-                                            onChange={toggleSelectAllVisible}
-                                            className="h-3.5 w-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                            aria-label="Select all visible employees"
-                                        />
-                                    </th>
-                                    {renderSortHeader('employee', 'Employee')}
-                                    {renderSortHeader('email', 'Email')}
-                                    {renderSortHeader('joiningDate', 'Joining Date')}
-                                    {renderSortHeader('role', 'Role')}
-                                    {renderSortHeader('department', 'Department')}
-                                    {renderSortHeader('employmentType', 'Type')}
-                                    {renderSortHeader('reportingTo', 'Reporting To')}
-                                    {renderSortHeader('status', 'Status')}
-                                    <th className="px-2.5 py-1.5 text-right text-[10.5px] whitespace-nowrap">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredUsers.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={10} className="px-6 py-8 text-center text-xs text-slate-500">
-                                            No employees match the current search or filters.
-                                        </td>
-                                    </tr>
-                                ) : paginatedUsers.map((employee) => (
-                                    <tr key={employee._id} className="hover:bg-slate-50/60 text-xs border-b border-slate-50 last:border-0 transition-colors">
-                                        <td className="px-2.5 py-1.5">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedEmployeeIds.includes(employee._id)}
-                                                onChange={() => toggleEmployeeSelection(employee._id)}
-                                                className="h-3.5 w-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                aria-label={`Select ${employee.firstName} ${employee.lastName || ''}`}
-                                            />
-                                        </td>
-                                        <td className="px-2.5 py-1.5">
-                                            <div className="flex items-center space-x-2">
-                                                <div className="h-6 w-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[9px] shrink-0">
-                                                    {employee.firstName.charAt(0)}{employee.lastName?.charAt(0)}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="font-semibold text-slate-800 truncate leading-tight text-xs">{employee.firstName} {employee.lastName}</div>
-                                                    <div className="text-[9.5px] text-slate-500 leading-tight">{employee.employeeCode || 'N/A'}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-2.5 py-1.5 text-slate-600 truncate max-w-[140px] text-xs" title={employee.email}>{employee.email}</td>
-                                        <td className="px-2.5 py-1.5 text-slate-600 whitespace-nowrap text-[11px]">
-                                            {employee.joiningDate ? format(new Date(employee.joiningDate), 'dd MMM yyyy') : '-'}
-                                        </td>
-                                        <td className="px-2.5 py-1.5">
-                                            {employee.roles.map(r => (
-                                                <span key={r._id} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-slate-100 text-slate-700 border border-slate-200 mr-1 whitespace-nowrap">
-                                                    <Shield size={9} className="mr-1" /> {r.name}
-                                                </span>
-                                            ))}
-                                        </td>
-                                        <td className="px-2.5 py-1.5 text-slate-600 truncate max-w-25 text-xs">{employee.department || '-'}</td>
-                                        <td className="px-2.5 py-1.5">
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
-                                                {employee.employmentType || 'Full Time'}
-                                            </span>
-                                        </td>
-                                        <td className="px-2.5 py-1.5 text-slate-600">
-                                            {employee.reportingManagers && employee.reportingManagers.length > 0 ? (
-                                                <div className="flex flex-col">
-                                                    {employee.reportingManagers.map(mgr => (
-                                                        <span key={mgr._id} className="font-medium text-[10.5px] text-slate-700 truncate max-w-[110px]" title={mgr.email}>{mgr.firstName} {mgr.lastName.charAt(0)}.</span>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span className="text-[10.5px] text-slate-400 italic">None</span>
-                                            )}
-                                        </td>
-                                        <td className="px-2.5 py-1.5">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${employee.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                                {employee.isActive ? 'Active' : (employee.isDeleted ? 'In Bin' : 'Inactive')}
-                                            </span>
-                                        </td>
-                                        <td className="px-2.5 py-1.5 text-right">
-                                            <button
-                                                onClick={() => navigate(`/users/${employee._id}`)}
-                                                className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors border border-blue-200 shadow-2xs whitespace-nowrap"
-                                                title="View Profile"
-                                            >
-                                                View Profile
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                            <span>
-                                Showing <strong>{paginatedUsers.length}</strong> of <strong>{filteredUsers.length}</strong>
-                            </span>
-                            <label className="flex items-center gap-2">
-                                <span>Show</span>
-                                <select
-                                    value={rowsPerPage}
-                                    onChange={(e) => {
-                                        setRowsPerPage(Number(e.target.value));
-                                        setCurrentPage(1);
-                                    }}
-                                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-indigo-500"
-                                >
-                                    {PAGE_SIZE_OPTIONS.map((size) => (
-                                        <option key={size} value={size}>
-                                            {size} entries
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            {hasSelection && (
-                                <span className="text-xs font-medium text-blue-600">
-                                    Selected: {selectedEmployeeIds.length}
-                                </span>
-                            )}
-                        </div>
-                        {filteredUsers.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
-                                    disabled={currentPage === 1}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    <ChevronLeft size={16} />
-                                    Previous
-                                </button>
-                                <div className="flex items-center gap-1">
-                                    {paginationNumbers.map((pageNumber) => (
-                                        <button
-                                            key={pageNumber}
-                                            type="button"
-                                            onClick={() => setCurrentPage(pageNumber)}
-                                            className={`h-9 min-w-9 rounded-lg px-3 text-sm font-medium transition ${
-                                                currentPage === pageNumber
-                                                    ? 'bg-slate-900 text-white'
-                                                    : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            {pageNumber}
-                                        </button>
-                                    ))}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setCurrentPage((page) => Math.min(page + 1, totalPages))}
-                                    disabled={currentPage === totalPages}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    Next
-                                    <ChevronRight size={16} />
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                {/* Users List Table */}
+                <UsersTable
+                    searchTerm={searchTerm}
+                    setSearchTerm={setSearchTerm}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                    sortOption={sortOption}
+                    setSortField={setSortField}
+                    setSortDirection={setSortDirection}
+                    setSortOption={setSortOption}
+                    showSortMenu={showSortMenu}
+                    setShowSortMenu={setShowSortMenu}
+                    showFilterMenu={showFilterMenu}
+                    setShowFilterMenu={setShowFilterMenu}
+                    filterStatus={filterStatus}
+                    setFilterStatus={setFilterStatus}
+                    filterDepartment={filterDepartment}
+                    setFilterDepartment={setFilterDepartment}
+                    filterEmploymentType={filterEmploymentType}
+                    setFilterEmploymentType={setFilterEmploymentType}
+                    filterJoiningDate={filterJoiningDate}
+                    setFilterJoiningDate={setFilterJoiningDate}
+                    departmentOptions={departmentOptions}
+                    employmentTypeOptions={employmentTypeOptions}
+                    hasActiveFilters={hasActiveFilters}
+                    clearFilters={clearFilters}
+                    allVisibleSelected={allVisibleSelected}
+                    toggleSelectAllVisible={toggleSelectAllVisible}
+                    handleSort={handleSort}
+                    filteredUsers={filteredUsers}
+                    paginatedUsers={paginatedUsers}
+                    selectedEmployeeIds={selectedEmployeeIds}
+                    toggleEmployeeSelection={toggleEmployeeSelection}
+                    hasSelection={hasSelection}
+                    rowsPerPage={rowsPerPage}
+                    setRowsPerPage={setRowsPerPage}
+                    currentPage={currentPage}
+                    setCurrentPage={setCurrentPage}
+                    totalPages={totalPages}
+                    paginationNumbers={paginationNumbers}
+                    onNavigateUser={(id) => navigate(`/users/${id}`)}
+                />
 
             </div>
 
-            {/* Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-5">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden animate-blob max-h-[94vh] overflow-y-auto">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-slate-800">{editingUser ? 'Edit Employee' : 'Add New Employee'}</h3>
-                            <button
-                                onClick={() => {
-                                    setShowModal(false);
-                                    setShowPassword(false);
-                                }}
-                                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
-                            >
-                                &times;
-                            </button>
-                        </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">First Name</label>
-                                    <input name="firstName" required value={formData.firstName} onChange={handleChange} className="zoho-input" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Last Name</label>
-                                    <input name="lastName" value={formData.lastName} onChange={handleChange} className="zoho-input" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                                    <input name="email" type="email" required value={formData.email} onChange={handleChange} className="zoho-input" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password {editingUser && '(Leave blank to keep)'}</label>
-                                    <div className="relative">
-                                        <input
-                                            name="password"
-                                            type={showPassword ? 'text' : 'password'}
-                                            required={!editingUser}
-                                            onChange={handleChange}
-                                            className="zoho-input pr-11"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword((current) => !current)}
-                                            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-slate-600"
-                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                        >
-                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Department</label>
-                                    <input name="department" value={formData.department} onChange={handleChange} className="zoho-input" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee Code</label>
-                                    <input name="employeeCode" value={formData.employeeCode} onChange={handleChange} className="zoho-input" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date of Joining</label>
-                                    <input name="joiningDate" type="date" value={formData.joiningDate} onChange={handleChange} className="zoho-input" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employment Type</label>
-                                    <select name="employmentType" value={formData.employmentType} onChange={handleChange} className="zoho-input">
-                                        <option value="Full Time">Full Time</option>
-                                        <option value="Part Time">Part Time</option>
-                                        <option value="Contract">Contract</option>
-                                        <option value="Intern">Intern</option>
-                                        <option value="Consultant">Consultant</option>
-                                        <option value="Freelance">Freelance</option>
-                                        <option value="Probation">Probation</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Work Location</label>
-                                    <input name="workLocation" value={formData.workLocation} onChange={handleChange} placeholder="e.g. Headquarters" className="zoho-input" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Attendance Mode</label>
-                                    <select name="attendanceMode" value={formData.attendanceMode} onChange={handleChange} className="zoho-input">
-                                        <option value="clock_in_out">Clock In / Clock Out</option>
-                                        <option value="present_only">Mark Present Only</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Attendance Shift</label>
-                                    <select name="attendanceShiftCode" value={formData.attendanceShiftCode} onChange={handleChange} className="zoho-input">
-                                        {attendanceShiftOptions.map((shift) => (
-                                            <option key={shift.code} value={shift.code}>
-                                                {shift.name} ({shift.code})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Role</label>
-                                <select name="roleId" required value={formData.roleId} onChange={handleChange} className="zoho-input">
-                                    <option value="">Select Role</option>
-                                    {roles.map(r => (
-                                        <option key={r._id} value={r._id}>{r.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Reporting Managers Multi-Select Removed per User Request */}
-
-                            {/* Direct Reports Multi-Select */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Subordinates (Inverse: Who reports to this user)</label>
-                                <div className="h-32 overflow-y-auto border border-slate-200 rounded p-2 bg-slate-50 grid grid-cols-2 gap-2">
-                                    {users.filter(u => !editingUser || u._id !== editingUser._id).map(user => (
-                                        <label key={user._id} className="flex items-center space-x-2 text-sm bg-white p-2 rounded border border-slate-100 shadow-sm cursor-pointer hover:border-blue-300">
-                                            <input
-                                                type="checkbox"
-                                                value={user._id}
-                                                checked={formData.directReports?.includes(user._id)}
-                                                onChange={(e) => {
-                                                    const checked = e.target.checked;
-                                                    const id = user._id;
-                                                    setFormData(prev => {
-                                                        const current = prev.directReports || [];
-                                                        if (checked) return { ...prev, directReports: [...current, id] };
-                                                        return { ...prev, directReports: current.filter(x => x !== id) };
-                                                    });
-                                                }}
-                                                className="rounded text-blue-600 focus:ring-blue-500"
-                                            />
-                                            <div className="flex flex-col">
-                                                <span className="font-medium text-slate-700">{user.firstName} {user.lastName}</span>
-                                                <span className="text-[10px] text-slate-400">{user.email}</span>
-                                            </div>
-                                        </label>
-                                    ))}
-                                </div>
-                                <p className="text-[10px] text-slate-400 mt-1">Selected users will have this person set as their Reporting Manager.</p>
-                            </div>
-
-                            {/* Salary Details Section */}
-                            <div className="col-span-2 mt-4 border-t border-slate-100 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowSalarySection(!showSalarySection)}
-                                    className="w-full flex items-center justify-between py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 transition focus:outline-none"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Settings2 size={16} className="text-slate-400" />
-                                        <span>Salary & Compensation Details</span>
-                                    </div>
-                                    {showSalarySection ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                </button>
-
-                                {showSalarySection && formData.salary && (
-                                    <div className="mt-4">
-                                        <CompensationFormSection
-                                            formData={formData}
-                                            calculateSalaryBreakdown={calculateSalaryBreakdown}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100 mt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowModal(false);
-                                        setShowPassword(false);
-                                    }}
-                                    className="zoho-btn-secondary"
-                                >
-                                    Cancel
-                                </button>
-                                <button type="submit" className="zoho-btn-primary">{editingUser ? 'Update User' : 'Create User'}</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            {/* User Form Modal */}
+            <UserFormModal
+                showModal={showModal}
+                setShowModal={setShowModal}
+                editingUser={editingUser}
+                formData={formData}
+                setFormData={setFormData}
+                handleChange={handleChange}
+                handleSubmit={handleSubmit}
+                showPassword={showPassword}
+                setShowPassword={setShowPassword}
+                roles={roles}
+                users={users}
+                attendanceShiftOptions={attendanceShiftOptions}
+                showSalarySection={showSalarySection}
+                setShowSalarySection={setShowSalarySection}
+                calculateSalaryBreakdown={calculateSalaryBreakdown}
+            />
         </div>
     );
 };

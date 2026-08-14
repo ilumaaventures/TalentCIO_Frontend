@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import api from '@/lib/apiClient';
 import Skeleton from '@/components/ui/Skeleton';
@@ -25,25 +25,21 @@ const LocationLink = ({ location }) => {
         if (!coordsKey) return;
         if (locationCache[coordsKey]) return;
 
-        const fetchCity = async () => {
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=10&addressdetails=1`, {
-                    headers: { 'Accept-Language': 'en-US,en;q=0.9' }
-                });
-                const data = await res.json();
-                if (data && data.address) {
-                    const city = data.address.city || data.address.town || data.address.village || data.address.county || data.address.state_district || 'Map';
-                    locationCache[coordsKey] = city;
-                    setCityName(city);
-                } else {
-                    setCityName('Map view');
-                }
-            } catch {
-                setCityName('Map view');
-            }
-        };
-        fetchCity();
-    }, [coordsKey, location?.lat, location?.lng]);
+        let isMounted = true;
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=10`)
+            .then(res => res.json())
+            .then(data => {
+                if (!isMounted) return;
+                const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || location.name || 'Location';
+                locationCache[coordsKey] = city;
+                setCityName(city);
+            })
+            .catch(() => {
+                if (isMounted) setCityName(location.name || 'Location');
+            });
+
+        return () => { isMounted = false; };
+    }, [coordsKey, location.lat, location.lng, location.name]);
 
     if (!location) return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Unknown</span>;
 
@@ -81,6 +77,7 @@ const Dashboard = () => {
     const [projects, setProjects] = useState([]);
     const [recentActivity, setRecentActivity] = useState([]);
     const [recentActivityMeta, setRecentActivityMeta] = useState({ total: 0, hasMore: false, limit: 10 });
+    const [selectedTypeTab, setSelectedTypeTab] = useState('all');
     const [loading, setLoading] = useState(true);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
     const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
@@ -98,6 +95,25 @@ const Dashboard = () => {
                        attendanceSettings.requireLocationCheckOut || 
                        attendanceSettings.locationCheck ||
                        recentActivity.some(r => !!r.location);
+
+    const availableEmploymentTypes = useMemo(() => {
+        return Array.from(
+            new Set(
+                recentActivity
+                    .map((r) => r.user?.employmentType)
+                    .filter(Boolean)
+            )
+        );
+    }, [recentActivity]);
+
+    const filteredRecentActivity = useMemo(() => {
+        if (selectedTypeTab === 'all') {
+            return recentActivity.filter((r) => r.user?.isTotalWorkforce !== false);
+        }
+        return recentActivity.filter(
+            (r) => (r.user?.employmentType || '').toLowerCase() === selectedTypeTab.toLowerCase()
+        );
+    }, [recentActivity, selectedTypeTab]);
 
     useEffect(() => {
         const attendanceLimit = '10';
@@ -120,7 +136,7 @@ const Dashboard = () => {
                 // Minimal data for caching
                 const minimalActivity = (data.recentActivity || []).map(r => ({
                     id: r.id,
-                    user: r.user ? { name: r.user.name, role: r.user.role, employmentType: r.user.employmentType } : null,
+                    user: r.user ? { name: r.user.name, role: r.user.role, employmentType: r.user.employmentType, isTotalWorkforce: r.user.isTotalWorkforce } : null,
                     time: r.time,
                     attendanceMode: r.attendanceMode,
                     status: r.status,
@@ -169,7 +185,7 @@ const Dashboard = () => {
         const buildFingerprint = (data) => {
             const payload = data?.data || data;
             if (!payload) return '';
-            const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.attendanceMode ?? ''}:${r.time ?? ''}`).join('|') || '';
+            const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.attendanceMode ?? ''}:${r.time ?? ''}:${r.user?.isTotalWorkforce ?? ''}`).join('|') || '';
             const statsPart = `${payload.stats?.totalEmployees || 0}:${payload.stats?.presentToday || 0}:${payload.stats?.leaveToday || 0}:${payload.stats?.pendingLeaveRequests || 0}`;
             const projPart = payload.projects?.length || 0;
             const leavePart = payload.leavesToday?.map(leave => `${leave._id}:${leave.leaveType}:${leave.startDate}:${leave.endDate}`).join('|') || '';
@@ -356,28 +372,28 @@ const Dashboard = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-                    className="flex-1 overflow-auto p-4 sm:p-5"
+                    className="flex-1 overflow-auto p-3 sm:p-5"
                 >
-                    <div className="max-w-6xl mx-auto space-y-5">
+                    <div className="max-w-[1500px] w-full mx-auto space-y-4">
                         {/* Header Section */}
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                             <div className="space-y-0.5">
-                                <h1 className="text-xl font-black text-slate-900 tracking-tight">Executive Overview</h1>
-                                <p className="text-[11px] text-slate-500 font-medium italic">
+                                <h1 className="text-lg font-bold text-slate-900 tracking-tight">Executive Overview</h1>
+                                <p className="text-[10px] text-slate-500 font-medium italic">
                                     Welcome back, {user?.firstName} 👋
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200/60 rounded-lg shadow-sm text-[11px] font-bold text-slate-600">
-                                <Calendar size={14} className="text-blue-600" />
+                            <div className="flex items-center gap-2 px-2.5 py-1 bg-white border border-slate-200/60 rounded-lg shadow-xs text-[10px] font-bold text-slate-600">
+                                <Calendar size={13} className="text-blue-600" />
                                 {format(new Date(), 'MMM d, yyyy')}
                             </div>
                         </div>
 
                         <div className="premium-card overflow-hidden bg-white">
-                            <div className="px-5 py-3.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-1 h-5 bg-amber-500 rounded-full"></div>
-                                    <h2 className="text-base font-bold text-slate-900 tracking-tight">Announcements</h2>
+                            <div className="px-4 py-2.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-1 h-4 bg-amber-500 rounded-full"></div>
+                                    <h2 className="text-xs font-bold text-slate-900 tracking-tight">Announcements</h2>
                                 </div>
                                 <Link to="/announcements" className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest">
                                     Open Feed
@@ -388,8 +404,7 @@ const Dashboard = () => {
                                     [1, 2, 3].map((item) => (
                                         <div key={item} className="rounded-2xl border border-slate-200 p-4">
                                             <Skeleton className="h-4 w-24" />
-                                            <Skeleton className="mt-3 h-5 w-3/4" />
-                                            <Skeleton className="mt-2 h-12 w-full" />
+                                            <Skeleton className="mt-2.5 h-5 w-3/4" />
                                         </div>
                                     ))
                                 ) : featuredAnnouncements.length > 0 ? (
@@ -407,13 +422,7 @@ const Dashboard = () => {
                                                     {announcement.category}
                                                 </span>
                                             </div>
-                                            <h3 className="mt-3 text-[15px] font-bold leading-5 text-slate-900">{announcement.title}</h3>
-                                            <p className="mt-2 line-clamp-3 text-[12px] leading-5 text-slate-600">
-                                                {announcement.summary || announcement.content}
-                                            </p>
-                                            <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                                {announcement.createdBy?.name ? `By ${announcement.createdBy.name}` : 'Internal update'}
-                                            </div>
+                                            <h3 className="mt-2.5 text-sm font-bold leading-snug text-slate-900">{announcement.title}</h3>
                                         </div>
                                     ))
                                 ) : (
@@ -451,17 +460,17 @@ const Dashboard = () => {
                                             {loading && !stats ? (
                                                 <Skeleton className="h-8 w-16" />
                                             ) : (
-                                                <span className="text-3xl font-black text-slate-900 tracking-tighter">
+                                                <span className="text-2xl font-black text-slate-900 tracking-tighter">
                                                     {kpi.value}
                                                 </span>
                                             )}
                                             {kpi.total && (
-                                                <span className="text-[11px] font-bold text-slate-400">/ {kpi.total}</span>
+                                                <span className="text-[10px] font-bold text-slate-400">/ {kpi.total}</span>
                                             )}
                                         </div>
                                     </div>
                                     {kpi.progress !== undefined && (
-                                        <div className="mt-4 space-y-1.5">
+                                        <div className="mt-3 space-y-1">
                                             <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase">
                                                 <span>Attendance Rate</span>
                                                 <span>{Math.round(kpi.progress)}%</span>
@@ -484,10 +493,42 @@ const Dashboard = () => {
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                             {/* Attendance Table */}
                             <div className={`${showProjectModule ? 'lg:col-span-8' : 'lg:col-span-12'} premium-card bg-white overflow-hidden flex flex-col`}>
-                                <div className="px-5 py-3.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                                        <h2 className="text-base font-bold text-slate-900 tracking-tight">Recent Attendance</h2>
+                                <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 bg-[#fcfcfc]">
+                                    <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1 h-4 bg-blue-600 rounded-full"></div>
+                                            <h2 className="text-xs font-bold text-slate-900 tracking-tight whitespace-nowrap">Recent Attendance</h2>
+                                        </div>
+
+                                        {availableEmploymentTypes.length > 0 && (
+                                            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-lg">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedTypeTab('all')}
+                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                                        selectedTypeTab === 'all'
+                                                            ? 'bg-white text-blue-600 shadow-xs font-bold'
+                                                            : 'text-slate-600 hover:text-slate-900'
+                                                    }`}
+                                                >
+                                                    All
+                                                </button>
+                                                {availableEmploymentTypes.map((type) => (
+                                                    <button
+                                                        key={type}
+                                                        type="button"
+                                                        onClick={() => setSelectedTypeTab(type)}
+                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                                            selectedTypeTab === type
+                                                                ? 'bg-white text-blue-600 shadow-xs font-bold'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                    >
+                                                        {type}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
@@ -517,8 +558,8 @@ const Dashboard = () => {
                                                 [1, 2, 3, 4, 5].map(i => (
                                                     <tr key={i}><td colSpan={showLocation ? 4 : 3} className="px-5 py-2.5"><Skeleton className="h-10 w-full" /></td></tr>
                                                 ))
-                                            ) : recentActivity.length > 0 ? (
-                                                recentActivity.map((record) => (
+                                            ) : filteredRecentActivity.length > 0 ? (
+                                                filteredRecentActivity.map((record) => (
                                                     <tr key={record.id} className="group hover:bg-slate-50/30 transition-colors border-b border-slate-50 last:border-0">
                                                         <td className="px-5 py-3">
                                                             <div className="flex items-center gap-2.5">
@@ -526,8 +567,7 @@ const Dashboard = () => {
                                                                     {record.user.name.charAt(0).toUpperCase()}
                                                                 </div>
                                                                 <div>
-                                                                    <div className="text-[13px] font-bold text-slate-900 leading-none mb-0.5">{record.user.name}</div>
-                                                                    <div className="text-[9px] font-bold text-slate-400 text-left">{record.user.role || 'Personnel'}</div>
+                                                                    <div className="text-[13px] font-bold text-slate-900 leading-none">{record.user.name}</div>
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -560,7 +600,11 @@ const Dashboard = () => {
                                                     <td colSpan={showLocation ? 4 : 3} className="px-6 py-10 text-center">
                                                         <div className="flex flex-col items-center gap-2 text-slate-400">
                                                             <AlertCircle size={24} strokeWidth={1.5} />
-                                                            <p className="text-xs font-medium italic">No attendance records found for today.</p>
+                                                            <p className="text-xs font-medium italic">
+                                                                {selectedTypeTab === 'all'
+                                                                    ? 'No attendance records found for today.'
+                                                                    : `No attendance records found for "${selectedTypeTab}".`}
+                                                            </p>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -574,10 +618,10 @@ const Dashboard = () => {
                                 <div className="lg:col-span-4 space-y-5">
                                     {showProjectModule && (
                                         <div className="premium-card bg-white overflow-hidden flex flex-col">
-                                            <div className="px-5 py-3.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className="w-1 h-5 bg-purple-600 rounded-full"></div>
-                                                    <h2 className="text-base font-bold text-slate-900 tracking-tight">Active Projects</h2>
+                                            <div className="px-4 py-2.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-1 h-4 bg-purple-600 rounded-full"></div>
+                                                    <h2 className="text-xs font-bold text-slate-900 tracking-tight">Active Projects</h2>
                                                 </div>
                                                 <Link to="/projects" className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest">
                                                     View Data
@@ -714,7 +758,6 @@ const Dashboard = () => {
                                                         </div>
                                                         <div>
                                                             <div className="text-sm font-bold text-slate-900">{record.user.name}</div>
-                                                            <div className="text-[10px] font-semibold text-slate-400">{record.user.role || 'Personnel'}</div>
                                                         </div>
                                                     </div>
                                                 </td>
