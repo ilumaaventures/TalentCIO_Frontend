@@ -671,13 +671,20 @@ const TAEmailHistory = () => {
                       </div>
                     </td>
 
-                    {/* Sender */}
+                    {/* Sender Account / From */}
                     <td className="py-3.5 px-4 align-top">
                       <div className="flex flex-col text-[11px]">
-                        <span className="font-bold text-slate-800">
-                          {log.senderName || log.sentBy?.firstName ? `${log.sentBy?.firstName || ''} ${log.sentBy?.lastName || ''}`.trim() : 'Recruiter'}
+                        <span className="font-bold text-slate-900">
+                          {log.fromName || log.senderName || 'Talent Acquisition Team'}
                         </span>
-                        <span className="text-slate-400">{log.senderEmail || log.sentBy?.email || 'System'}</span>
+                        <span className="text-slate-600 font-mono text-[10.5px]">
+                          {log.fromAddress || log.senderEmail || 'System'}
+                        </span>
+                        {(log.initiatedBy?.name || log.sentBy?.firstName) && (
+                          <span className="text-[10px] text-slate-400 mt-0.5">
+                            Sent by {log.initiatedBy?.name || `${log.sentBy?.firstName || ''} ${log.sentBy?.lastName || ''}`.trim()}
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -814,9 +821,16 @@ const TAEmailHistory = () => {
                     </div>
 
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sender (From)</p>
-                      <p className="font-bold text-slate-900 mt-0.5">{emailDetail.senderName || 'Recruiter'}</p>
-                      <p className="text-slate-500">{emailDetail.senderEmail || 'System'}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sender Account (From)</p>
+                      <p className="font-bold text-slate-900 mt-0.5">
+                        {emailDetail.fromName || emailDetail.senderName || 'Talent Acquisition Team'}
+                      </p>
+                      <p className="text-slate-600 font-mono text-[11px] mt-0.5">{emailDetail.fromAddress || emailDetail.senderEmail || 'System'}</p>
+                      {(emailDetail.initiatedBy || emailDetail.sentBy) && (
+                        <p className="text-[10.5px] text-slate-400 mt-1">
+                          <strong className="text-slate-500">Initiated by:</strong> {emailDetail.initiatedBy?.name || `${emailDetail.sentBy?.firstName || ''} ${emailDetail.sentBy?.lastName || ''}`.trim()} {emailDetail.initiatedBy?.email || emailDetail.sentBy?.email ? `(${emailDetail.initiatedBy?.email || emailDetail.sentBy?.email})` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
 
