@@ -107,7 +107,9 @@ const Dashboard = () => {
     }, [recentActivity]);
 
     const filteredRecentActivity = useMemo(() => {
-        if (selectedTypeTab === 'all') return recentActivity;
+        if (selectedTypeTab === 'all') {
+            return recentActivity.filter((r) => r.user?.isTotalWorkforce !== false);
+        }
         return recentActivity.filter(
             (r) => (r.user?.employmentType || '').toLowerCase() === selectedTypeTab.toLowerCase()
         );
@@ -134,7 +136,7 @@ const Dashboard = () => {
                 // Minimal data for caching
                 const minimalActivity = (data.recentActivity || []).map(r => ({
                     id: r.id,
-                    user: r.user ? { name: r.user.name, role: r.user.role, employmentType: r.user.employmentType } : null,
+                    user: r.user ? { name: r.user.name, role: r.user.role, employmentType: r.user.employmentType, isTotalWorkforce: r.user.isTotalWorkforce } : null,
                     time: r.time,
                     attendanceMode: r.attendanceMode,
                     status: r.status,
@@ -183,7 +185,7 @@ const Dashboard = () => {
         const buildFingerprint = (data) => {
             const payload = data?.data || data;
             if (!payload) return '';
-            const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.attendanceMode ?? ''}:${r.time ?? ''}`).join('|') || '';
+            const activityPart = payload.recentActivity?.map(r => `${r.id}:${r.status}:${r.attendanceMode ?? ''}:${r.time ?? ''}:${r.user?.isTotalWorkforce ?? ''}`).join('|') || '';
             const statsPart = `${payload.stats?.totalEmployees || 0}:${payload.stats?.presentToday || 0}:${payload.stats?.leaveToday || 0}:${payload.stats?.pendingLeaveRequests || 0}`;
             const projPart = payload.projects?.length || 0;
             const leavePart = payload.leavesToday?.map(leave => `${leave._id}:${leave.leaveType}:${leave.startDate}:${leave.endDate}`).join('|') || '';
