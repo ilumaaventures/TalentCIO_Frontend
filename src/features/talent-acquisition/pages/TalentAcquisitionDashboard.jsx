@@ -1071,7 +1071,7 @@ const canShowApplicationsTab = (user) => {
                     <table className="min-w-full text-xs">
                         <thead>
                             <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                                <th className="px-4 py-3">Request ID / Role</th>
+                                <th className="px-4 py-3">Role / Request ID</th>
                                 <th className="px-4 py-3">Client</th>
                                 <th className="px-4 py-3">Department</th>
                                 <th className="px-4 py-3">Created Date</th>
@@ -1094,8 +1094,8 @@ const canShowApplicationsTab = (user) => {
                                         onClick={() => navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`)}
                                     >
                                         <td className="px-4 py-3.5">
-                                            <p className="font-semibold text-slate-900">{request.requestId}</p>
-                                            <p className="text-[11px] text-slate-500">{request.roleDetails?.title || 'No Title'}</p>
+                                            <p className="font-semibold text-slate-900">{request.roleDetails?.title || 'No Title'}</p>
+                                            <p className="text-[11px] text-slate-500">{request.requestId}</p>
                                         </td>
                                         <td className="px-4 py-3.5 text-xs text-slate-600">{request.client || 'General'}</td>
                                         <td className="px-4 py-3.5 text-xs text-slate-600">{request.roleDetails?.department || '—'}</td>
