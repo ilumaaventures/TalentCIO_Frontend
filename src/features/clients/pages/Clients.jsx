@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import api from '@/lib/apiClient';
 import { Users, Plus, MoreVertical } from 'lucide-react';
 import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
@@ -15,6 +15,7 @@ const Clients = () => {
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('client.update');
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [statusFilter, setStatusFilter] = useState('Active');
     const [activeDropdownId, setActiveDropdownId] = useState(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [selectedClientId, setSelectedClientId] = useState(null);
@@ -73,6 +74,10 @@ const Clients = () => {
 
     const handleToggleStatus = async (client) => {
         const newStatus = client.status === 'Inactive' ? 'Active' : 'Inactive';
+        if (newStatus === 'Inactive') {
+            const confirmed = window.confirm(`Are you sure you want to mark "${client.name}" as inactive?\n\nThis will deactivate the client globally and automatically close and unpublish all associated requisitions in Talent Acquisition.`);
+            if (!confirmed) return;
+        }
         const loadingToast = toast.loading(`Updating status for ${client.name}...`);
         try {
             await api.put(`/projects/clients/${client._id}`, {
@@ -95,6 +100,16 @@ const Clients = () => {
         initialFetchDoneRef.current = true;
         fetchData();
     }, [fetchData]);
+
+    const filteredClients = useMemo(() => {
+        if (statusFilter === 'Active') {
+            return clients.filter(c => (c.status || 'Active') === 'Active');
+        }
+        if (statusFilter === 'Inactive') {
+            return clients.filter(c => c.status === 'Inactive');
+        }
+        return clients;
+    }, [clients, statusFilter]);
 
 
 
@@ -140,23 +155,41 @@ const Clients = () => {
         <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
             <div className="max-w-6xl mx-auto space-y-6">
 
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Clients</h1>
                         <p className="text-sm text-slate-500">External customers and partners</p>
                     </div>
-                    {canCreate && (
-                        <button
-                             onClick={() => {
-                                 setSelectedClientId(null);
-                                 setIsFormOpen(true);
-                             }}
-                             className="flex items-center space-x-2 zoho-btn-primary"
-                        >
-                            <Plus size={18} />
-                            <span>Add Client</span>
-                        </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center rounded-lg bg-slate-200/70 p-0.5">
+                            {['All', 'Active', 'Inactive'].map((filter) => (
+                                <button
+                                    key={filter}
+                                    type="button"
+                                    onClick={() => setStatusFilter(filter)}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                                        statusFilter === filter
+                                            ? 'bg-white text-slate-900 shadow-xs'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                >
+                                    {filter}
+                                </button>
+                            ))}
+                        </div>
+                        {canCreate && (
+                            <button
+                                 onClick={() => {
+                                     setSelectedClientId(null);
+                                     setIsFormOpen(true);
+                                 }}
+                                 className="flex items-center space-x-2 zoho-btn-primary"
+                            >
+                                <Plus size={18} />
+                                <span>Add Client</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="bg-white rounded-xl shadow-sm overflow-visible">
@@ -173,14 +206,14 @@ const Clients = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {clients.length === 0 ? (
+                            {filteredClients.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
-                                        No clients found.
+                                        No {statusFilter.toLowerCase()} clients found.
                                     </td>
                                 </tr>
                             ) : (
-                                clients.map((client, index) => (
+                                filteredClients.map((client, index) => (
                                     <tr key={client._id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-4 py-3 text-slate-400 font-medium">{index + 1}</td>
                                         <td className="px-4 py-3">

@@ -80,9 +80,9 @@ const UsersTable = ({
 
     return (
         <div className="zoho-card overflow-hidden">
-            {/* Toolbar: Search, Sort, Filter */}
+            {/* Toolbar: Search, Dynamic Employee Type Tabs & Active/Inactive Tabs */}
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:space-x-4">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                     <div className="relative">
                         <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
                         <input
@@ -93,7 +93,55 @@ const UsersTable = ({
                             className="pl-9 pr-4 py-2.5 w-72 bg-white border border-slate-200 rounded-lg text-sm outline-none transition-all shadow-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
                         />
                     </div>
-                    {/* Search bar */}
+
+                    {/* Dynamic Employee Type Tabs */}
+                    <div className="flex items-center rounded-lg bg-slate-200/70 p-0.5 overflow-x-auto max-w-full">
+                        {['All', ...(employmentTypeOptions || [])].map((type) => {
+                            const isSelected = (filterEmploymentType || 'all').toLowerCase() === type.toLowerCase();
+                            return (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => {
+                                        setFilterEmploymentType(type === 'All' ? 'all' : type);
+                                        if (setCurrentPage) setCurrentPage(1);
+                                    }}
+                                    className={`rounded-md px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
+                                        isSelected
+                                            ? 'bg-white text-blue-600 shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    {type}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Active / Inactive Tabs */}
+                <div className="flex items-center rounded-lg bg-slate-200/70 p-0.5 self-start lg:self-auto shrink-0">
+                    {['Active', 'Inactive'].map((status) => {
+                        const statusKey = status.toLowerCase();
+                        const isSelected = filterStatus === statusKey;
+                        return (
+                            <button
+                                key={status}
+                                type="button"
+                                onClick={() => {
+                                    setFilterStatus(statusKey);
+                                    if (setCurrentPage) setCurrentPage(1);
+                                }}
+                                className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition ${
+                                    isSelected
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                {status}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 

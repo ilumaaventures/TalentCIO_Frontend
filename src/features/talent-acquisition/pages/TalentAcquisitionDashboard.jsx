@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
     ArrowRight,
@@ -15,7 +16,12 @@ import {
     Users,
     Search,
     SlidersHorizontal,
-    Filter
+    Filter,
+    MoreVertical,
+    Eye,
+    Ban,
+    AlertTriangle,
+    AlertCircle
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
@@ -32,6 +38,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import PublicApplicationsView from '@/features/talent-acquisition/components/PublicApplicationsView';
 import {
     createNoCacheRequestConfig,
+    invalidateTACaches,
     readTAClientsCache,
     refreshTAClientsCache
 } from '@/features/talent-acquisition/utils/taCache';
@@ -260,6 +267,10 @@ const TalentAcquisitionDashboard = () => {
     const [requests, setRequests] = useState([]);
     const [clients, setClients] = useState([]);
     const [interviews, setInterviews] = useState([]);
+    const [clientStatusFilter, setClientStatusFilter] = useState('Active');
+    const [openMenuClientId, setOpenMenuClientId] = useState(null);
+    const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+    const [statusUpdatingId, setStatusUpdatingId] = useState(null);
 
     const getSavedVal = (key, defaultVal) => {
         try {
@@ -728,7 +739,57 @@ const canShowApplicationsTab = (user) => {
         [requests]
     );
     const recentRequests = useMemo(() => requests.slice(0, 8), [requests]);
-    const topClients = useMemo(() => clients.slice(0, 8), [clients]);
+    const filteredClients = useMemo(() => {
+        if (clientStatusFilter === 'Active') {
+            return clients.filter((c) => (c.status || 'Active') === 'Active');
+        }
+        if (clientStatusFilter === 'Inactive') {
+            return clients.filter((c) => c.status === 'Inactive');
+        }
+        return clients;
+    }, [clients, clientStatusFilter]);
+    const topClients = useMemo(() => filteredClients, [filteredClients]);
+
+    useEffect(() => {
+        const handleOutsideClick = (e) => {
+            if (!e.target.closest('.client-menu-container')) {
+                setOpenMenuClientId(null);
+            }
+        };
+        const handleScroll = () => {
+            setOpenMenuClientId(null);
+        };
+        document.addEventListener('click', handleOutsideClick);
+        window.addEventListener('scroll', handleScroll, true);
+        return () => {
+            document.removeEventListener('click', handleOutsideClick);
+            window.removeEventListener('scroll', handleScroll, true);
+        };
+    }, []);
+
+    const handleToggleClientStatus = useCallback(async (client, newStatus) => {
+        setOpenMenuClientId(null);
+        if (newStatus === 'Inactive') {
+            const confirmed = window.confirm(`Are you sure you want to mark "${client.name}" as inactive?\n\nThis will automatically close and unpublish all associated requisitions in Talent Acquisition.`);
+            if (!confirmed) return;
+        }
+        const targetKey = client.id || client._id || client.name;
+        setStatusUpdatingId(targetKey);
+        try {
+            await api.put('/ta/clients/status', {
+                clientId: client.id,
+                clientName: client.name,
+                status: newStatus
+            });
+            invalidateTACaches();
+            await refreshTAClientsCache();
+            await loadDashboard({ silent: true });
+        } catch (err) {
+            console.error('Failed to update client status:', err);
+        } finally {
+            setStatusUpdatingId(null);
+        }
+    }, [loadDashboard]);
     const trendData = useMemo(
         () => (analytics?.monthlyTrend || []).map((entry) => ({ ...entry, label: monthLabel(entry.month) })),
         [analytics]
@@ -1166,9 +1227,29 @@ const canShowApplicationsTab = (user) => {
                 <StatCard label="Pending Positions" value={formatCompact(clients.reduce((sum, item) => sum + (item.pendingPositions || 0), 0))} meta="Waiting on workflow action" tone="bg-amber-500" icon={Clock3} />
             </div>
 
-            <SectionCard title="Client Workspace Snapshot">
+            <SectionCard
+                title="Client Workspace Snapshot"
+                action={
+                    <div className="flex items-center rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+                        {['All', 'Active', 'Inactive'].map((filter) => (
+                            <button
+                                key={filter}
+                                type="button"
+                                onClick={() => setClientStatusFilter(filter)}
+                                className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                                    clientStatusFilter === filter
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                {filter}
+                            </button>
+                        ))}
+                    </div>
+                }
+            >
                 <div className="overflow-x-auto">
-                    {topClients.length ? (
+                    {filteredClients.length ? (
                         <table className="min-w-full text-xs">
                             <thead>
                                 <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
@@ -1181,55 +1262,133 @@ const canShowApplicationsTab = (user) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {topClients.map((client, index) => (
-                                    <tr
-                                        key={client.id || client._id || (client.name ? `${client.name}-${index}` : index)}
-                                        className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
-                                        onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`)}
-                                        onKeyDown={(event) => {
-                                            if (event.key === 'Enter' || event.key === ' ') {
-                                                event.preventDefault();
-                                                navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`);
-                                            }
-                                        }}
-                                        role="button"
-                                        tabIndex={0}
-                                    >
-                                        <td className="px-4 py-3.5">
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
-                                                    {getInitials(client.name)}
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-slate-900">{client.name}</p>
-                                                    <p className="text-[11px] text-slate-500">Talent Acquisition workspace</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.activePositions || 0}</td>
-                                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.pendingPositions || 0}</td>
-                                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.closedPositions || 0}</td>
-                                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.rejectedPositions || 0}</td>
-                                        <td className="px-4 py-3.5 text-right">
-                                            <button
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
+                                {filteredClients.map((client, index) => {
+                                    const clientKey = client.id || client._id || (client.name ? `${client.name}-${index}` : index);
+                                    return (
+                                        <tr
+                                            key={clientKey}
+                                            className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
+                                            onClick={() => navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
                                                     navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`);
-                                                }}
-                                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-                                            >
-                                                View
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                                }
+                                            }}
+                                            role="button"
+                                            tabIndex={0}
+                                        >
+                                            <td className="px-4 py-3.5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
+                                                        {getInitials(client.name)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-semibold text-slate-900">{client.name}</p>
+                                                            {client.status === 'Inactive' && (
+                                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 border border-slate-200">
+                                                                    Inactive
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-500">Talent Acquisition workspace</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.activePositions || 0}</td>
+                                            <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.pendingPositions || 0}</td>
+                                            <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.closedPositions || 0}</td>
+                                            <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{client.rejectedPositions || 0}</td>
+                                            <td className="px-4 py-3.5 text-right relative">
+                                                <div className="relative inline-block text-left client-menu-container">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            if (openMenuClientId === clientKey) {
+                                                                setOpenMenuClientId(null);
+                                                            } else {
+                                                                const rect = event.currentTarget.getBoundingClientRect();
+                                                                setMenuPosition({
+                                                                    top: rect.bottom + 4,
+                                                                    left: Math.max(10, rect.right - 144)
+                                                                });
+                                                                setOpenMenuClientId(clientKey);
+                                                            }
+                                                        }}
+                                                        disabled={statusUpdatingId === (client.id || client._id || client.name)}
+                                                        className="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
+                                                        title="Options"
+                                                    >
+                                                        <MoreVertical size={15} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     ) : (
-                        <p className="text-[11px] text-slate-500">Client-level TA summaries will appear here once requisitions are created.</p>
+                        <p className="text-[11px] text-slate-500">No {clientStatusFilter.toLowerCase()} clients found.</p>
                     )}
                 </div>
+
+                {openMenuClientId && typeof document !== 'undefined' && createPortal(
+                    (() => {
+                        const client = filteredClients.find(
+                            (c, index) => (c.id || c._id || (c.name ? `${c.name}-${index}` : index)) === openMenuClientId
+                        );
+                        if (!client) return null;
+                        return (
+                            <div
+                                className="client-menu-container fixed z-50 w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-xl text-left text-xs font-medium text-slate-700"
+                                style={{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        setOpenMenuClientId(null);
+                                        navigate(`/ta/hiring-requests/${encodeURIComponent(client.name)}`);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 hover:bg-slate-50 transition text-slate-700 font-semibold"
+                                >
+                                    <Eye size={13} className="text-slate-500" />
+                                    <span>View</span>
+                                </button>
+                                {client.status === 'Inactive' ? (
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            handleToggleClientStatus(client, 'Active');
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 hover:bg-emerald-50 text-emerald-700 transition font-semibold"
+                                    >
+                                        <CheckCircle2 size={13} />
+                                        <span>Mark as Active</span>
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            handleToggleClientStatus(client, 'Inactive');
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 hover:bg-rose-50 text-rose-600 transition font-semibold"
+                                    >
+                                        <Ban size={13} />
+                                        <span>Mark as Inactive</span>
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })(),
+                    document.body
+                )}
             </SectionCard>
         </div>
     );
