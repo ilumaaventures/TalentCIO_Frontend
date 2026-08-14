@@ -73,7 +73,7 @@ const Users = () => {
     const [sortOption, setSortOption] = useState('joining_recent');
     const [showSortMenu, setShowSortMenu] = useState(false);
     const [showFilterMenu, setShowFilterMenu] = useState(false);
-    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterStatus, setFilterStatus] = useState('active');
     const [filterDepartment, setFilterDepartment] = useState('all');
     const [filterEmploymentType, setFilterEmploymentType] = useState('all');
     const [filterJoiningDate, setFilterJoiningDate] = useState('');
@@ -678,10 +678,24 @@ const Users = () => {
         [users]
     );
 
-    const employmentTypeOptions = useMemo(
-        () => [...new Set(users.map((listedUser) => listedUser.employmentType).filter(Boolean))].sort((left, right) => left.localeCompare(right)),
-        [users]
-    );
+    const employmentTypeOptions = useMemo(() => {
+        const pool = users.filter((listedUser) => {
+            if (listedUser.isDeleted) return false;
+            if (filterStatus === 'active') return listedUser.isActive;
+            if (filterStatus === 'inactive') return !listedUser.isActive;
+            return true;
+        });
+
+        const types = new Set();
+        pool.forEach((listedUser) => {
+            const type = (listedUser.employmentType || 'Full Time').trim();
+            if (type) {
+                types.add(type);
+            }
+        });
+
+        return Array.from(types).sort((left, right) => left.localeCompare(right));
+    }, [users, filterStatus]);
 
     const filteredUsers = useMemo(() => {
         const filtered = users.filter((listedUser) => {
@@ -707,7 +721,9 @@ const Users = () => {
                 || (filterStatus === 'active' && listedUser.isActive)
                 || (filterStatus === 'inactive' && !listedUser.isActive);
             const matchesDepartment = filterDepartment === 'all' || (listedUser.department || '') === filterDepartment;
-            const matchesEmploymentType = filterEmploymentType === 'all' || (listedUser.employmentType || '') === filterEmploymentType;
+            const userType = (listedUser.employmentType || 'Full Time').trim();
+            const matchesEmploymentType = filterEmploymentType === 'all'
+                || userType.toLowerCase() === filterEmploymentType.trim().toLowerCase();
 
             return matchesSearch
                 && matchesDate
@@ -830,13 +846,13 @@ const Users = () => {
         );
     }, [currentPage, totalPages]);
 
-    const hasActiveFilters = filterStatus !== 'all'
+    const hasActiveFilters = filterStatus !== 'active'
         || filterDepartment !== 'all'
         || filterEmploymentType !== 'all'
         || Boolean(filterJoiningDate);
 
     const clearFilters = () => {
-        setFilterStatus('all');
+        setFilterStatus('active');
         setFilterDepartment('all');
         setFilterEmploymentType('all');
         setFilterJoiningDate('');

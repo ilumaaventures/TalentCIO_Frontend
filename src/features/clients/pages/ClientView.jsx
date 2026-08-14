@@ -35,9 +35,9 @@ const ClientView = () => {
     const [client, setClient] = useState(null);
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [searchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState('details');
     const [isEditOpen, setIsEditOpen] = useState(false);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [activeTab, setActiveTab] = useState('details');
 
     useEffect(() => {
         const tab = searchParams.get('tab');
@@ -85,6 +85,10 @@ const ClientView = () => {
 
     const handleToggleStatus = async () => {
         const newStatus = client.status === 'Inactive' ? 'Active' : 'Inactive';
+        if (newStatus === 'Inactive') {
+            const confirmed = window.confirm(`Are you sure you want to deactivate "${client.name}"?\n\nThis will deactivate the client globally and automatically close and unpublish all associated requisitions in Talent Acquisition.`);
+            if (!confirmed) return;
+        }
         const loadingToast = toast.loading(`Updating status for ${client.name}...`);
         try {
             await api.put(`/projects/clients/${client._id}`, {
