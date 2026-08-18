@@ -100,10 +100,6 @@ const EmployeeProfile = () => {
         && String(currentUser?._id) !== String(profile._id)
         && profile.isActive
         && !profile.isDeleted
-        && !(Array.isArray(profile.roles) && profile.roles.some((r) => {
-            const name = typeof r === 'string' ? r : r?.name;
-            return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
-        }))
     );
 
     const handleConfirmImpersonate = async (targetUserId, reason) => {

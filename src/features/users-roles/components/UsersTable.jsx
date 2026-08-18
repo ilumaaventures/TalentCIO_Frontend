@@ -295,10 +295,6 @@ const UsersTable = ({
                                                     && currentUserId !== employee._id
                                                     && employee.isActive
                                                     && !employee.isDeleted
-                                                    && !(Array.isArray(employee.roles) && employee.roles.some((r) => {
-                                                        const name = typeof r === 'string' ? r : r?.name;
-                                                        return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
-                                                    }))
                                                 ) && (
                                                     <button
                                                         type="button"
