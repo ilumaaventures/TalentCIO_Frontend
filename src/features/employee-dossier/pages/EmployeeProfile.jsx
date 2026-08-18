@@ -19,6 +19,8 @@ import CompensationFormSection from '@/features/payroll/components/compensation/
 import EmploymentTypeSelect from '@/features/users-roles/components/EmploymentTypeSelect';
 import ImpersonateConfirmModal from '@/features/users-roles/components/ImpersonateConfirmModal';
 import { isImpersonationTargetEligible } from '@/features/users-roles/utils/impersonationEligibility';
+import DepartmentFormModal from '@/features/organization/components/DepartmentFormModal';
+import DesignationFormModal from '@/features/organization/components/DesignationFormModal';
 
 const parseBool = (val, defaultVal = true) => {
     if (val === false || val === 'false') return false;
@@ -51,6 +53,10 @@ const EmployeeProfile = () => {
     const [activeTab, setActiveTab] = useState('overview'); // overview, edit, timesheet, dossier, ta-analytics
     const [roles, setRoles] = useState([]);
     const [allUsers, setAllUsers] = useState([]); // for reporting managers/direct reports
+    const [departments, setDepartments] = useState([]);
+    const [designations, setDesignations] = useState([]);
+    const [showDeptModal, setShowDeptModal] = useState(false);
+    const [showDesigModal, setShowDesigModal] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showViewModal, setShowViewModal] = useState(false);
     const [showImpersonateModal, setShowImpersonateModal] = useState(false);
@@ -65,6 +71,10 @@ const EmployeeProfile = () => {
         password: '',
         roleId: '',
         department: '',
+        departmentRef: '',
+        designation: '',
+        designationRef: '',
+        primaryManagerId: '',
         employeeCode: '',
         joiningDate: '',
         employmentType: 'Full Time',
@@ -343,6 +353,9 @@ const EmployeeProfile = () => {
                 salaryData.monthlyGross = grossVal;
             }
 
+            const primaryMgr = userData.reportingManagers?.[0];
+            const primaryMgrId = typeof primaryMgr === 'object' && primaryMgr?._id ? String(primaryMgr._id) : (primaryMgr ? String(primaryMgr) : '');
+
             // Pre-fill form data
             setFormData({
                 firstName: userData.firstName || '',
@@ -350,7 +363,11 @@ const EmployeeProfile = () => {
                 email: userData.email || '',
                 password: '', // Blank by default, only sent if changed
                 roleId: userData.roles?.[0]?._id || '',
-                department: userData.department || '',
+                department: userData.department || userData.departmentRef?.name || '',
+                departmentRef: userData.departmentRef?._id || userData.departmentRef || '',
+                designation: userData.designationRef?.title || '',
+                designationRef: userData.designationRef?._id || userData.designationRef || '',
+                primaryManagerId: primaryMgrId,
                 employeeCode: userData.employeeCode || '',
                 joiningDate: userData.joiningDate ? new Date(userData.joiningDate).toISOString().split('T')[0] : '',
                 employmentType: userData.employmentType || 'Full Time',
@@ -359,21 +376,25 @@ const EmployeeProfile = () => {
                 attendanceShiftCode: userData.attendanceShiftCode || 'general',
                 isTotalWorkforce: userData.isTotalWorkforce !== false,
                 directReports: userData.directReports?.map(u => u._id) || [],
-                reportingManagers: userData.reportingManagers?.map(u => u._id) || [],
+                reportingManagers: userData.reportingManagers?.map(u => (typeof u === 'object' ? u._id : u)) || [],
                 salary: salaryData
             });
 
-            // Fetch roles and all users for edit form context if authorized
+            // Fetch roles, departments, designations, and all users for edit form context if authorized
             if (isAuthorizedForEdit) {
                 try {
-                    const [rolesRes, usersRes] = await Promise.all([
+                    const [rolesRes, usersRes, deptsRes, desigsRes] = await Promise.all([
                         api.get('/admin/roles'),
-                        api.get('/admin/users')
+                        api.get('/admin/users'),
+                        api.get('/organization/departments?includeInactive=false').catch(() => ({ data: [] })),
+                        api.get('/organization/designations?includeInactive=false').catch(() => ({ data: [] }))
                     ]);
                     setRoles(rolesRes.data);
                     setAllUsers(usersRes.data);
+                    setDepartments(deptsRes.data || []);
+                    setDesignations(desigsRes.data || []);
                 } catch (err) {
-                    console.log("Could not fetch roles/users context for edit form:", err);
+                    console.log("Could not fetch roles/users/org context for edit form:", err);
                 }
             }
 
@@ -460,6 +481,44 @@ const EmployeeProfile = () => {
             await fetchData();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to update status');
+        }
+    };
+
+    const handleCreateDepartment = async (deptFormData) => {
+        const toastId = toast.loading('Creating department...');
+        try {
+            const res = await api.post('/organization/departments', deptFormData);
+            const newDept = res.data;
+            toast.success('Department created successfully', { id: toastId });
+            setDepartments((prev) => [...prev, newDept]);
+            setFormData((prev) => ({
+                ...prev,
+                departmentRef: newDept._id,
+                department: newDept.name
+            }));
+            setShowDeptModal(false);
+        } catch (error) {
+            console.error('Create department error:', error);
+            toast.error(error.response?.data?.message || 'Failed to create department', { id: toastId });
+        }
+    };
+
+    const handleCreateDesignation = async (desigFormData) => {
+        const toastId = toast.loading('Creating designation...');
+        try {
+            const res = await api.post('/organization/designations', desigFormData);
+            const newDesig = res.data;
+            toast.success('Designation created successfully', { id: toastId });
+            setDesignations((prev) => [...prev, newDesig]);
+            setFormData((prev) => ({
+                ...prev,
+                designationRef: newDesig._id,
+                designation: newDesig.title
+            }));
+            setShowDesigModal(false);
+        } catch (error) {
+            console.error('Create designation error:', error);
+            toast.error(error.response?.data?.message || 'Failed to create designation', { id: toastId });
         }
     };
 
@@ -830,19 +889,110 @@ const EmployeeProfile = () => {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee Code</label>
-                                        <input name="employeeCode" value={formData.employeeCode} onChange={handleFormChange} className="zoho-input" />
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase">Department</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowDeptModal(true)}
+                                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 hover:underline"
+                                            >
+                                                <Plus size={12} /> Add New +
+                                            </button>
+                                        </div>
+                                        <select
+                                            name="departmentRef"
+                                            value={formData.departmentRef || ''}
+                                            onChange={(e) => {
+                                                const selectedId = e.target.value;
+                                                const deptObj = departments.find((d) => d._id === selectedId);
+                                                setFormData((prev) => ({
+                                                    ...prev,
+                                                    departmentRef: selectedId,
+                                                    department: deptObj ? deptObj.name : ''
+                                                }));
+                                            }}
+                                            className="zoho-input"
+                                        >
+                                            <option value="">-- Select Department --</option>
+                                            {departments.map((dept) => (
+                                                <option key={dept._id} value={dept._id}>
+                                                    {dept.name} {dept.code ? `(${dept.code})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date of Joining</label>
-                                        <input name="joiningDate" type="date" value={formData.joiningDate} onChange={handleFormChange} className="zoho-input" />
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase">Designation</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowDesigModal(true)}
+                                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 hover:underline"
+                                            >
+                                                <Plus size={12} /> Add New +
+                                            </button>
+                                        </div>
+                                        <select
+                                            name="designationRef"
+                                            value={formData.designationRef || ''}
+                                            onChange={(e) => {
+                                                const selectedId = e.target.value;
+                                                const desigObj = designations.find((d) => d._id === selectedId);
+                                                setFormData((prev) => ({
+                                                    ...prev,
+                                                    designationRef: selectedId,
+                                                    designation: desigObj ? desigObj.title : ''
+                                                }));
+                                            }}
+                                            className="zoho-input"
+                                        >
+                                            <option value="">-- Select Designation --</option>
+                                            {designations.map((desig) => (
+                                                <option key={desig._id} value={desig._id}>
+                                                    {desig.title} {desig.level ? `(${desig.level})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Department</label>
-                                        <input name="department" value={formData.department} onChange={handleFormChange} className="zoho-input" />
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Primary Reporting Manager</label>
+                                        <select
+                                            name="primaryManagerId"
+                                            value={formData.primaryManagerId || formData.reportingManagers?.[0] || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormData((prev) => ({
+                                                    ...prev,
+                                                    primaryManagerId: val,
+                                                    managerId: val,
+                                                    reportingManagers: val ? [val] : []
+                                                }));
+                                            }}
+                                            className="zoho-input"
+                                        >
+                                            <option value="">-- No Manager (Root / Executive) --</option>
+                                            {allUsers
+                                                .filter((u) => u._id !== profile._id)
+                                                .map((u) => (
+                                                    <option key={u._id} value={u._id}>
+                                                        {u.firstName} {u.lastName} ({u.email})
+                                                    </option>
+                                                ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee Code</label>
+                                        <input name="employeeCode" value={formData.employeeCode} onChange={handleFormChange} className="zoho-input" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date of Joining</label>
+                                        <input name="joiningDate" type="date" value={formData.joiningDate} onChange={handleFormChange} className="zoho-input" />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Work Location</label>
@@ -1123,6 +1273,23 @@ const EmployeeProfile = () => {
                 onClose={() => setShowImpersonateModal(false)}
                 targetUser={profile}
                 onConfirm={handleConfirmImpersonate}
+            />
+
+            {/* Quick Create Department Modal */}
+            <DepartmentFormModal
+                showModal={showDeptModal}
+                onClose={() => setShowDeptModal(false)}
+                onSubmit={handleCreateDepartment}
+                departments={departments}
+                employees={allUsers}
+            />
+
+            {/* Quick Create Designation Modal */}
+            <DesignationFormModal
+                showModal={showDesigModal}
+                onClose={() => setShowDesigModal(false)}
+                onSubmit={handleCreateDesignation}
+                departments={departments}
             />
         </div>
     );

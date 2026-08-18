@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import api from '@/lib/apiClient';
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
 import EmploymentTypeSelect from './EmploymentTypeSelect';
+import DepartmentFormModal from '@/features/organization/components/DepartmentFormModal';
+import DesignationFormModal from '@/features/organization/components/DesignationFormModal';
 
 const DEFAULT_EMPLOYMENT_TYPES = [
     'Full Time',
@@ -35,13 +37,58 @@ const UserFormModal = ({
 }) => {
     const navigate = useNavigate();
     const [managedDepartments, setManagedDepartments] = useState([]);
+    const [managedDesignations, setManagedDesignations] = useState([]);
+    const [showDeptModal, setShowDeptModal] = useState(false);
+    const [showDesigModal, setShowDesigModal] = useState(false);
 
     useEffect(() => {
         if (!showModal) return;
-        api.get('/organization/departments?includeInactive=false')
-            .then((res) => setManagedDepartments(res.data || []))
-            .catch(() => {});
+        Promise.all([
+            api.get('/organization/departments?includeInactive=false').catch(() => ({ data: [] })),
+            api.get('/organization/designations?includeInactive=false').catch(() => ({ data: [] }))
+        ]).then(([deptRes, desigRes]) => {
+            setManagedDepartments(deptRes.data || []);
+            setManagedDesignations(desigRes.data || []);
+        });
     }, [showModal]);
+
+    const handleCreateDepartment = async (deptFormData) => {
+        const toastId = toast.loading('Creating department...');
+        try {
+            const res = await api.post('/organization/departments', deptFormData);
+            const newDept = res.data;
+            toast.success('Department created successfully', { id: toastId });
+            setManagedDepartments((prev) => [...prev, newDept]);
+            setFormData((prev) => ({
+                ...prev,
+                departmentRef: newDept._id,
+                department: newDept.name
+            }));
+            setShowDeptModal(false);
+        } catch (error) {
+            console.error('Create department error:', error);
+            toast.error(error.response?.data?.message || 'Failed to create department', { id: toastId });
+        }
+    };
+
+    const handleCreateDesignation = async (desigFormData) => {
+        const toastId = toast.loading('Creating designation...');
+        try {
+            const res = await api.post('/organization/designations', desigFormData);
+            const newDesig = res.data;
+            toast.success('Designation created successfully', { id: toastId });
+            setManagedDesignations((prev) => [...prev, newDesig]);
+            setFormData((prev) => ({
+                ...prev,
+                designationRef: newDesig._id,
+                designation: newDesig.title
+            }));
+            setShowDesigModal(false);
+        } catch (error) {
+            console.error('Create designation error:', error);
+            toast.error(error.response?.data?.message || 'Failed to create designation', { id: toastId });
+        }
+    };
 
     if (!showModal) return null;
 
@@ -99,20 +146,98 @@ const UserFormModal = ({
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Department</label>
-                            <input
-                                name="department"
-                                list="managed-departments-list"
-                                value={formData.department}
-                                onChange={handleChange}
-                                placeholder="Select or type department..."
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-bold text-slate-500 uppercase">Department</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowDeptModal(true)}
+                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 hover:underline"
+                                >
+                                    <Plus size={12} /> Add New +
+                                </button>
+                            </div>
+                            <select
+                                name="departmentRef"
+                                value={formData.departmentRef || ''}
+                                onChange={(e) => {
+                                    const selectedId = e.target.value;
+                                    const deptObj = managedDepartments.find((d) => d._id === selectedId);
+                                    setFormData((prev) => ({
+                                        ...prev,
+                                        departmentRef: selectedId,
+                                        department: deptObj ? deptObj.name : ''
+                                    }));
+                                }}
                                 className="zoho-input"
-                            />
-                            <datalist id="managed-departments-list">
+                            >
+                                <option value="">-- Select Department --</option>
                                 {managedDepartments.map((dept) => (
-                                    <option key={dept._id} value={dept.name} />
+                                    <option key={dept._id} value={dept._id}>
+                                        {dept.name} {dept.code ? `(${dept.code})` : ''}
+                                    </option>
                                 ))}
-                            </datalist>
+                            </select>
+                        </div>
+                        <div>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-bold text-slate-500 uppercase">Designation</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowDesigModal(true)}
+                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 hover:underline"
+                                >
+                                    <Plus size={12} /> Add New +
+                                </button>
+                            </div>
+                            <select
+                                name="designationRef"
+                                value={formData.designationRef || ''}
+                                onChange={(e) => {
+                                    const selectedId = e.target.value;
+                                    const desigObj = managedDesignations.find((d) => d._id === selectedId);
+                                    setFormData((prev) => ({
+                                        ...prev,
+                                        designationRef: selectedId,
+                                        designation: desigObj ? desigObj.title : ''
+                                    }));
+                                }}
+                                className="zoho-input"
+                            >
+                                <option value="">-- Select Designation --</option>
+                                {managedDesignations.map((desig) => (
+                                    <option key={desig._id} value={desig._id}>
+                                        {desig.title} {desig.level ? `(${desig.level})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Primary Reporting Manager</label>
+                            <select
+                                name="primaryManagerId"
+                                value={formData.primaryManagerId || formData.reportingManagers?.[0] || ''}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormData((prev) => ({
+                                        ...prev,
+                                        primaryManagerId: val,
+                                        managerId: val,
+                                        reportingManagers: val ? [val] : []
+                                    }));
+                                }}
+                                className="zoho-input"
+                            >
+                                <option value="">-- No Manager (Root / Executive) --</option>
+                                {users
+                                    .filter((u) => !editingUser || u._id !== editingUser._id)
+                                    .map((u) => (
+                                        <option key={u._id} value={u._id}>
+                                            {u.firstName} {u.lastName} ({u.email})
+                                        </option>
+                                    ))}
+                            </select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee Code</label>
@@ -285,6 +410,23 @@ const UserFormModal = ({
                 </form>
 
             </div>
+
+            {/* Quick Create Department Modal */}
+            <DepartmentFormModal
+                showModal={showDeptModal}
+                onClose={() => setShowDeptModal(false)}
+                onSubmit={handleCreateDepartment}
+                departments={managedDepartments}
+                employees={users}
+            />
+
+            {/* Quick Create Designation Modal */}
+            <DesignationFormModal
+                showModal={showDesigModal}
+                onClose={() => setShowDesigModal(false)}
+                onSubmit={handleCreateDesignation}
+                departments={managedDepartments}
+            />
         </div>
     );
 };
