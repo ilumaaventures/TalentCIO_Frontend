@@ -3,6 +3,7 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
   verifyWorkspace,
   loadProfile,
+  checkImpersonationStatus,
   selectAuthLoading,
   selectInvalidWorkspace,
   selectToken
@@ -25,6 +26,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     dispatch(loadProfile());
+    dispatch(checkImpersonationStatus());
   }, [dispatch, token]);
 
   if (loading) {

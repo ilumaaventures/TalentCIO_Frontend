@@ -17,6 +17,7 @@ import { restoreBinItem } from '@/features/recycle-bin/api/bin';
 import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData } from '@/features/payroll/utils/payroll';
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
 import EmploymentTypeSelect from '@/features/users-roles/components/EmploymentTypeSelect';
+import ImpersonateConfirmModal from '@/features/users-roles/components/ImpersonateConfirmModal';
 
 const parseBool = (val, defaultVal = true) => {
     if (val === false || val === 'false') return false;
@@ -42,7 +43,7 @@ const DEFAULT_EMPLOYMENT_TYPES = [
 const EmployeeProfile = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, startImpersonation, impersonation } = useAuth();
 
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -51,6 +52,7 @@ const EmployeeProfile = () => {
     const [allUsers, setAllUsers] = useState([]); // for reporting managers/direct reports
     const [showPassword, setShowPassword] = useState(false);
     const [showViewModal, setShowViewModal] = useState(false);
+    const [showImpersonateModal, setShowImpersonateModal] = useState(false);
     const [payrollConfig, setPayrollConfig] = useState(null);
     const [showSalarySection, setShowSalarySection] = useState(false);
 
@@ -527,6 +529,16 @@ const EmployeeProfile = () => {
                                     <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                                         Primary Admin
                                     </span>
+                                )}
+                                {isEligibleForImpersonation && (
+                                    <button
+                                        onClick={() => setShowImpersonateModal(true)}
+                                        className="px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs border bg-amber-500 hover:bg-amber-600 text-white border-amber-600 cursor-pointer"
+                                        title="Switch into this employee's account"
+                                    >
+                                        <UserCheck size={14} />
+                                        <span>Switch User</span>
+                                    </button>
                                 )}
                                 {isAuthorizedForEdit && (
                                     <>
@@ -1067,6 +1079,14 @@ const EmployeeProfile = () => {
                     </div>
                 </div>
             )}
+
+            {/* Impersonate Confirm Modal */}
+            <ImpersonateConfirmModal
+                isOpen={showImpersonateModal}
+                onClose={() => setShowImpersonateModal(false)}
+                targetUser={profile}
+                onConfirm={handleConfirmImpersonate}
+            />
         </div>
     );
 };

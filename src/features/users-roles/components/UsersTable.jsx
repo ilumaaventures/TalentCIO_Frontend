@@ -1,6 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { Search, Shield, ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Shield, ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCheck } from 'lucide-react';
 import { PAGE_SIZE_OPTIONS } from '../utils/userExportUtils';
 
 const UsersTable = ({
@@ -43,6 +43,9 @@ const UsersTable = ({
     totalPages,
     paginationNumbers,
     onNavigateUser,
+    onImpersonateUser,
+    canImpersonate,
+    currentUserId,
 }) => {
     const renderSortHeader = (field, label, extraClass = '') => {
         const isActive = field === 'employee'
@@ -240,13 +243,37 @@ const UsersTable = ({
                                     </span>
                                 </td>
                                 <td className="px-2.5 py-1.5 text-right">
-                                    <button
-                                        onClick={() => onNavigateUser(employee._id)}
-                                        className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors border border-blue-200 shadow-2xs whitespace-nowrap"
-                                        title="View Profile"
-                                    >
-                                        View Profile
-                                    </button>
+                                    <div className="flex items-center justify-end gap-1.5">
+                                        {Boolean(
+                                            canImpersonate
+                                            && currentUserId !== employee._id
+                                            && employee.isActive
+                                            && !employee.isDeleted
+                                            && !(Array.isArray(employee.roles) && employee.roles.some((r) => {
+                                                const name = typeof r === 'string' ? r : r?.name;
+                                                return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
+                                            }))
+                                        ) && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onImpersonateUser?.(employee);
+                                                }}
+                                                className="px-2 py-1 text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 rounded-md transition-colors border border-amber-200 shadow-2xs flex items-center gap-1 whitespace-nowrap"
+                                                title="Switch into this user's account"
+                                            >
+                                                <UserCheck size={12} />
+                                                <span>Switch</span>
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => onNavigateUser(employee._id)}
+                                            className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors border border-blue-200 shadow-2xs whitespace-nowrap"
+                                            title="View Profile"
+                                        >
+                                            View Profile
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}

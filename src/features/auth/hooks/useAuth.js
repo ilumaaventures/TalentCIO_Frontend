@@ -6,6 +6,9 @@ import {
   register as registerThunk,
   logout as logoutThunk,
   refreshProfile as refreshProfileThunk,
+  startImpersonation as startImpersonationThunk,
+  endImpersonation as endImpersonationThunk,
+  checkImpersonationStatus as checkImpersonationStatusThunk,
   selectCurrentUser,
   selectToken,
   selectAuthLoading,
@@ -13,7 +16,8 @@ import {
   selectInvalidWorkspace,
   selectIsDossierComplete,
   selectDossierMissingSections,
-  selectDossierMissingFields
+  selectDossierMissingFields,
+  selectImpersonation
 } from '@/features/auth/authSlice';
 import { hasModuleEnabled } from '@/config/enabledModules';
 import { isAdminUser } from '@/config/accessPolicies';
@@ -28,6 +32,7 @@ export const useAuth = () => {
   const isDossierComplete = useAppSelector(selectIsDossierComplete);
   const dossierMissingSections = useAppSelector(selectDossierMissingSections);
   const dossierMissingFields = useAppSelector(selectDossierMissingFields);
+  const impersonation = useAppSelector(selectImpersonation);
 
   const login = useCallback((email, password, companyId = null) => {
     return dispatch(loginThunk({ email, password, companyId })).unwrap();
@@ -49,6 +54,18 @@ export const useAuth = () => {
     return dispatch(refreshProfileThunk()).unwrap();
   }, [dispatch]);
 
+  const startImpersonation = useCallback((userId, reason = '') => {
+    return dispatch(startImpersonationThunk({ userId, reason })).unwrap();
+  }, [dispatch]);
+
+  const endImpersonation = useCallback(() => {
+    return dispatch(endImpersonationThunk()).unwrap();
+  }, [dispatch]);
+
+  const checkImpersonationStatus = useCallback(() => {
+    return dispatch(checkImpersonationStatusThunk()).unwrap();
+  }, [dispatch]);
+
   const hasModule = useCallback((moduleName) => {
     if (!user) return false;
     if (isAdminUser(user)) return true;
@@ -63,6 +80,10 @@ export const useAuth = () => {
     register,
     logout,
     refreshProfile,
+    startImpersonation,
+    endImpersonation,
+    checkImpersonationStatus,
+    impersonation,
     hasModule,
     loading,
     workspace,
