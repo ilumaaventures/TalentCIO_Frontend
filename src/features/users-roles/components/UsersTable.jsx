@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Search, Shield, ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCheck } from 'lucide-react';
+import { Search, Shield, ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCheck, MoreVertical, Eye } from 'lucide-react';
 import { PAGE_SIZE_OPTIONS } from '../utils/userExportUtils';
 
 const UsersTable = ({
@@ -47,6 +47,20 @@ const UsersTable = ({
     canImpersonate,
     currentUserId,
 }) => {
+    const [openActionMenuId, setOpenActionMenuId] = useState(null);
+    const actionMenuRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+                setOpenActionMenuId(null);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     const renderSortHeader = (field, label, extraClass = '') => {
         const isActive = field === 'employee'
             ? (sortField === 'employee' || sortField === 'employeeCode')
@@ -242,37 +256,65 @@ const UsersTable = ({
                                         {employee.isActive ? 'Active' : (employee.isDeleted ? 'In Bin' : 'Inactive')}
                                     </span>
                                 </td>
-                                <td className="px-2.5 py-1.5 text-right">
-                                    <div className="flex items-center justify-end gap-1.5">
-                                        {Boolean(
-                                            canImpersonate
-                                            && currentUserId !== employee._id
-                                            && employee.isActive
-                                            && !employee.isDeleted
-                                            && !(Array.isArray(employee.roles) && employee.roles.some((r) => {
-                                                const name = typeof r === 'string' ? r : r?.name;
-                                                return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
-                                            }))
-                                        ) && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onImpersonateUser?.(employee);
-                                                }}
-                                                className="px-2 py-1 text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 rounded-md transition-colors border border-amber-200 shadow-2xs flex items-center gap-1 whitespace-nowrap"
-                                                title="Switch into this user's account"
-                                            >
-                                                <UserCheck size={12} />
-                                                <span>Switch</span>
-                                            </button>
-                                        )}
+                                <td className="px-2.5 py-1.5 text-right relative">
+                                    <div className="flex items-center justify-end relative">
                                         <button
-                                            onClick={() => onNavigateUser(employee._id)}
-                                            className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors border border-blue-200 shadow-2xs whitespace-nowrap"
-                                            title="View Profile"
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenActionMenuId(openActionMenuId === employee._id ? null : employee._id);
+                                            }}
+                                            className={`p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors border ${
+                                                openActionMenuId === employee._id ? 'bg-slate-100 border-slate-300 text-slate-900' : 'border-transparent'
+                                            }`}
+                                            title="More options"
                                         >
-                                            View Profile
+                                            <MoreVertical size={16} />
                                         </button>
+
+                                        {openActionMenuId === employee._id && (
+                                            <div
+                                                ref={actionMenuRef}
+                                                className="absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 text-left animate-in fade-in zoom-in-95 duration-150"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setOpenActionMenuId(null);
+                                                        onNavigateUser(employee._id);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors text-left cursor-pointer"
+                                                >
+                                                    <Eye size={14} className="text-slate-400" />
+                                                    <span>View Profile</span>
+                                                </button>
+
+                                                {Boolean(
+                                                    canImpersonate
+                                                    && currentUserId !== employee._id
+                                                    && employee.isActive
+                                                    && !employee.isDeleted
+                                                    && !(Array.isArray(employee.roles) && employee.roles.some((r) => {
+                                                        const name = typeof r === 'string' ? r : r?.name;
+                                                        return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
+                                                    }))
+                                                ) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenActionMenuId(null);
+                                                            onImpersonateUser?.(employee);
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 hover:text-amber-800 transition-colors text-left border-t border-slate-100 cursor-pointer"
+                                                    >
+                                                        <UserCheck size={14} className="text-amber-600" />
+                                                        <span>Switch User</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
