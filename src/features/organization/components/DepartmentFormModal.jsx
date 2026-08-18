@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Building } from 'lucide-react';
+import api from '@/lib/apiClient';
 
 const DepartmentFormModal = ({
     showModal,
@@ -10,6 +11,31 @@ const DepartmentFormModal = ({
     businessUnits = [],
     employees = []
 }) => {
+    const [localBUs, setLocalBUs] = useState(businessUnits);
+    const [localEmployees, setLocalEmployees] = useState(employees);
+
+    useEffect(() => {
+        if (!showModal) return;
+        if (businessUnits && businessUnits.length > 0) {
+            setLocalBUs(businessUnits);
+        } else {
+            api.get('/organization/business-units')
+                .then((res) => setLocalBUs(res.data || []))
+                .catch(() => {});
+        }
+    }, [showModal, businessUnits]);
+
+    useEffect(() => {
+        if (!showModal) return;
+        if (employees && employees.length > 0) {
+            setLocalEmployees(employees);
+        } else {
+            api.get('/admin/users?includeDeleted=false')
+                .then((res) => setLocalEmployees(Array.isArray(res.data) ? res.data : res.data?.users || []))
+                .catch(() => {});
+        }
+    }, [showModal, employees]);
+
     const [formData, setFormData] = useState({
         name: '',
         code: '',
@@ -141,7 +167,7 @@ const DepartmentFormModal = ({
                                 className="w-full text-xs px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none"
                             >
                                 <option value="">-- None --</option>
-                                {businessUnits.map((bu) => (
+                                {localBUs.map((bu) => (
                                     <option key={bu._id} value={bu._id}>
                                         {bu.name}
                                     </option>
@@ -159,7 +185,7 @@ const DepartmentFormModal = ({
                                 className="w-full text-xs px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none"
                             >
                                 <option value="">-- Select Head --</option>
-                                {employees.map((emp) => (
+                                {localEmployees.map((emp) => (
                                     <option key={emp._id} value={emp._id}>
                                         {emp.firstName} {emp.lastName}
                                     </option>

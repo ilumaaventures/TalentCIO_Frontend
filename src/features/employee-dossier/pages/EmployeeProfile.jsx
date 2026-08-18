@@ -55,6 +55,7 @@ const EmployeeProfile = () => {
     const [allUsers, setAllUsers] = useState([]); // for reporting managers/direct reports
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
+    const [businessUnits, setBusinessUnits] = useState([]);
     const [showDeptModal, setShowDeptModal] = useState(false);
     const [showDesigModal, setShowDesigModal] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -383,16 +384,18 @@ const EmployeeProfile = () => {
             // Fetch roles, departments, designations, and all users for edit form context if authorized
             if (isAuthorizedForEdit) {
                 try {
-                    const [rolesRes, usersRes, deptsRes, desigsRes] = await Promise.all([
+                    const [rolesRes, usersRes, deptsRes, desigsRes, buRes] = await Promise.all([
                         api.get('/admin/roles'),
                         api.get('/admin/users'),
                         api.get('/organization/departments?includeInactive=false').catch(() => ({ data: [] })),
-                        api.get('/organization/designations?includeInactive=false').catch(() => ({ data: [] }))
+                        api.get('/organization/designations?includeInactive=false').catch(() => ({ data: [] })),
+                        api.get('/organization/business-units').catch(() => ({ data: [] }))
                     ]);
                     setRoles(rolesRes.data);
                     setAllUsers(usersRes.data);
                     setDepartments(deptsRes.data || []);
                     setDesignations(desigsRes.data || []);
+                    setBusinessUnits(buRes.data || []);
                 } catch (err) {
                     console.log("Could not fetch roles/users/org context for edit form:", err);
                 }
@@ -1281,6 +1284,7 @@ const EmployeeProfile = () => {
                 onClose={() => setShowDeptModal(false)}
                 onSubmit={handleCreateDepartment}
                 departments={departments}
+                businessUnits={businessUnits}
                 employees={allUsers}
             />
 

@@ -38,6 +38,7 @@ const UserFormModal = ({
     const navigate = useNavigate();
     const [managedDepartments, setManagedDepartments] = useState([]);
     const [managedDesignations, setManagedDesignations] = useState([]);
+    const [managedBusinessUnits, setManagedBusinessUnits] = useState([]);
     const [showDeptModal, setShowDeptModal] = useState(false);
     const [showDesigModal, setShowDesigModal] = useState(false);
 
@@ -45,10 +46,12 @@ const UserFormModal = ({
         if (!showModal) return;
         Promise.all([
             api.get('/organization/departments?includeInactive=false').catch(() => ({ data: [] })),
-            api.get('/organization/designations?includeInactive=false').catch(() => ({ data: [] }))
-        ]).then(([deptRes, desigRes]) => {
+            api.get('/organization/designations?includeInactive=false').catch(() => ({ data: [] })),
+            api.get('/organization/business-units').catch(() => ({ data: [] }))
+        ]).then(([deptRes, desigRes, buRes]) => {
             setManagedDepartments(deptRes.data || []);
             setManagedDesignations(desigRes.data || []);
+            setManagedBusinessUnits(buRes.data || []);
         });
     }, [showModal]);
 
@@ -417,6 +420,7 @@ const UserFormModal = ({
                 onClose={() => setShowDeptModal(false)}
                 onSubmit={handleCreateDepartment}
                 departments={managedDepartments}
+                businessUnits={managedBusinessUnits}
                 employees={users}
             />
 
