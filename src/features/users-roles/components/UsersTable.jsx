@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { Search, Shield, ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCheck, MoreVertical, Eye } from 'lucide-react';
 import { PAGE_SIZE_OPTIONS } from '../utils/userExportUtils';
+import { isImpersonationTargetEligible } from '../utils/impersonationEligibility';
 
 const UsersTable = ({
     searchTerm,
@@ -45,6 +46,7 @@ const UsersTable = ({
     onNavigateUser,
     onImpersonateUser,
     canImpersonate,
+    isActorAdmin = true,
     currentUserId,
 }) => {
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
@@ -290,12 +292,7 @@ const UsersTable = ({
                                                     <span>View Profile</span>
                                                 </button>
 
-                                                {Boolean(
-                                                    canImpersonate
-                                                    && currentUserId !== employee._id
-                                                    && employee.isActive
-                                                    && !employee.isDeleted
-                                                ) && (
+                                                {Boolean(canImpersonate && isImpersonationTargetEligible(employee, currentUserId, isActorAdmin)) && (
                                                     <button
                                                         type="button"
                                                         onClick={(e) => {

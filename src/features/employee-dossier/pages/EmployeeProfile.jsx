@@ -18,6 +18,7 @@ import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultS
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
 import EmploymentTypeSelect from '@/features/users-roles/components/EmploymentTypeSelect';
 import ImpersonateConfirmModal from '@/features/users-roles/components/ImpersonateConfirmModal';
+import { isImpersonationTargetEligible } from '@/features/users-roles/utils/impersonationEligibility';
 
 const parseBool = (val, defaultVal = true) => {
     if (val === false || val === 'false') return false;
@@ -93,13 +94,20 @@ const EmployeeProfile = () => {
         || Boolean(currentUser?.hasAllPermissions)
         || currentUserRoles.some((r) => ['Admin', 'Super Admin', 'System Admin'].includes(r))
     );
+    const isActorAdmin = Boolean(
+        currentUser?.permissions?.includes('*')
+        || currentUser?.hasAllPermissions
+        || currentUserRoles.some((r) => ['Admin', 'Super Admin', 'System Admin'].includes(r))
+    );
 
     const isEligibleForImpersonation = Boolean(
         canImpersonate
         && profile
-        && String(currentUser?._id) !== String(profile._id)
-        && profile.isActive
-        && !profile.isDeleted
+        && isImpersonationTargetEligible(
+            { ...profile, isProtectedPrimaryAdmin },
+            currentUser?._id,
+            isActorAdmin
+        )
     );
 
     const handleConfirmImpersonate = async (targetUserId, reason) => {

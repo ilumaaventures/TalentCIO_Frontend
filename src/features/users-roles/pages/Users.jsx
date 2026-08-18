@@ -890,6 +890,11 @@ const Users = () => {
         || Boolean(user?.hasAllPermissions)
         || userRoles.some((r) => ['Admin', 'Super Admin', 'System Admin'].includes(r))
     );
+    const isActorAdmin = Boolean(
+        user?.permissions?.includes('*')
+        || user?.hasAllPermissions
+        || userRoles.some((r) => ['Admin', 'Super Admin', 'System Admin'].includes(r))
+    );
 
     const handleOpenImpersonateModal = (targetUser) => {
         setImpersonateTargetUser(targetUser);
@@ -1327,6 +1332,7 @@ const Users = () => {
                     onNavigateUser={(id) => navigate(`/users/${id}`)}
                     onImpersonateUser={handleOpenImpersonateModal}
                     canImpersonate={canImpersonate}
+                    isActorAdmin={isActorAdmin}
                     currentUserId={user?._id}
                 />
 
