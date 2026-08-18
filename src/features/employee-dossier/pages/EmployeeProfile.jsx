@@ -86,6 +86,39 @@ const EmployeeProfile = () => {
     const isProtectedPrimaryAdmin = Boolean(profile?.isProtectedPrimaryAdmin);
     const attendanceShiftOptions = currentUser?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
 
+    const currentUserRoles = currentUser?.roles?.map((r) => (typeof r === 'string' ? r : r?.name)) || [];
+    const canImpersonate = !impersonation?.active && (
+        Boolean(currentUser?.permissions?.includes('user.impersonate'))
+        || Boolean(currentUser?.permissions?.includes('*'))
+        || Boolean(currentUser?.hasAllPermissions)
+        || currentUserRoles.some((r) => ['Admin', 'Super Admin', 'System Admin'].includes(r))
+    );
+
+    const isEligibleForImpersonation = Boolean(
+        canImpersonate
+        && profile
+        && String(currentUser?._id) !== String(profile._id)
+        && profile.isActive
+        && !profile.isDeleted
+        && !(Array.isArray(profile.roles) && profile.roles.some((r) => {
+            const name = typeof r === 'string' ? r : r?.name;
+            return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
+        }))
+    );
+
+    const handleConfirmImpersonate = async (targetUserId, reason) => {
+        const toastId = toast.loading('Switching user session...');
+        try {
+            await startImpersonation(targetUserId, reason);
+            toast.success('Switched user successfully', { id: toastId });
+            navigate('/dashboard');
+        } catch (error) {
+            console.error('Failed to switch user:', error);
+            toast.error(error?.message || 'Failed to switch user session', { id: toastId });
+            throw error;
+        }
+    };
+
     // Reset active tab if it becomes unauthorized or module is disabled
     useEffect(() => {
         if (activeTab === 'ta-analytics' && !isAuthorizedForTA) setActiveTab('overview');
