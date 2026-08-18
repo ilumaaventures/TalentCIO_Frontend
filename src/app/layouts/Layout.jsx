@@ -256,7 +256,7 @@ const Layout = () => {
 
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
-            <main className="flex-1 flex flex-col md:pl-64 transition-all duration-300 min-h-screen overflow-x-hidden min-w-0">
+            <main className="flex-1 flex flex-col md:pl-64 pt-16 transition-all duration-300 min-h-screen min-w-0">
                 <Topbar toggleSidebar={() => setIsSidebarOpen(true)} />
                 <DossierGateBanner />
 

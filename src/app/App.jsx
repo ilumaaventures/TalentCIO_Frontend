@@ -63,6 +63,11 @@ const RecycleBin = lazy(() => import('@/features/recycle-bin/pages/RecycleBin'))
 const PreOnboardingLogin = lazy(() => import('@/features/onboarding/pages/PreOnboardingLogin'));
 const PreOnboardingPortal = lazy(() => import('@/features/onboarding/pages/PreOnboardingPortal'));
 const SalaryCalculator = lazy(() => import('@/features/payroll/pages/SalaryCalculator'));
+const EssDashboard     = lazy(() => import('@/features/ess/pages/EssDashboard'));
+const MyClaims         = lazy(() => import('@/features/reimbursement/pages/MyClaims'));
+const ApprovalQueue    = lazy(() => import('@/features/reimbursement/pages/ApprovalQueue'));
+const CompanyDocuments = lazy(() => import('@/features/ess-documents/pages/CompanyDocuments'));
+const MyPayslips       = lazy(() => import('@/features/ess/pages/MyPayslips'));
 
 
 import ProtectedRoute from '@/app/guards/ProtectedRoute';
@@ -348,6 +353,18 @@ function App() {
                           <EmployeeProfile />
                         </ProtectedRoute>
                       )} />
+                    </Route>
+
+                    {/* ESS — Employee Self Service */}
+                    <Route path="/ess" element={<EssDashboard />} />
+                    <Route path="/ess/payslips" element={<MyPayslips />} />
+                    <Route path="/payslips" element={<MyPayslips />} />
+                    <Route element={<ProtectedRoute moduleName="reimbursements" redirectTo="/ess" />}>
+                      <Route path="/ess/reimbursements" element={<MyClaims />} />
+                      <Route path="/ess/reimbursements/approvals" element={<ApprovalQueue />} />
+                    </Route>
+                    <Route element={<ProtectedRoute moduleName="essDocuments" redirectTo="/ess" />}>
+                      <Route path="/ess/documents" element={<CompanyDocuments />} />
                     </Route>
 
                     <Route path="/unauthorized" element={<Unauthorized />} />

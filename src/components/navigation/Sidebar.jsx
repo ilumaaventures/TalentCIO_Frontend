@@ -19,6 +19,7 @@ import {
   FolderKanban,
   History,
   LayoutDashboard,
+  LayoutGrid,
   LifeBuoy,
   LogOut,
   Mail,
@@ -154,6 +155,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showTimesheet = user?.company?.enabledModules?.includes('timesheet');
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
+  const showEss = user?.company?.enabledModules?.includes('reimbursements') || user?.company?.enabledModules?.includes('essDocuments') || true;
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (isAdmin || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.company?.enabledModules?.includes('onboarding') && (
     isAdmin
@@ -464,6 +466,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <Link to="/helpdesk" className={getSidebarLinkClass(location.pathname === '/helpdesk')} onClick={onClose}>
                   <LifeBuoy size={18} />
                   <span>Help Desk</span>
+                </Link>
+              )}
+              {showEss && (
+                <Link to="/ess" className={getSidebarLinkClass(location.pathname.startsWith('/ess'))} onClick={onClose}>
+                  <LayoutGrid size={18} />
+                  <span>My Space</span>
                 </Link>
               )}
 

@@ -7,6 +7,115 @@ import api from '@/lib/apiClient';
 import socket from '@/lib/socket';
 import { useAuth } from '@/features/auth/context/AuthContext';
 
+const getPageMetadata = (pathname) => {
+    if (!pathname || pathname === '/' || pathname === '/dashboard') {
+        return { title: 'Dashboard', subtitle: 'Overview & workspace summary' };
+    }
+    if (pathname === '/ess') {
+        return { title: 'My Space', subtitle: 'Your personalised employee hub' };
+    }
+    if (pathname === '/ess/documents') {
+        return { title: 'Company Documents', subtitle: 'Policies, forms & circulars', back: '/ess', backLabel: 'My Space' };
+    }
+    if (pathname === '/ess/payslips' || pathname === '/payslips') {
+        return { title: 'My Payslips', subtitle: 'View and download salary statements', back: '/ess', backLabel: 'My Space' };
+    }
+    if (pathname === '/ess/reimbursements') {
+        return { title: 'My Reimbursements', subtitle: 'Expense claims & tracking', back: '/ess', backLabel: 'My Space' };
+    }
+    if (pathname === '/ess/reimbursements/approvals') {
+        return { title: 'Approval Queue', subtitle: 'Reimbursement claims awaiting action', back: '/ess', backLabel: 'My Space' };
+    }
+    if (pathname === '/leaves') {
+        return { title: 'Leave Management', subtitle: 'Apply and track leave requests' };
+    }
+    if (pathname === '/leave-config') {
+        return { title: 'Leave Settings', subtitle: 'Configure leave types & balances', back: '/leaves', backLabel: 'Leaves' };
+    }
+    if (pathname === '/attendance') {
+        return { title: 'Attendance', subtitle: 'Daily check-in, logs & regularization' };
+    }
+    if (pathname === '/attendance/flexible-off' || pathname === '/flexible-off') {
+        return { title: 'Flexible Off Selection', subtitle: 'Select your weekly off days', back: '/attendance', backLabel: 'Attendance' };
+    }
+    if (pathname === '/attendance-settings') {
+        return { title: 'Attendance Settings', subtitle: 'Shifts & policies', back: '/attendance', backLabel: 'Attendance' };
+    }
+    if (pathname === '/timesheet') {
+        return { title: 'Timesheet', subtitle: 'Log & review working hours' };
+    }
+    if (pathname === '/holidays') {
+        return { title: 'Holiday Calendar', subtitle: 'Company declared holidays' };
+    }
+    if (pathname === '/helpdesk') {
+        return { title: 'Help Desk', subtitle: 'Raise & manage support queries' };
+    }
+    if (pathname.startsWith('/helpdesk/')) {
+        return { title: 'Help Desk', subtitle: 'Support ticket details', back: '/helpdesk', backLabel: 'Help Desk' };
+    }
+    if (pathname === '/discussions') {
+        return { title: 'Discussions', subtitle: 'Team discussion channels' };
+    }
+    if (pathname === '/announcements') {
+        return { title: 'Announcements', subtitle: 'Company news & broadcast feed' };
+    }
+    if (pathname === '/users') {
+        return { title: 'Employee Directory', subtitle: 'View and manage team members' };
+    }
+    if (pathname.startsWith('/users/')) {
+        return { title: 'Employee Profile', subtitle: 'Profile details & records', back: '/users', backLabel: 'Users' };
+    }
+    if (pathname === '/roles') {
+        return { title: 'Role Management', subtitle: 'Configure roles & permissions', back: '/profile?tab=settings', backLabel: 'Settings' };
+    }
+    if (pathname === '/profile') {
+        return { title: 'My Profile', subtitle: 'Personal, employment & account details' };
+    }
+    if (pathname === '/clients') {
+        return { title: 'Clients', subtitle: 'Client accounts & organizations' };
+    }
+    if (pathname.startsWith('/clients/')) {
+        return { title: 'Client Details', subtitle: 'Client information & engagements', back: '/clients', backLabel: 'Clients' };
+    }
+    if (pathname === '/business-units') {
+        return { title: 'Business Units', subtitle: 'Company business divisions' };
+    }
+    if (pathname === '/projects') {
+        return { title: 'Projects', subtitle: 'Company projects & milestones' };
+    }
+    if (pathname.startsWith('/projects/')) {
+        return { title: 'Project Details', subtitle: 'Project information & team', back: '/projects', backLabel: 'Projects' };
+    }
+    if (pathname === '/onboarding') {
+        return { title: 'Onboarding', subtitle: 'New hire onboarding workflows' };
+    }
+    if (pathname === '/offboarding') {
+        return { title: 'Offboarding', subtitle: 'Employee exit workflows' };
+    }
+    if (pathname.startsWith('/hr-email')) {
+        return { title: 'Send HR Email', subtitle: 'Company communications' };
+    }
+    if (pathname === '/meetings' || pathname.startsWith('/meetings')) {
+        return { title: 'Meetings & Minutes', subtitle: 'Schedule meetings & track action items' };
+    }
+    if (pathname.startsWith('/ta')) {
+        return { title: 'Talent Acquisition', subtitle: 'Recruitment & candidate pipeline' };
+    }
+    if (pathname === '/settings/email') {
+        return { title: 'Email Settings', subtitle: 'SMTP & email configurations' };
+    }
+    if (pathname === '/settings/notifications') {
+        return { title: 'Notification Settings', subtitle: 'Preferences & alerts' };
+    }
+    if (pathname === '/salary-calculator') {
+        return { title: 'Salary Calculator', subtitle: 'Payroll & CTC computation' };
+    }
+    if (pathname === '/bin') {
+        return { title: 'Recycle Bin', subtitle: 'Deleted items & recovery' };
+    }
+    return null;
+};
+
 const Topbar = ({ toggleSidebar }) => {
     const { user, hasModule } = useAuth();
     const navigate = useNavigate();
@@ -32,6 +141,7 @@ const Topbar = ({ toggleSidebar }) => {
     const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
     const isRolesPage = location.pathname === '/roles';
     const isAnnouncementsPage = location.pathname === '/announcements';
+    const isEssPage = location.pathname.startsWith('/ess');
     const profileTabs = [
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
@@ -276,7 +386,7 @@ const Topbar = ({ toggleSidebar }) => {
                     }
                 }
             `}</style>
-            <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sticky top-0 z-30 shadow-sm w-full">
+            <div className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-4 fixed top-0 right-0 left-0 md:left-64 z-30 shadow-xs transition-all duration-300">
                 <div className="flex items-center gap-4">
                     <button
                         onClick={toggleSidebar}
@@ -294,21 +404,31 @@ const Topbar = ({ toggleSidebar }) => {
                         </div>
                         TalentCio
                     </button>
-                    {isRolesPage && (
-                        <div className="flex items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => navigate('/profile?tab=settings')}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
-                                aria-label="Back to settings"
-                            >
-                                <ArrowLeft size={18} />
-                            </button>
-                            <div>
-                                <h1 className="text-lg font-bold text-slate-800">Role Management</h1>
+                    {(() => {
+                        const pageInfo = getPageMetadata(location.pathname);
+                        if (!pageInfo) return null;
+                        return (
+                            <div className="hidden md:flex items-center gap-3">
+                                {pageInfo.back && (
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(pageInfo.back)}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-slate-300 hover:bg-white hover:text-slate-800 shrink-0"
+                                        aria-label={`Back to ${pageInfo.backLabel || 'previous page'}`}
+                                        title={`Back to ${pageInfo.backLabel || 'previous page'}`}
+                                    >
+                                        <ArrowLeft size={16} />
+                                    </button>
+                                )}
+                                <div>
+                                    <h1 className="text-sm font-bold text-slate-800 leading-none">{pageInfo.title}</h1>
+                                    {pageInfo.subtitle && (
+                                        <p className="text-[11px] text-slate-400 mt-1 leading-none">{pageInfo.subtitle}</p>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
                 </div>
 
                 <div className="flex items-center gap-4 ml-auto">
