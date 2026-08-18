@@ -71,3 +71,9 @@ export const canViewTACandidateDetails = (user) => (
     || user?.permissions?.includes('ta.interview.evaluate')
     || user?.isTAParticipant === true
 );
+
+export const canAccessOrgChart = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, ORG_CHART_VIEW_PERMISSIONS)
+    || Boolean(user)
+);

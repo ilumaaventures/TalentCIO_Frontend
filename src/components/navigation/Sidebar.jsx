@@ -197,11 +197,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*')
   );
   const showProjects = hasModule('projects');
-  const showOrgChart = hasModule('organization') && (
-    isAdmin
-    || user?.permissions?.includes('org_chart.view')
-    || user?.permissions?.includes('*')
-  );
+  const showOrgChart = hasModule('organization') && Boolean(user);
   const showDepartments = hasModule('organization') && (
     isAdmin
     || user?.permissions?.includes('department.read')

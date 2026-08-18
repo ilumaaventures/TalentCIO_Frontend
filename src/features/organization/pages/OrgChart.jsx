@@ -21,6 +21,8 @@ const OrgChart = () => {
         || user?.permissions?.includes('*')
         || Boolean(user?.hasAllPermissions);
 
+    const isGlobalViewer = isAdmin || user?.permissions?.includes('org_chart.view');
+
     const canManageReportingLine = isAdmin || user?.permissions?.includes('org_chart.manage');
 
     const {
@@ -65,12 +67,21 @@ const OrgChart = () => {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2.5">
-                        <Network className="text-blue-600" size={28} />
-                        Organization Chart
-                    </h1>
+                    <div className="flex items-center gap-2.5">
+                        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2.5">
+                            <Network className="text-blue-600" size={28} />
+                            Organization Chart
+                        </h1>
+                        {!isGlobalViewer && (
+                            <span className="px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                My Team & Subordinates
+                            </span>
+                        )}
+                    </div>
                     <p className="text-xs text-slate-500 mt-1">
-                        Interactive hierarchy visualization, department reporting lines, and span of control
+                        {isGlobalViewer
+                            ? 'Interactive hierarchy visualization, department reporting lines, and span of control'
+                            : 'Showing your subordinate hierarchy and reporting line (users reporting directly or indirectly to you)'}
                     </p>
                 </div>
             </div>

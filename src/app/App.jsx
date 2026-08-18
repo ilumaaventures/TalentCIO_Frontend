@@ -98,7 +98,8 @@ import {
   DEPARTMENT_ACCESS_PERMISSIONS,
   DESIGNATION_ACCESS_PERMISSIONS,
   canAccessTAAnalytics,
-  canAccessUsers
+  canAccessUsers,
+  canAccessOrgChart
 } from '@/config/accessPolicies';
 
 import { Provider } from 'react-redux';
@@ -304,7 +305,7 @@ function App() {
                     {/* Organization Structure Routes */}
                     <Route element={<ProtectedRoute moduleName="organization" redirectTo="/" />}>
                       <Route path="/organization/chart" element={(
-                        <ProtectedRoute requiredPermissions={ORG_CHART_VIEW_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                        <ProtectedRoute check={canAccessOrgChart} allowAllPermissions>
                           <OrgChart />
                         </ProtectedRoute>
                       )} />
