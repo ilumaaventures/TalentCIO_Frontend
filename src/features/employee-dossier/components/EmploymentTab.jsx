@@ -26,13 +26,13 @@ export const EmploymentTab = ({
                     {/* Designation */}
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Designation</label>
-                        <div className="text-slate-800 font-medium text-sm">{profile.employment?.designation || profile.user?.roles?.[0]?.name || '-'}</div>
+                        <div className="text-slate-800 font-medium text-sm">{profile.employment?.designationRef?.title || profile.employment?.designation || profile.user?.roles?.[0]?.name || '-'}</div>
                     </div>
 
                     {/* Department */}
                     <div>
                         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Department</label>
-                        <div className="text-slate-800 font-medium text-sm">{profile.employment?.department || '-'}</div>
+                        <div className="text-slate-800 font-medium text-sm">{profile.employment?.departmentRef?.name || profile.employment?.department || '-'}</div>
                     </div>
 
                     {/* Joining Date */}

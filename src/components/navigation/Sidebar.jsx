@@ -24,6 +24,8 @@ import {
   LogOut,
   Mail,
   Megaphone,
+  Network,
+  Award,
   ShieldCheck,
   Settings,
   Trash2,
@@ -195,6 +197,22 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*')
   );
   const showProjects = hasModule('projects');
+  const showOrgChart = hasModule('organization') && (
+    isAdmin
+    || user?.permissions?.includes('org_chart.view')
+    || user?.permissions?.includes('*')
+  );
+  const showDepartments = hasModule('organization') && (
+    isAdmin
+    || user?.permissions?.includes('department.read')
+    || user?.permissions?.includes('*')
+  );
+  const showDesignations = hasModule('organization') && (
+    isAdmin
+    || user?.permissions?.includes('designation.read')
+    || user?.permissions?.includes('*')
+  );
+  const showOrgStructureSection = showOrgChart || showDepartments || showDesignations;
   const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
@@ -521,6 +539,33 @@ const Sidebar = ({ isOpen, onClose }) => {
                     {recycleBinCount}
                   </span>
                 </Link>
+              )}
+
+              {showOrgStructureSection && (
+                <>
+                  <div className="mt-8"><div className={sectionLabelClass}>Organization</div></div>
+
+                  {showOrgChart && (
+                    <Link to="/organization/chart" className={getSidebarLinkClass(location.pathname === '/organization/chart')} onClick={onClose}>
+                      <Network size={18} />
+                      <span>Org Chart</span>
+                    </Link>
+                  )}
+
+                  {showDepartments && (
+                    <Link to="/organization/departments" className={getSidebarLinkClass(location.pathname === '/organization/departments')} onClick={onClose}>
+                      <Building size={18} />
+                      <span>Departments</span>
+                    </Link>
+                  )}
+
+                  {showDesignations && (
+                    <Link to="/organization/designations" className={getSidebarLinkClass(location.pathname === '/organization/designations')} onClick={onClose}>
+                      <Award size={18} />
+                      <span>Designations</span>
+                    </Link>
+                  )}
+                </>
               )}
 
               {showProjectManagementSection && (

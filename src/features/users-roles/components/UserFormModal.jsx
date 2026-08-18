@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, Settings2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import api from '@/lib/apiClient';
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
 import EmploymentTypeSelect from './EmploymentTypeSelect';
 
@@ -33,6 +34,14 @@ const UserFormModal = ({
     calculateSalaryBreakdown,
 }) => {
     const navigate = useNavigate();
+    const [managedDepartments, setManagedDepartments] = useState([]);
+
+    useEffect(() => {
+        if (!showModal) return;
+        api.get('/organization/departments?includeInactive=false')
+            .then((res) => setManagedDepartments(res.data || []))
+            .catch(() => {});
+    }, [showModal]);
 
     if (!showModal) return null;
 
@@ -91,7 +100,19 @@ const UserFormModal = ({
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Department</label>
-                            <input name="department" value={formData.department} onChange={handleChange} className="zoho-input" />
+                            <input
+                                name="department"
+                                list="managed-departments-list"
+                                value={formData.department}
+                                onChange={handleChange}
+                                placeholder="Select or type department..."
+                                className="zoho-input"
+                            />
+                            <datalist id="managed-departments-list">
+                                {managedDepartments.map((dept) => (
+                                    <option key={dept._id} value={dept.name} />
+                                ))}
+                            </datalist>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee Code</label>

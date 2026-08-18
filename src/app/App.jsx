@@ -20,7 +20,10 @@ const EmailSettings = lazy(() => import('@/features/email/pages/EmailSettings'))
 const NotificationSettings = lazy(() => import('@/features/settings/pages/NotificationSettings'));
 const Users = lazy(() => import('@/features/users-roles/pages/Users'));
 const Roles = lazy(() => import('@/features/users-roles/pages/Roles'));
-const BusinessUnits = lazy(() => import('@/features/clients/pages/BusinessUnits'));
+const BusinessUnits = lazy(() => import('@/features/organization/pages/BusinessUnits'));
+const OrgChart = lazy(() => import('@/features/organization/pages/OrgChart'));
+const Departments = lazy(() => import('@/features/organization/pages/Departments'));
+const Designations = lazy(() => import('@/features/organization/pages/Designations'));
 const Clients = lazy(() => import('@/features/clients/pages/Clients'));
 const ClientForm = lazy(() => import('@/features/clients/pages/ClientForm'));
 const ClientView = lazy(() => import('@/features/clients/pages/ClientView'));
@@ -91,6 +94,9 @@ import {
   TA_CONFIG_PERMISSIONS,
   TA_EMAIL_TEMPLATE_PERMISSIONS,
   SALARY_CALCULATOR_PERMISSIONS,
+  ORG_CHART_VIEW_PERMISSIONS,
+  DEPARTMENT_ACCESS_PERMISSIONS,
+  DESIGNATION_ACCESS_PERMISSIONS,
   canAccessTAAnalytics,
   canAccessUsers
 } from '@/config/accessPolicies';
@@ -294,6 +300,30 @@ function App() {
                         <HREmailSend />
                       </ProtectedRoute>
                     )} />
+
+                    {/* Organization Structure Routes */}
+                    <Route element={<ProtectedRoute moduleName="organization" redirectTo="/" />}>
+                      <Route path="/organization/chart" element={(
+                        <ProtectedRoute requiredPermissions={ORG_CHART_VIEW_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                          <OrgChart />
+                        </ProtectedRoute>
+                      )} />
+                      <Route path="/organization/departments" element={(
+                        <ProtectedRoute requiredPermissions={DEPARTMENT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                          <Departments />
+                        </ProtectedRoute>
+                      )} />
+                      <Route path="/organization/designations" element={(
+                        <ProtectedRoute requiredPermissions={DESIGNATION_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                          <Designations />
+                        </ProtectedRoute>
+                      )} />
+                      <Route path="/organization/business-units" element={(
+                        <ProtectedRoute requiredPermissions={BUSINESS_UNIT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                          <BusinessUnits />
+                        </ProtectedRoute>
+                      )} />
+                    </Route>
 
                     {/* Project Management Routes */}
                     <Route element={<ProtectedRoute moduleName="businessUnits" redirectTo="/" />}>
