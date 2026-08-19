@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User, Plus, Sun, Moon, Sunrise, Timer } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '@/lib/apiClient';
 import socket from '@/lib/socket';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import SubmitClaimModal from '@/features/reimbursement/components/SubmitClaimModal';
 
 const getPageMetadata = (pathname) => {
     if (!pathname || pathname === '/' || pathname === '/dashboard') {
@@ -15,7 +16,7 @@ const getPageMetadata = (pathname) => {
         return { title: 'My Space', subtitle: 'Your personalised employee hub' };
     }
     if (pathname === '/ess/documents') {
-        return { title: 'Company Documents', subtitle: 'Policies, forms & circulars', back: '/ess', backLabel: 'My Space' };
+        return { title: 'Company Documents', subtitle: 'Policies, forms & circulars', back: '/profile?tab=company-documents', backLabel: 'Profile' };
     }
     if (pathname === '/ess/payslips' || pathname === '/payslips') {
         return { title: 'My Payslips', subtitle: 'View and download salary statements', back: '/ess', backLabel: 'My Space' };
@@ -67,6 +68,15 @@ const getPageMetadata = (pathname) => {
     }
     if (pathname === '/roles') {
         return { title: 'Role Management', subtitle: 'Configure roles & permissions', back: '/profile?tab=settings', backLabel: 'Settings' };
+    }
+    if (pathname === '/organization/departments') {
+        return { title: 'Departments', subtitle: 'Organize teams and department structures', back: '/profile?tab=settings', backLabel: 'Settings' };
+    }
+    if (pathname === '/organization/designations') {
+        return { title: 'Designations', subtitle: 'Manage job titles and designation structures', back: '/profile?tab=settings', backLabel: 'Settings' };
+    }
+    if (pathname === '/organization/chart') {
+        return { title: 'Organization Chart', subtitle: 'Visual company hierarchy' };
     }
     if (pathname === '/profile') {
         return { title: 'My Profile', subtitle: 'Personal, employment & account details' };
@@ -128,6 +138,18 @@ const Topbar = ({ toggleSidebar }) => {
     const [interviews, setInterviews] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [showSubmitClaimModal, setShowSubmitClaimModal] = useState(false);
+    const [time, setTime] = useState(new Date());
+
+    useEffect(() => {
+        const t = setInterval(() => setTime(new Date()), 1000);
+        return () => clearInterval(t);
+    }, []);
+
+    const hour = time.getHours();
+    const GreetingIcon = hour < 12 ? Sunrise : hour < 17 ? Sun : Moon;
+    const greetingText = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
     const dropdownRef = useRef(null);
     const profileMenuRef = useRef(null);
     const navigateRef = useRef(navigate);
@@ -141,7 +163,7 @@ const Topbar = ({ toggleSidebar }) => {
     const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
     const isRolesPage = location.pathname === '/roles';
     const isAnnouncementsPage = location.pathname === '/announcements';
-    const isEssPage = location.pathname.startsWith('/ess');
+    const isEssPage = location.pathname === '/ess' || location.pathname.startsWith('/ess');
     const profileTabs = [
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
@@ -405,6 +427,30 @@ const Topbar = ({ toggleSidebar }) => {
                         TalentCio
                     </button>
                     {(() => {
+                        if (location.pathname === '/ess') {
+                            return (
+                                <div className="hidden md:flex items-center gap-2.5">
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xs shadow-2xs">
+                                        {user?.profilePicture ? (
+                                            <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            user?.firstName?.charAt(0) || 'U'
+                                        )}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-1.5 leading-none">
+                                            <GreetingIcon size={12} className="text-amber-500" />
+                                            <span className="text-xs font-bold text-slate-800">
+                                                {greetingText}, {user?.firstName || 'User'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 leading-none mt-1">
+                                            {user?.designation || user?.department || 'Team Member'} • {format(time, 'EEE, dd MMM yyyy')}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        }
                         const pageInfo = getPageMetadata(location.pathname);
                         if (!pageInfo) return null;
                         return (
@@ -431,18 +477,52 @@ const Topbar = ({ toggleSidebar }) => {
                     })()}
                 </div>
 
-                <div className="flex items-center gap-4 ml-auto">
+                <div className="flex items-center gap-3 ml-auto">
+                    {/* Live Clock Ticker & Quick Actions - Only visible on My Space (/ess) */}
+                    {location.pathname === '/ess' && (
+                        <>
+                            <div className="hidden xl:flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-1 text-slate-700 shadow-2xs">
+                                <Timer size={13} className="text-indigo-600" />
+                                <span className="font-mono text-xs font-bold text-slate-800">
+                                    {format(time, 'hh:mm:ss a')}
+                                </span>
+                            </div>
+
+                            {hasModule('leaves') && (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/leaves')}
+                                    className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition-colors shadow-2xs cursor-pointer"
+                                >
+                                    <Calendar size={13} />
+                                    <span>Apply Leave</span>
+                                </button>
+                            )}
+
+                            {hasModule('reimbursements') && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSubmitClaimModal(true)}
+                                    className="hidden sm:inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 px-2.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                                >
+                                    <Plus size={13} />
+                                    <span>Claim Expense</span>
+                                </button>
+                            )}
+                        </>
+                    )}
+
                     <div className="hidden lg:flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-2 py-1.5">
                         <button
                             type="button"
                             onClick={() => navigate('/announcements')}
-                            className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
+                            className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
                                 isAnnouncementsPage
                                     ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
                                     : 'text-slate-600 hover:bg-white hover:text-slate-800'
                             }`}
                         >
-                            <Megaphone size={16} />
+                            <Megaphone size={14} />
                             <span>Announcements</span>
                         </button>
                     </div>
@@ -450,9 +530,9 @@ const Topbar = ({ toggleSidebar }) => {
                         <button
                             type="button"
                             onClick={handleOpenCreateRole}
-                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
                         >
-                            <Shield size={16} />
+                            <Shield size={14} />
                             <span className="hidden sm:inline">Create Role</span>
                         </button>
                     )}
@@ -611,6 +691,10 @@ const Topbar = ({ toggleSidebar }) => {
                     </div>
                 </div>
             </div>
+
+            {showSubmitClaimModal && (
+                <SubmitClaimModal onClose={() => setShowSubmitClaimModal(false)} onSuccess={() => {}} />
+            )}
         </>
     );
 };

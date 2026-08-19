@@ -68,7 +68,6 @@ export const useAuth = () => {
 
   const hasModule = useCallback((moduleName) => {
     if (!user) return false;
-    if (isAdminUser(user)) return true;
     return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
   }, [user]);
 

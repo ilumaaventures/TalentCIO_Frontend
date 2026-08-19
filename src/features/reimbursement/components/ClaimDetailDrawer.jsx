@@ -192,7 +192,6 @@ const ClaimDetailDrawer = ({ claimId, onClose, onRefresh, isApprover = false, is
                                                 <th className="py-2.5 px-3">Description</th>
                                                 <th className="py-2.5 px-3">Category Type</th>
                                                 <th className="py-2.5 px-3 text-right">Amount</th>
-                                                <th className="py-2.5 px-3 text-center">Receipt</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
@@ -205,22 +204,11 @@ const ClaimDetailDrawer = ({ claimId, onClose, onRefresh, isApprover = false, is
                                                         <td className="p-3 font-medium text-slate-800">{it.description}</td>
                                                         <td className="p-3 text-slate-600">
                                                             <span className="rounded-md bg-purple-50 text-purple-700 px-2 py-0.5 font-semibold text-[11px] border border-purple-100">
-                                                                {it.category}
+                                                                {it.otherCategoryName ? `Other (${it.otherCategoryName})` : it.category}
                                                             </span>
                                                         </td>
                                                         <td className="p-3 font-bold text-slate-900 text-right whitespace-nowrap">
                                                             {formatINR(it.amount)}
-                                                        </td>
-                                                        <td className="p-3 text-center">
-                                                            {it.hasReceipt || claim.receipts?.length > 0 ? (
-                                                                <span className="rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 font-bold text-[10px]">
-                                                                    Y (Attached)
-                                                                </span>
-                                                            ) : (
-                                                                <span className="rounded-full bg-slate-100 text-slate-500 px-2 py-0.5 font-bold text-[10px]">
-                                                                    N
-                                                                </span>
-                                                            )}
                                                         </td>
                                                     </tr>
                                                 ))
@@ -232,22 +220,11 @@ const ClaimDetailDrawer = ({ claimId, onClose, onRefresh, isApprover = false, is
                                                     <td className="p-3 font-medium text-slate-800">{claim.description}</td>
                                                     <td className="p-3 text-slate-600">
                                                         <span className="rounded-md bg-purple-50 text-purple-700 px-2 py-0.5 font-semibold text-[11px] border border-purple-100">
-                                                            {claim.category}
+                                                            {claim.otherCategoryName ? `Other (${claim.otherCategoryName})` : claim.category}
                                                         </span>
                                                     </td>
                                                     <td className="p-3 font-bold text-slate-900 text-right whitespace-nowrap">
                                                         {formatINR(claim.amount)}
-                                                    </td>
-                                                    <td className="p-3 text-center">
-                                                        {claim.receipts?.length > 0 ? (
-                                                            <span className="rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 font-bold text-[10px]">
-                                                                Y (Attached)
-                                                            </span>
-                                                        ) : (
-                                                            <span className="rounded-full bg-slate-100 text-slate-500 px-2 py-0.5 font-bold text-[10px]">
-                                                                N
-                                                            </span>
-                                                        )}
                                                     </td>
                                                 </tr>
                                             )}

@@ -22,10 +22,6 @@ export const normalizeEnabledModules = (moduleIds = []) => {
     normalizedIds.add(CLIENTS_MODULE_ID);
   }
 
-  if (normalizedIds.has('userManagement') || normalizedIds.has('employeeDossier') || normalizedIds.has(BUSINESS_UNITS_MODULE_ID)) {
-    normalizedIds.add('organization');
-  }
-
   return Array.from(normalizedIds);
 };
 

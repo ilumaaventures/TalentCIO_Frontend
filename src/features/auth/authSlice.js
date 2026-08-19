@@ -409,7 +409,6 @@ export const selectImpersonation = (state) => state.auth.impersonation;
 export const selectHasModule = (state, moduleName) => {
   const user = state.auth.user;
   if (!user) return false;
-  if (isAdminUser(user)) return true;
   return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
 };
 

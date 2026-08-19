@@ -157,7 +157,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showTimesheet = user?.company?.enabledModules?.includes('timesheet');
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
-  const showEss = user?.company?.enabledModules?.includes('reimbursements') || user?.company?.enabledModules?.includes('essDocuments') || true;
+  const showEss = user?.company?.enabledModules?.includes('reimbursements') || true;
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (isAdmin || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.company?.enabledModules?.includes('onboarding') && (
     isAdmin
@@ -198,17 +198,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   );
   const showProjects = hasModule('projects');
   const showOrgChart = hasModule('organization') && Boolean(user);
-  const showDepartments = hasModule('organization') && (
-    isAdmin
-    || user?.permissions?.includes('department.read')
-    || user?.permissions?.includes('*')
-  );
-  const showDesignations = hasModule('organization') && (
-    isAdmin
-    || user?.permissions?.includes('designation.read')
-    || user?.permissions?.includes('*')
-  );
-  const showOrgStructureSection = showOrgChart || showDepartments || showDesignations;
+  const showOrgStructureSection = showOrgChart;
   const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
   const showOrganizationSection = showEmployees || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
@@ -545,20 +535,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                     <Link to="/organization/chart" className={getSidebarLinkClass(location.pathname === '/organization/chart')} onClick={onClose}>
                       <Network size={18} />
                       <span>Org Chart</span>
-                    </Link>
-                  )}
-
-                  {showDepartments && (
-                    <Link to="/organization/departments" className={getSidebarLinkClass(location.pathname === '/organization/departments')} onClick={onClose}>
-                      <Building size={18} />
-                      <span>Departments</span>
-                    </Link>
-                  )}
-
-                  {showDesignations && (
-                    <Link to="/organization/designations" className={getSidebarLinkClass(location.pathname === '/organization/designations')} onClick={onClose}>
-                      <Award size={18} />
-                      <span>Designations</span>
                     </Link>
                   )}
                 </>

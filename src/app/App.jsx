@@ -302,29 +302,31 @@ function App() {
                       </ProtectedRoute>
                     )} />
 
-                    {/* Organization Structure Routes */}
+                    {/* Organization Chart Route */}
                     <Route element={<ProtectedRoute moduleName="organization" redirectTo="/" />}>
                       <Route path="/organization/chart" element={(
                         <ProtectedRoute check={canAccessOrgChart} allowAllPermissions>
                           <OrgChart />
                         </ProtectedRoute>
                       )} />
-                      <Route path="/organization/departments" element={(
-                        <ProtectedRoute requiredPermissions={DEPARTMENT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
-                          <Departments />
-                        </ProtectedRoute>
-                      )} />
-                      <Route path="/organization/designations" element={(
-                        <ProtectedRoute requiredPermissions={DESIGNATION_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
-                          <Designations />
-                        </ProtectedRoute>
-                      )} />
-                      <Route path="/organization/business-units" element={(
-                        <ProtectedRoute requiredPermissions={BUSINESS_UNIT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
-                          <BusinessUnits />
-                        </ProtectedRoute>
-                      )} />
                     </Route>
+
+                    {/* Department & Designation Routes */}
+                    <Route path="/organization/departments" element={(
+                      <ProtectedRoute requiredPermissions={DEPARTMENT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                        <Departments />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/organization/designations" element={(
+                      <ProtectedRoute requiredPermissions={DESIGNATION_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                        <Designations />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/organization/business-units" element={(
+                      <ProtectedRoute moduleName="businessUnits" requiredPermissions={BUSINESS_UNIT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                        <BusinessUnits />
+                      </ProtectedRoute>
+                    )} />
 
                     {/* Project Management Routes */}
                     <Route element={<ProtectedRoute moduleName="businessUnits" redirectTo="/" />}>

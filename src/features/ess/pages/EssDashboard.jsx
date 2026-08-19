@@ -1,142 +1,81 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-    Calendar, Clock, FileText, ReceiptText, FileStack, LifeBuoy,
-    CalendarDays, Megaphone, User, CheckCircle2, AlertCircle,
-    ChevronRight, Loader, Sun, TrendingUp, Bell, Gift, ArrowUpRight,
-    Banknote, BookOpen, LogOut, UserPlus, Timer
+    Calendar, Clock, ReceiptText, LifeBuoy,
+    CalendarDays, User, CheckCircle2,
+    ChevronRight, Loader, LogOut,
+    Banknote, Eye, EyeOff, Plus, ArrowRight
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import api from '@/lib/apiClient';
 import { getMyClaims, getMyStats as getReimbStats } from '@/features/reimbursement/api/reimbursementApi';
-import { getEmployeeDocuments } from '@/features/ess-documents/api/essDocumentApi';
 import { formatINR } from '@/features/reimbursement/utils/reimbursementConstants';
 import SubmitClaimModal from '@/features/reimbursement/components/SubmitClaimModal';
 
-// ─── Tile primitives ──────────────────────────────────────────────────────────
+// ─── Compact Card Primitive (Unscrollable Viewport Fit) ───────────────────────
 
-const Tile = ({ children, className = '', onClick, to }) => {
-    const base = `rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-200 hover:shadow-md hover:border-slate-200 ${onClick || to ? 'cursor-pointer' : ''} ${className}`;
-    if (to) return <Link to={to} className={base}>{children}</Link>;
-    if (onClick) return <div className={base} onClick={onClick}>{children}</div>;
-    return <div className={base}>{children}</div>;
+const PremiumCard = ({ children, className = '', to, onClick, hoverable = true }) => {
+    const baseClasses = `group relative overflow-hidden rounded-xl bg-white p-2.5 sm:p-3 border border-slate-100 shadow-[0_1px_6px_-2px_rgba(0,0,0,0.03)] transition-all duration-200 flex flex-col justify-between h-full ${
+        hoverable ? 'hover:-translate-y-0.5 hover:shadow-[0_4px_12px_-3px_rgba(0,0,0,0.06)] hover:border-slate-200' : ''
+    } ${to || onClick ? 'cursor-pointer' : ''} ${className}`;
+
+    if (to) {
+        return (
+            <Link to={to} className={baseClasses}>
+                {children}
+            </Link>
+        );
+    }
+    if (onClick) {
+        return (
+            <div onClick={onClick} className={baseClasses}>
+                {children}
+            </div>
+        );
+    }
+    return <div className={baseClasses}>{children}</div>;
 };
 
-const TileHeader = ({ icon: Icon, title, iconBg = 'bg-blue-100', iconColor = 'text-blue-600', action }) => (
-    <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2.5">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${iconBg} ${iconColor}`}>
-                <Icon size={15} />
+const CardHeader = ({ icon: Icon, title, iconGradient = 'from-blue-600 to-indigo-600', badge, action }) => (
+    <div className="flex items-center justify-between gap-1.5 mb-1.5 shrink-0">
+        <div className="flex items-center gap-1.5">
+            <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
+                <Icon size={12} />
             </div>
-            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">{title}</h3>
+            <div>
+                <h3 className="text-[11px] font-bold text-slate-800 tracking-tight leading-none">{title}</h3>
+                {badge && <div className="mt-0.5">{badge}</div>}
+            </div>
         </div>
         {action}
     </div>
 );
 
-const TileLink = ({ to, children }) => (
-    <Link to={to} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
-        {children} <ChevronRight size={12} />
+const CardActionLink = ({ to, label = 'View All' }) => (
+    <Link
+        to={to}
+        className="inline-flex items-center gap-0.5 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors group-hover:translate-x-0.5"
+    >
+        <span>{label}</span>
+        <ChevronRight size={10} />
     </Link>
 );
 
-const LoadingShim = () => (
-    <div className="space-y-2 animate-pulse">
-        <div className="h-3 rounded bg-slate-100 w-3/4" />
-        <div className="h-3 rounded bg-slate-100 w-1/2" />
+const LoadingSkeleton = () => (
+    <div className="space-y-1.5 animate-pulse pt-0.5 flex-1 flex flex-col justify-center">
+        <div className="h-2 rounded bg-slate-100 w-3/4" />
+        <div className="h-2 rounded bg-slate-100 w-1/2" />
+        <div className="h-4 rounded bg-slate-100 w-full" />
     </div>
 );
 
-// ─── Greeting header ──────────────────────────────────────────────────────────
-
-const GreetingHeader = ({ user }) => {
-    const [time, setTime] = useState(new Date());
-    useEffect(() => {
-        const t = setInterval(() => setTime(new Date()), 60000);
-        return () => clearInterval(t);
-    }, []);
-
-    const hour = time.getHours();
-    const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-
-    return (
-        <div className="rounded-2xl bg-gradient-to-r from-slate-700 via-slate-600 to-slate-500 p-5 text-white shadow-md shadow-slate-400/20">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-slate-300 text-xs font-medium">{greeting} 👋</p>
-                    <h1 className="mt-0.5 text-xl font-bold">{user?.firstName} {user?.lastName}</h1>
-                    <p className="mt-1 text-slate-300 text-xs">
-                        {user?.designation || user?.department || 'Team Member'} · {format(time, 'EEEE, dd MMMM yyyy')}
-                    </p>
-                </div>
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl ring-2 ring-white/10 bg-white/10">
-                    {user?.profilePicture
-                        ? <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
-                        : <span className="text-lg font-bold">{user?.firstName?.charAt(0)}</span>}
-                </div>
-            </div>
-            <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-                <Timer size={11} />
-                <span>{format(time, 'h:mm a')}</span>
-            </div>
-        </div>
-    );
-};
-
-// ─── Leave Tile ───────────────────────────────────────────────────────────────
-
-const LeaveTile = () => {
-    const [balances, setBalances]   = useState([]);
-    const [loading, setLoading]     = useState(true);
-
-    useEffect(() => {
-        api.get('/leaves/bootstrap')
-            .then(r => {
-                const list = r.data?.balances || (Array.isArray(r.data) ? r.data : []);
-                setBalances(list);
-            })
-            .catch(() => {
-                api.get('/leaves/balance')
-                    .then(r => {
-                        const list = Array.isArray(r.data) ? r.data : (r.data?.balances || []);
-                        setBalances(list);
-                    })
-                    .catch(() => {});
-            })
-            .finally(() => setLoading(false));
-    }, []);
-
-    const types = Array.isArray(balances) ? balances.slice(0, 3) : [];
-
-    return (
-        <Tile to="/leaves" className="p-5">
-            <TileHeader icon={Calendar} title="Leave" iconBg="bg-green-100" iconColor="text-green-600"
-                action={<TileLink to="/leaves">View All</TileLink>} />
-            {loading ? <LoadingShim /> : types.length === 0 ? (
-                <p className="text-xs text-slate-400">No leave balance data.</p>
-            ) : (
-                <div className="space-y-2.5">
-                    {types.map((b, i) => (
-                        <div key={i} className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-slate-600 truncate">{b.policyName || b.leaveType || b.type}</span>
-                            <span className="ml-2 rounded-full bg-green-50 border border-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
-                                {b.policyAccrualAmount === 0 ? 'Unlimited' : `${b.closingBalance ?? b.remaining ?? b.balance ?? 0} days`}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </Tile>
-    );
-};
-
-// ─── Attendance Tile ──────────────────────────────────────────────────────────
+// ─── Compact Attendance Tile ───────────────────────────────────────────────────
 
 const AttendanceTile = () => {
-    const [today, setToday]             = useState(null);
-    const [loading, setLoading]         = useState(true);
+    const [today, setToday] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
 
     const fetchToday = useCallback(() => {
@@ -160,7 +99,7 @@ const AttendanceTile = () => {
                 const payload = loc ? { location: loc } : {};
                 const res = await api.post('/attendance/clock-in', payload);
                 setToday(res.data?.attendance || res.data);
-                toast.success('Checked In successfully! Have a great day.');
+                toast.success('Checked in successfully.');
                 fetchToday();
             } catch (err) {
                 toast.error(err.response?.data?.message || 'Failed to check in');
@@ -190,7 +129,7 @@ const AttendanceTile = () => {
                 const payload = loc ? { location: loc } : {};
                 const res = await api.post('/attendance/clock-out', payload);
                 setToday(res.data?.attendance || res.data);
-                toast.success('Checked Out successfully! See you tomorrow.');
+                toast.success('Checked out successfully.');
                 fetchToday();
             } catch (err) {
                 toast.error(err.response?.data?.message || 'Failed to check out');
@@ -215,64 +154,70 @@ const AttendanceTile = () => {
     const isNotStarted = !today?.clockIn;
 
     return (
-        <Tile className="p-5">
-            <TileHeader
+        <PremiumCard>
+            <CardHeader
                 icon={Clock}
-                title="Attendance"
-                iconBg="bg-orange-100"
-                iconColor="text-orange-600"
-                action={<TileLink to="/attendance">Details</TileLink>}
+                title="Shift & Attendance"
+                iconGradient="from-amber-500 to-orange-600"
+                action={<CardActionLink to="/attendance" label="Details" />}
             />
 
             {loading ? (
-                <LoadingShim />
+                <LoadingSkeleton />
             ) : (
-                <div className="space-y-3">
-                    {/* Today's Date Banner */}
-                    <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
-                        <div className="flex items-center gap-2">
-                            <CalendarDays size={14} className="text-orange-500 shrink-0" />
-                            <span className="text-xs font-bold text-slate-700">
-                                {format(new Date(), 'EEEE, dd MMM yyyy')}
+                <div className="space-y-1.5 flex-1 flex flex-col justify-between">
+                    {/* Status Badge Strip */}
+                    <div className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 p-1 px-2">
+                        <div className="flex items-center gap-1">
+                            <CalendarDays size={10} className="text-orange-500" />
+                            <span className="text-[10px] font-bold text-slate-700">
+                                {format(new Date(), 'dd MMM yyyy')}
                             </span>
                         </div>
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold border
-                            ${isClockedIn  ? 'bg-green-50 text-green-700 border-green-200' :
-                              isClockedOut ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                              'bg-rose-50 text-rose-600 border-rose-200'}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${isClockedIn ? 'bg-green-500 animate-pulse' : isClockedOut ? 'bg-purple-500' : 'bg-rose-400'}`} />
-                            {isClockedIn ? 'Clocked In' : isClockedOut ? 'Clocked Out' : 'Not Clocked In'}
+                        <span
+                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.2 text-[8px] font-bold border ${
+                                isClockedIn
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : isClockedOut
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : 'bg-rose-50 text-rose-600 border-rose-200'
+                            }`}
+                        >
+                            <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                    isClockedIn ? 'bg-emerald-500 animate-pulse' : isClockedOut ? 'bg-purple-500' : 'bg-rose-400'
+                                }`}
+                            />
+                            {isClockedIn ? 'Clocked In' : isClockedOut ? 'Completed' : 'Not Clocked In'}
                         </span>
                     </div>
 
-                    {/* Clock In / Out Timing info */}
-                    {today?.clockIn && (
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-2xs">
-                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Check In Time</span>
-                                <span className="text-xs font-bold text-slate-800 mt-0.5 block">
-                                    {format(new Date(today.clockIn), 'hh:mm a')}
-                                </span>
-                            </div>
-                            <div className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-2xs">
-                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Check Out Time</span>
-                                <span className="text-xs font-bold text-slate-800 mt-0.5 block">
-                                    {today.clockOut ? format(new Date(today.clockOut), 'hh:mm a') : '— Active —'}
-                                </span>
-                            </div>
+                    {/* Punch Times Metrics */}
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                        <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-1 text-center">
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">Check In</span>
+                            <span className="text-[10px] font-bold text-slate-800 mt-0.2 block">
+                                {today?.clockIn ? format(new Date(today.clockIn), 'hh:mm a') : '—'}
+                            </span>
                         </div>
-                    )}
+                        <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-1 text-center">
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">Check Out</span>
+                            <span className="text-[10px] font-bold text-slate-800 mt-0.2 block">
+                                {today?.clockOut ? format(new Date(today.clockOut), 'hh:mm a') : isClockedIn ? 'Active' : '—'}
+                            </span>
+                        </div>
+                    </div>
 
-                    {/* Interactive Action Buttons */}
-                    <div>
+                    {/* Primary Action Button */}
+                    <div className="shrink-0">
                         {isNotStarted && (
                             <button
                                 type="button"
                                 onClick={handleClockIn}
                                 disabled={actionLoading}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 py-2.5 text-xs font-bold text-white shadow-sm hover:from-emerald-700 hover:to-green-700 disabled:opacity-60 transition-all cursor-pointer"
+                                className="w-full flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 py-1.5 text-[10px] font-bold text-white shadow-2xs hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
                             >
-                                {actionLoading ? <Loader size={14} className="animate-spin" /> : <Clock size={14} />}
+                                {actionLoading ? <Loader size={10} className="animate-spin" /> : <Clock size={10} />}
                                 Check In Now
                             </button>
                         )}
@@ -282,130 +227,193 @@ const AttendanceTile = () => {
                                 type="button"
                                 onClick={handleClockOut}
                                 disabled={actionLoading}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 py-2.5 text-xs font-bold text-white shadow-sm hover:from-rose-700 hover:to-amber-700 disabled:opacity-60 transition-all cursor-pointer"
+                                className="w-full flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-rose-600 to-amber-600 py-1.5 text-[10px] font-bold text-white shadow-2xs hover:from-rose-700 hover:to-amber-700 disabled:opacity-60 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
                             >
-                                {actionLoading ? <Loader size={14} className="animate-spin" /> : <LogOut size={14} />}
+                                {actionLoading ? <Loader size={10} className="animate-spin" /> : <LogOut size={10} />}
                                 Check Out
                             </button>
                         )}
 
                         {isClockedOut && (
-                            <div className="flex items-center justify-center gap-1.5 rounded-xl bg-purple-50 border border-purple-100 py-2 text-xs font-bold text-purple-700">
-                                <CheckCircle2 size={14} className="text-purple-600" />
-                                Shift Completed for Today
+                            <div className="flex items-center justify-center gap-1 rounded-lg bg-purple-50 border border-purple-100 py-1 text-[10px] font-bold text-purple-700">
+                                <CheckCircle2 size={11} className="text-purple-600" />
+                                Shift Completed
                             </div>
                         )}
                     </div>
                 </div>
             )}
-        </Tile>
+        </PremiumCard>
     );
 };
 
-// ─── Reimbursement Tile ───────────────────────────────────────────────────────
+// ─── Compact Leave & Time Off Tile ─────────────────────────────────────────────
 
-const ReimbursementTile = ({ onSubmit }) => {
-    const [stats, setStats]     = useState(null);
-    const [recent, setRecent]   = useState([]);
+const LeaveTile = () => {
+    const [balances, setBalances] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        Promise.all([getReimbStats(), getMyClaims({ page: 1, limit: 3 })])
-            .then(([sr, cr]) => { setStats(sr.data?.stats); setRecent(cr.data?.claims || []); })
+        api.get('/leaves/bootstrap')
+            .then(r => {
+                const list = r.data?.balances || (Array.isArray(r.data) ? r.data : []);
+                setBalances(list);
+            })
+            .catch(() => {
+                api.get('/leaves/balance')
+                    .then(r => {
+                        const list = Array.isArray(r.data) ? r.data : (r.data?.balances || []);
+                        setBalances(list);
+                    })
+                    .catch(() => {});
+            })
+            .finally(() => setLoading(false));
+    }, []);
+
+    const types = Array.isArray(balances) ? balances.slice(0, 3) : [];
+
+    return (
+        <PremiumCard to="/leaves">
+            <CardHeader
+                icon={Calendar}
+                title="Leave & Time Off"
+                iconGradient="from-emerald-500 to-green-600"
+                action={<CardActionLink to="/leaves" label="Balances" />}
+            />
+
+            {loading ? (
+                <LoadingSkeleton />
+            ) : types.length === 0 ? (
+                <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center flex-1 flex flex-col justify-center items-center">
+                    <Calendar size={16} className="text-slate-300 mb-1" />
+                    <p className="text-[10px] text-slate-500">No leave balance data.</p>
+                    <Link to="/leaves" className="mt-0.5 text-[9px] font-bold text-indigo-600 hover:underline">
+                        Check History →
+                    </Link>
+                </div>
+            ) : (
+                <div className="space-y-1 flex-1 flex flex-col justify-around">
+                    {types.map((b, i) => {
+                        const remaining = b.closingBalance ?? b.remaining ?? b.balance ?? 0;
+                        const isUnlimited = b.policyAccrualAmount === 0;
+
+                        return (
+                            <div key={i} className="rounded-lg border border-slate-100 bg-slate-50/50 p-1 px-1.5 hover:bg-slate-50 transition-colors">
+                                <div className="flex items-center justify-between mb-0.5">
+                                    <span className="text-[10px] font-semibold text-slate-800 truncate">
+                                        {b.policyName || b.leaveType || b.type}
+                                    </span>
+                                    <span className="rounded-full bg-emerald-100 text-emerald-800 px-1 py-0.2 text-[8px] font-bold">
+                                        {isUnlimited ? 'Unlimited' : `${remaining}d`}
+                                    </span>
+                                </div>
+                                {!isUnlimited && (
+                                    <div className="h-0.5 w-full overflow-hidden rounded-full bg-slate-200">
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500"
+                                            style={{ width: `${Math.min(100, Math.max(10, remaining * 5))}%` }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </PremiumCard>
+    );
+};
+
+// ─── Compact Reimbursements Tile ───────────────────────────────────────────────
+
+const ReimbursementTile = ({ onSubmit }) => {
+    const [stats, setStats] = useState(null);
+    const [recent, setRecent] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        Promise.all([getReimbStats(), getMyClaims({ page: 1, limit: 2 })])
+            .then(([sr, cr]) => {
+                setStats(sr.data?.stats);
+                setRecent(cr.data?.claims || []);
+            })
             .catch(() => {})
             .finally(() => setLoading(false));
     }, []);
 
     const STATUS_COLORS = {
-        'Pending': 'text-amber-600', 'L1 Approved': 'text-blue-600', 'L2 Approved': 'text-indigo-600',
-        'Approved': 'text-green-600', 'Rejected': 'text-red-600', 'Reimbursed': 'text-purple-600', 'Cancelled': 'text-slate-400'
+        'Pending': 'bg-amber-50 text-amber-700 border-amber-200',
+        'L1 Approved': 'bg-blue-50 text-blue-700 border-blue-200',
+        'L2 Approved': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        'Approved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'Rejected': 'bg-rose-50 text-rose-700 border-rose-200',
+        'Reimbursed': 'bg-purple-50 text-purple-700 border-purple-200',
+        'Cancelled': 'bg-slate-100 text-slate-500 border-slate-200'
     };
 
     return (
-        <Tile className="p-5">
-            <TileHeader icon={ReceiptText} title="Reimbursements" iconBg="bg-purple-100" iconColor="text-purple-600"
-                action={<TileLink to="/ess/reimbursements">View All</TileLink>} />
-            {loading ? <LoadingShim /> : (
-                <div className="space-y-3">
-                    <div className="flex gap-3">
-                        <div className="flex-1 rounded-xl bg-amber-50 border border-amber-100 p-3 text-center">
-                            <p className="text-lg font-bold text-amber-700">{stats?.pending || 0}</p>
-                            <p className="text-[10px] text-amber-600 font-semibold uppercase">Pending</p>
+        <PremiumCard>
+            <CardHeader
+                icon={ReceiptText}
+                title="Expense Claims"
+                iconGradient="from-purple-600 to-indigo-600"
+                action={<CardActionLink to="/ess/reimbursements" label="Manage" />}
+            />
+
+            {loading ? (
+                <LoadingSkeleton />
+            ) : (
+                <div className="space-y-1.5 flex-1 flex flex-col justify-between">
+                    {/* Financial Metrics Strip */}
+                    <div className="grid grid-cols-2 gap-1">
+                        <div className="rounded-lg bg-amber-50/70 border border-amber-100 p-1 text-center">
+                            <span className="text-xs font-black text-amber-800">{stats?.pending || 0}</span>
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-amber-600 block">Pending</span>
                         </div>
-                        <div className="flex-1 rounded-xl bg-purple-50 border border-purple-100 p-3 text-center">
-                            <p className="text-lg font-bold text-purple-700">{formatINR(stats?.totalClaimed || 0)}</p>
-                            <p className="text-[10px] text-purple-600 font-semibold uppercase">Total Claimed</p>
+                        <div className="rounded-lg bg-purple-50/70 border border-purple-100 p-1 text-center">
+                            <span className="text-xs font-black text-purple-800">{formatINR(stats?.totalClaimed || 0)}</span>
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-purple-600 block">Claimed</span>
                         </div>
                     </div>
-                    {recent.slice(0, 2).map(c => (
-                        <div key={c._id} className="flex items-center justify-between py-1.5 border-t border-slate-50">
-                            <div className="min-w-0">
-                                <p className="text-xs font-semibold text-slate-700 truncate">{c.category}</p>
-                                <p className={`text-[10px] font-bold ${STATUS_COLORS[c.status] || 'text-slate-500'}`}>{c.status}</p>
-                            </div>
-                            <p className="text-xs font-bold text-slate-800 shrink-0 ml-2">{formatINR(c.amount)}</p>
+
+                    {/* Recent mini items */}
+                    {recent.length > 0 && (
+                        <div className="space-y-0.5">
+                            {recent.slice(0, 1).map((c) => (
+                                <div key={c._id} className="flex items-center justify-between rounded-md bg-slate-50 p-1 px-1.5 border border-slate-100">
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-semibold text-slate-800 truncate">{c.category}</p>
+                                        <span className={`inline-flex items-center rounded px-1 text-[7px] font-bold border ${STATUS_COLORS[c.status] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                            {c.status}
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-900 shrink-0 ml-1">
+                                        {formatINR(c.amount)}
+                                    </span>
+                                </div>
+                            ))}
                         </div>
-                    ))}
+                    )}
+
                     <button
+                        type="button"
                         onClick={onSubmit}
-                        className="w-full rounded-xl bg-purple-600 py-2 text-xs font-bold text-white hover:bg-purple-700 transition-colors"
+                        className="w-full flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 py-1 text-[10px] font-bold text-white shadow-2xs hover:from-purple-700 hover:to-indigo-700 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
                     >
-                        + Submit Claim
+                        <Plus size={10} /> Submit Claim
                     </button>
                 </div>
             )}
-        </Tile>
+        </PremiumCard>
     );
 };
 
-// ─── Documents Tile ───────────────────────────────────────────────────────────
-
-const DocumentsTile = () => {
-    const [docs, setDocs]       = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        getEmployeeDocuments({ page: 1, limit: 5 })
-            .then(r => setDocs(r.data?.documents || []))
-            .catch(() => {})
-            .finally(() => setLoading(false));
-    }, []);
-
-    const unread = docs.filter(d => d.requiresAcknowledgement && !d.viewerAcknowledged).length;
-
-    return (
-        <Tile to="/ess/documents" className="p-5">
-            <TileHeader icon={FileStack} title="Company Docs" iconBg="bg-indigo-100" iconColor="text-indigo-600"
-                action={<TileLink to="/ess/documents">View All</TileLink>} />
-            {loading ? <LoadingShim /> : (
-                <div className="space-y-2">
-                    {unread > 0 && (
-                        <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
-                            <Bell size={13} className="text-amber-500 shrink-0" />
-                            <p className="text-xs text-amber-700 font-semibold">{unread} document{unread > 1 ? 's' : ''} require{unread === 1 ? 's' : ''} acknowledgement</p>
-                        </div>
-                    )}
-                    {docs.slice(0, 3).map(d => (
-                        <div key={d._id} className="flex items-center gap-2 py-1">
-                            <FileText size={13} className="text-indigo-400 shrink-0" />
-                            <p className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{d.title}</p>
-                            {d.viewerAcknowledged
-                                ? <CheckCircle2 size={12} className="shrink-0 text-green-500" />
-                                : d.requiresAcknowledgement ? <AlertCircle size={12} className="shrink-0 text-amber-500" /> : null}
-                        </div>
-                    ))}
-                    {docs.length === 0 && <p className="text-xs text-slate-400">No documents published yet.</p>}
-                </div>
-            )}
-        </Tile>
-    );
-};
-
-// ─── Payslip Tile ─────────────────────────────────────────────────────────────
+// ─── Compact Payslip & Earnings Tile ───────────────────────────────────────────
 
 const PayslipTile = () => {
-    const [latest, setLatest]   = useState(null);
+    const [latest, setLatest] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [masked, setMasked] = useState(true);
     const { user } = useAuth();
 
     useEffect(() => {
@@ -418,7 +426,7 @@ const PayslipTile = () => {
                     setLatest(sorted[0]);
                 } else if (r.data?.compensation?.ctc) {
                     setLatest({
-                        period: 'Active Salary Structure',
+                        period: 'Active Structure',
                         netSalary: r.data.compensation?.salaryBreakup?.netTakeHome || Math.round(r.data.compensation.ctc * 0.88),
                         grossSalary: r.data.compensation.ctc,
                         totalDeductions: r.data.compensation?.salaryBreakup?.totalDeductions || Math.round(r.data.compensation.ctc * 0.12)
@@ -433,97 +441,136 @@ const PayslipTile = () => {
             .finally(() => setLoading(false));
     }, [user?._id]);
 
+    const netAmount = latest?.netSalary || latest?.netPay || 0;
+    const grossAmount = latest?.grossSalary || latest?.gross || (latest?.netSalary ? Math.round(latest.netSalary * 1.12) : 0);
+
     return (
-        <Tile to="/ess/payslips" className="p-5">
-            <TileHeader
+        <PremiumCard to="/ess/payslips">
+            <CardHeader
                 icon={Banknote}
-                title="Payslip"
-                iconBg="bg-emerald-100"
-                iconColor="text-emerald-600"
-                action={<TileLink to="/ess/payslips">View</TileLink>}
+                title="Payroll & Payslip"
+                iconGradient="from-teal-500 to-emerald-600"
+                action={
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMasked(!masked);
+                            }}
+                            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                            title={masked ? 'Show amount' : 'Hide amount'}
+                        >
+                            {masked ? <Eye size={11} /> : <EyeOff size={11} />}
+                        </button>
+                        <CardActionLink to="/ess/payslips" label="Statements" />
+                    </div>
+                }
             />
+
             {loading ? (
-                <LoadingShim />
+                <LoadingSkeleton />
             ) : latest ? (
-                <div className="space-y-2">
-                    <div className="flex justify-between">
-                        <span className="text-xs text-slate-500">Net Pay</span>
-                        <span className="text-sm font-bold text-slate-900">{formatINR(latest.netSalary || latest.netPay)}</span>
+                <div className="space-y-1.5 flex-1 flex flex-col justify-between">
+                    <div className="rounded-lg bg-gradient-to-br from-slate-900 to-slate-800 p-1.5 px-2 text-white shadow-inner">
+                        <span className="text-[7px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Net Take-Home
+                        </span>
+                        <span className="font-mono text-xs sm:text-sm font-extrabold text-white block">
+                            {masked ? '₹ •••••••' : formatINR(netAmount)}
+                        </span>
+                        <span className="text-[7px] text-slate-400 block">
+                            {latest.period || (latest.month && latest.year ? `${format(new Date(latest.year, latest.month - 1), 'MMM yyyy')}` : 'Latest Statement')}
+                        </span>
                     </div>
-                    <div className="flex justify-between">
-                        <span className="text-xs text-slate-500">Gross Pay</span>
-                        <span className="text-xs font-semibold text-slate-700">{formatINR(latest.grossSalary || latest.gross || (latest.netSalary ? Math.round(latest.netSalary * 1.12) : 0))}</span>
+
+                    <div className="flex items-center justify-between text-[9px] px-0.5 text-slate-600">
+                        <span>Gross:</span>
+                        <span className="font-bold text-slate-900">
+                            {masked ? '₹ •••••' : formatINR(grossAmount)}
+                        </span>
                     </div>
-                    <div className="flex justify-between">
-                        <span className="text-xs text-slate-500">Deductions</span>
-                        <span className="text-xs font-semibold text-red-600">{formatINR(latest.totalDeductions || (latest.netSalary ? Math.round(latest.netSalary * 0.12) : 0))}</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-50 font-medium">
-                        {latest.period || (latest.month && latest.year ? `${format(new Date(latest.year, latest.month - 1), 'MMMM yyyy')}` : 'Latest payslip')}
-                    </p>
                 </div>
             ) : (
-                <div className="space-y-2">
-                    <p className="text-xs text-slate-400">View and download your monthly salary statements.</p>
-                    <span className="inline-flex items-center text-xs font-semibold text-blue-600 hover:underline">
-                        Open Payslips →
+                <div className="space-y-1 text-center py-1 flex-1 flex flex-col justify-center">
+                    <p className="text-[10px] text-slate-500">Access your monthly salary slips.</p>
+                    <span className="inline-flex items-center justify-center gap-0.5 text-[9px] font-bold text-indigo-600 hover:underline">
+                        Open Archive <ArrowRight size={9} />
                     </span>
                 </div>
             )}
-        </Tile>
+        </PremiumCard>
     );
 };
 
-// ─── Helpdesk Tile ────────────────────────────────────────────────────────────
+// ─── Compact Helpdesk Support Tile ─────────────────────────────────────────────
 
 const HelpdeskTile = () => {
     const [queries, setQueries] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        api.get('/helpdesk/my-queries?limit=3')
+        api.get('/helpdesk/my-queries?limit=2')
             .then(r => setQueries(r.data?.queries || r.data?.data || []))
             .catch(() => {})
             .finally(() => setLoading(false));
     }, []);
 
     const STATUS_COLORS = {
-        Open: 'bg-blue-50 text-blue-700 border-blue-100',
-        Resolved: 'bg-green-50 text-green-700 border-green-100',
-        Closed: 'bg-slate-50 text-slate-500 border-slate-200'
+        Open: 'bg-blue-50 text-blue-700 border-blue-200',
+        Resolved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        Closed: 'bg-slate-100 text-slate-600 border-slate-200'
     };
 
     return (
-        <Tile to="/helpdesk" className="p-5">
-            <TileHeader icon={LifeBuoy} title="Helpdesk" iconBg="bg-rose-100" iconColor="text-rose-600"
-                action={<TileLink to="/helpdesk">View All</TileLink>} />
-            {loading ? <LoadingShim /> : (
-                <div className="space-y-2">
-                    {queries.length === 0
-                        ? <p className="text-xs text-slate-400">No open tickets. <Link to="/helpdesk" className="text-blue-600 font-semibold hover:underline">Raise a query?</Link></p>
-                        : queries.slice(0, 3).map(q => (
-                            <div key={q._id} className="flex items-start gap-2 py-1">
-                                <span className={`mt-0.5 inline-flex shrink-0 items-center rounded-lg border px-1.5 py-0.5 text-[10px] font-bold ${STATUS_COLORS[q.status] || STATUS_COLORS['Open']}`}>
+        <PremiumCard to="/helpdesk">
+            <CardHeader
+                icon={LifeBuoy}
+                title="Helpdesk Support"
+                iconGradient="from-rose-500 to-pink-600"
+                action={<CardActionLink to="/helpdesk" label="Tickets" />}
+            />
+
+            {loading ? (
+                <LoadingSkeleton />
+            ) : (
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                    {queries.length === 0 ? (
+                        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center">
+                            <LifeBuoy size={16} className="mx-auto text-slate-300 mb-0.5" />
+                            <p className="text-[10px] text-slate-500">No active support tickets.</p>
+                            <span className="text-[9px] font-bold text-indigo-600">
+                                Raise a Query →
+                            </span>
+                        </div>
+                    ) : (
+                        queries.slice(0, 2).map((q) => (
+                            <div key={q._id} className="flex items-center justify-between rounded-md bg-slate-50 p-1 px-1.5 border border-slate-100">
+                                <p className="min-w-0 flex-1 truncate text-[10px] font-medium text-slate-800 pr-1">
+                                    {q.subject || q.title || q.queryType}
+                                </p>
+                                <span className={`inline-flex shrink-0 items-center rounded border px-1 py-0.2 text-[7px] font-bold ${STATUS_COLORS[q.status] || STATUS_COLORS['Open']}`}>
                                     {q.status}
                                 </span>
-                                <p className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{q.subject || q.title || q.queryType}</p>
                             </div>
-                        ))}
+                        ))
+                    )}
                 </div>
             )}
-        </Tile>
+        </PremiumCard>
     );
 };
 
-// ─── Holidays Tile ────────────────────────────────────────────────────────────
+// ─── Compact Upcoming Holidays Tile ───────────────────────────────────────────
 
 const HolidaysTile = () => {
     const [holidays, setHolidays] = useState([]);
-    const [loading, setLoading]   = useState(true);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const today = new Date().toISOString().split('T')[0];
-        api.get(`/holidays?from=${today}&limit=4`)
+        api.get(`/holidays?from=${today}&limit=2`)
             .then(r => setHolidays(Array.isArray(r.data) ? r.data : (r.data?.holidays || [])))
             .catch(() => {})
             .finally(() => setLoading(false));
@@ -531,155 +578,173 @@ const HolidaysTile = () => {
 
     const upcoming = holidays
         .filter(h => new Date(h.date) >= new Date(new Date().setHours(0,0,0,0)))
-        .slice(0, 3);
+        .slice(0, 2);
 
     return (
-        <Tile to="/holidays" className="p-5">
-            <TileHeader icon={CalendarDays} title="Upcoming Holidays" iconBg="bg-teal-100" iconColor="text-teal-600"
-                action={<TileLink to="/holidays">Calendar</TileLink>} />
-            {loading ? <LoadingShim /> : (
-                <div className="space-y-2.5">
-                    {upcoming.length === 0
-                        ? <p className="text-xs text-slate-400">No upcoming holidays found.</p>
-                        : upcoming.map((h, i) => (
-                            <div key={i} className="flex items-center gap-3">
-                                <div className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-xl bg-teal-50 border border-teal-100 text-center">
-                                    <p className="text-[10px] font-bold text-teal-600 leading-none">{format(new Date(h.date), 'MMM')}</p>
-                                    <p className="text-sm font-black text-teal-800 leading-none">{format(new Date(h.date), 'dd')}</p>
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="truncate text-xs font-bold text-slate-800">{h.name}</p>
-                                    <p className="text-[10px] text-slate-400">{format(new Date(h.date), 'EEEE')}</p>
-                                </div>
+        <PremiumCard to="/holidays">
+            <CardHeader
+                icon={CalendarDays}
+                title="Upcoming Holidays"
+                iconGradient="from-cyan-500 to-blue-600"
+                action={<CardActionLink to="/holidays" label="Calendar" />}
+            />
+
+            {loading ? (
+                <LoadingSkeleton />
+            ) : upcoming.length === 0 ? (
+                <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center flex-1 flex items-center justify-center">
+                    <p className="text-[10px] text-slate-400">No upcoming company holidays.</p>
+                </div>
+            ) : (
+                <div className="space-y-1 flex-1 flex flex-col justify-around">
+                    {upcoming.map((h, i) => (
+                        <div key={i} className="flex items-center gap-1.5 rounded-lg bg-slate-50/60 p-1 px-1.5 border border-slate-100">
+                            <div className="flex h-7 w-7 shrink-0 flex-col items-center justify-center rounded-md bg-cyan-100/60 text-cyan-800 font-bold border border-cyan-200">
+                                <span className="text-[6px] uppercase tracking-wider text-cyan-700 leading-none">{format(new Date(h.date), 'MMM')}</span>
+                                <span className="text-[11px] font-black leading-none mt-0.2">{format(new Date(h.date), 'dd')}</span>
                             </div>
-                        ))}
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-[10px] font-bold text-slate-900 leading-tight">{h.name}</p>
+                                <p className="text-[8px] text-slate-400 leading-tight">{format(new Date(h.date), 'EEEE')}</p>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
-        </Tile>
+        </PremiumCard>
     );
 };
 
-// ─── Announcements Tile ────────────────────────────────────────────────────────
-
-const AnnouncementsTile = () => {
-    const [items, setItems]     = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        api.get('/announcements?limit=3')
-            .then(r => setItems(r.data?.announcements || []))
-            .catch(() => {})
-            .finally(() => setLoading(false));
-    }, []);
-
-    return (
-        <Tile to="/announcements" className="p-5">
-            <TileHeader icon={Megaphone} title="Announcements" iconBg="bg-yellow-100" iconColor="text-yellow-600"
-                action={<TileLink to="/announcements">Feed</TileLink>} />
-            {loading ? <LoadingShim /> : (
-                <div className="space-y-2.5">
-                    {items.length === 0
-                        ? <p className="text-xs text-slate-400">No recent announcements.</p>
-                        : items.map(a => (
-                            <div key={a._id} className="pb-2.5 border-b border-slate-50 last:border-0 last:pb-0">
-                                <p className="text-xs font-bold text-slate-800 line-clamp-1">{a.title}</p>
-                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {a.publishedAt ? formatDistanceToNow(new Date(a.publishedAt), { addSuffix: true }) : ''}
-                                </p>
-                            </div>
-                        ))}
-                </div>
-            )}
-        </Tile>
-    );
-};
-
-// ─── Profile & Onboarding Tile ────────────────────────────────────────────────
+// ─── Compact Profile Tile ──────────────────────────────────────────────────────
 
 const ProfileTile = ({ user }) => {
     const [onboarding, setOnboarding] = useState(null);
-    const [loading, setLoading]       = useState(true);
 
     useEffect(() => {
-        // Check if user is in active onboarding/offboarding
-        api.get(`/onboarding?employeeId=${user?._id}&status=active&limit=1`)
+        if (!user?._id) return;
+        api.get(`/onboarding?employeeId=${user._id}&status=active&limit=1`)
             .then(r => setOnboarding(r.data?.onboardings?.[0] || null))
-            .catch(() => {})
-            .finally(() => setLoading(false));
+            .catch(() => {});
     }, [user?._id]);
 
     return (
-        <Tile to="/profile" className="p-5">
-            <TileHeader icon={User} title="My Profile" iconBg="bg-slate-100" iconColor="text-slate-600"
-                action={<TileLink to="/profile">Edit</TileLink>} />
-            <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-blue-100 text-blue-600 font-bold text-lg ring-2 ring-blue-100">
-                    {user?.profilePicture
-                        ? <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
-                        : user?.firstName?.charAt(0)}
+        <PremiumCard to="/profile">
+            <CardHeader
+                icon={User}
+                title="Employee Dossier"
+                iconGradient="from-slate-700 to-slate-900"
+                action={<CardActionLink to="/profile" label="Profile" />}
+            />
+
+            <div className="flex items-center gap-2 flex-1">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-extrabold text-xs shadow-2xs">
+                    {user?.profilePicture ? (
+                        <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                        user?.firstName?.charAt(0) || 'U'
+                    )}
                 </div>
-                <div className="min-w-0">
-                    <p className="font-bold text-slate-900 truncate">{user?.firstName} {user?.lastName}</p>
-                    <p className="text-xs text-slate-500 truncate">{user?.employeeCode} · {user?.department}</p>
-                    <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+                <div className="min-w-0 flex-1">
+                    <p className="font-bold text-[10px] text-slate-900 truncate leading-tight">
+                        {user?.firstName} {user?.lastName}
+                    </p>
+                    <p className="text-[9px] text-slate-500 truncate leading-tight">
+                        {user?.department || 'General'} {user?.designation ? `• ${user.designation}` : ''}
+                    </p>
+                    <p className="text-[9px] text-indigo-600 font-medium truncate leading-tight">
+                        {user?.email}
+                    </p>
                 </div>
             </div>
-            {!loading && onboarding && (
-                <div className="mt-3 flex items-center gap-2 rounded-xl bg-blue-50 border border-blue-100 px-3 py-2">
-                    <UserPlus size={13} className="text-blue-500 shrink-0" />
-                    <p className="text-xs text-blue-700 font-semibold">Onboarding in progress — {onboarding.completionPercentage || 0}% complete</p>
+
+            {onboarding && (
+                <div className="mt-1 rounded-lg bg-indigo-50 border border-indigo-100 p-1.5">
+                    <div className="flex items-center justify-between text-[9px] mb-0.5">
+                        <span className="font-bold text-indigo-900">Onboarding</span>
+                        <span className="font-extrabold text-indigo-700">{onboarding.completionPercentage || 0}%</span>
+                    </div>
+                    <div className="h-0.5 w-full overflow-hidden rounded-full bg-indigo-200/60">
+                        <div
+                            className="h-full rounded-full bg-indigo-600"
+                            style={{ width: `${onboarding.completionPercentage || 0}%` }}
+                        />
+                    </div>
                 </div>
             )}
-        </Tile>
+        </PremiumCard>
     );
 };
 
-// ─── ESS Dashboard ────────────────────────────────────────────────────────────
+// ─── Main ESS Dashboard (Unscrollable Viewport-Fit Layout) ─────────────────────
 
 const EssDashboard = () => {
     const { user, hasModule } = useAuth();
     const [showSubmitClaim, setShowSubmitClaim] = useState(false);
 
-    const showLeave       = hasModule('leaves');
-    const showAttendance  = hasModule('attendance');
-    const showReimburse   = hasModule('reimbursements');
-    const showDocuments   = hasModule('essDocuments');
-    const showHelpdesk    = hasModule('helpdesk');
-    const showHolidays    = hasModule('holidays');
-    const showAnnouncements = hasModule('announcements');
+    const showLeave         = hasModule('leaves');
+    const showAttendance    = hasModule('attendance');
+    const showReimburse     = hasModule('reimbursements');
+    const showHelpdesk      = hasModule('helpdesk');
+    const showHolidays      = hasModule('holidays');
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6 space-y-5">
-                {/* Greeting */}
-                <GreetingHeader user={user} />
-
-                {/* Main grid */}
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden bg-[#F8FAFC] p-2.5 sm:p-3.5 flex flex-col justify-between">
+            <div className="mx-auto max-w-7xl w-full h-full flex flex-col justify-between gap-2.5">
+                {/* Responsive Compact Grid */}
+                <div className="grid gap-2 sm:gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 flex-1 min-h-0 items-stretch">
                     <ProfileTile user={user} />
-                    {showLeave       && <LeaveTile />}
                     {showAttendance  && <AttendanceTile />}
+                    {showLeave       && <LeaveTile />}
                     {showReimburse   && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
-                    {showDocuments   && <DocumentsTile />}
                     <PayslipTile />
                     {showHelpdesk    && <HelpdeskTile />}
                     {showHolidays    && <HolidaysTile />}
-                    {showAnnouncements && <AnnouncementsTile />}
                 </div>
 
-                {/* Quick actions footer */}
-                <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-5">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Quick Links</p>
-                    <div className="flex flex-wrap gap-2">
-                        {showLeave       && <Link to="/leaves"       className="flex items-center gap-1.5 rounded-xl bg-green-50 border border-green-100 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"><Calendar size={13}   /> Apply Leave</Link>}
-                        {showReimburse   && <button onClick={() => setShowSubmitClaim(true)} className="flex items-center gap-1.5 rounded-xl bg-purple-50 border border-purple-100 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors"><ReceiptText size={13} /> Submit Claim</button>}
-                        {showDocuments   && <Link to="/ess/documents" className="flex items-center gap-1.5 rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"><FileStack size={13}  /> Company Docs</Link>}
-                        {showHelpdesk    && <Link to="/helpdesk"      className="flex items-center gap-1.5 rounded-xl bg-rose-50 border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors"><LifeBuoy size={13}   /> Raise Query</Link>}
-                        <Link to="/profile" className="flex items-center gap-1.5 rounded-xl bg-slate-50 border border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"><User size={13} /> My Profile</Link>
+                {/* Compact Quick Access Hub */}
+                <div className="shrink-0 rounded-xl border border-slate-100 bg-white shadow-2xs p-2 sm:p-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                        <div>
+                            <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-none">Quick Access Hub</h4>
+                            <p className="text-[9px] text-slate-500 leading-tight mt-0.5">Jump directly to your employee workflows</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {showLeave && (
+                                <Link
+                                    to="/leaves"
+                                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                >
+                                    <Calendar size={10} /> Apply Leave
+                                </Link>
+                            )}
+                            {showReimburse && (
+                                <button
+                                    onClick={() => setShowSubmitClaim(true)}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-purple-50 border border-purple-100 px-2 py-1 text-[10px] font-semibold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer"
+                                >
+                                    <ReceiptText size={10} /> Submit Claim
+                                </button>
+                            )}
+                            {showHelpdesk && (
+                                <Link
+                                    to="/helpdesk"
+                                    className="inline-flex items-center gap-1 rounded-lg bg-rose-50 border border-rose-100 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
+                                >
+                                    <LifeBuoy size={10} /> Raise Query
+                                </Link>
+                            )}
+                            <Link
+                                to="/profile"
+                                className="inline-flex items-center gap-1 rounded-lg bg-slate-100 border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
+                            >
+                                <User size={10} /> My Profile
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </div>
 
+            {/* Modal Dialog */}
             {showSubmitClaim && (
                 <SubmitClaimModal onClose={() => setShowSubmitClaim(false)} onSuccess={() => {}} />
             )}

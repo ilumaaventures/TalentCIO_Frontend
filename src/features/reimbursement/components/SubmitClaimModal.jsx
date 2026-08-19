@@ -32,6 +32,7 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
             expenseDate: new Date().toISOString().split('T')[0],
             description: '',
             category: '',
+            otherCategoryName: '',
             amount: '',
             hasReceipt: true,
             receiptAttached: 'Y'
@@ -104,6 +105,7 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                 expenseDate: new Date().toISOString().split('T')[0],
                 description: '',
                 category: categories[0]?.name || 'Food & Meals',
+                otherCategoryName: '',
                 amount: '',
                 hasReceipt: true,
                 receiptAttached: 'Y'
@@ -146,6 +148,10 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                 toast.error(`Line ${i + 1}: Category Type is required.`);
                 return false;
             }
+            if (it.category === 'Other' && !it.otherCategoryName?.trim()) {
+                toast.error(`Line ${i + 1}: Please specify the category name for "Other".`);
+                return false;
+            }
             if (!it.amount || isNaN(Number(it.amount)) || Number(it.amount) <= 0) {
                 toast.error(`Line ${i + 1}: Valid positive amount is required.`);
                 return false;
@@ -162,11 +168,16 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
         e.preventDefault();
         if (!validate()) return;
 
+        const firstCategory = items[0]?.category === 'Other' && items[0]?.otherCategoryName?.trim()
+            ? `Other (${items[0].otherCategoryName.trim()})`
+            : (items[0]?.category || 'General');
+
         const fd = new FormData();
-        fd.append('category', items[0]?.category || 'General');
+        fd.append('category', firstCategory);
+        fd.append('otherCategoryName', items[0]?.otherCategoryName?.trim() || '');
         fd.append('amount', totalAmount);
         fd.append('expenseDate', items[0]?.expenseDate || new Date().toISOString().split('T')[0]);
-        fd.append('description', items.map(i => i.description).join('; '));
+        fd.append('description', items.map(i => i.category === 'Other' && i.otherCategoryName?.trim() ? `[${i.otherCategoryName.trim()}] ${i.description}` : i.description).join('; '));
         fd.append('department', user?.department || '');
         fd.append('employeeCode', user?.employeeCode || user?.employeeId || '');
         fd.append('items', JSON.stringify(items));
@@ -261,8 +272,7 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                                         <th className="py-2.5 px-3">Date of Expense *</th>
                                         <th className="py-2.5 px-3">Description *</th>
                                         <th className="py-2.5 px-3">Category Type *</th>
-                                        <th className="py-2.5 px-3 w-32">Amount (₹) *</th>
-                                        <th className="py-2.5 px-3 w-28 text-center">Receipt (Y/N)</th>
+                                        <th className="py-2.5 px-3 w-36">Amount (₹) *</th>
                                         <th className="py-2.5 px-2 w-10 text-center"></th>
                                     </tr>
                                 </thead>
@@ -292,10 +302,16 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                                             </td>
 
                                             {/* Category Type */}
-                                            <td className="p-2.5">
+                                            <td className="p-2.5 min-w-[170px]">
                                                 <select
                                                     value={item.category}
-                                                    onChange={e => handleItemChange(index, 'category', e.target.value)}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        handleItemChange(index, 'category', val);
+                                                        if (val !== 'Other') {
+                                                            handleItemChange(index, 'otherCategoryName', '');
+                                                        }
+                                                    }}
                                                     className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500 bg-white"
                                                 >
                                                     {categories.map(c => (
@@ -310,6 +326,15 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                                                         </>
                                                     )}
                                                 </select>
+                                                {item.category === 'Other' && (
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Specify category name *"
+                                                        value={item.otherCategoryName || ''}
+                                                        onChange={e => handleItemChange(index, 'otherCategoryName', e.target.value)}
+                                                        className="mt-1.5 w-full rounded-lg border border-amber-300 bg-amber-50/70 px-2 py-1 text-xs text-slate-800 outline-none focus:border-amber-500 focus:bg-white transition-colors"
+                                                    />
+                                                )}
                                             </td>
 
                                             {/* Amount */}
@@ -323,13 +348,6 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                                                     onChange={e => handleItemChange(index, 'amount', e.target.value)}
                                                     className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-500"
                                                 />
-                                            </td>
-
-                                            {/* Receipt Attached Y/N - Fixed to Always Yes (Y) */}
-                                            <td className="p-2.5 text-center">
-                                                <span className="inline-flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-bold shadow-2xs">
-                                                    Yes (Y)
-                                                </span>
                                             </td>
 
                                             {/* Delete row */}

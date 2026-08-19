@@ -194,10 +194,10 @@ const CompanyDocuments = () => {
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
-                            onClick={() => navigate('/ess')}
+                            onClick={() => navigate('/profile?tab=company-documents')}
                             className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 shrink-0"
-                            aria-label="Back to My Space"
-                            title="Back to My Space"
+                            aria-label="Back to Profile"
+                            title="Back to Profile"
                         >
                             <ArrowLeft size={16} />
                         </button>
