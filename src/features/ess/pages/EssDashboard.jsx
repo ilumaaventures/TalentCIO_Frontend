@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Calendar, Clock, ReceiptText, LifeBuoy,
-    CalendarDays, User, CheckCircle2,
+    CalendarDays, CheckCircle2,
     ChevronRight, Loader, LogOut,
     Banknote, Eye, EyeOff, Plus, ArrowRight
 } from 'lucide-react';
@@ -14,11 +14,11 @@ import { getMyClaims, getMyStats as getReimbStats } from '@/features/reimburseme
 import { formatINR } from '@/features/reimbursement/utils/reimbursementConstants';
 import SubmitClaimModal from '@/features/reimbursement/components/SubmitClaimModal';
 
-// ─── Compact Card Primitive (Unscrollable Viewport Fit) ───────────────────────
+// ─── Compact Card Primitive ───────────────────────────────────────────────────
 
 const PremiumCard = ({ children, className = '', to, onClick, hoverable = true }) => {
-    const baseClasses = `group relative overflow-hidden rounded-xl bg-white p-2.5 sm:p-3 border border-slate-100 shadow-[0_1px_6px_-2px_rgba(0,0,0,0.03)] transition-all duration-200 flex flex-col justify-between h-full ${
-        hoverable ? 'hover:-translate-y-0.5 hover:shadow-[0_4px_12px_-3px_rgba(0,0,0,0.06)] hover:border-slate-200' : ''
+    const baseClasses = `group relative overflow-hidden rounded-2xl bg-white p-3.5 sm:p-4 border border-slate-200/80 shadow-xs transition-all duration-200 ${
+        hoverable ? 'hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300' : ''
     } ${to || onClick ? 'cursor-pointer' : ''} ${className}`;
 
     if (to) {
@@ -39,13 +39,13 @@ const PremiumCard = ({ children, className = '', to, onClick, hoverable = true }
 };
 
 const CardHeader = ({ icon: Icon, title, iconGradient = 'from-blue-600 to-indigo-600', badge, action }) => (
-    <div className="flex items-center justify-between gap-1.5 mb-1.5 shrink-0">
-        <div className="flex items-center gap-1.5">
-            <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
-                <Icon size={12} />
+    <div className="flex items-center justify-between gap-1.5 mb-3">
+        <div className="flex items-center gap-2">
+            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
+                <Icon size={14} />
             </div>
             <div>
-                <h3 className="text-[11px] font-bold text-slate-800 tracking-tight leading-none">{title}</h3>
+                <h3 className="text-xs font-bold text-slate-800 tracking-tight leading-none">{title}</h3>
                 {badge && <div className="mt-0.5">{badge}</div>}
             </div>
         </div>
@@ -56,22 +56,22 @@ const CardHeader = ({ icon: Icon, title, iconGradient = 'from-blue-600 to-indigo
 const CardActionLink = ({ to, label = 'View All' }) => (
     <Link
         to={to}
-        className="inline-flex items-center gap-0.5 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors group-hover:translate-x-0.5"
+        className="inline-flex items-center gap-0.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors group-hover:translate-x-0.5"
     >
         <span>{label}</span>
-        <ChevronRight size={10} />
+        <ChevronRight size={11} />
     </Link>
 );
 
 const LoadingSkeleton = () => (
-    <div className="space-y-1.5 animate-pulse pt-0.5 flex-1 flex flex-col justify-center">
-        <div className="h-2 rounded bg-slate-100 w-3/4" />
-        <div className="h-2 rounded bg-slate-100 w-1/2" />
-        <div className="h-4 rounded bg-slate-100 w-full" />
+    <div className="space-y-2 animate-pulse pt-1">
+        <div className="h-2.5 rounded bg-slate-100 w-3/4" />
+        <div className="h-2.5 rounded bg-slate-100 w-1/2" />
+        <div className="h-6 rounded bg-slate-100 w-full" />
     </div>
 );
 
-// ─── Compact Attendance Tile ───────────────────────────────────────────────────
+// ─── Shift & Attendance Tile ───────────────────────────────────────────────────
 
 const AttendanceTile = () => {
     const [today, setToday] = useState(null);
@@ -165,17 +165,17 @@ const AttendanceTile = () => {
             {loading ? (
                 <LoadingSkeleton />
             ) : (
-                <div className="space-y-1.5 flex-1 flex flex-col justify-between">
-                    {/* Status Badge Strip */}
-                    <div className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 p-1 px-2">
-                        <div className="flex items-center gap-1">
-                            <CalendarDays size={10} className="text-orange-500" />
-                            <span className="text-[10px] font-bold text-slate-700">
+                <div className="space-y-2.5">
+                    {/* Date and Status pill */}
+                    <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-100 p-1.5 px-2.5">
+                        <div className="flex items-center gap-1.5">
+                            <CalendarDays size={12} className="text-orange-500" />
+                            <span className="text-[11px] font-bold text-slate-700">
                                 {format(new Date(), 'dd MMM yyyy')}
                             </span>
                         </div>
                         <span
-                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.2 text-[8px] font-bold border ${
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold border ${
                                 isClockedIn
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                     : isClockedOut
@@ -193,31 +193,31 @@ const AttendanceTile = () => {
                     </div>
 
                     {/* Punch Times Metrics */}
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                        <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-1 text-center">
+                    <div className="grid grid-cols-2 gap-1.5">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-1.5 text-center">
                             <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">Check In</span>
-                            <span className="text-[10px] font-bold text-slate-800 mt-0.2 block">
+                            <span className="text-xs font-bold text-slate-800 mt-0.5 block">
                                 {today?.clockIn ? format(new Date(today.clockIn), 'hh:mm a') : '—'}
                             </span>
                         </div>
-                        <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-1 text-center">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-1.5 text-center">
                             <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">Check Out</span>
-                            <span className="text-[10px] font-bold text-slate-800 mt-0.2 block">
+                            <span className="text-xs font-bold text-slate-800 mt-0.5 block">
                                 {today?.clockOut ? format(new Date(today.clockOut), 'hh:mm a') : isClockedIn ? 'Active' : '—'}
                             </span>
                         </div>
                     </div>
 
-                    {/* Primary Action Button */}
-                    <div className="shrink-0">
+                    {/* Action button */}
+                    <div>
                         {isNotStarted && (
                             <button
                                 type="button"
                                 onClick={handleClockIn}
                                 disabled={actionLoading}
-                                className="w-full flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 py-1.5 text-[10px] font-bold text-white shadow-2xs hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                                className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 py-2 text-xs font-bold text-white shadow-xs hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 transition-all cursor-pointer"
                             >
-                                {actionLoading ? <Loader size={10} className="animate-spin" /> : <Clock size={10} />}
+                                {actionLoading ? <Loader size={12} className="animate-spin" /> : <Clock size={12} />}
                                 Check In Now
                             </button>
                         )}
@@ -227,16 +227,16 @@ const AttendanceTile = () => {
                                 type="button"
                                 onClick={handleClockOut}
                                 disabled={actionLoading}
-                                className="w-full flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-rose-600 to-amber-600 py-1.5 text-[10px] font-bold text-white shadow-2xs hover:from-rose-700 hover:to-amber-700 disabled:opacity-60 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                                className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 py-2 text-xs font-bold text-white shadow-xs hover:from-rose-700 hover:to-amber-700 disabled:opacity-60 transition-all cursor-pointer"
                             >
-                                {actionLoading ? <Loader size={10} className="animate-spin" /> : <LogOut size={10} />}
+                                {actionLoading ? <Loader size={12} className="animate-spin" /> : <LogOut size={12} />}
                                 Check Out
                             </button>
                         )}
 
                         {isClockedOut && (
-                            <div className="flex items-center justify-center gap-1 rounded-lg bg-purple-50 border border-purple-100 py-1 text-[10px] font-bold text-purple-700">
-                                <CheckCircle2 size={11} className="text-purple-600" />
+                            <div className="flex items-center justify-center gap-1.5 rounded-xl bg-purple-50 border border-purple-100 py-1.5 text-xs font-bold text-purple-700">
+                                <CheckCircle2 size={13} className="text-purple-600" />
                                 Shift Completed
                             </div>
                         )}
@@ -247,7 +247,64 @@ const AttendanceTile = () => {
     );
 };
 
-// ─── Compact Leave & Time Off Tile ─────────────────────────────────────────────
+// ─── Circular Leave Gauge Primitive ──────────────────────────────────────────
+
+const CircularLeaveGauge = ({ label, remaining, total = 12, ringColor = 'text-emerald-500', trackColor = 'text-slate-100', isUnlimited }) => {
+    const size = 46;
+    const strokeWidth = 3.5;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const pct = isUnlimited ? 100 : Math.min(100, Math.max(8, (remaining / (total || 12)) * 100));
+    const offset = circumference - (pct / 100) * circumference;
+
+    return (
+        <div className="flex flex-col items-center text-center shrink-0 w-[72px]">
+            <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+                <svg className="h-full w-full -rotate-90 transform" viewBox={`0 0 ${size} ${size}`}>
+                    <circle
+                        cx={size / 2}
+                        cy={size / 2}
+                        r={radius}
+                        stroke="currentColor"
+                        strokeWidth={strokeWidth}
+                        className={trackColor}
+                        fill="transparent"
+                    />
+                    <circle
+                        cx={size / 2}
+                        cy={size / 2}
+                        r={radius}
+                        stroke="currentColor"
+                        strokeWidth={strokeWidth}
+                        strokeDasharray={circumference}
+                        strokeDashoffset={offset}
+                        strokeLinecap="round"
+                        className={`${ringColor} transition-all duration-500 ease-out`}
+                        fill="transparent"
+                    />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="font-extrabold text-[11px] text-slate-800 leading-none">
+                        {isUnlimited ? '∞' : `${remaining}d`}
+                    </span>
+                    {!isUnlimited && (
+                        <span className="text-[7px] font-semibold text-slate-400 leading-none mt-0.5">
+                            of {total}d
+                        </span>
+                    )}
+                </div>
+            </div>
+            <span
+                className="mt-1 text-[9.5px] font-bold text-slate-700 leading-[1.15] text-center line-clamp-2 px-0.5 w-full break-words"
+                title={label}
+            >
+                {label}
+            </span>
+        </div>
+    );
+};
+
+// ─── Leave & Time Off Tile ─────────────────────────────────────────────────────
 
 const LeaveTile = () => {
     const [balances, setBalances] = useState([]);
@@ -270,7 +327,20 @@ const LeaveTile = () => {
             .finally(() => setLoading(false));
     }, []);
 
-    const types = Array.isArray(balances) ? balances.slice(0, 3) : [];
+    const totalAvailable = balances.reduce((acc, b) => {
+        if (b.policyAccrualAmount === 0) return acc;
+        const total = (b.openingBalance || 0) + (b.accrued || 0) || b.policyAccrualAmount || b.allocated || 0;
+        const rem = b.closingBalance ?? b.remaining ?? (Math.max(total - (b.utilized || 0), 0)) ?? b.balance ?? 0;
+        return acc + (typeof rem === 'number' ? rem : 0);
+    }, 0);
+
+    const RING_COLORS = [
+        { ring: 'text-emerald-500', track: 'text-emerald-100/60' },
+        { ring: 'text-teal-500', track: 'text-teal-100/60' },
+        { ring: 'text-indigo-500', track: 'text-indigo-100/60' },
+        { ring: 'text-purple-500', track: 'text-purple-100/60' },
+        { ring: 'text-cyan-500', track: 'text-cyan-100/60' }
+    ];
 
     return (
         <PremiumCard to="/leaves">
@@ -283,48 +353,54 @@ const LeaveTile = () => {
 
             {loading ? (
                 <LoadingSkeleton />
-            ) : types.length === 0 ? (
-                <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center flex-1 flex flex-col justify-center items-center">
-                    <Calendar size={16} className="text-slate-300 mb-1" />
-                    <p className="text-[10px] text-slate-500">No leave balance data.</p>
-                    <Link to="/leaves" className="mt-0.5 text-[9px] font-bold text-indigo-600 hover:underline">
-                        Check History →
+            ) : balances.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+                    <Calendar size={18} className="mx-auto text-slate-300 mb-1" />
+                    <p className="text-xs text-slate-500">No leave policies allocated yet.</p>
+                    <Link to="/leaves" className="mt-1 inline-flex text-xs font-bold text-indigo-600 hover:underline">
+                        View Balance Details →
                     </Link>
                 </div>
             ) : (
-                <div className="space-y-1 flex-1 flex flex-col justify-around">
-                    {types.map((b, i) => {
-                        const remaining = b.closingBalance ?? b.remaining ?? b.balance ?? 0;
-                        const isUnlimited = b.policyAccrualAmount === 0;
+                <div className="space-y-2">
+                    {/* Complete Total Balance Banner */}
+                    <div className="flex items-center justify-between rounded-xl bg-emerald-50/70 border border-emerald-100/90 p-1.5 px-2.5">
+                        <span className="text-[10px] font-bold text-emerald-900 uppercase tracking-wider">Total Leave Balance</span>
+                        <span className="rounded-full bg-emerald-600 text-white px-2 py-0.2 text-[10px] font-black shadow-2xs">
+                            {totalAvailable} Days
+                        </span>
+                    </div>
 
-                        return (
-                            <div key={i} className="rounded-lg border border-slate-100 bg-slate-50/50 p-1 px-1.5 hover:bg-slate-50 transition-colors">
-                                <div className="flex items-center justify-between mb-0.5">
-                                    <span className="text-[10px] font-semibold text-slate-800 truncate">
-                                        {b.policyName || b.leaveType || b.type}
-                                    </span>
-                                    <span className="rounded-full bg-emerald-100 text-emerald-800 px-1 py-0.2 text-[8px] font-bold">
-                                        {isUnlimited ? 'Unlimited' : `${remaining}d`}
-                                    </span>
-                                </div>
-                                {!isUnlimited && (
-                                    <div className="h-0.5 w-full overflow-hidden rounded-full bg-slate-200">
-                                        <div
-                                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500"
-                                            style={{ width: `${Math.min(100, Math.max(10, remaining * 5))}%` }}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {/* Flexible Circular Breakdown Across All Policies */}
+                    <div className="rounded-xl bg-slate-50/70 border border-slate-100/80 p-2 overflow-x-auto scrollbar-none">
+                        <div className={`flex items-start gap-2.5 py-0.5 min-w-max ${balances.length <= 3 ? 'justify-around w-full' : 'justify-start'}`}>
+                            {balances.map((b, i) => {
+                                const total = (b.openingBalance || 0) + (b.accrued || 0) || b.policyAccrualAmount || b.allocated || 12;
+                                const remaining = b.closingBalance ?? b.remaining ?? (Math.max(total - (b.utilized || 0), 0)) ?? b.balance ?? 0;
+                                const isUnlimited = b.policyAccrualAmount === 0;
+                                const colors = RING_COLORS[i % RING_COLORS.length];
+
+                                return (
+                                    <CircularLeaveGauge
+                                        key={i}
+                                        label={b.policyName || b.leaveType || b.type}
+                                        remaining={remaining}
+                                        total={total}
+                                        isUnlimited={isUnlimited}
+                                        ringColor={colors.ring}
+                                        trackColor={colors.track}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
                 </div>
             )}
         </PremiumCard>
     );
 };
 
-// ─── Compact Reimbursements Tile ───────────────────────────────────────────────
+// ─── Expense Claims Tile ───────────────────────────────────────────────────────
 
 const ReimbursementTile = ({ onSubmit }) => {
     const [stats, setStats] = useState(null);
@@ -341,16 +417,6 @@ const ReimbursementTile = ({ onSubmit }) => {
             .finally(() => setLoading(false));
     }, []);
 
-    const STATUS_COLORS = {
-        'Pending': 'bg-amber-50 text-amber-700 border-amber-200',
-        'L1 Approved': 'bg-blue-50 text-blue-700 border-blue-200',
-        'L2 Approved': 'bg-indigo-50 text-indigo-700 border-indigo-200',
-        'Approved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        'Rejected': 'bg-rose-50 text-rose-700 border-rose-200',
-        'Reimbursed': 'bg-purple-50 text-purple-700 border-purple-200',
-        'Cancelled': 'bg-slate-100 text-slate-500 border-slate-200'
-    };
-
     return (
         <PremiumCard>
             <CardHeader
@@ -363,44 +429,25 @@ const ReimbursementTile = ({ onSubmit }) => {
             {loading ? (
                 <LoadingSkeleton />
             ) : (
-                <div className="space-y-1.5 flex-1 flex flex-col justify-between">
+                <div className="space-y-2.5">
                     {/* Financial Metrics Strip */}
-                    <div className="grid grid-cols-2 gap-1">
-                        <div className="rounded-lg bg-amber-50/70 border border-amber-100 p-1 text-center">
-                            <span className="text-xs font-black text-amber-800">{stats?.pending || 0}</span>
-                            <span className="text-[8px] font-bold uppercase tracking-wider text-amber-600 block">Pending</span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                        <div className="rounded-xl bg-amber-50/70 border border-amber-100 p-2 text-center">
+                            <span className="text-sm font-black text-amber-800">{stats?.pending || 0}</span>
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-amber-600 block mt-0.5">Pending</span>
                         </div>
-                        <div className="rounded-lg bg-purple-50/70 border border-purple-100 p-1 text-center">
-                            <span className="text-xs font-black text-purple-800">{formatINR(stats?.totalClaimed || 0)}</span>
-                            <span className="text-[8px] font-bold uppercase tracking-wider text-purple-600 block">Claimed</span>
+                        <div className="rounded-xl bg-purple-50/70 border border-purple-100 p-2 text-center">
+                            <span className="text-sm font-black text-purple-800">{formatINR(stats?.totalClaimed || 0)}</span>
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-purple-600 block mt-0.5">Claimed</span>
                         </div>
                     </div>
-
-                    {/* Recent mini items */}
-                    {recent.length > 0 && (
-                        <div className="space-y-0.5">
-                            {recent.slice(0, 1).map((c) => (
-                                <div key={c._id} className="flex items-center justify-between rounded-md bg-slate-50 p-1 px-1.5 border border-slate-100">
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-semibold text-slate-800 truncate">{c.category}</p>
-                                        <span className={`inline-flex items-center rounded px-1 text-[7px] font-bold border ${STATUS_COLORS[c.status] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                                            {c.status}
-                                        </span>
-                                    </div>
-                                    <span className="text-[10px] font-bold text-slate-900 shrink-0 ml-1">
-                                        {formatINR(c.amount)}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
 
                     <button
                         type="button"
                         onClick={onSubmit}
-                        className="w-full flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 py-1 text-[10px] font-bold text-white shadow-2xs hover:from-purple-700 hover:to-indigo-700 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 py-2 text-xs font-bold text-white shadow-xs hover:from-purple-700 hover:to-indigo-700 transition-all cursor-pointer"
                     >
-                        <Plus size={10} /> Submit Claim
+                        <Plus size={12} /> Submit Claim
                     </button>
                 </div>
             )}
@@ -408,7 +455,7 @@ const ReimbursementTile = ({ onSubmit }) => {
     );
 };
 
-// ─── Compact Payslip & Earnings Tile ───────────────────────────────────────────
+// ─── Payroll & Payslip Tile ────────────────────────────────────────────────────
 
 const PayslipTile = () => {
     const [latest, setLatest] = useState(null);
@@ -451,7 +498,7 @@ const PayslipTile = () => {
                 title="Payroll & Payslip"
                 iconGradient="from-teal-500 to-emerald-600"
                 action={
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                         <button
                             type="button"
                             onClick={(e) => {
@@ -459,10 +506,10 @@ const PayslipTile = () => {
                                 e.stopPropagation();
                                 setMasked(!masked);
                             }}
-                            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
                             title={masked ? 'Show amount' : 'Hide amount'}
                         >
-                            {masked ? <Eye size={11} /> : <EyeOff size={11} />}
+                            {masked ? <Eye size={13} /> : <EyeOff size={13} />}
                         </button>
                         <CardActionLink to="/ess/payslips" label="Statements" />
                     </div>
@@ -472,31 +519,32 @@ const PayslipTile = () => {
             {loading ? (
                 <LoadingSkeleton />
             ) : latest ? (
-                <div className="space-y-1.5 flex-1 flex flex-col justify-between">
-                    <div className="rounded-lg bg-gradient-to-br from-slate-900 to-slate-800 p-1.5 px-2 text-white shadow-inner">
-                        <span className="text-[7px] font-bold uppercase tracking-wider text-slate-400 block">
+                <div className="space-y-2">
+                    <div className="rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 p-2.5 px-3 text-white shadow-inner">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">
                             Net Take-Home
                         </span>
-                        <span className="font-mono text-xs sm:text-sm font-extrabold text-white block">
+                        <span className="font-mono text-sm sm:text-base font-extrabold text-white mt-0.5 block">
                             {masked ? '₹ •••••••' : formatINR(netAmount)}
                         </span>
-                        <span className="text-[7px] text-slate-400 block">
+                        <span className="text-[8px] text-slate-400 block mt-0.5">
                             {latest.period || (latest.month && latest.year ? `${format(new Date(latest.year, latest.month - 1), 'MMM yyyy')}` : 'Latest Statement')}
                         </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-[9px] px-0.5 text-slate-600">
-                        <span>Gross:</span>
+                    <div className="flex items-center justify-between text-[11px] px-1 text-slate-600">
+                        <span>Gross Salary:</span>
                         <span className="font-bold text-slate-900">
                             {masked ? '₹ •••••' : formatINR(grossAmount)}
                         </span>
                     </div>
                 </div>
             ) : (
-                <div className="space-y-1 text-center py-1 flex-1 flex flex-col justify-center">
-                    <p className="text-[10px] text-slate-500">Access your monthly salary slips.</p>
-                    <span className="inline-flex items-center justify-center gap-0.5 text-[9px] font-bold text-indigo-600 hover:underline">
-                        Open Archive <ArrowRight size={9} />
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+                    <Banknote size={18} className="mx-auto text-slate-300 mb-1" />
+                    <p className="text-xs text-slate-500">Access and download your monthly salary slips.</p>
+                    <span className="mt-1 inline-flex items-center gap-0.5 text-xs font-bold text-indigo-600 hover:underline">
+                        Open Archive <ArrowRight size={11} />
                     </span>
                 </div>
             )}
@@ -504,7 +552,7 @@ const PayslipTile = () => {
     );
 };
 
-// ─── Compact Helpdesk Support Tile ─────────────────────────────────────────────
+// ─── Helpdesk Support Tile ─────────────────────────────────────────────────────
 
 const HelpdeskTile = () => {
     const [queries, setQueries] = useState([]);
@@ -534,35 +582,33 @@ const HelpdeskTile = () => {
 
             {loading ? (
                 <LoadingSkeleton />
+            ) : queries.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+                    <LifeBuoy size={18} className="mx-auto text-slate-300 mb-1" />
+                    <p className="text-xs text-slate-500">No active support tickets.</p>
+                    <span className="mt-1 inline-flex items-center gap-0.5 text-xs font-bold text-indigo-600 hover:underline">
+                        Raise a Query →
+                    </span>
+                </div>
             ) : (
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                    {queries.length === 0 ? (
-                        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center">
-                            <LifeBuoy size={16} className="mx-auto text-slate-300 mb-0.5" />
-                            <p className="text-[10px] text-slate-500">No active support tickets.</p>
-                            <span className="text-[9px] font-bold text-indigo-600">
-                                Raise a Query →
+                <div className="space-y-1.5">
+                    {queries.slice(0, 2).map((q) => (
+                        <div key={q._id} className="flex items-center justify-between rounded-xl bg-slate-50 p-2 border border-slate-100">
+                            <p className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 pr-1.5">
+                                {q.subject || q.title || q.queryType}
+                            </p>
+                            <span className={`inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[9px] font-bold ${STATUS_COLORS[q.status] || STATUS_COLORS['Open']}`}>
+                                {q.status}
                             </span>
                         </div>
-                    ) : (
-                        queries.slice(0, 2).map((q) => (
-                            <div key={q._id} className="flex items-center justify-between rounded-md bg-slate-50 p-1 px-1.5 border border-slate-100">
-                                <p className="min-w-0 flex-1 truncate text-[10px] font-medium text-slate-800 pr-1">
-                                    {q.subject || q.title || q.queryType}
-                                </p>
-                                <span className={`inline-flex shrink-0 items-center rounded border px-1 py-0.2 text-[7px] font-bold ${STATUS_COLORS[q.status] || STATUS_COLORS['Open']}`}>
-                                    {q.status}
-                                </span>
-                            </div>
-                        ))
-                    )}
+                    ))}
                 </div>
             )}
         </PremiumCard>
     );
 };
 
-// ─── Compact Upcoming Holidays Tile ───────────────────────────────────────────
+// ─── Upcoming Holidays Tile ───────────────────────────────────────────────────
 
 const HolidaysTile = () => {
     const [holidays, setHolidays] = useState([]);
@@ -592,20 +638,24 @@ const HolidaysTile = () => {
             {loading ? (
                 <LoadingSkeleton />
             ) : upcoming.length === 0 ? (
-                <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center flex-1 flex items-center justify-center">
-                    <p className="text-[10px] text-slate-400">No upcoming company holidays.</p>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+                    <CalendarDays size={18} className="mx-auto text-slate-300 mb-1" />
+                    <p className="text-xs text-slate-500">No upcoming company holidays found.</p>
+                    <span className="mt-1 inline-flex items-center gap-0.5 text-xs font-bold text-indigo-600 hover:underline">
+                        View Calendar →
+                    </span>
                 </div>
             ) : (
-                <div className="space-y-1 flex-1 flex flex-col justify-around">
+                <div className="space-y-1.5">
                     {upcoming.map((h, i) => (
-                        <div key={i} className="flex items-center gap-1.5 rounded-lg bg-slate-50/60 p-1 px-1.5 border border-slate-100">
-                            <div className="flex h-7 w-7 shrink-0 flex-col items-center justify-center rounded-md bg-cyan-100/60 text-cyan-800 font-bold border border-cyan-200">
+                        <div key={i} className="flex items-center gap-2 rounded-xl bg-slate-50/60 p-1.5 px-2 border border-slate-100">
+                            <div className="flex h-7 w-7 shrink-0 flex-col items-center justify-center rounded-lg bg-cyan-100/60 text-cyan-800 font-bold border border-cyan-200">
                                 <span className="text-[6px] uppercase tracking-wider text-cyan-700 leading-none">{format(new Date(h.date), 'MMM')}</span>
-                                <span className="text-[11px] font-black leading-none mt-0.2">{format(new Date(h.date), 'dd')}</span>
+                                <span className="text-xs font-black leading-none mt-0.5">{format(new Date(h.date), 'dd')}</span>
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="truncate text-[10px] font-bold text-slate-900 leading-tight">{h.name}</p>
-                                <p className="text-[8px] text-slate-400 leading-tight">{format(new Date(h.date), 'EEEE')}</p>
+                                <p className="truncate text-xs font-bold text-slate-900 leading-tight">{h.name}</p>
+                                <p className="text-[9px] text-slate-400 leading-tight">{format(new Date(h.date), 'EEEE')}</p>
                             </div>
                         </div>
                     ))}
@@ -615,7 +665,7 @@ const HolidaysTile = () => {
     );
 };
 
-// ─── Main ESS Dashboard (Unscrollable Viewport-Fit Layout) ─────────────────────
+// ─── Main ESS Dashboard Component ─────────────────────────────────────────────
 
 const EssDashboard = () => {
     const { user, hasModule } = useAuth();
@@ -628,10 +678,10 @@ const EssDashboard = () => {
     const showHolidays      = hasModule('holidays');
 
     return (
-        <div className="h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden bg-[#F8FAFC] p-2.5 sm:p-3.5 flex flex-col justify-between">
-            <div className="mx-auto max-w-7xl w-full h-full flex flex-col justify-between gap-2.5">
-                {/* Responsive Compact Grid - Clean 2x3 Grid */}
-                <div className="grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 flex-1 min-h-0 items-stretch">
+        <div className="bg-[#F8FAFC] min-h-[calc(100vh-4rem)] p-3 sm:p-5 lg:p-6">
+            <div className="mx-auto max-w-6xl">
+                {/* 2x3 Compact Responsive Grid */}
+                <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                     {showAttendance  && <AttendanceTile />}
                     {showLeave       && <LeaveTile />}
                     {showReimburse   && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
