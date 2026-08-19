@@ -478,16 +478,17 @@ const Topbar = ({ toggleSidebar }) => {
                 </div>
 
                 <div className="flex items-center gap-3 ml-auto">
-                    {/* Live Clock Ticker & Quick Actions - Only visible on My Space (/ess) */}
+                    {/* Live Clock Ticker - Visible Everywhere on Navbar */}
+                    <div className="hidden md:flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-1 text-slate-700 shadow-2xs">
+                        <Timer size={13} className="text-indigo-600" />
+                        <span className="font-mono text-xs font-bold text-slate-800">
+                            {format(time, 'hh:mm:ss a')}
+                        </span>
+                    </div>
+
+                    {/* Quick Actions - Only on My Space (/ess) */}
                     {location.pathname === '/ess' && (
                         <>
-                            <div className="hidden xl:flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-1 text-slate-700 shadow-2xs">
-                                <Timer size={13} className="text-indigo-600" />
-                                <span className="font-mono text-xs font-bold text-slate-800">
-                                    {format(time, 'hh:mm:ss a')}
-                                </span>
-                            </div>
-
                             {hasModule('leaves') && (
                                 <button
                                     type="button"

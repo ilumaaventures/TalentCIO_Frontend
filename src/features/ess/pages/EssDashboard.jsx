@@ -615,66 +615,6 @@ const HolidaysTile = () => {
     );
 };
 
-// ─── Compact Profile Tile ──────────────────────────────────────────────────────
-
-const ProfileTile = ({ user }) => {
-    const [onboarding, setOnboarding] = useState(null);
-
-    useEffect(() => {
-        if (!user?._id) return;
-        api.get(`/onboarding?employeeId=${user._id}&status=active&limit=1`)
-            .then(r => setOnboarding(r.data?.onboardings?.[0] || null))
-            .catch(() => {});
-    }, [user?._id]);
-
-    return (
-        <PremiumCard to="/profile">
-            <CardHeader
-                icon={User}
-                title="Employee Dossier"
-                iconGradient="from-slate-700 to-slate-900"
-                action={<CardActionLink to="/profile" label="Profile" />}
-            />
-
-            <div className="flex items-center gap-2 flex-1">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-extrabold text-xs shadow-2xs">
-                    {user?.profilePicture ? (
-                        <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                        user?.firstName?.charAt(0) || 'U'
-                    )}
-                </div>
-                <div className="min-w-0 flex-1">
-                    <p className="font-bold text-[10px] text-slate-900 truncate leading-tight">
-                        {user?.firstName} {user?.lastName}
-                    </p>
-                    <p className="text-[9px] text-slate-500 truncate leading-tight">
-                        {user?.department || 'General'} {user?.designation ? `• ${user.designation}` : ''}
-                    </p>
-                    <p className="text-[9px] text-indigo-600 font-medium truncate leading-tight">
-                        {user?.email}
-                    </p>
-                </div>
-            </div>
-
-            {onboarding && (
-                <div className="mt-1 rounded-lg bg-indigo-50 border border-indigo-100 p-1.5">
-                    <div className="flex items-center justify-between text-[9px] mb-0.5">
-                        <span className="font-bold text-indigo-900">Onboarding</span>
-                        <span className="font-extrabold text-indigo-700">{onboarding.completionPercentage || 0}%</span>
-                    </div>
-                    <div className="h-0.5 w-full overflow-hidden rounded-full bg-indigo-200/60">
-                        <div
-                            className="h-full rounded-full bg-indigo-600"
-                            style={{ width: `${onboarding.completionPercentage || 0}%` }}
-                        />
-                    </div>
-                </div>
-            )}
-        </PremiumCard>
-    );
-};
-
 // ─── Main ESS Dashboard (Unscrollable Viewport-Fit Layout) ─────────────────────
 
 const EssDashboard = () => {
@@ -690,57 +630,14 @@ const EssDashboard = () => {
     return (
         <div className="h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden bg-[#F8FAFC] p-2.5 sm:p-3.5 flex flex-col justify-between">
             <div className="mx-auto max-w-7xl w-full h-full flex flex-col justify-between gap-2.5">
-                {/* Responsive Compact Grid */}
-                <div className="grid gap-2 sm:gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 flex-1 min-h-0 items-stretch">
-                    <ProfileTile user={user} />
+                {/* Responsive Compact Grid - Clean 2x3 Grid */}
+                <div className="grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 flex-1 min-h-0 items-stretch">
                     {showAttendance  && <AttendanceTile />}
                     {showLeave       && <LeaveTile />}
                     {showReimburse   && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
                     <PayslipTile />
                     {showHelpdesk    && <HelpdeskTile />}
                     {showHolidays    && <HolidaysTile />}
-                </div>
-
-                {/* Compact Quick Access Hub */}
-                <div className="shrink-0 rounded-xl border border-slate-100 bg-white shadow-2xs p-2 sm:p-2.5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                        <div>
-                            <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-none">Quick Access Hub</h4>
-                            <p className="text-[9px] text-slate-500 leading-tight mt-0.5">Jump directly to your employee workflows</p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            {showLeave && (
-                                <Link
-                                    to="/leaves"
-                                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
-                                >
-                                    <Calendar size={10} /> Apply Leave
-                                </Link>
-                            )}
-                            {showReimburse && (
-                                <button
-                                    onClick={() => setShowSubmitClaim(true)}
-                                    className="inline-flex items-center gap-1 rounded-lg bg-purple-50 border border-purple-100 px-2 py-1 text-[10px] font-semibold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer"
-                                >
-                                    <ReceiptText size={10} /> Submit Claim
-                                </button>
-                            )}
-                            {showHelpdesk && (
-                                <Link
-                                    to="/helpdesk"
-                                    className="inline-flex items-center gap-1 rounded-lg bg-rose-50 border border-rose-100 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
-                                >
-                                    <LifeBuoy size={10} /> Raise Query
-                                </Link>
-                            )}
-                            <Link
-                                to="/profile"
-                                className="inline-flex items-center gap-1 rounded-lg bg-slate-100 border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
-                            >
-                                <User size={10} /> My Profile
-                            </Link>
-                        </div>
-                    </div>
                 </div>
             </div>
 
