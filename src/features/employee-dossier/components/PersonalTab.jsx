@@ -429,9 +429,9 @@ export const PersonalTab = ({
                             <PendingHighlight show={showPending} label="Mother's Occupation" liveValue={profile.family?.motherOccupation} pendingValue={pend.family?.motherOccupation}>
                                 <Field section="family" isEditing={isEditing} label="Mother's Occupation" field="motherOccupation" value={profile.family?.motherOccupation} formData={formData} onChange={handleInputChange} />
                             </PendingHighlight>
-                            <PendingHighlight show={showPending} label="Parents' Marital Status" liveValue={profile.family?.parentsMaritalStatus} pendingValue={pend.family?.parentsMaritalStatus}>
+                            {/* <PendingHighlight show={showPending} label="Parents' Marital Status" liveValue={profile.family?.parentsMaritalStatus} pendingValue={pend.family?.parentsMaritalStatus}>
                                 <Field section="family" isEditing={isEditing} label="Parents' Marital Status" field="parentsMaritalStatus" value={profile.family?.parentsMaritalStatus} options={['Married', 'Divorced', 'Widowed', 'Separated']} formData={formData} onChange={handleInputChange} />
-                            </PendingHighlight>
+                            </PendingHighlight> */}
                             <PendingHighlight show={showPending} label="Total Siblings" liveValue={profile.family?.totalSiblings} pendingValue={pend.family?.totalSiblings}>
                                 <Field section="family" isEditing={isEditing} label="Total Siblings" field="totalSiblings" type="number" value={profile.family?.totalSiblings} formData={formData} onChange={handleInputChange} />
                             </PendingHighlight>
