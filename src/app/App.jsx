@@ -388,16 +388,18 @@ function App() {
                       )} />
                     </Route>
 
-                    {/* ESS — Employee Self Service */}
-                    <Route path="/ess" element={<EssDashboard />} />
-                    <Route path="/ess/payslips" element={<MyPayslips />} />
-                    <Route path="/payslips" element={<MyPayslips />} />
-                    <Route element={<ProtectedRoute moduleName="reimbursements" redirectTo="/ess" />}>
-                      <Route path="/ess/reimbursements" element={<MyClaims />} />
-                      <Route path="/ess/reimbursements/approvals" element={<ApprovalQueue />} />
-                    </Route>
-                    <Route element={<ProtectedRoute moduleName="essDocuments" redirectTo="/ess" />}>
-                      <Route path="/ess/documents" element={<CompanyDocuments />} />
+                    {/* ESS — Employee Self Service / My Space */}
+                    <Route element={<ProtectedRoute moduleName="mySpace" redirectTo="/" />}>
+                      <Route path="/ess" element={<EssDashboard />} />
+                      <Route path="/ess/payslips" element={<MyPayslips />} />
+                      <Route path="/payslips" element={<MyPayslips />} />
+                      <Route element={<ProtectedRoute moduleName="reimbursements" redirectTo="/ess" />}>
+                        <Route path="/ess/reimbursements" element={<MyClaims />} />
+                        <Route path="/ess/reimbursements/approvals" element={<ApprovalQueue />} />
+                      </Route>
+                      <Route element={<ProtectedRoute moduleName="essDocuments" redirectTo="/ess" />}>
+                        <Route path="/ess/documents" element={<CompanyDocuments />} />
+                      </Route>
                     </Route>
 
                     <Route path="/unauthorized" element={<Unauthorized />} />

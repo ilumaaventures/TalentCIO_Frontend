@@ -157,7 +157,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showTimesheet = user?.company?.enabledModules?.includes('timesheet');
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
-  const showEss = user?.company?.enabledModules?.includes('reimbursements') || true;
+  const showEss = hasModule('mySpace');
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (isAdmin || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.company?.enabledModules?.includes('onboarding') && (
     isAdmin
@@ -199,7 +199,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showProjects = hasModule('projects');
   const showOrgChart = hasModule('organization') && Boolean(user);
   const showOrgStructureSection = showOrgChart;
-  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
+  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || showEss || canAccessTA;
   const showOrganizationSection = showEmployees || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = isAdmin

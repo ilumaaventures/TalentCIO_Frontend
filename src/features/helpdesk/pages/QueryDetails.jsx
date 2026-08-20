@@ -193,7 +193,9 @@ const QueryDetails = () => {
                                 {query.queryId}
                             </span>
                             <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${getStatusStyle(query.status)}`}>
-                                {query.status.replace('_', ' ')}
+                                {query.status === 'Escalated' && query.currentEscalationLevel
+                                    ? `Escalated (Level ${query.currentEscalationLevel})`
+                                    : query.status.replace('_', ' ')}
                             </span>
                         </div>
                         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
@@ -206,7 +208,7 @@ const QueryDetails = () => {
                         {!isClosed && query.status === 'New' && (isAdmin || isAssignee) && (
                             <button
                                 onClick={() => handleStatusUpdate('In Progress')}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm cursor-pointer"
                             >
                                 Start Progress
                             </button>
@@ -214,7 +216,7 @@ const QueryDetails = () => {
                         {!isClosed && (query.status === 'In Progress' || query.status === 'Escalated' || query.status === 'New') && (isAdmin || isAssignee) && (
                             <button
                                 onClick={() => handleStatusUpdate('Resolved')}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm cursor-pointer"
                             >
                                 Mark Resolved
                             </button>
@@ -222,16 +224,24 @@ const QueryDetails = () => {
                         {!isClosed && (isAdmin || isAssignee) && (query.status === 'In Progress' || query.status === 'Escalated') && (
                             <button
                                 onClick={() => handleStatusUpdate('Pending')}
-                                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm cursor-pointer"
                             >
                                 Mark Pending
                             </button>
                         )}
 
-                        {!isClosed && query.status !== 'Escalated' && query.status !== 'Resolved' && (
+                        {!isClosed && query.status !== 'Resolved' && (
                             (() => {
                                 const canEscalate = query.canEscalate;
-                                if (!canEscalate && !isRaiser) return null; // Someone else
+                                if (!canEscalate && !isRaiser && !isAdmin && !isAssignee) return null;
+
+                                const levels = query.queryType?.escalationLevels || [];
+                                const currentLevel = query.currentEscalationLevel || (query.status === 'Escalated' ? 1 : 0);
+                                const nextTier = levels.find(l => l.level > currentLevel);
+
+                                const buttonLabel = nextTier
+                                    ? `Escalate (Level ${nextTier.level})`
+                                    : 'Escalate Query';
 
                                 return (
                                     <button
@@ -242,9 +252,10 @@ const QueryDetails = () => {
                                             }
                                             handleStatusUpdate('Escalated');
                                         }}
-                                        className={`${(isRaiser && !canEscalate && !isAdmin && !isAssignee) ? 'opacity-50 cursor-not-allowed bg-slate-400' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20 hover:-translate-y-0.5'} text-white px-4 py-2 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 flex-1 md:flex-none text-sm`}
+                                        className={`${(isRaiser && !canEscalate && !isAdmin && !isAssignee) ? 'opacity-50 cursor-not-allowed bg-slate-400' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20 hover:-translate-y-0.5'} text-white px-4 py-2 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 flex-1 md:flex-none text-sm cursor-pointer`}
                                     >
-                                        Escalate
+                                        <AlertTriangle size={15} />
+                                        {buttonLabel}
                                     </button>
                                 );
                             })()
@@ -254,13 +265,13 @@ const QueryDetails = () => {
                             <div className="flex gap-2 w-full md:w-auto">
                                 <button
                                     onClick={() => handleStatusUpdate('Closed')}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm cursor-pointer"
                                 >
                                     Yes, Resolved
                                 </button>
                                 <button
                                     onClick={handleReopen}
-                                    className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm"
+                                    className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl font-semibold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-2 flex-1 md:flex-none hover:-translate-y-0.5 text-sm cursor-pointer"
                                 >
                                     No, Reopen
                                 </button>
@@ -276,7 +287,7 @@ const QueryDetails = () => {
                                     }
                                     handleStatusUpdate('Closed');
                                 }}
-                                className={`${(!query.canDirectlyClose && !isAdmin) ? 'opacity-50 cursor-not-allowed bg-slate-400' : 'bg-slate-700 hover:bg-slate-800 shadow-slate-700/20 hover:-translate-y-0.5'} text-white px-4 py-2 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 flex-1 md:flex-none text-sm`}
+                                className={`${(!query.canDirectlyClose && !isAdmin) ? 'opacity-50 cursor-not-allowed bg-slate-400' : 'bg-slate-700 hover:bg-slate-800 shadow-slate-700/20 hover:-translate-y-0.5'} text-white px-4 py-2 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 flex-1 md:flex-none text-sm cursor-pointer`}
                             >
                                 <Check size={18} />
                                 Close Directly
@@ -323,10 +334,10 @@ const QueryDetails = () => {
                                         if (isSystem) {
                                             return (
                                                 <div key={index} className="flex justify-center my-4">
-                                                    <div className="bg-slate-100 border border-slate-200 text-slate-500 text-[11px] font-semibold px-4 py-1.5 rounded-full flex items-center shadow-sm">
-                                                        <AlertCircle size={12} className="mr-1.5" />
-                                                        {comment.text.replace('[SYSTEM] ', '')}
-                                                        <span className="ml-2 pl-2 border-l border-slate-300 font-medium">
+                                                    <div className="bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold px-4 py-1.5 rounded-full flex items-center shadow-xs text-center max-w-[90%]">
+                                                        <AlertCircle size={13} className="mr-1.5 text-indigo-500 shrink-0" />
+                                                        <span>{comment.text.replace('[SYSTEM] ', '')}</span>
+                                                        <span className="ml-2 pl-2 border-l border-slate-300 font-medium text-slate-400 shrink-0">
                                                             {format(new Date(comment.createdAt), 'MMM d, h:mm a')}
                                                         </span>
                                                     </div>
@@ -338,7 +349,7 @@ const QueryDetails = () => {
                                             <div key={index} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                                 <div className={`flex max-w-[85%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
 
-                                                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-sm border
+                                                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-xs border
                                                         ${isMe ? 'ml-3 bg-indigo-600 text-white border-indigo-700' : 'mr-3 bg-white text-slate-600 border-slate-200'}
                                                     `}>
                                                         {comment.user?.firstName?.charAt(0)}{comment.user?.lastName?.charAt(0)}
@@ -349,7 +360,7 @@ const QueryDetails = () => {
                                                             <span className="text-xs font-bold text-slate-700">{isMe ? 'You' : userName}</span>
                                                             <span className="text-[10px] font-medium text-slate-400">{format(new Date(comment.createdAt), 'MMM d, h:mm a')}</span>
                                                         </div>
-                                                        <div className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap shadow-sm border
+                                                        <div className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap shadow-xs border
                                                             ${isMe ? 'bg-indigo-50 border-indigo-100 text-indigo-900 rounded-tr-sm' : 'bg-white border-slate-200 text-slate-700 rounded-tl-sm'}
                                                         `}>
                                                             {comment.text}
@@ -383,7 +394,7 @@ const QueryDetails = () => {
                                             <button
                                                 type="submit"
                                                 disabled={!commentText.trim() || submittingComment}
-                                                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all flex items-center justify-center gap-2 w-full sm:w-auto"
+                                                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-semibold text-sm shadow-xs transition-all flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer"
                                             >
                                                 {submittingComment ? 'Sending...' : 'Send Message'}
                                                 {!submittingComment && <Send size={14} className="ml-1" />}
@@ -402,6 +413,74 @@ const QueryDetails = () => {
 
                     {/* Sidebar Information (Right Col) */}
                     <div className="space-y-6">
+
+                        {/* Escalation Path / Stepper (if multi-level escalation is configured) */}
+                        {query.queryType?.enableEscalation && (
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div className="p-4 border-b border-slate-100 bg-indigo-50/40 flex items-center justify-between">
+                                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                        <AlertTriangle size={14} className="text-indigo-600" />
+                                        Escalation Path
+                                    </h3>
+                                    {query.status === 'Escalated' && (
+                                        <span className="bg-rose-100 text-rose-700 text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-rose-200">
+                                            Tier {query.currentEscalationLevel || 1} Active
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="p-4 space-y-3">
+                                    {/* Step 0: Initial Resolver */}
+                                    <div className="flex items-start gap-3">
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 border ${query.status === 'Escalated' ? 'bg-slate-100 text-slate-500 border-slate-300' : 'bg-indigo-600 text-white border-indigo-700'}`}>
+                                            0
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-bold text-slate-700">Initial Resolver</p>
+                                            <p className="text-xs text-slate-500 truncate">
+                                                {query.originalAssignee?.firstName ? `${query.originalAssignee.firstName} ${query.originalAssignee.lastName}` : (query.assignedTo?.firstName ? `${query.assignedTo.firstName} ${query.assignedTo.lastName}` : 'Assigned Person')}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Escalation Tiers */}
+                                    {(query.queryType.escalationLevels || []).map((lvl, idx) => {
+                                        const currentLvl = query.currentEscalationLevel || (query.status === 'Escalated' ? 1 : 0);
+                                        const isActiveLvl = query.status === 'Escalated' && currentLvl === lvl.level;
+                                        const isPastLvl = query.status === 'Escalated' && currentLvl > lvl.level;
+
+                                        return (
+                                            <div key={idx} className="flex items-start gap-3 relative">
+                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 border ${
+                                                    isActiveLvl
+                                                        ? 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-200'
+                                                        : isPastLvl
+                                                        ? 'bg-slate-200 text-slate-600 border-slate-300'
+                                                        : 'bg-slate-50 text-slate-400 border-slate-200'
+                                                }`}>
+                                                    {lvl.level || idx + 1}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <p className={`text-xs font-bold ${isActiveLvl ? 'text-rose-700' : 'text-slate-700'}`}>
+                                                            Level {lvl.level || idx + 1} ({lvl.escalationDays}d SLA)
+                                                        </p>
+                                                        {isActiveLvl && (
+                                                            <span className="text-[9px] font-extrabold bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded">
+                                                                Current
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 truncate">
+                                                        {lvl.escalationPerson?.firstName ? `${lvl.escalationPerson.firstName} ${lvl.escalationPerson.lastName}` : 'Escalation Contact'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="p-5 border-b border-slate-100 bg-slate-50/50">
                                 <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Config Details</h3>
@@ -477,17 +556,19 @@ const QueryDetails = () => {
                                     <div className="p-4 bg-amber-50/20 border-t border-amber-100">
                                         <p className="text-[10px] font-bold text-amber-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                                             <AlertTriangle size={10} />
-                                            Escalated To
+                                            {query.currentEscalationLevel ? `Escalated (Level ${query.currentEscalationLevel}) To` : 'Escalated To'}
                                         </p>
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs border border-amber-100 shadow-sm">
+                                            <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs border border-amber-100 shadow-xs">
                                                 {query.assignedTo?.firstName?.charAt(0)}{query.assignedTo?.lastName?.charAt(0)}
                                             </div>
                                             <div>
                                                 <p className="text-sm font-bold text-slate-800">{query.assignedTo?.firstName} {query.assignedTo?.lastName}</p>
                                                 <p className="text-[10px] font-semibold text-slate-500">{query.assignedTo?.email}</p>
                                                 <div className="mt-1 flex items-center gap-1">
-                                                    <span className="text-[8px] font-black bg-amber-100 text-amber-700 px-1 py-0.5 rounded uppercase tracking-tighter shadow-sm blur-[0.1px]">Escalation Level</span>
+                                                    <span className="text-[9px] font-extrabold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded uppercase tracking-tighter">
+                                                        Escalation Tier {query.currentEscalationLevel || 1}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
