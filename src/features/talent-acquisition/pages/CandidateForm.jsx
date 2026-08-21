@@ -371,14 +371,23 @@ const CandidateForm = () => {
 
         // Support empty mime-type fallback via file extension for robust mobile selection
         let fileType = file.type;
+        const ext = file.name ? file.name.split('.').pop().toLowerCase() : '';
         if ((!fileType || fileType === 'application/octet-stream') && file.name) {
-            const ext = file.name.split('.').pop().toLowerCase();
             if (ext === 'pdf') fileType = 'application/pdf';
+            if (ext === 'doc') fileType = 'application/msword';
+            if (ext === 'docx') fileType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
         }
 
+        const allowedTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+        const allowedExtensions = ['pdf', 'doc', 'docx'];
+
         // Validate file type
-        if (fileType !== 'application/pdf') {
-            toast.error('Only PDF files are allowed');
+        if (!allowedTypes.includes(fileType) && !allowedExtensions.includes(ext)) {
+            toast.error('Only PDF and Word documents (.pdf, .doc, .docx) are allowed');
             e.target.value = '';
             return;
         }
@@ -733,7 +742,7 @@ const CandidateForm = () => {
                                 {!isViewMode && (
                                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                         <label className="block text-[11px] font-bold text-slate-700 mb-2">
-                                            {isEditMode ? 'Replace Resume (PDF)' : 'Upload Resume (PDF) *'}
+                                            {isEditMode ? 'Replace Resume (PDF / Word)' : 'Upload Resume (PDF / Word) *'}
                                         </label>
                                         <div className="flex flex-wrap items-center gap-3">
                                             <label className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors shadow-sm text-xs font-semibold whitespace-nowrap">
@@ -741,7 +750,7 @@ const CandidateForm = () => {
                                                 {uploading ? 'Uploading...' : (isEditMode ? 'New File' : 'Choose File')}
                                                 <input
                                                     type="file"
-                                                    accept="application/pdf"
+                                                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                                                     onChange={handleFileChange}
                                                     className="hidden"
                                                     disabled={uploading}

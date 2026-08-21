@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, Maximize2 } from 'lucide-react';
 import CandidateDetails from '@/features/talent-acquisition/pages/CandidateDetails';
 
 const CandidateSidePanel = ({
@@ -17,12 +17,22 @@ const CandidateSidePanel = ({
             {/* Side Panel Header */}
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
                 <h2 className="text-lg font-bold text-slate-800">Quick Profile View</h2>
-                <button
-                    onClick={handleCloseCandidate}
-                    className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500 hover:text-slate-800 shadow-sm bg-white border border-slate-200"
-                >
-                    <X size={20} />
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleToggleMaximize}
+                        title={isSidePanelMaximized ? "Exit Fullscreen" : "Fullscreen"}
+                        className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500 hover:text-slate-800 shadow-sm bg-white border border-slate-200"
+                    >
+                        <Maximize2 size={18} />
+                    </button>
+                    <button
+                        onClick={handleCloseCandidate}
+                        title="Close"
+                        className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500 hover:text-slate-800 shadow-sm bg-white border border-slate-200"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
             </div>
 
             {/* Scrollable Content Area */}
