@@ -33,6 +33,8 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [candidate, setCandidate] = useState(null);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
+    const [isDownloadingResume, setIsDownloadingResume] = useState(false);
+    const [isDeletingResume, setIsDeletingResume] = useState(false);
 
     // Round Management State
     const [isAddingRound, setIsAddingRound] = useState(false);
@@ -689,6 +691,65 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
     if (!candidate) return <div className="text-center p-8">Candidate not found</div>;
 
+    const resolvedResumeUrl = candidate?.resumeUrl || candidate?.publicApplication?.resumeUrl || candidate?.applicantId?.resumeUrl || '';
+    const hasResume = Boolean(resolvedResumeUrl && String(resolvedResumeUrl).startsWith('http'));
+
+    const handleDownloadResume = async () => {
+        if (!resolvedResumeUrl) return;
+        setIsDownloadingResume(true);
+        try {
+            const response = await fetch(resolvedResumeUrl);
+            if (!response.ok) throw new Error('Network response failed');
+            const blob = await response.blob();
+
+            const extMatch = resolvedResumeUrl.split('?')[0].match(/\.([0-9a-z]+)$/i);
+            const ext = extMatch ? `.${extMatch[1]}` : '.pdf';
+            const rawCandidateName = candidate?.candidateName?.trim() || 'Candidate';
+            const sanitizedName = rawCandidateName.replace(/[^a-zA-Z0-9_\- ]/g, '_');
+            const fileName = `${sanitizedName}_Resume${ext}`;
+
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success('Resume downloaded successfully');
+        } catch (error) {
+            console.error('Failed to download resume directly, triggering fallback download:', error);
+            const link = document.createElement('a');
+            link.href = resolvedResumeUrl;
+            link.target = '_blank';
+            link.download = `${candidate?.candidateName || 'Candidate'}_Resume`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } finally {
+            setIsDownloadingResume(false);
+        }
+    };
+
+    const handleDeleteResume = async () => {
+        if (!window.confirm('Are you sure you want to delete this resume?')) return;
+        try {
+            setIsDeletingResume(true);
+            await api.put(`/ta/candidates/${candidateId}`, {
+                resumeUrl: '',
+                resumePublicId: ''
+            });
+            setCandidate(prev => prev ? ({ ...prev, resumeUrl: '', resumePublicId: '' }) : prev);
+            if (onUpdate) onUpdate();
+            toast.success('Resume deleted successfully');
+        } catch (error) {
+            console.error('Failed to delete resume:', error);
+            toast.error(error.response?.data?.message || 'Failed to delete resume');
+        } finally {
+            setIsDeletingResume(false);
+        }
+    };
+
     return (
         <div className={`min-h-screen ${isSidePanel ? 'bg-transparent pb-4' : 'bg-slate-50 pb-12'}`}>
             {!isSidePanel ? (
@@ -708,22 +769,12 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 <button
                                     type="button"
                                     onClick={() => setIsProfileReviewOpen(true)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors border border-blue-600"
+                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors border border-blue-600 text-sm"
                                 >
                                     <Eye size={18} /> Review Complete Profile
                                 </button>
                             )}
-                            {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
-                                <a
-                                    href={candidate.resumeUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors border border-slate-200"
-                                >
-                                    <Download size={18} /> View Resume
-                                </a>
-                            )}
-                                          {((currentPhase === 3 && canManagePhase3Decision) || (currentPhase !== 3 && canManageCandidateEdits)) && (
+                            {((currentPhase === 3 && canManagePhase3Decision) || (currentPhase !== 3 && canManageCandidateEdits)) && (
                                 <button
                                     onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
                                     className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
@@ -750,7 +801,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                 <Eye size={16} /> Review Complete Profile
                             </button>
                         )}
-                          {canManageCandidateEdits && (
+                        {canManageCandidateEdits && (
                             <button
                                 onClick={() => navigate(`/ta/hiring-request/${hiringRequestId}/candidate/${candidateId}/edit`)}
                                 className="flex items-center gap-2 px-3 py-1.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm"
@@ -763,295 +814,298 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
             )}
 
             <div className={`w-full ${isSidePanel ? 'px-4' : 'px-4 sm:px-6 lg:px-8 xl:px-10 mt-6 max-w-[1920px] mx-auto'} ${isSidePanel ? 'flex flex-col' : 'grid grid-cols-1 lg:grid-cols-12'} gap-6`}>
-                {/* Left Column: Basic Details Summary */}
-                <div className={`${isSidePanel ? 'w-full flex flex-col-reverse space-y-reverse space-y-6' : 'lg:col-span-4 space-y-6'}`}>
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Profile Summary</h3>
+                {/* Left Column: Basic Details Summary (Only shown on full page) */}
+                {!isSidePanel && (
+                    <div className="lg:col-span-4 space-y-6">
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Profile Summary</h3>
 
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4 bg-slate-50/80 p-3 rounded-lg border border-slate-200/80">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Client Name</p>
-                                    <p className="text-slate-900 font-bold text-sm">
-                                        {candidate?.hiringRequestId?.clientConfidential
-                                            ? 'Confidential Client'
-                                            : (candidate?.hiringRequestId?.client || candidate?.client || 'N/A')}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Requisition Name</p>
-                                    <p className="text-slate-900 font-bold text-sm">
-                                        {candidate?.hiringRequestId?.roleDetails?.title || candidate?.hiringRequestId?.title || candidate?.roleTitle || 'N/A'}
-                                        {candidate?.hiringRequestId?.requestId && (
-                                            <span className="block text-[11px] font-medium text-slate-500">
-                                                {candidate.hiringRequestId.requestId}
-                                            </span>
-                                        )}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Status</p>
-                                    <div className="flex items-center gap-2 flex-wrap mt-1">
-                                        <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-medium border border-slate-200">
-                                            {candidate.status}
-                                        </span>
-                                        {currentPhase === 1 && candidate.decision && candidate.decision !== 'None' && (
-                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                candidate.decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                    candidate.decision === 'Did Not Turn Up' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                    'bg-amber-50 text-amber-700 border-amber-200'
-                                                }`}>
-                                                Phase 1: {candidate.decision}
-                                            </span>
-                                        )}
-                                        {currentPhase === 2 && candidate.phase2Decision && candidate.phase2Decision !== 'None' && (
-                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase2Decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                candidate.phase2Decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                    'bg-amber-50 text-amber-700 border-amber-200'
-                                                }`}>
-                                                Phase 2: {candidate.phase2Decision}
-                                            </span>
-                                        )}
-                                        {currentPhase === 2 && candidate.phase2InterviewStatus && candidate.phase2InterviewStatus !== 'None' && (
-                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase2InterviewStatus === 'Shortlisted' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                candidate.phase2InterviewStatus === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                    'bg-blue-50 text-blue-700 border-blue-200'
-                                                }`}>
-                                                Phase 2 Interview: {candidate.phase2InterviewStatus}
-                                            </span>
-                                        )}
-                                        {currentPhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && (
-                                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase3Decision === 'Joined' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                candidate.phase3Decision === 'Offer Accepted' ? 'bg-teal-50 text-teal-700 border-teal-200' :
-                                                    candidate.phase3Decision === 'Offer Sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                        candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                            'bg-amber-50 text-amber-700 border-amber-200'
-                                                }`}>
-                                                Phase 3: {candidate.phase3Decision}
-                                            </span>
-                                        )}
-
-                                        {/* Dropdown to change decision based on active phase */}
-                                        {((currentPhase === 3 && canManagePhase3Decision) || (currentPhase !== 3 && canManageCandidateEdits)) && (
-                                            <div className="mt-2 w-full max-w-50">
-                                                {currentPhase === 1 ? (
-                                                    <select
-                                                        value={candidate.decision || 'None'}
-                                                        onChange={() => {
-                                                            // Currently, list UI handles patch, let's keep consistency or just show it readonly here,
-                                                            // But user wants to update from details too if possible.
-                                                            // For now, list is main place, but we can add patch if missing.
-                                                            toast.error("Please update Phase 1 decision from Candidate List page.");
-                                                        }}
-                                                        disabled
-                                                        className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
-                                                    >
-                                                        <option value="None">None</option>
-                                                        <option value="Shortlisted">Shortlisted</option>
-                                                        <option value="Profile Shared">Profile Shared</option>
-                                                        <option value="Hired">Hired</option>
-                                                        <option value="Rejected">Rejected</option>
-                                                        <option value="Did Not Turn Up">Did Not Turn Up</option>
-                                                        <option value="Left in between">Left in between</option>
-                                                        <option value="On Hold">On Hold</option>
-                                                    </select>
-                                                ) : currentPhase === 2 ? (
-                                                    <select
-                                                        value={candidate.phase2Decision || 'None'}
-                                                        onChange={() => {
-                                                            toast.error("Please update Phase 2 decision from Candidate List page.");
-                                                        }}
-                                                        disabled
-                                                        className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
-                                                    >
-                                                        <option value="None">None</option>
-                                                        <option value="Shortlisted">Shortlisted</option>
-                                                        <option value="Hired">Hired</option>
-                                                        <option value="Rejected">Rejected</option>
-                                                        <option value="On Hold">On Hold</option>
-                                                    </select>
-                                                ) : (
-                                                    <select
-                                                        value={candidate.phase3Decision || 'None'}
-                                                        onChange={(e) => handlePhase3DecisionChange(e.target.value)}
-                                                        className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-300 bg-white outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 text-slate-700 transition-colors"
-                                                    >
-                                                        <option value="None">-- Set Phase 3 Status --</option>
-                                                        <option value="Offer Sent">Offer Sent</option>
-                                                        <option value="Offer Accepted">Offer Accepted</option>
-                                                        <option value="Joined">Joined</option>
-                                                        <option value="No Show">No Show</option>
-                                                        <option value="Offer Declined">Offer Declined</option>
-                                                    </select>
-                                                )}
-                                            </div>
-                                        )}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4 bg-slate-50/80 p-3 rounded-lg border border-slate-200/80">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Client Name</p>
+                                        <p className="text-slate-900 font-bold text-sm">
+                                            {candidate?.hiringRequestId?.clientConfidential
+                                                ? 'Confidential Client'
+                                                : (candidate?.hiringRequestId?.client || candidate?.client || 'N/A')}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Requisition Name</p>
+                                        <p className="text-slate-900 font-bold text-sm">
+                                            {candidate?.hiringRequestId?.roleDetails?.title || candidate?.hiringRequestId?.title || candidate?.roleTitle || 'N/A'}
+                                            {candidate?.hiringRequestId?.requestId && (
+                                                <span className="block text-[11px] font-medium text-slate-500">
+                                                    {candidate.hiringRequestId.requestId}
+                                                </span>
+                                            )}
+                                        </p>
                                     </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Source</p>
-                                    <p className="text-slate-700 font-medium">{candidate.source} {candidate.referralName && `(${candidate.referralName})`}</p>
-                                </div>
-                            </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Status</p>
+                                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                                            <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-medium border border-slate-200">
+                                                {candidate.status}
+                                            </span>
+                                            {currentPhase === 1 && candidate.decision && candidate.decision !== 'None' && (
+                                                <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                    candidate.decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                        candidate.decision === 'Did Not Turn Up' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                        'bg-amber-50 text-amber-700 border-amber-200'
+                                                    }`}>
+                                                    Phase 1: {candidate.decision}
+                                                </span>
+                                            )}
+                                            {currentPhase === 2 && candidate.phase2Decision && candidate.phase2Decision !== 'None' && (
+                                                <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase2Decision === 'Hired' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                    candidate.phase2Decision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                        'bg-amber-50 text-amber-700 border-amber-200'
+                                                    }`}>
+                                                    Phase 2: {candidate.phase2Decision}
+                                                </span>
+                                            )}
+                                            {currentPhase === 2 && candidate.phase2InterviewStatus && candidate.phase2InterviewStatus !== 'None' && (
+                                                <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase2InterviewStatus === 'Shortlisted' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                    candidate.phase2InterviewStatus === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                        'bg-blue-50 text-blue-700 border-blue-200'
+                                                    }`}>
+                                                    Phase 2 Interview: {candidate.phase2InterviewStatus}
+                                                </span>
+                                            )}
+                                            {currentPhase === 3 && candidate.phase3Decision && candidate.phase3Decision !== 'None' && (
+                                                <span className={`px-3 py-1 rounded-full text-sm font-bold border ${candidate.phase3Decision === 'Joined' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                    candidate.phase3Decision === 'Offer Accepted' ? 'bg-teal-50 text-teal-700 border-teal-200' :
+                                                        candidate.phase3Decision === 'Offer Sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                            candidate.phase3Decision === 'No Show' || candidate.phase3Decision === 'Offer Declined' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                                'bg-amber-50 text-amber-700 border-amber-200'
+                                                    }`}>
+                                                    Phase 3: {candidate.phase3Decision}
+                                                </span>
+                                            )}
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Experience</p>
-                                    <p className="text-slate-700 font-medium">{candidate.totalExperience !== undefined ? `${candidate.totalExperience} Years` : 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Qualification</p>
-                                    <p className="text-slate-700 font-medium">{candidate.qualification || 'N/A'}</p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current CTC</p>
-                                    <p className="text-slate-700 font-medium">{candidate.currentCTC ? `₹${candidate.currentCTC?.toLocaleString()}` : 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Expected CTC</p>
-                                    <p className="text-slate-700 font-medium">{candidate.expectedCTC ? `₹${candidate.expectedCTC?.toLocaleString()}` : 'N/A'}</p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Profile Pulled By</p>
-                                    <p className="text-slate-700 font-medium">{candidate.profilePulledBy || 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Called By</p>
-                                    <p className="text-slate-700 font-medium">{candidate.calledBy || 'N/A'}</p>
-                                </div>
-                            </div>
-
-                            <div>
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Rate</p>
-                                <p className="text-slate-700 font-medium">
-                                    {candidate.rate !== undefined && candidate.rate !== null
-                                        ? ` ${Number(candidate.rate).toLocaleString('en-IN')}`
-                                        : 'N/A'}
-                                </p>
-                            </div>
-
-                            {/* In-Hand Offer */}
-                            {candidate.inHandOffer ? (
-                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">In-Hand Offer</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        <div>
-                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Company</p>
-                                            <p className="text-slate-800 font-semibold text-sm">{candidate.offerCompany || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Their CTC</p>
-                                            <p className="text-slate-800 font-semibold text-sm">{candidate.offerCTC ? `₹${candidate.offerCTC.toLocaleString()}` : 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Date Of Joining New Company</p>
-                                            <p className="text-slate-800 font-semibold text-sm">{candidate.offerJoiningDate ? format(new Date(candidate.offerJoiningDate), 'dd MMM yyyy') : 'N/A'}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">In-Hand Offer</p>
-                                    <span className="text-xs text-slate-400 font-medium">No</span>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Location</p>
-                                    <p className="text-slate-700 font-medium">{candidate.currentLocation || 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Preferred Location</p>
-                                    <p className="text-slate-700 font-medium">{candidate.preferredLocation || 'N/A'}</p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Notice Period</p>
-                                    <p className="text-slate-700 font-medium">{candidate.noticePeriod ? `${candidate.noticePeriod} Days` : 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">TAT To Join</p>
-                                    <p className="text-slate-700 font-medium">{candidate.tatToJoin ? `${candidate.tatToJoin} Days` : 'N/A'}</p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Last Working Day</p>
-                                    <p className="text-slate-700 font-medium">{candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd MMM yyyy') : 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Preference</p>
-                                    <p className="text-slate-700 font-medium">{candidate.preference || 'N/A'}</p>
-                                </div>
-                            </div>
-
-                            <div>
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Company</p>
-                                <p className="text-slate-700 font-medium">{candidate.currentCompany || 'N/A'}</p>
-                            </div>
-
-                            {candidate.remark && (
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Remark</p>
-                                    <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.remark}</p>
-                                </div>
-                            )}
-
-                            {candidate.pastExperience && candidate.pastExperience.length > 0 && (
-                                <div className="pt-2 border-t border-slate-100 mt-2">
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Past Experience</p>
-                                    <ul className="space-y-2">
-                                        {candidate.pastExperience.map((exp, idx) => (
-                                            <li key={idx} className="text-sm text-slate-700 flex justify-between">
-                                                <span>{exp.companyName}</span>
-                                                <span className="text-slate-500">{exp.experienceYears} yrs</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-
-                            {skillExperienceList.length > 0 && (
-                                <div className="pt-2 border-t border-slate-100 mt-2">
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Skill Experience</p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {skillExperienceList.map((skill) => (
-                                            <div key={`${skill.skill}-${skill.categories.join('-')}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-slate-800">{skill.skill}</p>
-                                                        <p className="text-[11px] text-slate-500">{skill.categories.join(', ')}</p>
-                                                    </div>
-                                                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
-                                                        {skill.experience !== null ? `${skill.experience} yrs` : 'Not specified'}
-                                                    </span>
+                                            {/* Dropdown to change decision based on active phase */}
+                                            {((currentPhase === 3 && canManagePhase3Decision) || (currentPhase !== 3 && canManageCandidateEdits)) && (
+                                                <div className="mt-2 w-full max-w-50">
+                                                    {currentPhase === 1 ? (
+                                                        <select
+                                                            value={candidate.decision || 'None'}
+                                                            onChange={() => {
+                                                                // Currently, list UI handles patch, let's keep consistency or just show it readonly here,
+                                                                // But user wants to update from details too if possible.
+                                                                // For now, list is main place, but we can add patch if missing.
+                                                                toast.error("Please update Phase 1 decision from Candidate List page.");
+                                                            }}
+                                                            disabled
+                                                            className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                                                        >
+                                                            <option value="None">None</option>
+                                                            <option value="Shortlisted">Shortlisted</option>
+                                                            <option value="Profile Shared">Profile Shared</option>
+                                                            <option value="Hired">Hired</option>
+                                                            <option value="Rejected">Rejected</option>
+                                                            <option value="Did Not Turn Up">Did Not Turn Up</option>
+                                                            <option value="Left in between">Left in between</option>
+                                                            <option value="On Hold">On Hold</option>
+                                                        </select>
+                                                    ) : currentPhase === 2 ? (
+                                                        <select
+                                                            value={candidate.phase2Decision || 'None'}
+                                                            onChange={() => {
+                                                                toast.error("Please update Phase 2 decision from Candidate List page.");
+                                                            }}
+                                                            disabled
+                                                            className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                                                        >
+                                                            <option value="None">None</option>
+                                                            <option value="Shortlisted">Shortlisted</option>
+                                                            <option value="Hired">Hired</option>
+                                                            <option value="Rejected">Rejected</option>
+                                                            <option value="On Hold">On Hold</option>
+                                                        </select>
+                                                    ) : (
+                                                        <select
+                                                            value={candidate.phase3Decision || 'None'}
+                                                            onChange={(e) => handlePhase3DecisionChange(e.target.value)}
+                                                            className="w-full appearance-none px-3 py-1.5 pr-8 text-sm font-bold rounded-lg border border-slate-300 bg-white outline-none cursor-pointer hover:border-blue-400 focus:ring-2 focus:ring-blue-100 text-slate-700 transition-colors"
+                                                        >
+                                                            <option value="None">-- Set Phase 3 Status --</option>
+                                                            <option value="Offer Sent">Offer Sent</option>
+                                                            <option value="Offer Accepted">Offer Accepted</option>
+                                                            <option value="Joined">Joined</option>
+                                                            <option value="No Show">No Show</option>
+                                                            <option value="Offer Declined">Offer Declined</option>
+                                                        </select>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        ))}
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Source</p>
+                                        <p className="text-slate-700 font-medium">{candidate.source} {candidate.referralName && `(${candidate.referralName})`}</p>
                                     </div>
                                 </div>
-                            )}
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Experience</p>
+                                        <p className="text-slate-700 font-medium">{candidate.totalExperience !== undefined ? `${candidate.totalExperience} Years` : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Qualification</p>
+                                        <p className="text-slate-700 font-medium">{candidate.qualification || 'N/A'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current CTC</p>
+                                        <p className="text-slate-700 font-medium">{candidate.currentCTC ? `₹${candidate.currentCTC?.toLocaleString()}` : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Expected CTC</p>
+                                        <p className="text-slate-700 font-medium">{candidate.expectedCTC ? `₹${candidate.expectedCTC?.toLocaleString()}` : 'N/A'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Profile Pulled By</p>
+                                        <p className="text-slate-700 font-medium">{candidate.profilePulledBy || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Called By</p>
+                                        <p className="text-slate-700 font-medium">{candidate.calledBy || 'N/A'}</p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Rate</p>
+                                    <p className="text-slate-700 font-medium">
+                                        {candidate.rate !== undefined && candidate.rate !== null
+                                            ? ` ${Number(candidate.rate).toLocaleString('en-IN')}`
+                                            : 'N/A'}
+                                    </p>
+                                </div>
+
+                                {/* In-Hand Offer */}
+                                {candidate.inHandOffer ? (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                        <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">In-Hand Offer</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div>
+                                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Company</p>
+                                                <p className="text-slate-800 font-semibold text-sm">{candidate.offerCompany || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Their CTC</p>
+                                                <p className="text-slate-800 font-semibold text-sm">{candidate.offerCTC ? `₹${candidate.offerCTC.toLocaleString()}` : 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Date Of Joining New Company</p>
+                                                <p className="text-slate-800 font-semibold text-sm">{candidate.offerJoiningDate ? format(new Date(candidate.offerJoiningDate), 'dd MMM yyyy') : 'N/A'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">In-Hand Offer</p>
+                                        <span className="text-xs text-slate-400 font-medium">No</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Location</p>
+                                        <p className="text-slate-700 font-medium">{candidate.currentLocation || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Preferred Location</p>
+                                        <p className="text-slate-700 font-medium">{candidate.preferredLocation || 'N/A'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Notice Period</p>
+                                        <p className="text-slate-700 font-medium">{candidate.noticePeriod ? `${candidate.noticePeriod} Days` : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">TAT To Join</p>
+                                        <p className="text-slate-700 font-medium">{candidate.tatToJoin ? `${candidate.tatToJoin} Days` : 'N/A'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Last Working Day</p>
+                                        <p className="text-slate-700 font-medium">{candidate.lastWorkingDay ? format(new Date(candidate.lastWorkingDay), 'dd MMM yyyy') : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Preference</p>
+                                        <p className="text-slate-700 font-medium">{candidate.preference || 'N/A'}</p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Current Company</p>
+                                    <p className="text-slate-700 font-medium">{candidate.currentCompany || 'N/A'}</p>
+                                </div>
+
+                                {candidate.remark && (
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Remark</p>
+                                        <p className="text-slate-700 text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 whitespace-pre-wrap">{candidate.remark}</p>
+                                    </div>
+                                )}
+
+                                {candidate.pastExperience && candidate.pastExperience.length > 0 && (
+                                    <div className="pt-2 border-t border-slate-100 mt-2">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Past Experience</p>
+                                        <ul className="space-y-2">
+                                            {candidate.pastExperience.map((exp, idx) => (
+                                                <li key={idx} className="text-sm text-slate-700 flex justify-between">
+                                                    <span>{exp.companyName}</span>
+                                                    <span className="text-slate-500">{exp.experienceYears} yrs</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {skillExperienceList.length > 0 && (
+                                    <div className="pt-2 border-t border-slate-100 mt-2">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Skill Experience</p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {skillExperienceList.map((skill) => (
+                                                <div key={`${skill.skill}-${skill.categories.join('-')}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-sm font-semibold text-slate-800">{skill.skill}</p>
+                                                            <p className="text-[11px] text-slate-500">{skill.categories.join(', ')}</p>
+                                                        </div>
+                                                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                                                            {skill.experience !== null ? `${skill.experience} yrs` : 'Not specified'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
 
-                {/* Right Column: Interview Workflow Timeline */}
-                <div className={`${isSidePanel ? 'w-full hidden' : 'lg:col-span-8'} space-y-6`}>
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-center mb-5">
-                            <h3 className="text-base font-bold text-slate-800">Interview Timeline</h3>
+                {/* Right Column: Interview Timeline, Resume Preview, Remarks */}
+                <div className={`${isSidePanel ? 'w-full' : 'lg:col-span-8'} space-y-6`}>
+                    {!isSidePanel && (
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex justify-between items-center mb-5">
+                                <h3 className="text-base font-bold text-slate-800">Interview Timeline</h3>
                             {canScheduleRounds && (
                                 <div className="flex items-center gap-2">
                                     <button
@@ -2089,38 +2143,59 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             })()}
                         </div>
                     </div>
+                )}
 
-                    {/* Inline Resume Viewer */}
-                    {candidate.resumeUrl && String(candidate.resumeUrl).startsWith('http') && (
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-125 h-[650px]">
-                            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
-                                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                    <FileText size={16} className="text-blue-500" /> Resume Preview
-                                </h3>
-                                <div className="flex items-center gap-3">
-                                    <a
-                                        href={candidate.resumeUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm"
-                                    >
-                                        <ExternalLink size={14} /> Open in new tab
-                                    </a>
+                {/* Inline Resume Viewer (Displayed below Interview Timeline in full details page, or full-width in Quick Profile View) */}
+                {hasResume ? (
+                    <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${isSidePanel ? 'h-[calc(100vh-160px)] min-h-[600px]' : 'min-h-125 h-[650px]'}`}>
+                        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+                            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                <FileText size={16} className="text-blue-500" /> Resume Preview
+                            </h3>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadResume}
+                                    disabled={isDownloadingResume || isDeletingResume}
+                                    className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 hover:text-slate-900 transition-colors bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                    {isDownloadingResume ? <Loader size={14} className="animate-spin" /> : <Download size={14} />} Download Resume
+                                </button>
+                                <a
+                                    href={resolvedResumeUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm"
+                                >
+                                    <ExternalLink size={14} /> Open in new tab
+                                </a>
+                                {canManageCandidateEdits && (
                                     <button
-                                        onClick={toggleFullScreen}
-                                        className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-800 transition-colors bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-50"
+                                        type="button"
+                                        onClick={handleDeleteResume}
+                                        disabled={isDeletingResume || isDownloadingResume}
+                                        className="flex items-center gap-1.5 text-[11px] font-bold text-red-600 hover:text-red-700 transition-colors bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg border border-red-200 shadow-sm disabled:opacity-50"
+                                        title="Delete Resume"
                                     >
-                                        <Maximize2 size={14} /> {isSidePanelMaximized ? 'Exit Full screen' : 'Full screen'}
+                                        {isDeletingResume ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete Resume
                                     </button>
-                                </div>
-                            </div>
-                            <div className="scrollbar-hide w-full flex-1 overflow-hidden bg-white">
-                                <DocPreviewer url={candidate.resumeUrl} title="Resume Preview" />
+                                )}
                             </div>
                         </div>
-                    )}
+                        <div className="scrollbar-hide w-full flex-1 overflow-hidden bg-white">
+                            <DocPreviewer url={resolvedResumeUrl} title="Resume Preview" />
+                        </div>
+                    </div>
+                ) : (
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 text-center">
+                        <FileText size={36} className="mx-auto mb-2 text-slate-300" />
+                        <p className="text-sm font-semibold text-slate-600">No Resume Document Attached</p>
+                        <p className="text-xs text-slate-400 mt-1">This candidate profile does not have a PDF/Word resume file uploaded.</p>
+                    </div>
+                )}
 
-                    {/* Internal Remark Card */}
+                {/* Internal Remark Card (Only shown on full page) */}
+                {!isSidePanel && (
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Internal Remark</h3>
@@ -2165,6 +2240,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             <p className="text-slate-400 text-sm italic">No remark added yet. Click "Add Remark" to write one.</p>
                         )}
                     </div>
+                )}
 
                 </div>
             </div>
