@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { clearAuthSession, getStoredAccessToken } from '@/features/auth/utils/authStorage';
+import toast from 'react-hot-toast';
+import { clearAuthSession, getStoredAccessToken, clearScopedCaches } from '@/features/auth/utils/authStorage';
 
 const API_TIMEOUT_MS = 40000;
 const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
@@ -276,7 +277,16 @@ api.interceptors.response.use(
 
     // Redirect only for true auth/session failures, and keep login errors in-place for the screen to handle.
     if (isAuthFailure(error) && !isLoginRequest(error.config?.url)) {
-      if (
+      const isImpersonationExpired = error.response?.data?.code === 'IMPERSONATION_EXPIRED';
+      if (isImpersonationExpired) {
+        clearScopedCaches();
+        if (typeof window !== 'undefined') {
+          toast.error('Your impersonation session has expired.', { id: 'impersonation-expired-toast' });
+          setTimeout(() => {
+            window.location.reload();
+          }, 800);
+        }
+      } else if (
         typeof window !== 'undefined'
         && window.location.pathname !== '/login'
         && !isPublicAuthFlowPath(window.location.pathname)

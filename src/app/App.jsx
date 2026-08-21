@@ -20,7 +20,10 @@ const EmailSettings = lazy(() => import('@/features/email/pages/EmailSettings'))
 const NotificationSettings = lazy(() => import('@/features/settings/pages/NotificationSettings'));
 const Users = lazy(() => import('@/features/users-roles/pages/Users'));
 const Roles = lazy(() => import('@/features/users-roles/pages/Roles'));
-const BusinessUnits = lazy(() => import('@/features/clients/pages/BusinessUnits'));
+const BusinessUnits = lazy(() => import('@/features/organization/pages/BusinessUnits'));
+const OrgChart = lazy(() => import('@/features/organization/pages/OrgChart'));
+const Departments = lazy(() => import('@/features/organization/pages/Departments'));
+const Designations = lazy(() => import('@/features/organization/pages/Designations'));
 const Clients = lazy(() => import('@/features/clients/pages/Clients'));
 const ClientForm = lazy(() => import('@/features/clients/pages/ClientForm'));
 const ClientView = lazy(() => import('@/features/clients/pages/ClientView'));
@@ -63,6 +66,11 @@ const RecycleBin = lazy(() => import('@/features/recycle-bin/pages/RecycleBin'))
 const PreOnboardingLogin = lazy(() => import('@/features/onboarding/pages/PreOnboardingLogin'));
 const PreOnboardingPortal = lazy(() => import('@/features/onboarding/pages/PreOnboardingPortal'));
 const SalaryCalculator = lazy(() => import('@/features/payroll/pages/SalaryCalculator'));
+const EssDashboard     = lazy(() => import('@/features/ess/pages/EssDashboard'));
+const MyClaims         = lazy(() => import('@/features/reimbursement/pages/MyClaims'));
+const ApprovalQueue    = lazy(() => import('@/features/reimbursement/pages/ApprovalQueue'));
+const CompanyDocuments = lazy(() => import('@/features/ess-documents/pages/CompanyDocuments'));
+const MyPayslips       = lazy(() => import('@/features/ess/pages/MyPayslips'));
 
 
 import ProtectedRoute from '@/app/guards/ProtectedRoute';
@@ -86,8 +94,12 @@ import {
   TA_CONFIG_PERMISSIONS,
   TA_EMAIL_TEMPLATE_PERMISSIONS,
   SALARY_CALCULATOR_PERMISSIONS,
+  ORG_CHART_VIEW_PERMISSIONS,
+  DEPARTMENT_ACCESS_PERMISSIONS,
+  DESIGNATION_ACCESS_PERMISSIONS,
   canAccessTAAnalytics,
-  canAccessUsers
+  canAccessUsers,
+  canAccessOrgChart
 } from '@/config/accessPolicies';
 
 import { Provider } from 'react-redux';
@@ -290,6 +302,32 @@ function App() {
                       </ProtectedRoute>
                     )} />
 
+                    {/* Organization Chart Route */}
+                    <Route element={<ProtectedRoute moduleName="organization" redirectTo="/" />}>
+                      <Route path="/organization/chart" element={(
+                        <ProtectedRoute check={canAccessOrgChart} allowAllPermissions>
+                          <OrgChart />
+                        </ProtectedRoute>
+                      )} />
+                    </Route>
+
+                    {/* Department & Designation Routes */}
+                    <Route path="/organization/departments" element={(
+                      <ProtectedRoute requiredPermissions={DEPARTMENT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                        <Departments />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/organization/designations" element={(
+                      <ProtectedRoute requiredPermissions={DESIGNATION_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                        <Designations />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/organization/business-units" element={(
+                      <ProtectedRoute moduleName="businessUnits" requiredPermissions={BUSINESS_UNIT_ACCESS_PERMISSIONS} requiredRoles={ADMIN_ROLES} allowAllPermissions>
+                        <BusinessUnits />
+                      </ProtectedRoute>
+                    )} />
+
                     {/* Project Management Routes */}
                     <Route element={<ProtectedRoute moduleName="businessUnits" redirectTo="/" />}>
                       <Route path="/business-units" element={(
@@ -348,6 +386,20 @@ function App() {
                           <EmployeeProfile />
                         </ProtectedRoute>
                       )} />
+                    </Route>
+
+                    {/* ESS — Employee Self Service / My Space */}
+                    <Route element={<ProtectedRoute moduleName="mySpace" redirectTo="/" />}>
+                      <Route path="/ess" element={<EssDashboard />} />
+                      <Route path="/ess/payslips" element={<MyPayslips />} />
+                      <Route path="/payslips" element={<MyPayslips />} />
+                      <Route element={<ProtectedRoute moduleName="reimbursements" redirectTo="/ess" />}>
+                        <Route path="/ess/reimbursements" element={<MyClaims />} />
+                        <Route path="/ess/reimbursements/approvals" element={<ApprovalQueue />} />
+                      </Route>
+                      <Route element={<ProtectedRoute moduleName="essDocuments" redirectTo="/ess" />}>
+                        <Route path="/ess/documents" element={<CompanyDocuments />} />
+                      </Route>
                     </Route>
 
                     <Route path="/unauthorized" element={<Unauthorized />} />

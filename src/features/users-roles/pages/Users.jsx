@@ -27,15 +27,18 @@ import {
 import UsersTable from '../components/UsersTable';
 import UserExportModal from '../components/UserExportModal';
 import UserFormModal from '../components/UserFormModal';
+import ImpersonateConfirmModal from '../components/ImpersonateConfirmModal';
 
 const Users = () => {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, startImpersonation, impersonation } = useAuth();
     const [users, setUsers] = useState([]);
     const [roles, setRoles] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState(null);
+    const [impersonateTargetUser, setImpersonateTargetUser] = useState(null);
+    const [showImpersonateModal, setShowImpersonateModal] = useState(false);
     const [payrollConfig, setPayrollConfig] = useState(null);
     const [showSalarySection, setShowSalarySection] = useState(false);
     const [_ctcPeriod, setCtcPeriod] = useState('monthly');
@@ -881,6 +884,36 @@ const Users = () => {
         || user?.permissions?.includes('dossier.export')
         || user?.permissions?.includes('*')
         || user?.hasAllPermissions;
+    const canImpersonate = !impersonation?.active && (
+        Boolean(user?.permissions?.includes('user.impersonate'))
+        || Boolean(user?.permissions?.includes('*'))
+        || Boolean(user?.hasAllPermissions)
+        || userRoles.some((r) => ['Admin', 'Super Admin', 'System Admin'].includes(r))
+    );
+    const isActorAdmin = Boolean(
+        user?.permissions?.includes('*')
+        || user?.hasAllPermissions
+        || userRoles.some((r) => ['Admin', 'Super Admin', 'System Admin'].includes(r))
+    );
+
+    const handleOpenImpersonateModal = (targetUser) => {
+        setImpersonateTargetUser(targetUser);
+        setShowImpersonateModal(true);
+    };
+
+    const handleConfirmImpersonate = async (targetUserId, reason) => {
+        const toastId = toast.loading('Switching user session...');
+        try {
+            await startImpersonation(targetUserId, reason);
+            toast.success('Switched user successfully', { id: toastId });
+            navigate('/dashboard');
+        } catch (error) {
+            console.error('Failed to switch user:', error);
+            toast.error(error?.message || 'Failed to switch user session', { id: toastId });
+            throw error;
+        }
+    };
+
     const attendanceShiftOptions = user?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
     const hasAttendanceDocumentFeature = user?.company?.enabledModules?.includes('attendance')
         && Boolean(user?.company?.settings?.timesheet?.requireAttachment);
@@ -1297,6 +1330,10 @@ const Users = () => {
                     totalPages={totalPages}
                     paginationNumbers={paginationNumbers}
                     onNavigateUser={(id) => navigate(`/users/${id}`)}
+                    onImpersonateUser={handleOpenImpersonateModal}
+                    canImpersonate={canImpersonate}
+                    isActorAdmin={isActorAdmin}
+                    currentUserId={user?._id}
                 />
 
             </div>
@@ -1318,6 +1355,17 @@ const Users = () => {
                 showSalarySection={showSalarySection}
                 setShowSalarySection={setShowSalarySection}
                 calculateSalaryBreakdown={calculateSalaryBreakdown}
+            />
+
+            {/* Impersonate Confirm Modal */}
+            <ImpersonateConfirmModal
+                isOpen={showImpersonateModal}
+                onClose={() => {
+                    setShowImpersonateModal(false);
+                    setImpersonateTargetUser(null);
+                }}
+                targetUser={impersonateTargetUser}
+                onConfirm={handleConfirmImpersonate}
             />
         </div>
     );

@@ -711,20 +711,20 @@ const Discussions = () => {
 
     const getStatusBadgeColor = (status) => {
         const styles = {
-            'inprogress': 'bg-amber-100 text-amber-700 border-amber-200',
-            'mark as complete': 'bg-green-100 text-green-700 border-green-200',
-            'on-hold': 'bg-slate-100 text-slate-700 border-slate-200',
-            'planning': 'bg-sky-100 text-sky-700 border-sky-200'
+            'inprogress': 'bg-amber-50 text-amber-800 border-amber-200 hover:border-amber-300',
+            'mark as complete': 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:border-emerald-300',
+            'on-hold': 'bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300',
+            'planning': 'bg-sky-50 text-sky-800 border-sky-200 hover:border-sky-300'
         };
-        return styles[status] || 'bg-blue-100 text-blue-700 border-blue-200';
+        return styles[status] || 'bg-slate-50 text-slate-700 border-slate-200';
     };
 
     const getPriorityBadgeColor = (priority) => {
         const styles = {
-            'Urgent': 'bg-rose-50 text-rose-700 border-rose-100',
-            'High': 'bg-orange-50 text-orange-700 border-orange-100',
-            'Medium': 'bg-yellow-50 text-yellow-700 border-yellow-100',
-            'Low': 'bg-slate-50 text-slate-600 border-slate-100'
+            'Urgent': 'bg-rose-50 text-rose-700 border-rose-200 hover:border-rose-300',
+            'High': 'bg-orange-50 text-orange-700 border-orange-200 hover:border-orange-300',
+            'Medium': 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-300',
+            'Low': 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300'
         };
         return styles[priority] || styles['Medium'];
     };
@@ -1082,9 +1082,9 @@ const Discussions = () => {
                     type="button"
                     data-discussion-menu-trigger
                     onClick={() => toggleDiscussionMenu(discussion._id)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-700"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 shadow-2xs transition-colors hover:bg-slate-50 hover:text-slate-600"
                 >
-                    <MoreVertical size={18} />
+                    <MoreVertical size={15} />
                 </button>
                 {activeMenuId === discussion._id && (
                     <div
@@ -1125,9 +1125,15 @@ const Discussions = () => {
         );
     };
 
-    const truncateDescription = (text, limit = 40) => {
+    const truncateDescription = (text, limit = 120) => {
         if (!text) return '';
-        return text.length > limit ? `${text.substring(0, limit)}...` : text;
+        if (text.length <= limit) return text;
+        const truncated = text.substring(0, limit);
+        const lastSpace = truncated.lastIndexOf(' ');
+        if (lastSpace > limit * 0.7) {
+            return `${truncated.substring(0, lastSpace)}...`;
+        }
+        return `${truncated}...`;
     };
 
     if (loading && discussions.length === 0) return (
@@ -1410,35 +1416,35 @@ const Discussions = () => {
                     </div>
 
                     {/* ── Desktop table (hidden below md) ── */}
-                    <div className="hidden md:block overflow-visible">
-                        <table className="min-w-full text-xs table-fixed">
-                            <thead className="bg-slate-50 border-b border-slate-200">
+                    <div className="hidden md:block">
+                        <table className="w-full text-xs table-fixed">
+                            <thead className="bg-slate-50/80 border-b border-slate-200">
                                 <tr>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[5%]">S.No</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[22%]">Description</th>
+                                    <th className="px-2.5 py-3.5 text-center font-semibold text-slate-500 w-[4%] whitespace-nowrap">S.No</th>
+                                    <th className="px-3 py-3.5 text-left font-semibold text-slate-500 w-[33%] whitespace-nowrap">Description</th>
                                     <th 
-                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
+                                        className="px-2.5 py-3.5 text-left font-semibold text-slate-500 w-[9%] cursor-pointer hover:bg-slate-100/60 select-none transition-colors whitespace-nowrap"
                                         onClick={() => handleSortClick('createdAt')}
                                     >
-                                        <div className="flex items-center gap-1">
+                                        <div className="flex items-center gap-1 whitespace-nowrap">
                                             <span>Created Date</span>
                                             {renderSortArrow('createdAt')}
                                         </div>
                                     </th>
                                     <th 
-                                        className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%] cursor-pointer hover:bg-slate-100/50 select-none transition-colors"
+                                        className="px-2.5 py-3.5 text-left font-semibold text-slate-500 w-[9%] cursor-pointer hover:bg-slate-100/60 select-none transition-colors whitespace-nowrap"
                                         onClick={() => handleSortClick('dueDate')}
                                     >
-                                        <div className="flex items-center gap-1">
+                                        <div className="flex items-center gap-1 whitespace-nowrap">
                                             <span>Due Date</span>
                                             {renderSortArrow('dueDate')}
                                         </div>
                                     </th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%]">Project</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[9%]">Hours</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[11%]">Priority</th>
-                                    <th className="px-6 py-4 text-left font-semibold text-slate-600 w-[12%]">Status</th>
-                                    <th className="px-6 py-4 text-right font-semibold text-slate-600 w-[8%]">Actions</th>
+                                    <th className="px-2.5 py-3.5 text-left font-semibold text-slate-500 w-[9%] whitespace-nowrap">Project</th>
+                                    <th className="px-2.5 py-3.5 text-center font-semibold text-slate-500 w-[9%] whitespace-nowrap">Hours</th>
+                                    <th className="px-2.5 py-3.5 text-left font-semibold text-slate-500 w-[9%] whitespace-nowrap">Priority</th>
+                                    <th className="px-2.5 py-3.5 text-left font-semibold text-slate-500 w-[9%] whitespace-nowrap">Status</th>
+                                    <th className="px-2.5 py-3.5 text-center font-semibold text-slate-500 w-[9%] whitespace-nowrap">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -1463,70 +1469,70 @@ const Discussions = () => {
                                                         openDiscussionDetails(discussion);
                                                     }
                                                 }}
-                                                className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                                                className="hover:bg-slate-50/70 transition-colors group cursor-pointer"
                                             >
-                                                <td className="px-6 py-4 text-xs font-medium text-slate-500">{(currentPage - 1) * limit + index + 1}</td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center justify-between gap-2 max-w-xl text-xs text-slate-600 leading-relaxed min-w-0">
-                                                        <div className="break-all whitespace-pre-wrap min-w-0">
+                                                <td className="px-2.5 py-3.5 text-xs font-medium text-slate-400 text-center whitespace-nowrap">{(currentPage - 1) * limit + index + 1}</td>
+                                                <td className="px-3 py-3.5">
+                                                    <div className="flex items-start justify-between gap-2 text-xs text-slate-600 leading-relaxed min-w-0">
+                                                        <div className="break-words whitespace-normal min-w-0 flex-1 font-normal">
                                                             {expandedRows[discussion._id]
                                                                 ? discussion.discussion
-                                                                : truncateDescription(discussion.discussion, 25)}
+                                                                : truncateDescription(discussion.discussion, 110)}
                                                         </div>
-                                                        {discussion.discussion?.length > 25 && (
+                                                        {discussion.discussion?.length > 110 && (
                                                             <button
                                                                 onClick={() => toggleRowExpanded(discussion._id)}
                                                                 className="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 transition-all opacity-0 group-hover:opacity-100 cursor-pointer flex-shrink-0"
                                                                 title={expandedRows[discussion._id] ? "Show less" : "Show more"}
                                                             >
-                                                                <Eye size={14} />
+                                                                <Eye size={13} />
                                                             </button>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-700 text-xs whitespace-nowrap">
+                                                <td className="px-2.5 py-3.5 text-slate-600 text-xs whitespace-nowrap">
                                                     {discussion.createdAt ? format(new Date(discussion.createdAt), 'dd MMM yyyy') : '-'}
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-2.5 py-3.5 whitespace-nowrap">
                                                     {discussion.dueDate ? (
-                                                        <div className="flex items-center text-slate-700 whitespace-nowrap text-xs">
-                                                            <Calendar size={12} className="mr-1.5 text-slate-400" />
+                                                        <div className="flex items-center text-slate-600 whitespace-nowrap text-xs">
+                                                            <Calendar size={12} className="mr-1.5 text-slate-400 shrink-0" />
                                                             {format(new Date(discussion.dueDate), 'dd MMM yyyy')}
                                                         </div>
                                                     ) : (
-                                                        <span className="text-slate-400 text-[10px] italic">No due date</span>
+                                                        <span className="text-slate-400 text-[10px] italic whitespace-nowrap">No due date</span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-700 text-xs break-all whitespace-normal">
+                                                <td className="px-2.5 py-3.5 text-slate-700 text-xs break-words whitespace-normal">
                                                     {discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-700 text-xs whitespace-nowrap">
+                                                <td className="px-2.5 py-3.5 text-slate-600 text-xs text-center whitespace-nowrap">
                                                     {discussion.hours !== undefined && discussion.hours !== null && discussion.hours !== '' ? `${discussion.hours} hrs` : '-'}
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-2.5 py-3.5 whitespace-nowrap">
                                                     <select value={discussion.priority || 'Medium'}
                                                         onChange={(e) => handlePriorityChange(discussion._id, e.target.value)}
                                                         disabled={!discussion.canEdit}
-                                                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-28 truncate ${getPriorityBadgeColor(discussion.priority || 'Medium')} ${discussion.canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                                                        className={`py-0.5 px-2 text-[10px] font-medium rounded-md border focus:outline-none focus:ring-1 focus:ring-indigo-500/20 w-auto max-w-[76px] transition-colors ${getPriorityBadgeColor(discussion.priority || 'Medium')} ${discussion.canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                                                         <option value="Urgent">Urgent</option>
                                                         <option value="High">High</option>
                                                         <option value="Medium">Medium</option>
                                                         <option value="Low">Low</option>
                                                     </select>
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-2.5 py-3.5 whitespace-nowrap">
                                                     <select value={discussion.status}
                                                         onChange={(e) => handleStatusChange(discussion._id, e.target.value)}
                                                         disabled={!canUpdateStatus(discussion)}
-                                                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-28 truncate ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                                                        className={`py-0.5 px-2 text-[10px] font-medium rounded-md border focus:outline-none focus:ring-1 focus:ring-indigo-500/20 w-auto max-w-[92px] transition-colors ${getStatusBadgeColor(discussion.status)} ${canUpdateStatus(discussion) ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                                                         <option value="inprogress">In Progress</option>
                                                         <option value="planning" disabled={!canChangeRestrictedStatus(discussion)}>Planning {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                                         <option value="on-hold" disabled={!canChangeRestrictedStatus(discussion)}>On-hold {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                                         <option value="mark as complete" disabled={!canChangeRestrictedStatus(discussion)}>Mark as complete {!canChangeRestrictedStatus(discussion) && '(Authorized Only)'}</option>
                                                     </select>
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex justify-end">
+                                                <td className="px-2.5 py-3.5 text-center whitespace-nowrap">
+                                                    <div className="flex justify-center items-center">
                                                         {renderActionMenu(discussion, index, 'right')}
                                                     </div>
                                                 </td>

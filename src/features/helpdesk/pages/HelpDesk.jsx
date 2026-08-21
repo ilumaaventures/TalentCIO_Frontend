@@ -498,7 +498,7 @@ const HelpDesk = () => {
         }
     }, [activeTab, assignedQueries.length, fetchTabData, isAdmin, isResolverRole]);
 
-    const getStatusBadge = (status) => {
+    const getStatusBadge = (status, currentEscalationLevel = null) => {
         const lowerS = status?.toLowerCase() || '';
         let style = 'bg-slate-100 text-slate-600 border border-slate-200';
 
@@ -508,7 +508,11 @@ const HelpDesk = () => {
         else if (lowerS === 'escalated') style = 'bg-red-100 text-red-700 border border-red-200 animate-pulse';
         else if (lowerS === 'closed') style = 'bg-emerald-100 text-emerald-700 border border-emerald-200';
 
-        return <span className={`px-2.5 py-1 text-[11px] font-bold uppercase rounded-full tracking-wider ${style}`}>{status}</span>;
+        const label = lowerS === 'escalated' && currentEscalationLevel
+            ? `Escalated (L${currentEscalationLevel})`
+            : status;
+
+        return <span className={`px-2.5 py-1 text-[11px] font-bold uppercase rounded-full tracking-wider ${style}`}>{label}</span>;
     };
 
     const getPriorityIcon = (priority) => {
@@ -548,7 +552,7 @@ const HelpDesk = () => {
                                     </div>
                                     <div className="text-xs text-indigo-500 font-medium mt-0.5">{query.queryId}</div>
                                 </div>
-                                {getStatusBadge(query.status)}
+                                {getStatusBadge(query.status, query.currentEscalationLevel)}
                             </div>
                             <div className="flex flex-wrap gap-2 text-xs">
                                 <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">{query.queryType?.name || 'Unknown'}</span>
@@ -628,7 +632,7 @@ const HelpDesk = () => {
                                                 {getPriorityIcon(query.priority)}<span>{query.priority}</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-center">{getStatusBadge(query.status)}</td>
+                                        <td className="px-6 py-4 text-center">{getStatusBadge(query.status, query.currentEscalationLevel)}</td>
                                         <td className="px-6 py-4 text-slate-600 text-xs text-center border-l bg-slate-50/30">
                                             <div className="flex flex-col gap-1 items-center justify-center">
                                                 <div className="font-semibold text-slate-700 whitespace-nowrap">

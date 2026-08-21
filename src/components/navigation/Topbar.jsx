@@ -1,11 +1,130 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User, Plus, Sun, Moon, Sunrise, Timer } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '@/lib/apiClient';
 import socket from '@/lib/socket';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import SubmitClaimModal from '@/features/reimbursement/components/SubmitClaimModal';
+
+const getPageMetadata = (pathname) => {
+    if (!pathname || pathname === '/' || pathname === '/dashboard') {
+        return { title: 'Dashboard', subtitle: 'Overview & workspace summary' };
+    }
+    if (pathname === '/ess') {
+        return { title: 'My Space', subtitle: 'Your personalised employee hub' };
+    }
+    if (pathname === '/ess/documents') {
+        return { title: 'Company Documents', subtitle: 'Policies, forms & circulars', back: '/profile?tab=company-documents', backLabel: 'Profile' };
+    }
+    if (pathname === '/ess/payslips' || pathname === '/payslips') {
+        return { title: 'My Payslips', subtitle: 'View and download salary statements', back: '/ess', backLabel: 'My Space' };
+    }
+    if (pathname === '/ess/reimbursements') {
+        return { title: 'My Reimbursements', subtitle: 'Expense claims & tracking', back: '/ess', backLabel: 'My Space' };
+    }
+    if (pathname === '/ess/reimbursements/approvals') {
+        return { title: 'Approval Queue', subtitle: 'Reimbursement claims awaiting action', back: '/ess', backLabel: 'My Space' };
+    }
+    if (pathname === '/leaves') {
+        return { title: 'Leave Management', subtitle: 'Apply and track leave requests' };
+    }
+    if (pathname === '/leave-config') {
+        return { title: 'Leave Settings', subtitle: 'Configure leave types & balances', back: '/leaves', backLabel: 'Leaves' };
+    }
+    if (pathname === '/attendance') {
+        return { title: 'Attendance', subtitle: 'Daily check-in, logs & regularization' };
+    }
+    if (pathname === '/attendance/flexible-off' || pathname === '/flexible-off') {
+        return { title: 'Flexible Off Selection', subtitle: 'Select your weekly off days', back: '/attendance', backLabel: 'Attendance' };
+    }
+    if (pathname === '/attendance-settings') {
+        return { title: 'Attendance Settings', subtitle: 'Shifts & policies', back: '/attendance', backLabel: 'Attendance' };
+    }
+    if (pathname === '/timesheet') {
+        return { title: 'Timesheet', subtitle: 'Log & review working hours' };
+    }
+    if (pathname === '/holidays') {
+        return { title: 'Holiday Calendar', subtitle: 'Company declared holidays' };
+    }
+    if (pathname === '/helpdesk') {
+        return { title: 'Help Desk', subtitle: 'Raise & manage support queries' };
+    }
+    if (pathname.startsWith('/helpdesk/')) {
+        return { title: 'Help Desk', subtitle: 'Support ticket details', back: '/helpdesk', backLabel: 'Help Desk' };
+    }
+    if (pathname === '/discussions') {
+        return { title: 'Discussions', subtitle: 'Team discussion channels' };
+    }
+    if (pathname === '/announcements') {
+        return { title: 'Announcements', subtitle: 'Company news & broadcast feed' };
+    }
+    if (pathname === '/users') {
+        return { title: 'Employee Directory', subtitle: 'View and manage team members' };
+    }
+    if (pathname.startsWith('/users/')) {
+        return { title: 'Employee Profile', subtitle: 'Profile details & records', back: '/users', backLabel: 'Users' };
+    }
+    if (pathname === '/roles') {
+        return { title: 'Role Management', subtitle: 'Configure roles & permissions', back: '/profile?tab=settings', backLabel: 'Settings' };
+    }
+    if (pathname === '/organization/departments') {
+        return { title: 'Departments', subtitle: 'Organize teams and department structures', back: '/profile?tab=settings', backLabel: 'Settings' };
+    }
+    if (pathname === '/organization/designations') {
+        return { title: 'Designations', subtitle: 'Manage job titles and designation structures', back: '/profile?tab=settings', backLabel: 'Settings' };
+    }
+    if (pathname === '/organization/chart') {
+        return { title: 'Organization Chart', subtitle: 'Visual company hierarchy' };
+    }
+    if (pathname === '/profile') {
+        return { title: 'My Profile', subtitle: 'Personal, employment & account details' };
+    }
+    if (pathname === '/clients') {
+        return { title: 'Clients', subtitle: 'Client accounts & organizations' };
+    }
+    if (pathname.startsWith('/clients/')) {
+        return { title: 'Client Details', subtitle: 'Client information & engagements', back: '/clients', backLabel: 'Clients' };
+    }
+    if (pathname === '/business-units') {
+        return { title: 'Business Units', subtitle: 'Company business divisions' };
+    }
+    if (pathname === '/projects') {
+        return { title: 'Projects', subtitle: 'Company projects & milestones' };
+    }
+    if (pathname.startsWith('/projects/')) {
+        return { title: 'Project Details', subtitle: 'Project information & team', back: '/projects', backLabel: 'Projects' };
+    }
+    if (pathname === '/onboarding') {
+        return { title: 'Onboarding', subtitle: 'New hire onboarding workflows' };
+    }
+    if (pathname === '/offboarding') {
+        return { title: 'Offboarding', subtitle: 'Employee exit workflows' };
+    }
+    if (pathname.startsWith('/hr-email')) {
+        return { title: 'Send HR Email', subtitle: 'Company communications' };
+    }
+    if (pathname === '/meetings' || pathname.startsWith('/meetings')) {
+        return { title: 'Meetings & Minutes', subtitle: 'Schedule meetings & track action items' };
+    }
+    if (pathname.startsWith('/ta')) {
+        return { title: 'Talent Acquisition', subtitle: 'Recruitment & candidate pipeline' };
+    }
+    if (pathname === '/settings/email') {
+        return { title: 'Email Settings', subtitle: 'SMTP & email configurations' };
+    }
+    if (pathname === '/settings/notifications') {
+        return { title: 'Notification Settings', subtitle: 'Preferences & alerts' };
+    }
+    if (pathname === '/salary-calculator') {
+        return { title: 'Salary Calculator', subtitle: 'Payroll & CTC computation' };
+    }
+    if (pathname === '/bin') {
+        return { title: 'Recycle Bin', subtitle: 'Deleted items & recovery' };
+    }
+    return null;
+};
 
 const Topbar = ({ toggleSidebar }) => {
     const { user, hasModule } = useAuth();
@@ -19,6 +138,18 @@ const Topbar = ({ toggleSidebar }) => {
     const [interviews, setInterviews] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [showSubmitClaimModal, setShowSubmitClaimModal] = useState(false);
+    const [time, setTime] = useState(new Date());
+
+    useEffect(() => {
+        const t = setInterval(() => setTime(new Date()), 1000);
+        return () => clearInterval(t);
+    }, []);
+
+    const hour = time.getHours();
+    const GreetingIcon = hour < 12 ? Sunrise : hour < 17 ? Sun : Moon;
+    const greetingText = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
     const dropdownRef = useRef(null);
     const profileMenuRef = useRef(null);
     const navigateRef = useRef(navigate);
@@ -32,6 +163,7 @@ const Topbar = ({ toggleSidebar }) => {
     const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
     const isRolesPage = location.pathname === '/roles';
     const isAnnouncementsPage = location.pathname === '/announcements';
+    const isEssPage = location.pathname === '/ess' || location.pathname.startsWith('/ess');
     const profileTabs = [
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
@@ -276,7 +408,7 @@ const Topbar = ({ toggleSidebar }) => {
                     }
                 }
             `}</style>
-            <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sticky top-0 z-30 shadow-sm w-full">
+            <div className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-4 fixed top-0 right-0 left-0 md:left-64 z-30 shadow-xs transition-all duration-300">
                 <div className="flex items-center gap-4">
                     <button
                         onClick={toggleSidebar}
@@ -294,35 +426,104 @@ const Topbar = ({ toggleSidebar }) => {
                         </div>
                         TalentCio
                     </button>
-                    {isRolesPage && (
-                        <div className="flex items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => navigate('/profile?tab=settings')}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
-                                aria-label="Back to settings"
-                            >
-                                <ArrowLeft size={18} />
-                            </button>
-                            <div>
-                                <h1 className="text-lg font-bold text-slate-800">Role Management</h1>
+                    {(() => {
+                        if (location.pathname === '/ess') {
+                            return (
+                                <div className="hidden md:flex items-center gap-2.5">
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xs shadow-2xs">
+                                        {user?.profilePicture ? (
+                                            <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            user?.firstName?.charAt(0) || 'U'
+                                        )}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-1.5 leading-none">
+                                            <GreetingIcon size={12} className="text-amber-500" />
+                                            <span className="text-xs font-bold text-slate-800">
+                                                {greetingText}, {user?.firstName || 'User'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 leading-none mt-1">
+                                            {user?.designation || user?.department || 'Team Member'} • {format(time, 'EEE, dd MMM yyyy')}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        }
+                        const pageInfo = getPageMetadata(location.pathname);
+                        if (!pageInfo) return null;
+                        return (
+                            <div className="hidden md:flex items-center gap-3">
+                                {pageInfo.back && (
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(pageInfo.back)}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-slate-300 hover:bg-white hover:text-slate-800 shrink-0"
+                                        aria-label={`Back to ${pageInfo.backLabel || 'previous page'}`}
+                                        title={`Back to ${pageInfo.backLabel || 'previous page'}`}
+                                    >
+                                        <ArrowLeft size={16} />
+                                    </button>
+                                )}
+                                <div>
+                                    <h1 className="text-sm font-bold text-slate-800 leading-none">{pageInfo.title}</h1>
+                                    {pageInfo.subtitle && (
+                                        <p className="text-[11px] text-slate-400 mt-1 leading-none">{pageInfo.subtitle}</p>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
                 </div>
 
-                <div className="flex items-center gap-4 ml-auto">
+                <div className="flex items-center gap-3 ml-auto">
+                    {/* Live Clock Ticker - Visible Everywhere on Navbar */}
+                    <div className="hidden md:flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-1 text-slate-700 shadow-2xs">
+                        <Timer size={13} className="text-indigo-600" />
+                        <span className="font-mono text-xs font-bold text-slate-800">
+                            {format(time, 'hh:mm:ss a')}
+                        </span>
+                    </div>
+
+                    {/* Quick Actions - Only on My Space (/ess) */}
+                    {location.pathname === '/ess' && (
+                        <>
+                            {hasModule('leaves') && (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/leaves')}
+                                    className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition-colors shadow-2xs cursor-pointer"
+                                >
+                                    <Calendar size={13} />
+                                    <span>Apply Leave</span>
+                                </button>
+                            )}
+
+                            {hasModule('reimbursements') && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSubmitClaimModal(true)}
+                                    className="hidden sm:inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 px-2.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                                >
+                                    <Plus size={13} />
+                                    <span>Claim Expense</span>
+                                </button>
+                            )}
+                        </>
+                    )}
+
                     <div className="hidden lg:flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-2 py-1.5">
                         <button
                             type="button"
                             onClick={() => navigate('/announcements')}
-                            className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
+                            className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
                                 isAnnouncementsPage
                                     ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
                                     : 'text-slate-600 hover:bg-white hover:text-slate-800'
                             }`}
                         >
-                            <Megaphone size={16} />
+                            <Megaphone size={14} />
                             <span>Announcements</span>
                         </button>
                     </div>
@@ -330,9 +531,9 @@ const Topbar = ({ toggleSidebar }) => {
                         <button
                             type="button"
                             onClick={handleOpenCreateRole}
-                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
                         >
-                            <Shield size={16} />
+                            <Shield size={14} />
                             <span className="hidden sm:inline">Create Role</span>
                         </button>
                     )}
@@ -491,6 +692,10 @@ const Topbar = ({ toggleSidebar }) => {
                     </div>
                 </div>
             </div>
+
+            {showSubmitClaimModal && (
+                <SubmitClaimModal onClose={() => setShowSubmitClaimModal(false)} onSuccess={() => {}} />
+            )}
         </>
     );
 };

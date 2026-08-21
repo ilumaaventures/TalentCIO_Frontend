@@ -22,6 +22,10 @@ export const normalizeEnabledModules = (moduleIds = []) => {
     normalizedIds.add(CLIENTS_MODULE_ID);
   }
 
+  if (normalizedIds.has('ess')) {
+    normalizedIds.add('mySpace');
+  }
+
   return Array.from(normalizedIds);
 };
 
@@ -30,6 +34,10 @@ export const hasModuleEnabled = (moduleIds = [], targetModuleId = '') => {
 
   if (targetModuleId === LEGACY_PROJECT_MODULE_ID) {
     return normalizedIds.includes(PROJECTS_MODULE_ID);
+  }
+
+  if (targetModuleId === 'ess') {
+    return normalizedIds.includes('mySpace') || normalizedIds.includes('ess');
   }
 
   return normalizedIds.includes(targetModuleId);

@@ -83,6 +83,17 @@ export const hasAuthSessionHint = () => (
   || Boolean(localStorage.getItem(AUTH_USER_KEY))
 );
 
+export const clearScopedCaches = () => {
+  const keysToRemove = [];
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (key && SESSION_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((key) => sessionStorage.removeItem(key));
+};
+
 export const clearAuthSession = ({ preserveTenant = false, userId = '' } = {}) => {
   localStorage.removeItem(LEGACY_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
@@ -93,3 +104,4 @@ export const clearAuthSession = ({ preserveTenant = false, userId = '' } = {}) =
 
   removeMatchingSessionKeys(userId);
 };
+

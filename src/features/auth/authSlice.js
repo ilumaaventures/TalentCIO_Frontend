@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import api from '@/lib/apiClient';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
-import { clearAuthSession, hasAuthSessionHint, markAuthSessionActive, persistAccessToken, persistAuthUser, readStoredUser } from '@/features/auth/utils/authStorage';
+import { clearAuthSession, clearScopedCaches, hasAuthSessionHint, markAuthSessionActive, persistAccessToken, persistAuthUser, readStoredUser } from '@/features/auth/utils/authStorage';
 import { hasModuleEnabled, normalizeEnabledModules } from '@/config/enabledModules';
 import { isAdminUser } from '@/config/accessPolicies';
 
@@ -187,13 +187,76 @@ export const refreshProfile = createAsyncThunk(
   }
 );
 
+export const startImpersonation = createAsyncThunk(
+  'auth/startImpersonation',
+  async ({ userId, reason = '' }, { rejectWithValue }) => {
+    try {
+      const response = await api.post(`/users/${userId}/impersonate`, { reason });
+      const normalisedUser = normalizeUserPayload(response.data);
+      if (response.data?.token) {
+        persistAccessToken(response.data.token);
+      }
+      clearScopedCaches();
+      markAuthSessionActive();
+      persistAuthUser(normalisedUser);
+      if (normalisedUser?._id) {
+        connectSocket(normalisedUser._id);
+      }
+      return {
+        user: normalisedUser,
+        impersonation: response.data?.impersonation || { active: true }
+      };
+    } catch (err) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  }
+);
+
+export const endImpersonation = createAsyncThunk(
+  'auth/endImpersonation',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/users/impersonate/end');
+      clearScopedCaches();
+      if (response.data?.isSuperAdmin) {
+        return { isSuperAdmin: true };
+      }
+      const normalisedUser = normalizeUserPayload(response.data);
+      if (response.data?.token) {
+        persistAccessToken(response.data.token);
+      }
+      markAuthSessionActive();
+      persistAuthUser(normalisedUser);
+      if (normalisedUser?._id) {
+        connectSocket(normalisedUser._id);
+      }
+      return { user: normalisedUser };
+    } catch (err) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  }
+);
+
+export const checkImpersonationStatus = createAsyncThunk(
+  'auth/checkImpersonationStatus',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/users/impersonate/status');
+      return response.data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  }
+);
+
 const initialState = {
   user: getInitialUser(),
   token: hasAuthSessionHint(),
   loading: true,
   invalidWorkspace: false,
   workspace: null,
-  activeRequestId: null
+  activeRequestId: null,
+  impersonation: { active: false, tier: null, expiresAt: null, actorName: null, actorEmail: null }
 };
 
 const authSlice = createSlice({
@@ -250,6 +313,7 @@ const authSlice = createSlice({
         state.activeRequestId = action.meta.requestId;
         state.user = null;
         state.token = false;
+        state.impersonation = { active: false, tier: null, expiresAt: null, actorName: null, actorEmail: null };
       })
       // loadProfile handlers
       .addCase(loadProfile.fulfilled, (state, action) => {
@@ -257,6 +321,9 @@ const authSlice = createSlice({
         state.user = action.payload;
         state.token = true;
         state.loading = false;
+        if (action.payload?.impersonation) {
+          state.impersonation = action.payload.impersonation;
+        }
       })
       .addCase(loadProfile.rejected, (state, action) => {
         if (action.meta.requestId !== state.activeRequestId) return;
@@ -271,6 +338,9 @@ const authSlice = createSlice({
         if (action.meta.requestId !== state.activeRequestId) return;
         state.user = action.payload;
         state.token = true;
+        if (action.payload?.impersonation) {
+          state.impersonation = action.payload.impersonation;
+        }
       })
       .addCase(refreshProfile.rejected, (state, action) => {
         if (action.meta.requestId !== state.activeRequestId) return;
@@ -298,6 +368,29 @@ const authSlice = createSlice({
         if (action.meta.requestId !== state.activeRequestId) return;
         state.user = null;
         state.token = false;
+        state.impersonation = { active: false, tier: null, expiresAt: null, actorName: null, actorEmail: null };
+      })
+      // impersonation handlers
+      .addCase(startImpersonation.fulfilled, (state, action) => {
+        state.user = action.payload.user;
+        state.token = true;
+        state.impersonation = action.payload.impersonation;
+      })
+      .addCase(endImpersonation.fulfilled, (state, action) => {
+        state.impersonation = { active: false, tier: null, expiresAt: null, actorName: null, actorEmail: null };
+        if (action.payload?.isSuperAdmin) {
+          state.user = null;
+          state.token = false;
+        } else if (action.payload?.user) {
+          state.user = action.payload.user;
+        }
+      })
+      .addCase(checkImpersonationStatus.fulfilled, (state, action) => {
+        if (action.payload?.active) {
+          state.impersonation = action.payload;
+        } else {
+          state.impersonation = { active: false, tier: null, expiresAt: null, actorName: null, actorEmail: null };
+        }
       });
   }
 });
@@ -311,11 +404,11 @@ export const selectToken = (state) => state.auth.token;
 export const selectAuthLoading = (state) => state.auth.loading;
 export const selectWorkspace = (state) => state.auth.workspace;
 export const selectInvalidWorkspace = (state) => state.auth.invalidWorkspace;
+export const selectImpersonation = (state) => state.auth.impersonation;
 
 export const selectHasModule = (state, moduleName) => {
   const user = state.auth.user;
   if (!user) return false;
-  if (isAdminUser(user)) return true;
   return hasModuleEnabled(user?.company?.enabledModules || [], moduleName);
 };
 

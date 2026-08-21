@@ -4,7 +4,7 @@ import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     User, Briefcase, FileText, DollarSign, Calendar, Shield, Settings,
-    ArrowLeft, CheckCircle, AlertCircle, X, Search, Clock, AlertTriangle, Info, Mail
+    ArrowLeft, CheckCircle, AlertCircle, X, Search, Clock, AlertTriangle, Info, Mail, FileStack
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
@@ -16,6 +16,7 @@ import { PersonalTab } from '@/features/employee-dossier/components/PersonalTab'
 import { EmploymentTab } from '@/features/employee-dossier/components/EmploymentTab';
 import { SalaryTab } from '@/features/payroll/components/SalaryTab';
 import { DocumentsTab } from '@/features/employee-dossier/components/DocumentsTab';
+import { CompanyDocumentsTab } from '@/features/employee-dossier/components/CompanyDocumentsTab';
 import { HrisTab } from '@/features/employee-dossier/components/HrisTab';
 import { HistoryTab } from '@/features/employee-dossier/components/HistoryTab';
 import { EmailHistoryTab } from '@/features/employee-dossier/components/EmailHistoryTab';
@@ -101,11 +102,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
     // Module & Admin Flags
     const hasDossierModule = currentUser?.company?.enabledModules?.includes('employeeDossier');
+    const hasEssDocumentsModule = currentUser?.company?.enabledModules?.includes('essDocuments');
     const hasAdminRole = isCurrentUserAdmin;
+    const canViewDepartments = hasAdminRole || currentUser?.permissions?.includes('department.read') || currentUser?.hasAllPermissions;
+    const canViewDesignations = hasAdminRole || currentUser?.permissions?.includes('designation.read') || currentUser?.hasAllPermissions;
     const canViewRolesSettings = hasAdminRole || currentUser?.permissions?.includes('role.read') || currentUser?.hasAllPermissions;
     const canViewAttendanceSettings = currentUser?.company?.enabledModules?.includes('attendance') && (hasAdminRole || currentUser?.permissions?.includes('user.update') || currentUser?.hasAllPermissions);
     const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('leave.config.manage') || currentUser?.hasAllPermissions);
-    const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies || canManageCompanyBranding;
+    const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies || canManageCompanyBranding || canViewDepartments || canViewDesignations;
     const canViewEmailHistory = hasAdminRole || currentUser?.permissions?.includes('hr_email.send') || currentUser?.hasAllPermissions;
 
     // Initialize editable state when a section enters edit mode.
@@ -327,9 +331,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             }
             nextTabs.push(
                 { id: 'hris', label: 'EIS', icon: Shield },
-                { id: 'documents', label: 'Documents', icon: FileText },
-                { id: 'history', label: 'Activities', icon: Calendar }
+                { id: 'documents', label: 'Documents', icon: FileText }
             );
+
+            if (hasEssDocumentsModule) {
+                nextTabs.push({ id: 'company-documents', label: 'Company Documents', icon: FileStack });
+            }
+
+            nextTabs.push({ id: 'history', label: 'Activities', icon: Calendar });
 
             if (canViewEmailHistory) {
                 nextTabs.push({ id: 'email-history', label: 'Email History', icon: Mail });
@@ -345,16 +354,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
 
         return nextTabs;
-    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, canApprove, canViewSalaryTab]);
+    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, hasEssDocumentsModule, canApprove, canViewSalaryTab]);
 
     // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
     useEffect(() => {
-        if (!hasDossierModule && ['salary', 'documents', 'hris', 'history', 'email-history', 'requests'].includes(activeTab)) {
+        if (!hasDossierModule && ['salary', 'documents', 'company-documents', 'hris', 'history', 'email-history', 'requests'].includes(activeTab)) {
             setActiveTab('personal');
         } else if (activeTab === 'salary' && !canViewSalaryTab) {
             setActiveTab('personal');
+        } else if (activeTab === 'company-documents' && !hasEssDocumentsModule) {
+            setActiveTab('personal');
         }
-    }, [hasDossierModule, activeTab, canViewSalaryTab]);
+    }, [hasDossierModule, hasEssDocumentsModule, activeTab, canViewSalaryTab]);
 
     useEffect(() => {
         const requestedTab = queryTab || initialTab;
@@ -775,19 +786,19 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
             <div className={embedded ? "w-full" : "max-w-6xl mx-auto p-6 md:p-8"}>
                 {/* Tabs */}
-                <div className="mb-8 overflow-x-auto">
+                <div className="mb-6 overflow-x-auto">
                     <div className="flex space-x-1 border-b border-slate-200 min-w-max">
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
                                 type="button"
                                 onClick={() => handleTabSelect(tab.id)}
-                                className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                                    ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                                className={`flex items-center space-x-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${activeTab === tab.id
+                                    ? 'border-blue-600 text-blue-600 bg-blue-50/50 font-semibold'
                                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                                     }`}
                             >
-                                <tab.icon size={16} />
+                                <tab.icon size={14} className="shrink-0" />
                                 <span>{tab.label}</span>
                             </button>
                         ))}
@@ -907,6 +918,11 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             isCurrentUserAdmin={isCurrentUserAdmin}
                         />
                     )}
+                    {hasEssDocumentsModule && activeTab === 'company-documents' && (
+                        <CompanyDocumentsTab
+                            isCurrentUserAdmin={isCurrentUserAdmin}
+                        />
+                    )}
                     {activeTab === 'hris' && (
                         <HrisTab
                             profile={profile}
@@ -958,6 +974,8 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                             canViewAttendanceSettings={canViewAttendanceSettings}
                             canViewLeavePolicies={canViewLeavePolicies}
                             canManageCompanyBranding={canManageCompanyBranding}
+                            canViewDepartments={canViewDepartments}
+                            canViewDesignations={canViewDesignations}
                             isCompanySettingsOpen={isCompanySettingsOpen}
                             setIsCompanySettingsOpen={setIsCompanySettingsOpen}
                             companyBranding={companyBranding}

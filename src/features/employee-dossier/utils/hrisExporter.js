@@ -116,12 +116,12 @@ export const exportCandidateHRIS = async (selectedEmployeeIds, hrisSections) => 
 
                 // Family Details
                 { label: 'Father Name', val: dossier.family?.fatherName, section: 'Family' },
-                { label: 'Father DOB', val: dossier.family?.fatherDob, section: 'Family', type: 'date' },
+                // { label: 'Father DOB', val: dossier.family?.fatherDob, section: 'Family', type: 'date' },
                 { label: 'Father Occupation', val: dossier.family?.fatherOccupation, section: 'Family' },
                 { label: 'Mother Name', val: dossier.family?.motherName, section: 'Family' },
-                { label: 'Mother DOB', val: dossier.family?.motherDob, section: 'Family', type: 'date' },
+                // { label: 'Mother DOB', val: dossier.family?.motherDob, section: 'Family', type: 'date' },
                 { label: 'Mother Occupation', val: dossier.family?.motherOccupation, section: 'Family' },
-                { label: 'Parents Marital Status', val: dossier.family?.parentsMaritalStatus, section: 'Family' },
+                // { label: 'Parents Marital Status', val: dossier.family?.parentsMaritalStatus, section: 'Family' },
                 { label: 'Total Siblings', val: dossier.family?.totalSiblings, section: 'Family' },
                 { label: 'Spouse Name', val: dossier.family?.spouseName, section: 'Family', notApplicable: !isMarried || !dossier.family?.spouseName },
                 { label: 'Spouse DOB', val: dossier.family?.spouseDob, section: 'Family', type: 'date', notApplicable: !isMarried || !dossier.family?.spouseDob },
@@ -698,92 +698,92 @@ export const exportCandidateHRIS = async (selectedEmployeeIds, hrisSections) => 
 
             // Section 11: Document Checklist & Submission Details
             if (includeSection('Documents')) {
-            ws.addRow([]);
-            const docHeader = ws.addRow(['11. Document Checklist & Submission Details', '', '', '', '', '']);
-            ws.mergeCells(docHeader.number, 1, docHeader.number, 6);
-            docHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-            docHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+                ws.addRow([]);
+                const docHeader = ws.addRow(['11. Document Checklist & Submission Details', '', '', '', '', '']);
+                ws.mergeCells(docHeader.number, 1, docHeader.number, 6);
+                docHeader.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+                docHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
 
-            const docCols = ws.addRow(['Document Checklist Item', 'Status', 'File Name', 'Verification Status', 'Upload Date', 'Verification/Rejection Details']);
-            docCols.font = { bold: true };
-            docCols.alignment = { horizontal: 'center' };
-            docCols.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } });
+                const docCols = ws.addRow(['Document Checklist Item', 'Status', 'File Name', 'Verification Status', 'Upload Date', 'Verification/Rejection Details']);
+                docCols.font = { bold: true };
+                docCols.alignment = { horizontal: 'center' };
+                docCols.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } });
 
-            const matchedUploadedIds = new Set();
+                const matchedUploadedIds = new Set();
 
-            REQUIRED_DOCUMENTS.forEach(reqDoc => {
-                const match = uploadedDocs.find(upDoc =>
-                    !upDoc.isDeleted &&
-                    upDoc.title &&
-                    (upDoc.title.toLowerCase().includes(reqDoc.title.toLowerCase()) ||
-                        reqDoc.title.toLowerCase().includes(upDoc.title.toLowerCase()))
-                );
+                REQUIRED_DOCUMENTS.forEach(reqDoc => {
+                    const match = uploadedDocs.find(upDoc =>
+                        !upDoc.isDeleted &&
+                        upDoc.title &&
+                        (upDoc.title.toLowerCase().includes(reqDoc.title.toLowerCase()) ||
+                            reqDoc.title.toLowerCase().includes(upDoc.title.toLowerCase()))
+                    );
 
-                if (match) {
-                    matchedUploadedIds.add(match._id.toString());
-                    const row = ws.addRow([
-                        reqDoc.title,
-                        'Uploaded',
-                        match.fileName || 'Attached File',
-                        match.verificationStatus || 'Pending Review',
-                        match.uploadDate ? format(new Date(match.uploadDate), 'dd MMM yyyy') : '-',
-                        match.rejectionReason || match.revocationReason || ''
-                    ]);
+                    if (match) {
+                        matchedUploadedIds.add(match._id.toString());
+                        const row = ws.addRow([
+                            reqDoc.title,
+                            'Uploaded',
+                            match.fileName || 'Attached File',
+                            match.verificationStatus || 'Pending Review',
+                            match.uploadDate ? format(new Date(match.uploadDate), 'dd MMM yyyy') : '-',
+                            match.rejectionReason || match.revocationReason || ''
+                        ]);
 
-                    const statusCell = row.getCell(2);
-                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
-                    statusCell.font = { color: { argb: 'FF274E13' }, bold: true };
+                        const statusCell = row.getCell(2);
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
+                        statusCell.font = { color: { argb: 'FF274E13' }, bold: true };
 
-                    const verifyCell = row.getCell(4);
-                    if (match.verificationStatus === 'Verified') {
-                        verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
-                        verifyCell.font = { color: { argb: 'FF274E13' }, bold: true };
-                    } else if (match.verificationStatus === 'Rejected') {
-                        verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
-                        verifyCell.font = { color: { argb: 'FF660000' }, bold: true };
+                        const verifyCell = row.getCell(4);
+                        if (match.verificationStatus === 'Verified') {
+                            verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
+                            verifyCell.font = { color: { argb: 'FF274E13' }, bold: true };
+                        } else if (match.verificationStatus === 'Rejected') {
+                            verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
+                            verifyCell.font = { color: { argb: 'FF660000' }, bold: true };
+                        }
+                    } else {
+                        const row = ws.addRow([
+                            reqDoc.title,
+                            'Pending Upload',
+                            '-',
+                            '-',
+                            '-',
+                            '-'
+                        ]);
+
+                        const statusCell = row.getCell(2);
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
+                        statusCell.font = { color: { argb: 'FF660000' }, bold: true };
                     }
-                } else {
-                    const row = ws.addRow([
-                        reqDoc.title,
-                        'Pending Upload',
-                        '-',
-                        '-',
-                        '-',
-                        '-'
-                    ]);
+                });
 
-                    const statusCell = row.getCell(2);
-                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
-                    statusCell.font = { color: { argb: 'FF660000' }, bold: true };
-                }
-            });
+                // List non-checklist uploaded documents
+                uploadedDocs.forEach(match => {
+                    if (!match.isDeleted && !matchedUploadedIds.has(match._id.toString())) {
+                        const row = ws.addRow([
+                            match.title || `Other (${match.category || 'Other'})`,
+                            'Uploaded',
+                            match.fileName || 'Attached File',
+                            match.verificationStatus || 'Pending Review',
+                            match.uploadDate ? format(new Date(match.uploadDate), 'dd MMM yyyy') : '-',
+                            match.rejectionReason || match.revocationReason || ''
+                        ]);
 
-            // List non-checklist uploaded documents
-            uploadedDocs.forEach(match => {
-                if (!match.isDeleted && !matchedUploadedIds.has(match._id.toString())) {
-                    const row = ws.addRow([
-                        match.title || `Other (${match.category || 'Other'})`,
-                        'Uploaded',
-                        match.fileName || 'Attached File',
-                        match.verificationStatus || 'Pending Review',
-                        match.uploadDate ? format(new Date(match.uploadDate), 'dd MMM yyyy') : '-',
-                        match.rejectionReason || match.revocationReason || ''
-                    ]);
+                        const statusCell = row.getCell(2);
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
+                        statusCell.font = { color: { argb: 'FF274E13' }, bold: true };
 
-                    const statusCell = row.getCell(2);
-                    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
-                    statusCell.font = { color: { argb: 'FF274E13' }, bold: true };
-
-                    const verifyCell = row.getCell(4);
-                    if (match.verificationStatus === 'Verified') {
-                        verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
-                        verifyCell.font = { color: { argb: 'FF274E13' }, bold: true };
-                    } else if (match.verificationStatus === 'Rejected') {
-                        verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
-                        verifyCell.font = { color: { argb: 'FF660000' }, bold: true };
+                        const verifyCell = row.getCell(4);
+                        if (match.verificationStatus === 'Verified') {
+                            verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
+                            verifyCell.font = { color: { argb: 'FF274E13' }, bold: true };
+                        } else if (match.verificationStatus === 'Rejected') {
+                            verifyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
+                            verifyCell.font = { color: { argb: 'FF660000' }, bold: true };
+                        }
                     }
-                }
-            });
+                });
             } // end if (includeSection('Documents'))
         });
 

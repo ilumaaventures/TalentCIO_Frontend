@@ -11,6 +11,7 @@ import BirthdayCelebrationModal from '@/components/common/BirthdayCelebrationMod
 import IndependenceDayCelebrationModal from '@/components/celebration/IndependenceDayCelebrationModal';
 import useIndependenceDayCelebration from '@/hooks/useIndependenceDayCelebration';
 import DossierGateBanner from '@/features/employee-dossier/components/DossierGateBanner';
+import ImpersonationBanner from '@/components/common/ImpersonationBanner';
 import {
     getAcknowledgedAnnouncementIds,
     getAnnouncementSessionGateKey,
@@ -256,7 +257,8 @@ const Layout = () => {
 
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
-            <main className="flex-1 flex flex-col md:pl-64 transition-all duration-300 min-h-screen overflow-x-hidden min-w-0">
+            <main className="flex-1 flex flex-col md:pl-64 pt-16 transition-all duration-300 min-h-screen min-w-0">
+                <ImpersonationBanner />
                 <Topbar toggleSidebar={() => setIsSidebarOpen(true)} />
                 <DossierGateBanner />
 

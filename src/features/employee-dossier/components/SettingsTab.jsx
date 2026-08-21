@@ -38,6 +38,8 @@ export const SettingsTab = ({
     canViewAttendanceSettings,
     canViewLeavePolicies,
     canManageCompanyBranding,
+    canViewDepartments,
+    canViewDesignations,
     isCompanySettingsOpen,
     setIsCompanySettingsOpen,
     companyBranding,
@@ -53,6 +55,20 @@ export const SettingsTab = ({
     const companySettingsSectionRef = useRef(null);
 
     const settingCards = [
+        {
+            key: 'departments',
+            visible: canViewDepartments,
+            label: 'Departments',
+            description: 'Organize teams, assign department heads, and manage department structures.',
+            route: '/organization/departments'
+        },
+        {
+            key: 'designations',
+            visible: canViewDesignations,
+            label: 'Designations',
+            description: 'Manage job titles, role levels, and designation hierarchies across the company.',
+            route: '/organization/designations'
+        },
         {
             key: 'roles',
             visible: canViewRolesSettings,

@@ -19,10 +19,13 @@ import {
   FolderKanban,
   History,
   LayoutDashboard,
+  LayoutGrid,
   LifeBuoy,
   LogOut,
   Mail,
   Megaphone,
+  Network,
+  Award,
   ShieldCheck,
   Settings,
   Trash2,
@@ -154,6 +157,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showTimesheet = user?.company?.enabledModules?.includes('timesheet');
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
+  const showEss = hasModule('mySpace');
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (isAdmin || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.company?.enabledModules?.includes('onboarding') && (
     isAdmin
@@ -193,7 +197,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*')
   );
   const showProjects = hasModule('projects');
-  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || canAccessTA || true;
+  const showOrgChart = hasModule('organization') && Boolean(user);
+  const showOrgStructureSection = showOrgChart;
+  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || showEss || canAccessTA;
   const showOrganizationSection = showEmployees || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = isAdmin
@@ -466,6 +472,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Help Desk</span>
                 </Link>
               )}
+              {showEss && (
+                <Link to="/ess" className={getSidebarLinkClass(location.pathname.startsWith('/ess'))} onClick={onClose}>
+                  <LayoutGrid size={18} />
+                  <span>My Space</span>
+                </Link>
+              )}
 
 
 
@@ -513,6 +525,19 @@ const Sidebar = ({ isOpen, onClose }) => {
                     {recycleBinCount}
                   </span>
                 </Link>
+              )}
+
+              {showOrgStructureSection && (
+                <>
+                  <div className="mt-8"><div className={sectionLabelClass}>Organization</div></div>
+
+                  {showOrgChart && (
+                    <Link to="/organization/chart" className={getSidebarLinkClass(location.pathname === '/organization/chart')} onClick={onClose}>
+                      <Network size={18} />
+                      <span>Org Chart</span>
+                    </Link>
+                  )}
+                </>
               )}
 
               {showProjectManagementSection && (
