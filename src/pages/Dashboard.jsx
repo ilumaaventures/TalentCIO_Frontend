@@ -376,60 +376,60 @@ const Dashboard = () => {
                 >
                     <div className="max-w-[1500px] w-full mx-auto space-y-4">
                         {/* Header Section */}
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
                             <div className="space-y-0.5">
-                                <h1 className="text-lg font-bold text-slate-900 tracking-tight">Executive Overview</h1>
+                                <h1 className="text-base font-bold text-slate-900 tracking-tight">Executive Overview</h1>
                                 <p className="text-[10px] text-slate-500 font-medium italic">
                                     Welcome back, {user?.firstName} 👋
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2 px-2.5 py-1 bg-white border border-slate-200/60 rounded-lg shadow-xs text-[10px] font-bold text-slate-600">
-                                <Calendar size={13} className="text-blue-600" />
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white border border-slate-200/60 rounded-lg shadow-2xs text-[9.5px] font-semibold text-slate-600">
+                                <Calendar size={12} className="text-blue-600" />
                                 {format(new Date(), 'MMM d, yyyy')}
                             </div>
                         </div>
 
                         <div className="premium-card overflow-hidden bg-white">
-                            <div className="px-4 py-2.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-1 h-4 bg-amber-500 rounded-full"></div>
-                                    <h2 className="text-xs font-bold text-slate-900 tracking-tight">Announcements</h2>
+                            <div className="px-3.5 py-2 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-1 h-3.5 bg-amber-500 rounded-full"></div>
+                                    <h2 className="text-[11px] font-bold text-slate-900 tracking-tight">Announcements</h2>
                                 </div>
-                                <Link to="/announcements" className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest">
+                                <Link to="/announcements" className="text-[8.5px] font-bold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded hover:bg-blue-100 transition-colors uppercase tracking-wider">
                                     Open Feed
                                 </Link>
                             </div>
-                            <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-3">
                                 {announcementsLoading ? (
                                     [1, 2, 3].map((item) => (
-                                        <div key={item} className="rounded-2xl border border-slate-200 p-4">
-                                            <Skeleton className="h-4 w-24" />
-                                            <Skeleton className="mt-2.5 h-5 w-3/4" />
+                                        <div key={item} className="rounded-xl border border-slate-200 p-3">
+                                            <Skeleton className="h-3.5 w-20" />
+                                            <Skeleton className="mt-2 h-4 w-3/4" />
                                         </div>
                                     ))
                                 ) : featuredAnnouncements.length > 0 ? (
                                     featuredAnnouncements.map((announcement) => (
-                                        <div key={announcement._id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                            <div className="flex flex-wrap items-center gap-2">
+                                        <div key={announcement._id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                            <div className="flex flex-wrap items-center gap-1.5">
                                                 {announcement.pinned ? (
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-amber-700">
-                                                        <Pin size={10} />
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-amber-700">
+                                                        <Pin size={9} />
                                                         Pinned
                                                     </span>
                                                 ) : null}
-                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-blue-700">
-                                                    <Megaphone size={10} />
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-blue-700">
+                                                    <Megaphone size={9} />
                                                     {announcement.category}
                                                 </span>
                                             </div>
-                                            <h3 className="mt-2.5 text-sm font-bold leading-snug text-slate-900">{announcement.title}</h3>
+                                            <h3 className="mt-2 text-xs font-bold leading-snug text-slate-900">{announcement.title}</h3>
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="md:col-span-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
-                                        <div className="flex flex-col items-center gap-2 text-slate-400">
-                                            <Megaphone size={22} strokeWidth={1.7} />
-                                            <p className="text-xs font-medium italic">No announcements are live right now.</p>
+                                    <div className="md:col-span-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+                                        <div className="flex flex-col items-center gap-1.5 text-slate-400">
+                                            <Megaphone size={18} strokeWidth={1.7} />
+                                            <p className="text-[11px] font-medium italic">No announcements are live right now.</p>
                                         </div>
                                     </div>
                                 )}
@@ -437,41 +437,41 @@ const Dashboard = () => {
                         </div>
 
                         {/* KPI Grid */}
-                        <div className={`grid grid-cols-1 gap-4 ${showLeavesModule ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
+                        <div className={`grid grid-cols-1 gap-3.5 ${showLeavesModule ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
                             {dashboardKpis.map((kpi, idx) => (
                                 <MotionDiv
                                     key={kpi.label}
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: idx * 0.1 }}
-                                    className="premium-card p-4 bg-white"
+                                    className="premium-card p-3.5 bg-white"
                                 >
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className={`p-2 rounded-lg ${kpi.bgColor} ${kpi.textColor}`}>
-                                            <kpi.icon size={16} />
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className={`p-1.5 rounded-lg ${kpi.bgColor} ${kpi.textColor}`}>
+                                            <kpi.icon size={15} />
                                         </div>
-                                        <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${kpi.bgColor} ${kpi.textColor}`}>
+                                        <span className={`text-[8.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${kpi.bgColor} ${kpi.textColor}`}>
                                             {kpi.trend}
                                         </span>
                                     </div>
                                     <div className="space-y-0.5">
-                                        <h3 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">{kpi.label}</h3>
-                                        <div className="flex items-baseline gap-1.5">
+                                        <h3 className="text-slate-500 text-[9.5px] font-bold uppercase tracking-wider">{kpi.label}</h3>
+                                        <div className="flex items-baseline gap-1">
                                             {loading && !stats ? (
-                                                <Skeleton className="h-8 w-16" />
+                                                <Skeleton className="h-7 w-14" />
                                             ) : (
-                                                <span className="text-2xl font-black text-slate-900 tracking-tighter">
+                                                <span className="text-xl font-extrabold text-slate-900 tracking-tight">
                                                     {kpi.value}
                                                 </span>
                                             )}
                                             {kpi.total && (
-                                                <span className="text-[10px] font-bold text-slate-400">/ {kpi.total}</span>
+                                                <span className="text-[9px] font-semibold text-slate-400">/ {kpi.total}</span>
                                             )}
                                         </div>
                                     </div>
                                     {kpi.progress !== undefined && (
-                                        <div className="mt-3 space-y-1">
-                                            <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase">
+                                        <div className="mt-2.5 space-y-1">
+                                            <div className="flex justify-between text-[8.5px] font-bold text-slate-400 uppercase">
                                                 <span>Attendance Rate</span>
                                                 <span>{Math.round(kpi.progress)}%</span>
                                             </div>
@@ -490,24 +490,24 @@ const Dashboard = () => {
                         </div>
 
                         {/* Tables Section */}
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
                             {/* Attendance Table */}
                             <div className={`${showProjectModule ? 'lg:col-span-8' : 'lg:col-span-12'} premium-card bg-white overflow-hidden flex flex-col`}>
-                                <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 bg-[#fcfcfc]">
-                                    <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1 h-4 bg-blue-600 rounded-full"></div>
-                                            <h2 className="text-xs font-bold text-slate-900 tracking-tight whitespace-nowrap">Recent Attendance</h2>
+                                <div className="px-3.5 py-2 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-50 bg-[#fcfcfc]">
+                                    <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1 h-3.5 bg-blue-600 rounded-full"></div>
+                                            <h2 className="text-[11px] font-bold text-slate-900 tracking-tight whitespace-nowrap">Recent Attendance</h2>
                                         </div>
 
                                         {availableEmploymentTypes.length > 0 && (
-                                            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-lg">
+                                            <div className="flex items-center gap-1 bg-slate-100/80 p-0.5 rounded-md">
                                                 <button
                                                     type="button"
                                                     onClick={() => setSelectedTypeTab('all')}
-                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-all cursor-pointer ${
                                                         selectedTypeTab === 'all'
-                                                            ? 'bg-white text-blue-600 shadow-xs font-bold'
+                                                            ? 'bg-white text-blue-600 shadow-2xs font-bold'
                                                             : 'text-slate-600 hover:text-slate-900'
                                                     }`}
                                                 >
@@ -518,9 +518,9 @@ const Dashboard = () => {
                                                         key={type}
                                                         type="button"
                                                         onClick={() => setSelectedTypeTab(type)}
-                                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                                        className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-all cursor-pointer ${
                                                             selectedTypeTab === type
-                                                                ? 'bg-white text-blue-600 shadow-xs font-bold'
+                                                                ? 'bg-white text-blue-600 shadow-2xs font-bold'
                                                                 : 'text-slate-600 hover:text-slate-900'
                                                         }`}
                                                     >
@@ -530,12 +530,12 @@ const Dashboard = () => {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5">
                                         <button
                                             type="button"
                                             onClick={openAttendanceModal}
                                             disabled={attendanceLoading}
-                                            className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
+                                            className="text-[8.5px] font-bold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded hover:bg-blue-100 transition-colors uppercase tracking-wider disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                                         >
                                             View All
                                         </button>
@@ -545,36 +545,36 @@ const Dashboard = () => {
                                     <table className="w-full">
                                         <thead>
                                             <tr className="bg-slate-50/50">
-                                                <th className="px-5 py-2.5 text-left text-[9px] font-black text-slate-500 uppercase tracking-widest">Employee</th>
-                                                <th className="px-5 py-2.5 text-left text-[9px] font-black text-slate-500 uppercase tracking-widest">Clock In</th>
-                                                <th className="px-5 py-2.5 text-left text-[9px] font-black text-slate-500 uppercase tracking-widest">Type</th>
+                                                <th className="px-4 py-2 text-left text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Employee</th>
+                                                <th className="px-4 py-2 text-left text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Clock In</th>
+                                                <th className="px-4 py-2 text-left text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Type</th>
                                                 {showLocation && (
-                                                    <th className="px-5 py-2.5 text-right text-[9px] font-black text-slate-500 uppercase tracking-widest">Location</th>
+                                                    <th className="px-4 py-2 text-right text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Location</th>
                                                 )}
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {loading ? (
                                                 [1, 2, 3, 4, 5].map(i => (
-                                                    <tr key={i}><td colSpan={showLocation ? 4 : 3} className="px-5 py-2.5"><Skeleton className="h-10 w-full" /></td></tr>
+                                                    <tr key={i}><td colSpan={showLocation ? 4 : 3} className="px-4 py-2"><Skeleton className="h-8 w-full" /></td></tr>
                                                 ))
                                             ) : filteredRecentActivity.length > 0 ? (
                                                 filteredRecentActivity.map((record) => (
                                                     <tr key={record.id} className="group hover:bg-slate-50/30 transition-colors border-b border-slate-50 last:border-0">
-                                                        <td className="px-5 py-3">
-                                                            <div className="flex items-center gap-2.5">
-                                                                <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 border border-slate-200/50 group-hover:scale-105 transition-transform">
+                                                        <td className="px-4 py-2.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="h-7 w-7 rounded-lg bg-slate-100 flex items-center justify-center text-[9.5px] font-bold text-slate-600 border border-slate-200/50 group-hover:scale-105 transition-transform">
                                                                     {record.user.name.charAt(0).toUpperCase()}
                                                                 </div>
                                                                 <div>
-                                                                    <div className="text-[13px] font-bold text-slate-900 leading-none">{record.user.name}</div>
+                                                                    <div className="text-xs font-bold text-slate-900 leading-none">{record.user.name}</div>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="px-5 py-3">
-                                                            <div className="flex items-center gap-1 text-slate-700 font-bold">
+                                                        <td className="px-4 py-2.5">
+                                                            <div className="flex items-center gap-1 text-slate-700 font-semibold">
                                                                 <Clock size={10} className="text-slate-400" />
-                                                                <span className="text-[11px] uppercase">
+                                                                <span className="text-[10px] uppercase">
                                                                     {record.attendanceMode === 'present_only'
                                                                         ? 'Present'
                                                                         : record.time
@@ -583,13 +583,13 @@ const Dashboard = () => {
                                                                 </span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-5 py-3">
-                                                            <span className="px-2 py-0.5 rounded-md bg-blue-50/50 text-blue-600 text-[9px] font-black uppercase tracking-tight border border-blue-100/30">
+                                                        <td className="px-4 py-2.5">
+                                                            <span className="px-1.5 py-0.5 rounded bg-blue-50/50 text-blue-600 text-[8.5px] font-bold uppercase tracking-tight border border-blue-100/30">
                                                                 {record.user.employmentType || 'FT'}
                                                             </span>
                                                         </td>
                                                         {showLocation && (
-                                                            <td className="px-5 py-3 text-right">
+                                                            <td className="px-4 py-2.5 text-right">
                                                                 <LocationLink location={record.location} />
                                                             </td>
                                                         )}
@@ -597,10 +597,10 @@ const Dashboard = () => {
                                                 ))
                                             ) : (
                                                 <tr>
-                                                    <td colSpan={showLocation ? 4 : 3} className="px-6 py-10 text-center">
-                                                        <div className="flex flex-col items-center gap-2 text-slate-400">
-                                                            <AlertCircle size={24} strokeWidth={1.5} />
-                                                            <p className="text-xs font-medium italic">
+                                                    <td colSpan={showLocation ? 4 : 3} className="px-4 py-8 text-center">
+                                                        <div className="flex flex-col items-center gap-1.5 text-slate-400">
+                                                            <AlertCircle size={20} strokeWidth={1.5} />
+                                                            <p className="text-[11px] font-medium italic">
                                                                 {selectedTypeTab === 'all'
                                                                     ? 'No attendance records found for today.'
                                                                     : `No attendance records found for "${selectedTypeTab}".`}
@@ -615,50 +615,50 @@ const Dashboard = () => {
                             </div>
 
                             {showProjectModule && (
-                                <div className="lg:col-span-4 space-y-5">
+                                <div className="lg:col-span-4 space-y-4">
                                     {showProjectModule && (
                                         <div className="premium-card bg-white overflow-hidden flex flex-col">
-                                            <div className="px-4 py-2.5 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-1 h-4 bg-purple-600 rounded-full"></div>
-                                                    <h2 className="text-xs font-bold text-slate-900 tracking-tight">Active Projects</h2>
+                                            <div className="px-3.5 py-2 flex justify-between items-center border-b border-slate-50 bg-[#fcfcfc]">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-1 h-3.5 bg-purple-600 rounded-full"></div>
+                                                    <h2 className="text-[11px] font-bold text-slate-900 tracking-tight">Active Projects</h2>
                                                 </div>
-                                                <Link to="/projects" className="text-[9px] font-black text-blue-600 bg-blue-50/80 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors uppercase tracking-widest">
+                                                <Link to="/projects" className="text-[8.5px] font-bold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded hover:bg-blue-100 transition-colors uppercase tracking-wider">
                                                     View Data
                                                 </Link>
                                             </div>
                                             <div className="p-0">
                                                 <div className="divide-y divide-slate-50">
                                                     {loading ? (
-                                                        [1, 2, 3].map(i => <div key={i} className="p-4"><Skeleton className="h-10 w-full" /></div>)
+                                                        [1, 2, 3].map(i => <div key={i} className="p-3"><Skeleton className="h-8 w-full" /></div>)
                                                     ) : projects.filter(p => p.status === 'Active').length > 0 ? (
                                                         projects.filter(p => p.status === 'Active').slice(0, 5).map((project) => (
                                                             <div
                                                                 key={project._id}
                                                                 onClick={() => navigate('/projects')}
-                                                                className="px-5 py-3.5 hover:bg-slate-50/30 cursor-pointer transition-all group"
+                                                                className="px-4 py-2.5 hover:bg-slate-50/30 cursor-pointer transition-all group"
                                                             >
-                                                                <div className="flex justify-between items-start mb-2">
-                                                                    <h3 className="font-bold text-slate-900 text-[13px] group-hover:text-blue-600 transition-colors leading-tight">
+                                                                <div className="flex justify-between items-start mb-1.5">
+                                                                    <h3 className="font-bold text-slate-900 text-xs group-hover:text-blue-600 transition-colors leading-tight">
                                                                         {project.name}
                                                                     </h3>
-                                                                    <span className="text-[8px] font-black bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md uppercase tracking-widest border border-blue-100/50">
+                                                                    <span className="text-[7.5px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded uppercase tracking-wider border border-blue-100/50">
                                                                         {project.status}
                                                                     </span>
                                                                 </div>
                                                                 <div className="flex items-center justify-between">
                                                                     <div className="flex items-center gap-1 text-slate-400">
                                                                         <Calendar size={10} />
-                                                                        <span className="text-[10px] font-bold">
+                                                                        <span className="text-[9.5px] font-semibold">
                                                                             {project.deadline ? format(new Date(project.deadline), 'MMM d, yy') : 'No Deadline'}
                                                                         </span>
                                                                     </div>
-                                                                    <ArrowUpRight size={12} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+                                                                    <ArrowUpRight size={11} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
                                                                 </div>
                                                             </div>
                                                         ))
                                                     ) : (
-                                                        <div className="p-10 text-center text-slate-400 italic text-xs">
+                                                        <div className="p-8 text-center text-slate-400 italic text-[11px]">
                                                             No active projects listed.
                                                         </div>
                                                     )}
@@ -675,51 +675,51 @@ const Dashboard = () => {
 
             {attendanceModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-                    <div className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                    <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
                             <div>
-                                <h2 className="text-lg font-bold text-slate-900">Attendance Overview</h2>
-                                <p className="text-sm text-slate-500">Review all attendance records for a selected day.</p>
+                                <h2 className="text-sm font-bold text-slate-900">Attendance Overview</h2>
+                                <p className="text-[11px] text-slate-500">Review all attendance records for a selected day.</p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setAttendanceModalOpen(false)}
-                                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
                                 aria-label="Close attendance overview"
                             >
-                                <X size={18} />
+                                <X size={16} />
                             </button>
                         </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-100 bg-slate-50 px-5 py-2.5">
+                            <div className="flex items-center gap-1.5">
                                 <button
                                     type="button"
                                     onClick={() => shiftAttendanceModalDate(-1)}
-                                    className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100"
+                                    className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 cursor-pointer"
                                     aria-label="Previous day attendance"
                                 >
-                                    <ChevronLeft size={16} />
+                                    <ChevronLeft size={14} />
                                 </button>
                                 <input
                                     type="date"
                                     value={attendanceModalDate}
                                     max={TODAY_DATE_STRING}
                                     onChange={(e) => setAttendanceModalDate(e.target.value > TODAY_DATE_STRING ? TODAY_DATE_STRING : e.target.value)}
-                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => shiftAttendanceModalDate(1)}
                                     disabled={isAttendanceModalAtToday}
-                                    className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                    className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
                                     aria-label="Next day attendance"
                                 >
-                                    <ChevronRight size={16} />
+                                    <ChevronRight size={14} />
                                 </button>
                             </div>
-                            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
-                                <Calendar size={15} className="text-blue-600" />
+                            <div className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                                <Calendar size={13} className="text-blue-600" />
                                 <span>{format(new Date(`${attendanceModalDate}T00:00:00`), 'dd MMM yyyy')}</span>
                                 <span className="text-slate-300">|</span>
                                 <span>{attendanceModalMeta.total || attendanceModalRecords.length} records</span>
@@ -728,14 +728,14 @@ const Dashboard = () => {
 
                         <div className="overflow-auto">
                             <table className="w-full">
-                                <thead className="sticky top-0 bg-white shadow-sm">
+                                <thead className="sticky top-0 bg-white shadow-xs">
                                     <tr className="bg-slate-50/80">
-                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Employee</th>
-                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Clock In</th>
-                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Status</th>
-                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">Type</th>
+                                        <th className="px-5 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-slate-500">Employee</th>
+                                        <th className="px-5 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-slate-500">Clock In</th>
+                                        <th className="px-5 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-slate-500">Status</th>
+                                        <th className="px-5 py-2.5 text-left text-[9px] font-bold uppercase tracking-wider text-slate-500">Type</th>
                                         {showLocation && (
-                                            <th className="px-6 py-3 text-right text-[10px] font-black uppercase tracking-widest text-slate-500">Location</th>
+                                            <th className="px-5 py-2.5 text-right text-[9px] font-bold uppercase tracking-wider text-slate-500">Location</th>
                                         )}
                                     </tr>
                                 </thead>
@@ -743,27 +743,27 @@ const Dashboard = () => {
                                     {attendanceModalLoading ? (
                                         [1, 2, 3, 4, 5, 6].map((row) => (
                                             <tr key={row}>
-                                                <td colSpan={showLocation ? 5 : 4} className="px-6 py-3">
-                                                    <Skeleton className="h-12 w-full" />
+                                                <td colSpan={showLocation ? 5 : 4} className="px-5 py-2.5">
+                                                    <Skeleton className="h-9 w-full" />
                                                 </td>
                                             </tr>
                                         ))
                                     ) : attendanceModalRecords.length > 0 ? (
                                         attendanceModalRecords.map((record) => (
                                             <tr key={`${attendanceModalDate}-${record.id}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-[11px] font-bold text-slate-600">
+                                                <td className="px-5 py-2.5">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-[10px] font-bold text-slate-600">
                                                             {record.user.name.charAt(0).toUpperCase()}
                                                         </div>
                                                         <div>
-                                                            <div className="text-sm font-bold text-slate-900">{record.user.name}</div>
+                                                            <div className="text-xs font-bold text-slate-900">{record.user.name}</div>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                                                        <Clock size={14} className="text-slate-400" />
+                                                <td className="px-5 py-2.5">
+                                                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                                        <Clock size={12} className="text-slate-400" />
                                                         <span>
                                                             {record.attendanceMode === 'present_only'
                                                                 ? 'Present'
@@ -773,18 +773,18 @@ const Dashboard = () => {
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">
+                                                <td className="px-5 py-2.5">
+                                                    <span className="rounded bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700">
                                                         {String(record.status || 'Present').replace('_', ' ')}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">
+                                                <td className="px-5 py-2.5">
+                                                    <span className="rounded bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-700">
                                                         {record.user.employmentType || 'FT'}
                                                     </span>
                                                 </td>
                                                 {showLocation && (
-                                                    <td className="px-6 py-4 text-right">
+                                                    <td className="px-5 py-2.5 text-right">
                                                         <LocationLink location={record.location} />
                                                     </td>
                                                 )}
@@ -792,10 +792,10 @@ const Dashboard = () => {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={showLocation ? 5 : 4} className="px-6 py-14 text-center">
-                                                <div className="flex flex-col items-center gap-2 text-slate-400">
-                                                    <AlertCircle size={26} strokeWidth={1.5} />
-                                                    <p className="text-sm font-medium italic">No attendance records found for {format(new Date(`${attendanceModalDate}T00:00:00`), 'dd MMM yyyy')}.</p>
+                                            <td colSpan={showLocation ? 5 : 4} className="px-5 py-10 text-center">
+                                                <div className="flex flex-col items-center gap-1.5 text-slate-400">
+                                                    <AlertCircle size={22} strokeWidth={1.5} />
+                                                    <p className="text-xs font-medium italic">No attendance records found for {format(new Date(`${attendanceModalDate}T00:00:00`), 'dd MMM yyyy')}.</p>
                                                 </div>
                                             </td>
                                         </tr>

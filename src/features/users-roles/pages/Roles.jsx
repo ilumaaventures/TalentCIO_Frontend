@@ -180,7 +180,7 @@ const Roles = () => {
         else if (key.startsWith('announcement.')) groupName = 'ANNOUNCEMENTS';
         else if (key.startsWith('helpdesk.')) groupName = 'HELP DESK';
         else if (key.startsWith('discussion.')) groupName = 'DISCUSSIONS';
-        else if (key.startsWith('dossier.')) groupName = 'EMPLOYEE DOSSIER';
+        else if (key.startsWith('dossier.') || key.startsWith('employee.revision.') || groupName === 'DOSSIER') groupName = 'EMPLOYEE DOSSIER';
         else if (key.startsWith('leave.')) groupName = 'LEAVES';
 
         const moduleMapping = {
@@ -195,6 +195,7 @@ const Roles = () => {
             'TALENT ACQUISITION': 'talentAcquisition',
             'DISCUSSIONS': 'meetingsOfMinutes',
             'EMPLOYEE DOSSIER': 'employeeDossier',
+            'DOSSIER': 'employeeDossier',
             'HELP DESK': 'helpdesk',
             'LEAVES': 'leaves'
         };
@@ -425,6 +426,7 @@ const Roles = () => {
                                             'TALENT ACQUISITION': 'talentAcquisition',
                                             'DISCUSSIONS': 'meetingsOfMinutes',
                                             'EMPLOYEE DOSSIER': 'employeeDossier',
+                                            'DOSSIER': 'employeeDossier',
                                             'HELP DESK': 'helpdesk',
                                             'LEAVES': 'leaves'
                                         };

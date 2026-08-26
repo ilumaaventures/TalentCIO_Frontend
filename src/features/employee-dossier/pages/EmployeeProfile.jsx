@@ -5,7 +5,7 @@ import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     User, Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar,
     ArrowLeft, Edit2, Clock, FileText, Activity, AlertCircle, UserMinus, UserCheck, Eye, EyeOff, X,
-    Settings2, ChevronUp, ChevronDown, TrendingUp, Info, Plus, Trash2
+    Settings2, ChevronUp, ChevronDown, TrendingUp, Info, Plus, Trash2, History
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import UserTADashboard from '@/features/talent-acquisition/pages/UserTADashboard';
 import Timesheet from '@/features/timesheet/pages/Timesheet';
 import EmployeeDossier from '@/features/employee-dossier/pages/EmployeeDossier';
+import RevisedDetailsTab from '@/features/employee-dossier/components/RevisedDetailsTab';
 import { restoreBinItem } from '@/features/recycle-bin/api/bin';
 import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData } from '@/features/payroll/utils/payroll';
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
@@ -92,9 +93,21 @@ const EmployeeProfile = () => {
     const hasAttendance = enabledModules.includes('attendance');
     const hasTimesheet = enabledModules.includes('timesheet');
     const hasDossier = enabledModules.includes('employeeDossier');
-
+    const isSelfProfile = currentUser?._id && profile?.user && (String(currentUser._id) === String(profile.user._id || profile.user));
     const isAuthorizedForTA = (currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read')) && hasTA;
     const isAuthorizedForEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('user.update');
+    const canViewRevisions = Boolean(
+        hasDossier && (
+            currentUser?.roles?.includes('Admin') ||
+            currentUser?.hasAllPermissions ||
+            currentUser?.permissions?.includes('*') ||
+            currentUser?.permissions?.includes('employee.revision.manage') ||
+            (isSelfProfile
+                ? Boolean(currentUser?.permissions?.includes('employee.revision.view.self'))
+                : Boolean(currentUser?.permissions?.includes('employee.revision.view.others'))
+            )
+        )
+    );
     const isProtectedPrimaryAdmin = Boolean(profile?.isProtectedPrimaryAdmin);
     const attendanceShiftOptions = currentUser?.company?.settings?.attendance?.attendanceShifts || DEFAULT_ATTENDANCE_SHIFTS;
 
@@ -137,10 +150,11 @@ const EmployeeProfile = () => {
     // Reset active tab if it becomes unauthorized or module is disabled
     useEffect(() => {
         if (activeTab === 'ta-analytics' && !isAuthorizedForTA) setActiveTab('overview');
+        if (activeTab === 'revised-details' && !canViewRevisions) setActiveTab('overview');
         if (activeTab === 'attendance' && !hasAttendance) setActiveTab('overview');
         if (activeTab === 'timesheet' && !hasTimesheet) setActiveTab('overview');
         if (activeTab === 'dossier' && !hasDossier) setActiveTab('overview');
-    }, [activeTab, isAuthorizedForTA, hasAttendance, hasTimesheet, hasDossier]);
+    }, [activeTab, isAuthorizedForTA, canViewRevisions, hasAttendance, hasTimesheet, hasDossier]);
 
     const calculateSalaryBreakdown = (updatedSalaryFields) => {
         setFormData(prev => {
@@ -491,13 +505,13 @@ const EmployeeProfile = () => {
         const toastId = toast.loading('Creating department...');
         try {
             const res = await api.post('/organization/departments', deptFormData);
-            const newDept = res.data;
+            const newDept = res.data?.department || res.data;
             toast.success('Department created successfully', { id: toastId });
-            setDepartments((prev) => [...prev, newDept]);
+            setDepartments((prev) => [...prev.filter((d) => d?._id !== newDept?._id), newDept]);
             setFormData((prev) => ({
                 ...prev,
-                departmentRef: newDept._id,
-                department: newDept.name
+                departmentRef: newDept?._id,
+                department: newDept?.name
             }));
             setShowDeptModal(false);
         } catch (error) {
@@ -510,13 +524,13 @@ const EmployeeProfile = () => {
         const toastId = toast.loading('Creating designation...');
         try {
             const res = await api.post('/organization/designations', desigFormData);
-            const newDesig = res.data;
+            const newDesig = res.data?.designation || res.data;
             toast.success('Designation created successfully', { id: toastId });
-            setDesignations((prev) => [...prev, newDesig]);
+            setDesignations((prev) => [...prev.filter((d) => d?._id !== newDesig?._id), newDesig]);
             setFormData((prev) => ({
                 ...prev,
-                designationRef: newDesig._id,
-                designation: newDesig.title
+                designationRef: newDesig?._id,
+                designation: newDesig?.title || newDesig?.name
             }));
             setShowDesigModal(false);
         } catch (error) {
@@ -699,6 +713,15 @@ const EmployeeProfile = () => {
                             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'edit' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
                         >
                             <Edit2 size={16} /> Edit Details
+                        </button>
+                    )}
+
+                    {canViewRevisions && (
+                        <button
+                            onClick={() => setActiveTab('revised-details')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'revised-details' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                        >
+                            <History size={16} /> Revised Details
                         </button>
                     )}
 
@@ -917,7 +940,7 @@ const EmployeeProfile = () => {
                                             className="zoho-input"
                                         >
                                             <option value="">-- Select Department --</option>
-                                            {departments.map((dept) => (
+                                            {departments.filter(Boolean).map((dept) => (
                                                 <option key={dept._id} value={dept._id}>
                                                     {dept.name} {dept.code ? `(${dept.code})` : ''}
                                                 </option>
@@ -940,19 +963,19 @@ const EmployeeProfile = () => {
                                             value={formData.designationRef || ''}
                                             onChange={(e) => {
                                                 const selectedId = e.target.value;
-                                                const desigObj = designations.find((d) => d._id === selectedId);
+                                                const desigObj = designations.find((d) => d && String(d._id) === String(selectedId));
                                                 setFormData((prev) => ({
                                                     ...prev,
                                                     designationRef: selectedId,
-                                                    designation: desigObj ? desigObj.title : ''
+                                                    designation: desigObj ? (desigObj.title || desigObj.name) : ''
                                                 }));
                                             }}
                                             className="zoho-input"
                                         >
                                             <option value="">-- Select Designation --</option>
-                                            {designations.map((desig) => (
+                                            {designations.filter((d) => d && (d.title || d.name)).map((desig) => (
                                                 <option key={desig._id} value={desig._id}>
-                                                    {desig.title} {desig.level ? `(${desig.level})` : ''}
+                                                    {desig.title || desig.name} {desig.level ? `(${desig.level})` : ''}
                                                 </option>
                                             ))}
                                         </select>
@@ -1175,6 +1198,18 @@ const EmployeeProfile = () => {
                                 propUserName={`${profile.firstName} ${profile.lastName}`}
                                 initialTab="attendance"
                                 isEmbedded={true}
+                            />
+                        </div>
+                    )}
+
+                    {/* REVISED DETAILS TAB */}
+                    {activeTab === 'revised-details' && (
+                        <div className="w-full">
+                            <RevisedDetailsTab
+                                employeeId={profile._id}
+                                profile={profile}
+                                currentUserRoles={currentUserRoles}
+                                onRevisionApplied={fetchData}
                             />
                         </div>
                     )}

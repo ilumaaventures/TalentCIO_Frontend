@@ -78,13 +78,13 @@ const UserFormModal = ({
         const toastId = toast.loading('Creating designation...');
         try {
             const res = await api.post('/organization/designations', desigFormData);
-            const newDesig = res.data;
+            const newDesig = res.data?.designation || res.data;
             toast.success('Designation created successfully', { id: toastId });
-            setManagedDesignations((prev) => [...prev, newDesig]);
+            setManagedDesignations((prev) => [...prev.filter((d) => d?._id !== newDesig?._id), newDesig]);
             setFormData((prev) => ({
                 ...prev,
-                designationRef: newDesig._id,
-                designation: newDesig.title
+                designationRef: newDesig?._id,
+                designation: newDesig?.title || newDesig?.name
             }));
             setShowDesigModal(false);
         } catch (error) {
