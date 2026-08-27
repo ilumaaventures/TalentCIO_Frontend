@@ -17,6 +17,7 @@ import {
   resolveTemplate,
   validateTemplateSyntax
 } from '@/features/email/utils/templatePlaceholders';
+import OnboardingEmailHistory from '../components/OnboardingEmailHistory';
 
 const parseBool = (val, defaultVal = true) => {
   if (val === false || val === 'false') return false;
@@ -152,10 +153,11 @@ const Onboarding = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'employees';
+  const rawTab = searchParams.get('tab');
+  const activeTab = rawTab === 'settings' ? 'settings' : (rawTab === 'email-history' ? 'email-history' : 'employees');
   const setActiveTab = useCallback((tab) => {
     setSearchParams({ tab }, { replace: true });
-  }, [setSearchParams]); // 'employees' or 'settings'
+  }, [setSearchParams]); // 'employees', 'settings', or 'email-history'
   const [onboardingSettings, setOnboardingSettings] = useState({ offerLetterTemplateUrl: '', declarationTemplateUrl: '' });
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -1512,9 +1514,13 @@ const Onboarding = () => {
             {activeTab === 'settings' && <div style={{ position: 'absolute', bottom: -1, left: 0, right: 0, height: '2px', background: '#2563eb' }} />}
           </button>
         )}
+        <button onClick={() => setActiveTab('email-history')} style={{ position: 'relative', padding: '12px 4px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: '600', color: activeTab === 'email-history' ? '#2563eb' : '#64748b' }}>
+          Email History
+          {activeTab === 'email-history' && <div style={{ position: 'absolute', bottom: -1, left: 0, right: 0, height: '2px', background: '#2563eb' }} />}
+        </button>
       </div>
 
-      {activeTab === 'employees' ? (
+      {activeTab === 'employees' && (
         <>
           {/* Stats */}
           <div
@@ -1771,7 +1777,9 @@ const Onboarding = () => {
             )}
           </div>
         </>
-      ) : (
+      )}
+
+      {activeTab === 'settings' && (
         <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
           <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
             <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e293b', margin: '0 0 4px' }}>Onboarding Document Settings</h2>
@@ -1916,6 +1924,10 @@ const Onboarding = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'email-history' && (
+        <OnboardingEmailHistory />
       )}
 
       {/* Add Employee Modal */}

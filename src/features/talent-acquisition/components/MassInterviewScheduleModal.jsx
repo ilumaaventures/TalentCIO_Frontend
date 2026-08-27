@@ -286,8 +286,8 @@ const MassInterviewScheduleModal = ({
             jobTitle: currentPreviewCandidate?.hiringRequestId?.roleDetails?.title || 'Position',
             designation: currentPreviewCandidate?.hiringRequestId?.roleDetails?.title || 'Position',
             clientName: currentPreviewCandidate?.hiringRequestId?.client || 'Company',
-            companyName: currentPreviewCandidate?.hiringRequestId?.client || 'Company',
-            location: currentPreviewCandidate?.location || 'Office / Virtual',
+            location: currentPreviewCandidate?.currentLocation || currentPreviewCandidate?.location || currentPreviewCandidate?.hiringRequestId?.requirements?.location || 'Office / Virtual',
+            workLocation: currentPreviewCandidate?.currentLocation || currentPreviewCandidate?.location || currentPreviewCandidate?.hiringRequestId?.requirements?.location || 'Office / Virtual',
             customFields: customFieldsHtml,
             additionalDetails: customFieldsHtml
         };

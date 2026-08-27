@@ -63,6 +63,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [mailPreview, setMailPreview] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
     const [mailTab, setMailTab] = useState('preview'); // 'preview' | 'edit'
+    const [previewRecipientTab, setPreviewRecipientTab] = useState('candidate'); // 'candidate' | 'interviewer'
 
     // Workflow State
     const [interviewWorkflows, setInterviewWorkflows] = useState([]);
@@ -375,6 +376,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
         setSendingMailRound(round);
         setMailPreview(null);
         setMailTab('preview');
+        setPreviewRecipientTab('candidate');
 
         let currentOptions = senderOptions;
         let defaultId = selectedEmailAccountId;
@@ -2488,55 +2490,102 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                             {/* Right Column: Live Email Dispatch Preview Side-by-Side */}
                             <div className="lg:col-span-6 border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3 sticky top-4">
                                 <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                                    <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5 uppercase tracking-wider">
-                                        <Eye size={15} className="text-indigo-600" /> Live Email Dispatch Preview
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                            <Eye size={15} className="text-indigo-600" /> Preview:
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPreviewRecipientTab('candidate')}
+                                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${previewRecipientTab === 'candidate' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                        >
+                                            Candidate View
+                                        </button>
+                                        {mailPreview?.interviewerHtmlBody && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreviewRecipientTab('interviewer')}
+                                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${previewRecipientTab === 'interviewer' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                            >
+                                                Interviewer View
+                                            </button>
+                                        )}
+                                    </div>
                                     {previewLoading && <Loader size={14} className="animate-spin text-indigo-600" />}
                                 </div>
 
                                 {mailPreview ? (
                                     <div className="space-y-3 text-xs">
-                                        <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs">
-                                            <span className="font-bold text-slate-500">To Candidate:</span>
-                                            <span className="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-lg border border-indigo-100">
-                                                {mailPreview.candidateName} ({mailPreview.candidateEmail || 'No Email'})
-                                            </span>
-                                            {mailPreview.interviewers?.length > 0 && (
-                                                <>
-                                                    <span className="font-bold text-slate-500 ml-2">To Interviewer(s):</span>
-                                                    {mailPreview.interviewers.map(i => (
-                                                        <span key={i.email} className="bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded-md">
-                                                            {i.name} ({i.email})
+                                        {previewRecipientTab === 'candidate' ? (
+                                            <>
+                                                <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs">
+                                                    <span className="font-bold text-slate-500">To Candidate:</span>
+                                                    <span className="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-lg border border-indigo-100">
+                                                        {mailPreview.candidateName} ({mailPreview.candidateEmail || 'No Email'})
+                                                    </span>
+                                                </div>
+
+                                                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+                                                    <div>
+                                                        <span className="font-bold text-slate-500 block mb-0.5">Subject Line:</span>
+                                                        <p className="font-semibold text-slate-800 text-xs">
+                                                            {mailPreview.subject}
+                                                        </p>
+                                                    </div>
+                                                    {Boolean(sendMailForm.customSubject || sendMailForm.customHtmlBody) && (
+                                                        <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md">
+                                                            Live Custom Edits
                                                         </span>
-                                                    ))}
-                                                </>
-                                            )}
-                                        </div>
+                                                    )}
+                                                </div>
 
-                                        <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-                                            <div>
-                                                <span className="font-bold text-slate-500 block mb-0.5">Subject Line:</span>
-                                                <p className="font-semibold text-slate-800 text-xs">
-                                                    {mailPreview.subject}
-                                                </p>
-                                            </div>
-                                            {Boolean(sendMailForm.customSubject || sendMailForm.customHtmlBody) && (
-                                                <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md">
-                                                    Live Custom Edits
-                                                </span>
-                                            )}
-                                        </div>
+                                                {/* Live Email Body Preview Frame */}
+                                                <div className="bg-white p-4 rounded-xl border border-slate-200 max-h-[460px] overflow-y-auto shadow-xs">
+                                                    <span className="font-bold text-slate-400 block text-[10px] uppercase tracking-wider mb-2 border-b pb-1">
+                                                        Compiled Candidate Email Body:
+                                                    </span>
+                                                    <div
+                                                        className="prose prose-xs max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap"
+                                                        dangerouslySetInnerHTML={{ __html: mailPreview.htmlBody }}
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs">
+                                                    <span className="font-bold text-slate-500">To Interviewer(s):</span>
+                                                    {mailPreview.interviewers?.length > 0 ? (
+                                                        mailPreview.interviewers.map(i => (
+                                                            <span key={i.email} className="bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded-md">
+                                                                {i.name} ({i.email})
+                                                            </span>
+                                                        ))
+                                                    ) : (
+                                                        <span className="text-slate-400 italic">No interviewers assigned yet</span>
+                                                    )}
+                                                </div>
 
-                                        {/* Live Email Body Preview Frame */}
-                                        <div className="bg-white p-4 rounded-xl border border-slate-200 max-h-[460px] overflow-y-auto shadow-xs">
-                                            <span className="font-bold text-slate-400 block text-[10px] uppercase tracking-wider mb-2 border-b pb-1">
-                                                Compiled Email Body Preview:
-                                            </span>
-                                            <div
-                                                className="prose prose-xs max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap"
-                                                dangerouslySetInnerHTML={{ __html: mailPreview.htmlBody }}
-                                            />
-                                        </div>
+                                                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+                                                    <div>
+                                                        <span className="font-bold text-slate-500 block mb-0.5">Subject Line:</span>
+                                                        <p className="font-semibold text-slate-800 text-xs">
+                                                            {mailPreview.interviewerSubject || `[Interviewer Notice] Interview Scheduled: ${sendingMailRound?.levelName || 'Round'} - ${mailPreview.candidateName}`}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Live Email Body Preview Frame */}
+                                                <div className="bg-white p-4 rounded-xl border border-slate-200 max-h-[460px] overflow-y-auto shadow-xs">
+                                                    <span className="font-bold text-slate-400 block text-[10px] uppercase tracking-wider mb-2 border-b pb-1">
+                                                        Compiled Interviewer Assignment Notice:
+                                                    </span>
+                                                    <div
+                                                        className="prose prose-xs max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap"
+                                                        dangerouslySetInnerHTML={{ __html: mailPreview.interviewerHtmlBody }}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 ) : (
                                     <p className="text-slate-400 text-xs py-8 text-center">Loading live email preview details...</p>
