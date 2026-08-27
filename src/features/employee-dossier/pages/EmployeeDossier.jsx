@@ -4,7 +4,7 @@ import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
     User, Briefcase, FileText, DollarSign, Calendar, Shield, Settings,
-    ArrowLeft, CheckCircle, AlertCircle, X, Search, Clock, AlertTriangle, Info, Mail, FileStack
+    ArrowLeft, CheckCircle, AlertCircle, X, Search, Clock, AlertTriangle, Info, Mail, FileStack, History
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
@@ -22,6 +22,7 @@ import { HistoryTab } from '@/features/employee-dossier/components/HistoryTab';
 import { EmailHistoryTab } from '@/features/employee-dossier/components/EmailHistoryTab';
 import { HrisRequestsTab } from '@/features/employee-dossier/components/HrisRequestsTab';
 import { SettingsTab } from '@/features/employee-dossier/components/SettingsTab';
+import RevisedDetailsTab from '@/features/employee-dossier/components/RevisedDetailsTab';
 
 // Shared Helpers
 import { mergePendingIntoProfile } from '@/features/employee-dossier/utils/DossierHelpers';
@@ -111,6 +112,18 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const canViewLeavePolicies = currentUser?.company?.enabledModules?.includes('leaves') && (hasAdminRole || currentUser?.permissions?.includes('leave.config.manage') || currentUser?.hasAllPermissions);
     const canViewSettingsTab = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies || canManageCompanyBranding || canViewDepartments || canViewDesignations;
     const canViewEmailHistory = hasAdminRole || currentUser?.permissions?.includes('hr_email.send') || currentUser?.hasAllPermissions;
+    const canViewRevisions = Boolean(
+        hasDossierModule && (
+            hasAdminRole ||
+            currentUser?.hasAllPermissions ||
+            currentUser?.permissions?.includes('*') ||
+            currentUser?.permissions?.includes('employee.revision.manage') ||
+            (isSelf
+                ? Boolean(currentUser?.permissions?.includes('employee.revision.view.self'))
+                : Boolean(currentUser?.permissions?.includes('employee.revision.view.others'))
+            )
+        )
+    );
 
     // Initialize editable state when a section enters edit mode.
     useEffect(() => {
@@ -338,11 +351,17 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                 nextTabs.push({ id: 'company-documents', label: 'Company Documents', icon: FileStack });
             }
 
+            if (canViewRevisions) {
+                nextTabs.push({ id: 'revised-details', label: 'Revised Details', icon: History });
+            }
+
             nextTabs.push({ id: 'history', label: 'Activities', icon: Calendar });
 
             if (canViewEmailHistory) {
                 nextTabs.push({ id: 'email-history', label: 'Email History', icon: Mail });
             }
+        } else if (canViewRevisions) {
+            nextTabs.push({ id: 'revised-details', label: 'Revised Details', icon: History });
         }
 
         if (canApprove && hasDossierModule) {
@@ -354,7 +373,7 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         }
 
         return nextTabs;
-    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, hasEssDocumentsModule, canApprove, canViewSalaryTab]);
+    }, [canViewEmailHistory, canViewSettingsTab, hasDossierModule, hasEssDocumentsModule, canApprove, canViewSalaryTab, canViewRevisions]);
 
     // Ensure active tab defaults to 'personal' if user tries to reach a disabled tab
     useEffect(() => {
@@ -364,8 +383,10 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             setActiveTab('personal');
         } else if (activeTab === 'company-documents' && !hasEssDocumentsModule) {
             setActiveTab('personal');
+        } else if (activeTab === 'revised-details' && !canViewRevisions) {
+            setActiveTab('personal');
         }
-    }, [hasDossierModule, hasEssDocumentsModule, activeTab, canViewSalaryTab]);
+    }, [hasDossierModule, hasEssDocumentsModule, activeTab, canViewSalaryTab, canViewRevisions]);
 
     useEffect(() => {
         const requestedTab = queryTab || initialTab;
@@ -921,6 +942,14 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
                     {hasEssDocumentsModule && activeTab === 'company-documents' && (
                         <CompanyDocumentsTab
                             isCurrentUserAdmin={isCurrentUserAdmin}
+                        />
+                    )}
+                    {activeTab === 'revised-details' && (
+                        <RevisedDetailsTab
+                            employeeId={userId}
+                            profile={profile}
+                            isCurrentUserAdmin={isCurrentUserAdmin}
+                            onUpdateSuccess={fetchDossier}
                         />
                     )}
                     {activeTab === 'hris' && (

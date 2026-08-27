@@ -15,20 +15,20 @@ import UserMultiSelect from '@/components/common/UserMultiSelect';
 
 // ─── Donut Chart for Balance Card ────────────────────────────────────────────
 const DonutChart = ({ utilized, total, isUnlimited }) => {
-    const r = 28;
+    const r = 24;
     const circ = 2 * Math.PI * r;
     const pct = isUnlimited ? 0 : Math.min((utilized / (total || 1)) * 100, 100);
     const offset = circ - (pct / 100) * circ;
     const available = isUnlimited ? '∞' : Math.max(total - utilized, 0);
 
     return (
-        <div className="relative flex items-center justify-center w-20 h-20">
-            <svg className="-rotate-90 w-20 h-20" viewBox="0 0 72 72">
-                <circle cx="36" cy="36" r={r} stroke="#EFF0F3" strokeWidth="7" fill="none" />
+        <div className="relative flex items-center justify-center w-16 h-16 shrink-0">
+            <svg className="-rotate-90 w-16 h-16" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r={r} stroke="#EFF0F3" strokeWidth="6" fill="none" />
                 <circle
-                    cx="36" cy="36" r={r}
+                    cx="32" cy="32" r={r}
                     stroke={isUnlimited ? '#22c55e' : pct > 80 ? '#ef4444' : '#1a73e8'}
-                    strokeWidth="7" fill="none"
+                    strokeWidth="6" fill="none"
                     strokeDasharray={circ}
                     strokeDashoffset={isUnlimited ? circ : offset}
                     strokeLinecap="round"
@@ -36,8 +36,8 @@ const DonutChart = ({ utilized, total, isUnlimited }) => {
                 />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-base font-bold text-gray-800 leading-none">{available}</span>
-                <span className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mt-0.5">Left</span>
+                <span className="text-sm font-bold text-gray-800 leading-none">{available}</span>
+                <span className="text-[8px] text-gray-400 font-semibold uppercase tracking-wider mt-0.5">Left</span>
             </div>
         </div>
     );
@@ -52,7 +52,7 @@ const StatusBadge = ({ status }) => {
         Cancelled: 'bg-gray-100 text-gray-500 border border-gray-200',
     };
     return (
-        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${styles[status] || styles.Cancelled}`}>
+        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${styles[status] || styles.Cancelled}`}>
             {status === 'Approved' && <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />}
             {status === 'Pending' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />}
             {status === 'Rejected' && <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />}
@@ -131,6 +131,7 @@ const Leaves = () => {
                     utilized: b.utilized,
                     closingBalance: b.closingBalance,
                     policyAccrualAmount: b.policyAccrualAmount,
+                    isUnlimited: b.isUnlimited,
                     proofRequiredAbove: b.proofRequiredAbove
                 }));
 
@@ -159,7 +160,7 @@ const Leaves = () => {
         const buildFingerprint = (data) => {
             const items = data?.data || data;
             if (!items) return '';
-            const balPart = items.balances?.map(b => `${b.leaveType}:${b.utilized}:${b.closingBalance}`).join('|') || '';
+            const balPart = items.balances?.map(b => `${b.leaveType}:${b.openingBalance}:${b.accrued}:${b.utilized}:${b.closingBalance}`).join('|') || '';
             const reqPart = items.requests?.map(r => `${r._id}:${r.status}`).join('|') || '';
             return `${balPart}#${reqPart}`;
         };
@@ -431,28 +432,28 @@ const Leaves = () => {
         <>
         <div className="min-h-screen bg-[#f4f5f8] font-sans">
             {/* ── Top Bar ── */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+            <div className="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between">
                 <div>
-                    <h1 className="text-xl font-bold text-gray-800 tracking-tight">Leave Management</h1>
-                    <p className="text-xs text-gray-400 mt-0.5">Apply and manage your leave requests</p>
+                    <h1 className="text-lg font-bold text-gray-800 tracking-tight">Leave Management</h1>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Apply and manage your leave requests</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                     <button
                         onClick={() => {
                             fetchData(1);
                             if (activeTab === 'approvals') fetchApprovals(true);
                         }}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
                         title="Refresh"
                     >
-                        <RefreshCw size={15} />
+                        <RefreshCw size={14} />
                     </button>
                     {activeTab === 'my-leaves' && (
                         <button
                             onClick={() => setShowModal(true)}
-                            className="flex items-center gap-2 bg-[#1a73e8] hover:bg-[#1557b0] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
+                            className="flex items-center gap-1.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-colors shadow-xs cursor-pointer"
                         >
-                            <Plus size={15} /> Apply Leave
+                            <Plus size={14} /> Apply Leave
                         </button>
                     )}
                 </div>
@@ -462,8 +463,8 @@ const Leaves = () => {
             {hasApprovalAccess && (
                 <div className="bg-white border-b border-gray-200 px-6 flex gap-1">
                     {[
-                        { id: 'my-leaves', label: 'My Leaves', icon: <User size={14} /> },
-                        { id: 'approvals', label: 'Team Approvals', icon: <CheckCircle size={14} />, badge: approvalRequests.length },
+                        { id: 'my-leaves', label: 'My Leaves', icon: <User size={13} /> },
+                        { id: 'approvals', label: 'Team Approvals', icon: <CheckCircle size={13} />, badge: approvalRequests.length },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -471,14 +472,14 @@ const Leaves = () => {
                                 setActiveTab(tab.id);
                                 if (tab.id === 'approvals') fetchApprovals();
                             }}
-                            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
+                            className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${activeTab === tab.id
                                 ? 'border-[#1a73e8] text-[#1a73e8]'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                 }`}
                         >
                             {tab.icon} {tab.label}
                             {tab.badge > 0 && (
-                                <span className="bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                                <span className="bg-red-500 text-white text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
                                     {tab.badge}
                                 </span>
                             )}
@@ -493,12 +494,14 @@ const Leaves = () => {
                 {activeTab === 'my-leaves' && (
                     <>
                         {/* ── Balance Cards ── */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                             {balances.map(b => {
-                                const total = b.openingBalance + b.accrued;
-                                const available = b.policyAccrualAmount === 0 ? '∞' : Math.max(total - b.utilized, 0);
-                                const isUnlim = b.policyAccrualAmount === 0;
-                                const pct = isUnlim ? 0 : Math.min((b.utilized / (total || 1)) * 100, 100);
+                                const isUnlim = Boolean(b.isUnlimited || b.leaveType === 'WFH');
+                                const total = (b.openingBalance || 0) + (b.accrued || 0);
+                                const available = isUnlim
+                                    ? '∞'
+                                    : (b.closingBalance !== undefined ? b.closingBalance : Math.max(total - (b.utilized || 0), 0));
+                                const pct = isUnlim ? 0 : Math.min(((b.utilized || 0) / (total || 1)) * 100, 100);
                                 const accentColor = isUnlim
                                     ? 'border-l-green-500'
                                     : pct > 80
@@ -508,29 +511,29 @@ const Leaves = () => {
                                 return (
                                     <div
                                         key={b.leaveType}
-                                        className={`bg-white rounded-xl border border-gray-200 border-l-4 ${accentColor} p-5 flex items-center justify-between hover:shadow-md transition-shadow`}
+                                        className={`bg-white rounded-xl border border-gray-200/90 border-l-4 ${accentColor} p-4 flex items-center justify-between hover:shadow-sm transition-shadow`}
                                     >
-                                        <div className="flex flex-col gap-1 min-w-0">
-                                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider truncate">{b.policyName}</span>
-                                            <span className="text-xs text-gray-400 font-mono">{b.leaveType}</span>
+                                        <div className="flex flex-col gap-0.5 min-w-0">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">{b.policyName}</span>
+                                            <span className="text-[11px] text-gray-400 font-mono">{b.leaveType}</span>
                                             {!isUnlim && (
-                                                <div className="mt-2 space-y-0.5">
-                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                        <span className="w-16 text-gray-400">Allocated</span>
+                                                <div className="mt-1.5 space-y-0.5 text-[11px]">
+                                                    <div className="flex items-center gap-2 text-gray-500">
+                                                        <span className="w-14 text-gray-400">Allocated</span>
                                                         <span className="font-semibold text-gray-700">{total}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                        <span className="w-16 text-gray-400">Used</span>
+                                                    <div className="flex items-center gap-2 text-gray-500">
+                                                        <span className="w-14 text-gray-400">Used</span>
                                                         <span className="font-semibold text-gray-700">{b.utilized}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-xs">
-                                                        <span className="w-16 text-gray-400">Available</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-14 text-gray-400">Available</span>
                                                         <span className={`font-bold ${pct > 80 ? 'text-red-500' : 'text-[#1a73e8]'}`}>{available}</span>
                                                     </div>
                                                 </div>
                                             )}
                                             {isUnlim && (
-                                                <span className="mt-2 text-xs text-green-600 font-semibold">Unlimited</span>
+                                                <span className="mt-1.5 text-[11px] text-green-600 font-semibold">Unlimited</span>
                                             )}
                                         </div>
                                         <DonutChart utilized={b.utilized} total={total} isUnlimited={isUnlim} />
@@ -541,88 +544,88 @@ const Leaves = () => {
 
                         {/* ── Leave History Table ── */}
                         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <Layers size={16} className="text-gray-400" />
-                                    <h2 className="text-sm font-bold text-gray-700">My Leave History</h2>
-                                    <span className="text-xs bg-gray-100 text-gray-500 font-semibold px-2 py-0.5 rounded-full">{requestsPagination.total}</span>
+                                    <Layers size={15} className="text-gray-400" />
+                                    <h2 className="text-xs font-bold text-gray-700">My Leave History</h2>
+                                    <span className="text-[10px] bg-gray-100 text-gray-500 font-semibold px-2 py-0.5 rounded-full">{requestsPagination.total}</span>
                                 </div>
                             </div>
 
                             {requests.length === 0 ? (
-                                <div className="py-16 flex flex-col items-center gap-3 text-gray-400">
-                                    <Calendar size={40} className="text-gray-300" />
-                                    <p className="text-sm font-medium">No leave requests found</p>
-                                    <p className="text-xs text-gray-300">Click "Apply Leave" to submit your first request</p>
+                                <div className="py-14 flex flex-col items-center gap-2.5 text-gray-400">
+                                    <Calendar size={36} className="text-gray-300" />
+                                    <p className="text-xs font-semibold text-gray-600">No leave requests found</p>
+                                    <p className="text-[11px] text-gray-400">Click "Apply Leave" to submit your first request</p>
                                 </div>
                             ) : (
                                 <>
                                 <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
+                                    <table className="w-full text-xs">
                                         <thead>
                                             <tr className="bg-gray-50 border-b border-gray-100">
-                                                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Type</th>
-                                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">From</th>
-                                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">To</th>
-                                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Days</th>
-                                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Reason</th>
-                                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Applied On</th>
-                                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
-                                                <th className="px-4 py-3" />
+                                                <th className="text-left px-5 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Type</th>
+                                                <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">From</th>
+                                                <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">To</th>
+                                                <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Days</th>
+                                                <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Reason</th>
+                                                <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Applied On</th>
+                                                <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
+                                                <th className="px-4 py-2.5" />
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-50">
                                             {requests.map(req => (
-                                                <tr key={req._id} className="hover:bg-gray-50 transition-colors group">
-                                                    <td className="px-6 py-3.5">
-                                                        <span className="inline-block bg-blue-50 text-[#1a73e8] text-xs font-bold px-2 py-1 rounded border border-blue-100">
+                                                <tr key={req._id} className="hover:bg-gray-50/70 transition-colors group">
+                                                    <td className="px-5 py-2.5">
+                                                        <span className="inline-block bg-blue-50 text-[#1a73e8] text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-100">
                                                             {req.leaveType}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-3.5 text-gray-700 font-medium whitespace-nowrap">
+                                                    <td className="px-4 py-2.5 text-gray-700 font-medium whitespace-nowrap text-xs">
                                                         {format(new Date(req.startDate), 'dd MMM yyyy')}
                                                     </td>
-                                                    <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap">
+                                                    <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap text-xs">
                                                         {format(new Date(req.endDate), 'dd MMM yyyy')}
                                                     </td>
-                                                    <td className="px-4 py-3.5 text-gray-700">
+                                                    <td className="px-4 py-2.5 text-gray-700 text-xs">
                                                         <span className="font-semibold">{req.daysCount}</span>
-                                                        <span className="text-gray-400 text-xs ml-1">{req.isHalfDay ? '(½)' : 'd'}</span>
+                                                        <span className="text-gray-400 text-[10px] ml-1">{req.isHalfDay ? '(½)' : 'd'}</span>
                                                     </td>
-                                                    <td className="px-4 py-3.5 text-gray-500 w-[200px] min-w-[200px] max-w-[200px]">
+                                                    <td className="px-4 py-2.5 text-gray-500 w-[200px] min-w-[200px] max-w-[200px]">
                                                         {expandedRows.includes(req._id) ? (
-                                                            <div className="bg-gray-50/80 p-2.5 rounded-lg border border-gray-100 text-[11px] leading-relaxed text-gray-700 whitespace-pre-wrap break-words animate-fade-in">
+                                                            <div className="bg-gray-50/80 p-2 rounded-lg border border-gray-100 text-[10.5px] leading-relaxed text-gray-700 whitespace-pre-wrap break-words animate-fade-in">
                                                                 {req.reason}
                                                             </div>
                                                         ) : (
-                                                            <div className="text-xs truncate" title={req.reason}>
+                                                            <div className="text-[11px] text-gray-600 truncate" title={req.reason}>
                                                                 {req.reason.length > 60 ? `${req.reason.substring(0, 60)}...` : req.reason}
                                                             </div>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">
+                                                    <td className="px-4 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">
                                                         {format(new Date(req.createdAt), 'dd MMM yyyy')}
                                                     </td>
-                                                    <td className="px-4 py-3.5">
+                                                    <td className="px-4 py-2.5">
                                                         <StatusBadge status={req.status} />
                                                     </td>
-                                                    <td className="px-4 py-3.5 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
+                                                    <td className="px-4 py-2.5 text-right">
+                                                        <div className="flex items-center justify-end gap-1.5">
                                                             {req.status === 'Pending' && (
                                                                 <button
                                                                     onClick={() => handleCancel(req._id)}
                                                                     disabled={cancellingId === req._id}
-                                                                    className="opacity-0 group-hover:opacity-100 text-xs text-red-500 hover:text-red-700 font-semibold transition-all disabled:opacity-40"
+                                                                    className="opacity-0 group-hover:opacity-100 text-[11px] text-red-500 hover:text-red-700 font-semibold transition-all disabled:opacity-40 cursor-pointer"
                                                                 >
                                                                     {cancellingId === req._id ? 'Cancelling…' : 'Cancel'}
                                                                 </button>
                                                             )}
                                                             <button 
                                                                 onClick={() => toggleRowExpansion(req._id)}
-                                                                className={`p-1 rounded transition-colors ${expandedRows.includes(req._id) ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}
+                                                                className={`p-1 rounded transition-colors cursor-pointer ${expandedRows.includes(req._id) ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}
                                                                 title="Toggle Reason"
                                                             >
-                                                                <Eye size={14} />
+                                                                <Eye size={13} />
                                                             </button>
                                                         </div>
                                                     </td>
@@ -631,22 +634,22 @@ const Leaves = () => {
                                         </tbody>
                                     </table>
                                 </div>
-                                <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-                                    <span className="text-xs text-gray-500 font-medium">
+                                <div className="px-5 py-2.5 border-t border-gray-100 flex items-center justify-between bg-gray-50">
+                                    <span className="text-[11px] text-gray-500 font-medium">
                                         Showing page <span className="text-gray-900 font-bold">{requestsPagination.page}</span> of <span className="text-gray-900 font-bold">{requestsPagination.totalPages}</span>
                                     </span>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5">
                                         <button
                                             onClick={() => fetchOnlyRequests(requestsPagination.page - 1)}
                                             disabled={requestsPagination.page === 1}
-                                            className="px-3 py-1 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            className="px-2.5 py-1 text-[11px] font-semibold text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
                                         >
                                             Previous
                                         </button>
                                         <button
                                             onClick={() => fetchOnlyRequests(requestsPagination.page + 1)}
                                             disabled={requestsPagination.page === requestsPagination.totalPages}
-                                            className="px-3 py-1 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            className="px-2.5 py-1 text-[11px] font-semibold text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
                                         >
                                             Next
                                         </button>

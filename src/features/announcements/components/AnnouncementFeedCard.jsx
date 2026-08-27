@@ -157,10 +157,10 @@ const AnnouncementFeedCard = ({
   return (
     <article
       id={`announcement-${announcement._id}`}
-      className={`rounded-3xl border bg-white p-5 shadow-sm transition md:p-6 ${
+      className={`rounded-2xl border bg-white p-4 shadow-xs transition md:p-4.5 ${
         announcement?.pinned ? `${categoryTheme.softCardClassName}` : 'border-slate-200'
       } ${
-        isHighlighted ? 'ring-2 ring-blue-300 ring-offset-2 shadow-md' : ''
+        isHighlighted ? 'ring-2 ring-blue-300 ring-offset-2 shadow-sm' : ''
       }`}
     >
       <style>{`
@@ -175,88 +175,88 @@ const AnnouncementFeedCard = ({
         }
       `}</style>
 
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span
               aria-label={`Category ${announcement?.category || 'General'}`}
-              className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${categoryTheme.badgeClassName}`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${categoryTheme.badgeClassName}`}
             >
               {announcement?.category || 'General'}
             </span>
             {announcement?.pinned ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-inset ring-slate-200">
-                <Pin size={12} />
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-inset ring-slate-200">
+                <Pin size={10} />
                 Pinned
               </span>
             ) : null}
             <span className="text-slate-300">•</span>
-            <span className="text-sm text-slate-500">{getAnnouncementRelativeTime(announcement?.publishedAt || announcement?.createdAt)}</span>
+            <span className="text-xs text-slate-500">{getAnnouncementRelativeTime(announcement?.publishedAt || announcement?.createdAt)}</span>
           </div>
 
-          <div className="mt-4 flex items-start gap-3">
-            <AnnouncementAvatar person={author} sizeClassName="h-12 w-12" />
+          <div className="mt-3 flex items-start gap-2.5">
+            <AnnouncementAvatar person={author} sizeClassName="h-9 w-9" textClassName="text-xs" />
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-900">{getDisplayName(author)}</div>
-              <div className="mt-1 text-xs text-slate-500">{authorMeta}</div>
-              <div className="mt-1 text-xs text-slate-400">{formatAnnouncementDateTime(announcement?.publishedAt || announcement?.createdAt)}</div>
+              <div className="text-xs font-bold text-slate-900">{getDisplayName(author)}</div>
+              <div className="mt-0.5 text-[11px] text-slate-500">{authorMeta}</div>
+              <div className="mt-0.5 text-[10.5px] text-slate-400">{formatAnnouncementDateTime(announcement?.publishedAt || announcement?.createdAt)}</div>
             </div>
           </div>
         </div>
 
         {(announcement?.canManage || announcement?.canEdit) ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {onViewAcknowledgements ? (
               <button
                 type="button"
                 onClick={() => onViewAcknowledgements(announcement._id)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 cursor-pointer"
                 aria-label="View read status report"
                 title="View read status report"
               >
-                <CheckCheck size={16} />
+                <CheckCheck size={14} />
               </button>
             ) : null}
             <button
               type="button"
               onClick={() => onEdit(announcement)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 cursor-pointer"
               aria-label="Edit announcement"
             >
-              <Pencil size={16} />
+              <Pencil size={14} />
             </button>
             <button
               type="button"
               onClick={() => onTogglePin(announcement)}
               disabled={pinToggling}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition cursor-pointer ${
                 announcement?.pinned
                   ? 'border-amber-200 bg-amber-50 text-amber-700'
                   : 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
               } ${pinToggling ? 'opacity-60' : ''}`}
               aria-label={announcement?.pinned ? 'Unpin announcement' : 'Pin announcement'}
             >
-              {pinToggling ? <Loader2 size={16} className="animate-spin" /> : <Pin size={16} />}
+              {pinToggling ? <Loader2 size={14} className="animate-spin" /> : <Pin size={14} />}
             </button>
             <button
               type="button"
               onClick={() => onDelete(announcement._id)}
               disabled={deleting}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 transition hover:bg-red-50 disabled:opacity-60 cursor-pointer"
               aria-label="Delete announcement"
             >
-              {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
             </button>
           </div>
         ) : null}
       </div>
 
-      <div className="mt-5">
-        <h2 className="text-lg font-semibold text-slate-900">{announcement?.title}</h2>
+      <div className="mt-4">
+        <h2 className="text-sm font-bold text-slate-900 leading-snug">{announcement?.title}</h2>
         {announcement?.summary ? (
-          <div className="mt-3">
+          <div className="mt-2">
             <p
-              className={`text-sm text-slate-600 ${!isSummaryExpanded && shouldClampSummary ? 'line-clamp-2' : ''}`}
+              className={`text-xs text-slate-600 ${!isSummaryExpanded && shouldClampSummary ? 'line-clamp-2' : ''}`}
               style={!isSummaryExpanded && shouldClampSummary ? {
                 display: '-webkit-box',
                 WebkitLineClamp: 2,
@@ -270,7 +270,7 @@ const AnnouncementFeedCard = ({
               <button
                 type="button"
                 onClick={() => setIsSummaryExpanded((current) => !current)}
-                className="mt-1 text-sm font-medium text-blue-600 transition hover:text-blue-700"
+                className="mt-0.5 text-xs font-semibold text-blue-600 transition hover:text-blue-700 cursor-pointer"
               >
                 {isSummaryExpanded ? 'Show less' : 'Read more'}
               </button>
@@ -278,13 +278,13 @@ const AnnouncementFeedCard = ({
           </div>
         ) : null}
 
-        <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+        <div className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
           {isContentExpanded || !shouldClampContent ? announcement?.content : contentPreview}
           {shouldClampContent ? (
             <button
               type="button"
               onClick={() => setIsContentExpanded((current) => !current)}
-              className="ml-2 inline-flex text-sm font-medium text-blue-600 transition hover:text-blue-700"
+              className="ml-1.5 inline-flex text-xs font-semibold text-blue-600 transition hover:text-blue-700 cursor-pointer"
             >
               {isContentExpanded ? 'Show less' : 'Read more'}
             </button>
@@ -292,32 +292,32 @@ const AnnouncementFeedCard = ({
         </div>
 
         {announcement?.attachment ? (
-          <AnnouncementAttachmentCard attachment={announcement.attachment} className="mt-4" />
+          <AnnouncementAttachmentCard attachment={announcement.attachment} className="mt-3" />
         ) : null}
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
         {announcement?.canManage ? (
-          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-            <BadgeCheck size={14} />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+            <BadgeCheck size={13} />
             {getAudienceLabel(announcement)}
           </span>
         ) : null}
         {expiryNotice ? (
-          <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
-            <CalendarClock size={14} />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
+            <CalendarClock size={13} />
             {expiryNotice}
           </span>
         ) : null}
         {announcement?.expiresAt ? (
-          <span className="text-xs text-slate-400">Ends {formatAnnouncementDate(announcement.expiresAt)}</span>
+          <span className="text-[11px] text-slate-400">Ends {formatAnnouncementDate(announcement.expiresAt)}</span>
         ) : null}
       </div>
 
       {(canReact || canComment || canViewReactions) ? (
         <>
-          <div className="relative mt-5 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-3">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="relative mt-4 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               {(canReact || canViewReactions) && reactionTypes.map((type) => {
                 const meta = REACTION_META[type] || REACTION_META.like;
                 const isActive = announcement?.viewerReaction === type;
@@ -330,13 +330,13 @@ const AnnouncementFeedCard = ({
                     type="button"
                     onClick={() => canReact && onReact(announcement._id, type)}
                     disabled={!canReact || reactionLoadingKey === loadingKey}
-                    className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                       isActive
                         ? meta.activeClassName
                         : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                     } ${reactionLoadingKey === loadingKey ? 'opacity-60' : ''} ${!canReact ? 'opacity-70 cursor-not-allowed' : ''}`}
                   >
-                    {reactionLoadingKey === loadingKey ? <Loader2 size={15} className="animate-spin" /> : <meta.Icon size={15} />}
+                    {reactionLoadingKey === loadingKey ? <Loader2 size={13} className="animate-spin" /> : <meta.Icon size={13} />}
                     <span>{meta.label}</span>
                     <CountBadge count={count} animate={animatedTypes.includes(type)} />
                   </button>
@@ -347,9 +347,9 @@ const AnnouncementFeedCard = ({
                 <button
                   type="button"
                   onClick={() => setIsCommentsOpen((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 cursor-pointer"
                 >
-                  <MessageCircle size={15} />
+                  <MessageCircle size={13} />
                   <span>{announcement?.commentCount || 0} comments</span>
                 </button>
               ) : null}
@@ -362,21 +362,21 @@ const AnnouncementFeedCard = ({
                 >
                   <button
                     type="button"
-                    className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200"
+                    className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-inset ring-slate-200 cursor-pointer"
                   >
                     {announcement.totalReactions} reactions
                   </button>
 
                   {showReactorPopover && previewReactors.length > 0 ? (
-                    <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Top Reactors</div>
-                      <div className="mt-3 space-y-2">
+                    <div className="absolute right-0 top-full z-20 mt-1.5 w-60 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Top Reactors</div>
+                      <div className="mt-2 space-y-1.5">
                         {previewReactors.map((reactor) => (
-                          <div key={`${announcement._id}-${reactor._id}`} className="flex items-center gap-3">
-                            <AnnouncementAvatar person={reactor} sizeClassName="h-9 w-9" textClassName="text-[11px]" />
+                          <div key={`${announcement._id}-${reactor._id}`} className="flex items-center gap-2.5">
+                            <AnnouncementAvatar person={reactor} sizeClassName="h-7 w-7" textClassName="text-[10px]" />
                             <div className="min-w-0">
-                              <div className="truncate text-sm font-medium text-slate-700">{getDisplayName(reactor)}</div>
-                              <div className="text-xs text-slate-400 capitalize">{reactor.reactionType}</div>
+                              <div className="truncate text-xs font-medium text-slate-700">{getDisplayName(reactor)}</div>
+                              <div className="text-[10px] text-slate-400 capitalize">{reactor.reactionType}</div>
                             </div>
                           </div>
                         ))}
@@ -389,35 +389,35 @@ const AnnouncementFeedCard = ({
           </div>
 
           {isCommentsOpen && (canComment || canViewReactions) ? (
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-white/90 p-4">
-              <div className="space-y-3">
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-3.5">
+              <div className="space-y-2.5">
                 {(announcement?.comments || []).length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-4 text-xs text-slate-500">
                     Be the first to comment on this announcement.
                   </div>
                 ) : (
                   announcement.comments.map((comment) => (
-                    <div key={comment._id} className="flex gap-3 rounded-2xl bg-slate-50/80 px-3 py-3">
-                      <AnnouncementAvatar person={comment?.author} sizeClassName="h-10 w-10" textClassName="text-xs" />
+                    <div key={comment._id} className="flex gap-2.5 rounded-xl bg-slate-50/80 px-2.5 py-2.5">
+                      <AnnouncementAvatar person={comment?.author} sizeClassName="h-8 w-8" textClassName="text-[10px]" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-800">{getDisplayName(comment?.author)}</span>
-                          <span className="text-xs text-slate-400">{getAnnouncementRelativeTime(comment?.createdAt)}</span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs font-bold text-slate-800">{getDisplayName(comment?.author)}</span>
+                          <span className="text-[10.5px] text-slate-400">{getAnnouncementRelativeTime(comment?.createdAt)}</span>
                           {comment?.isOptimistic ? (
-                            <span className="text-xs font-medium text-blue-600">Sending...</span>
+                            <span className="text-[10.5px] font-medium text-blue-600">Sending...</span>
                           ) : null}
                         </div>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{comment?.text}</p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-600 leading-relaxed">{comment?.text}</p>
                       </div>
                       {comment?.canDelete && canComment ? (
                         <button
                           type="button"
                           onClick={() => onDeleteComment(announcement._id, comment._id)}
                           disabled={commentDeletingId === comment._id || comment?.isOptimistic}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white hover:text-red-600 disabled:opacity-50"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white hover:text-red-600 disabled:opacity-50 cursor-pointer"
                           aria-label="Delete comment"
                         >
-                          {commentDeletingId === comment._id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          {commentDeletingId === comment._id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                         </button>
                       ) : null}
                     </div>
@@ -426,8 +426,8 @@ const AnnouncementFeedCard = ({
               </div>
 
               {canComment ? (
-                <div className="mt-4 flex gap-3">
-                  <AnnouncementAvatar person={currentUser} sizeClassName="h-10 w-10" textClassName="text-xs" />
+                <div className="mt-3.5 flex gap-2.5">
+                  <AnnouncementAvatar person={currentUser} sizeClassName="h-8 w-8" textClassName="text-[10px]" />
                   <div className="flex-1">
                     <textarea
                       ref={commentInputRef}
@@ -439,19 +439,19 @@ const AnnouncementFeedCard = ({
                           void handleCommentSubmit();
                         }
                       }}
-                      rows={3}
-                      placeholder="Write a comment"
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      rows={2}
+                      placeholder="Write a comment..."
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <p className="text-xs text-slate-400">Press Enter to send, Shift+Enter for a new line.</p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-[10.5px] text-slate-400">Press Enter to send, Shift+Enter for newline.</p>
                       <button
                         type="button"
                         onClick={() => void handleCommentSubmit()}
                         disabled={commentSubmitting || !commentDraft.trim()}
-                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60 cursor-pointer"
                       >
-                        {commentSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                        {commentSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         {commentSubmitting ? 'Posting...' : 'Send'}
                       </button>
                     </div>

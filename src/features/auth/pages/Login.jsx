@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, ArrowRight, CheckCircle2, Eye, EyeOff, Sparkles, Shield, BarChart3, KeyRound, X, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -31,6 +31,7 @@ const Login = () => {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     let interval;
@@ -177,7 +178,8 @@ const Login = () => {
       }
 
       toast.success("Welcome back!", { id: LOGIN_TOAST_ID });
-      navigate('/');
+      const returnUrl = location.state?.from || '/';
+      navigate(returnUrl, { replace: true });
     } catch (error) {
       const message = error.response?.data?.message
         || error.message

@@ -139,68 +139,68 @@ const Holidays = () => {
     };
 
     return (
-        <div className="p-6 max-w-[1600px] mx-auto w-full">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div className="p-4 sm:p-5 max-w-[1600px] mx-auto w-full font-sans">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-3">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Holiday Calendar</h1>
-                    <p className="text-slate-500 mt-1">Manage annual holidays and optional leaves for your organization.</p>
+                    <h1 className="text-lg font-bold text-slate-900 tracking-tight">Holiday Calendar</h1>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Manage annual holidays and optional leaves for your organization.</p>
                 </div>
                 {canCreateHoliday && (
                     <button
                         onClick={() => handleOpenModal()}
-                        className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all font-medium"
+                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg shadow-2xs hover:shadow-xs transition-all text-xs font-semibold cursor-pointer"
                     >
-                        <Plus size={20} />
+                        <Plus size={15} />
                         <span>Add New Holiday</span>
                     </button>
                 )}
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                        <CalendarDays size={24} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-5">
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center space-x-3">
+                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg shrink-0">
+                        <CalendarDays size={18} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-slate-500">Total Holidays</p>
-                        <p className="text-2xl font-bold text-slate-800">{totalHolidays}</p>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Total Holidays</p>
+                        <p className="text-xl font-extrabold text-slate-900">{totalHolidays}</p>
                     </div>
                 </div>
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                    <div className="p-3 bg-green-50 text-green-600 rounded-lg">
-                        <CalendarCheck size={24} />
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center space-x-3">
+                    <div className="p-2 bg-green-50 text-green-600 rounded-lg shrink-0">
+                        <CalendarCheck size={18} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-slate-500">Upcoming Holidays</p>
-                        <p className="text-2xl font-bold text-slate-800">{upcomingHolidays}</p>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Upcoming Holidays</p>
+                        <p className="text-xl font-extrabold text-slate-900">{upcomingHolidays}</p>
                     </div>
                 </div>
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
-                        <CalendarOff size={24} />
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex items-center space-x-3">
+                    <div className="p-2 bg-amber-50 text-amber-600 rounded-lg shrink-0">
+                        <CalendarOff size={18} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-slate-500">Optional Leaves</p>
-                        <p className="text-2xl font-bold text-slate-800">{optionalHolidays}</p>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Optional Leaves</p>
+                        <p className="text-xl font-extrabold text-slate-900">{optionalHolidays}</p>
                     </div>
                 </div>
             </div>
 
             {loading ? (
-                <div className="flex justify-center p-12 bg-white rounded-xl shadow-sm border border-slate-200">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="flex justify-center p-10 bg-white rounded-xl shadow-xs border border-slate-200">
+                    <div className="animate-spin rounded-full h-7 w-7 border-2 border-blue-600 border-t-transparent"></div>
                 </div>
             ) : (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ring-1 ring-black/5">
+                <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden ring-1 ring-black/5">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left bg-white">
+                        <table className="w-full text-left bg-white text-xs">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200">
-                                    <th className="px-6 py-4 font-semibold text-slate-700 text-sm tracking-wide uppercase">Date</th>
-                                    <th className="px-6 py-4 font-semibold text-slate-700 text-sm tracking-wide uppercase">Holiday Name</th>
-                                    <th className="px-6 py-4 font-semibold text-slate-700 text-sm tracking-wide uppercase">Type</th>
-                                    <th className="px-6 py-4 font-semibold text-slate-700 text-sm tracking-wide uppercase">Status</th>
+                                    <th className="px-5 py-2.5 font-bold text-slate-400 text-[10px] tracking-wider uppercase">Date</th>
+                                    <th className="px-5 py-2.5 font-bold text-slate-400 text-[10px] tracking-wider uppercase">Holiday Name</th>
+                                    <th className="px-5 py-2.5 font-bold text-slate-400 text-[10px] tracking-wider uppercase">Type</th>
+                                    <th className="px-5 py-2.5 font-bold text-slate-400 text-[10px] tracking-wider uppercase">Status</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -212,49 +212,49 @@ const Holidays = () => {
                                                 key={holiday._id}
                                                 // Make row clickable for admins to edit
                                                 onClick={() => canEditHoliday && handleOpenModal(holiday)}
-                                                className={`hover:bg-slate-50/80 transition-colors group ${canEditHoliday ? 'cursor-pointer' : ''}`}
+                                                className={`hover:bg-slate-50/70 transition-colors group ${canEditHoliday ? 'cursor-pointer' : ''}`}
                                             >
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center space-x-4">
-                                                        <div className={`p-2 rounded-lg ${isPast ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-blue-600'}`}>
-                                                            <Calendar size={20} />
+                                                <td className="px-5 py-2.5 whitespace-nowrap">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className={`p-1.5 rounded-md ${isPast ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-blue-600'}`}>
+                                                            <Calendar size={15} />
                                                         </div>
                                                         <div>
-                                                            <p className={`font-semibold ${isPast ? 'text-slate-500' : 'text-slate-900'}`}>
+                                                            <p className={`font-semibold ${isPast ? 'text-slate-500' : 'text-slate-900'} text-xs`}>
                                                                 {format(new Date(holiday.date), 'MMMM d, yyyy')}
                                                             </p>
-                                                            <p className="text-xs text-slate-400 font-medium">
+                                                            <p className="text-[10.5px] text-slate-400 font-medium">
                                                                 {format(new Date(holiday.date), 'EEEE')}
                                                             </p>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`text-base font-medium ${isPast ? 'text-slate-500' : 'text-slate-800'}`}>{holiday.name}</span>
+                                                <td className="px-5 py-2.5">
+                                                    <span className={`text-xs font-bold ${isPast ? 'text-slate-500' : 'text-slate-800'}`}>{holiday.name}</span>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border ${holiday.isOptional
+                                                <td className="px-5 py-2.5">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${holiday.isOptional
                                                         ? 'bg-amber-50 text-amber-700 border-amber-200'
                                                         : 'bg-green-50 text-green-700 border-green-200'
                                                         }`}>
                                                         {holiday.isOptional ? 'Optional' : 'Fixed'}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`text-sm ${isPast ? 'text-slate-400 italic' : 'text-blue-600 font-medium'}`}>
+                                                <td className="px-5 py-2.5">
+                                                    <span className={`text-[11px] ${isPast ? 'text-slate-400 italic' : 'text-blue-600 font-semibold'}`}>
                                                         {isPast ? 'Completed' : 'Upcoming'}
                                                     </span>
                                                 </td>
                                             </tr>
-                                        )
+                                        );
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan="4" className="px-6 py-24 text-center">
+                                        <td colSpan="4" className="px-6 py-16 text-center">
                                             <div className="flex flex-col items-center justify-center text-slate-400">
-                                                <CalendarOff size={48} className="mb-4 text-slate-300" />
-                                                <p className="text-lg font-medium text-slate-500">No holidays found for this year</p>
-                                                <p className="text-sm mt-1">Get started by adding a new holiday to the calendar.</p>
+                                                <CalendarOff size={36} className="mb-3 text-slate-300" />
+                                                <p className="text-xs font-bold text-slate-600">No holidays found for this year</p>
+                                                <p className="text-[11px] text-slate-400 mt-0.5">Get started by adding a new holiday to the calendar.</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -263,9 +263,8 @@ const Holidays = () => {
                         </table>
                     </div>
                     {holidays.length > 0 && (
-                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex justify-between uppercase tracking-wider font-semibold">
+                        <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex justify-between uppercase tracking-wider font-semibold">
                             <span>Total: {totalHolidays}</span>
-                            {/* <span>Powered by HRCODE</span> */}
                         </div>
                     )}
                 </div>
@@ -274,60 +273,60 @@ const Holidays = () => {
             {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
-                        <div className="bg-white px-8 py-6 border-b border-slate-100 flex justify-between items-center">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                        <div className="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                             <div>
-                                <h3 className="font-bold text-xl text-slate-800">
+                                <h3 className="font-bold text-base text-slate-800">
                                     {editingHoliday ? 'Edit Holiday' : 'Add New Holiday'}
                                 </h3>
-                                <p className="text-sm text-slate-500 mt-1">Enter holiday details below</p>
+                                <p className="text-[11px] text-slate-500 mt-0.5">Enter holiday details below</p>
                             </div>
-                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-full transition">
-                                <X size={24} />
+                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded-full transition cursor-pointer">
+                                <X size={18} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2 uppercase tracking-wide">Holiday Name</label>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Holiday Name</label>
                                 <input
                                     type="text"
                                     required
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-800 placeholder:font-normal"
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs font-semibold text-slate-800 placeholder:font-normal"
                                     placeholder="e.g. Independence Day"
                                 />
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-2 uppercase tracking-wide">Date</label>
+                                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Date</label>
                                     <input
                                         type="date"
                                         required
                                         value={formData.date}
                                         onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-800"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs font-semibold text-slate-800"
                                     />
                                 </div>
                                 <div className="flex flex-col justify-end">
-                                    <label className="flex items-center space-x-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-blue-300 transition-colors">
+                                    <label className="flex items-center space-x-2.5 p-2 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer hover:border-blue-300 transition-colors">
                                         <input
                                             type="checkbox"
                                             id="isOptional"
                                             checked={formData.isOptional}
                                             onChange={(e) => setFormData({ ...formData, isOptional: e.target.checked })}
-                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-5 w-5"
+                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                                         />
-                                        <span className="text-sm font-medium text-slate-700 select-none">
+                                        <span className="text-xs font-semibold text-slate-700 select-none">
                                             Optional / Floating
                                         </span>
                                     </label>
                                 </div>
                             </div>
 
-                            <div className="pt-6 flex justify-between items-center border-t border-slate-100 mt-4">
+                            <div className="pt-4 flex justify-between items-center border-t border-slate-100 mt-2">
                                 <div>
                                     {editingHoliday && canDeleteHoliday && (
                                         <button
@@ -338,26 +337,26 @@ const Holidays = () => {
                                                     setIsModalOpen(false);
                                                 }
                                             }}
-                                            className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center space-x-1"
+                                            className="text-red-500 hover:text-red-700 text-xs font-semibold flex items-center space-x-1 cursor-pointer"
                                         >
-                                            <Trash2 size={16} />
+                                            <Trash2 size={14} />
                                             <span>Delete Holiday</span>
                                         </button>
                                     )}
                                 </div>
-                                <div className="flex space-x-4">
+                                <div className="flex space-x-2.5">
                                     <button
                                         type="button"
                                         onClick={() => setIsModalOpen(false)}
-                                        className="px-6 py-2.5 text-slate-600 hover:bg-slate-50 rounded-lg transition text-sm font-semibold border border-transparent hover:border-slate-200"
+                                        className="px-4 py-1.5 text-slate-600 hover:bg-slate-50 rounded-lg transition text-xs font-semibold border border-transparent hover:border-slate-200 cursor-pointer"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="submit"
-                                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm font-semibold shadow-lg shadow-blue-500/30 flex items-center space-x-2"
+                                        className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-xs font-semibold shadow-sm flex items-center space-x-1.5 cursor-pointer"
                                     >
-                                        <Save size={18} />
+                                        <Save size={14} />
                                         <span>{editingHoliday ? 'Update Changes' : 'Save Holiday'}</span>
                                     </button>
                                 </div>
