@@ -76,8 +76,9 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
     const [internalRemarkEditing, setInternalRemarkEditing] = useState(false);
     const [internalRemarkLoading, setInternalRemarkLoading] = useState(false);
 
-    // Users List for Assessment assignment
+    // Users & Interviewers List for Assessment assignment
     const [users, setUsers] = useState([]);
+    const [interviewers, setInterviewers] = useState([]);
     const [selectedInterviewer, setSelectedInterviewer] = useState('');
     const [roles, setRoles] = useState([]);
     const [selectedRoleForRound, setSelectedRoleForRound] = useState('');
@@ -133,10 +134,19 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 setInternalRemarkText(candRes.data.internalRemark || '');
 
                 try {
-                    const usersRes = await api.get('/admin/users');
-                    setUsers(usersRes.data.data || usersRes.data || []);
+                    const [usersRes, interviewersRes] = await Promise.all([
+                        api.get('/admin/users').catch(() => ({ data: [] })),
+                        api.get('/ta/interviewers').catch(() => ({ data: [] }))
+                    ]);
+                    const fetchedUsers = usersRes.data?.data || usersRes.data || [];
+                    const fetchedInterviewers = Array.isArray(interviewersRes.data)
+                        ? interviewersRes.data
+                        : (interviewersRes.data?.data || []);
+
+                    setUsers(Array.isArray(fetchedUsers) ? fetchedUsers : []);
+                    setInterviewers(Array.isArray(fetchedInterviewers) ? fetchedInterviewers : []);
                 } catch (e) {
-                    console.warn('Interviewer user cannot fetch users list:', e);
+                    console.warn('Could not fetch users/interviewers list:', e);
                 }
 
                 try {
@@ -1167,9 +1177,10 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                         <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wider">Configure Rounds</p>
                                         {interviewWorkflows.find(w => w._id === selectedWorkflow)?.rounds.map((round, index) => {
                                             const roleFilterId = round.role?._id || round.role;
+                                            const availablePool = interviewers.length > 0 ? interviewers : users;
                                             const roleUsers = roleFilterId
-                                                ? users.filter(u => u.roles?.some(r => r._id === roleFilterId || r === roleFilterId))
-                                                : users;
+                                                ? availablePool.filter(u => u.roles?.some(r => r._id === roleFilterId || r === roleFilterId || r.name === roleFilterId))
+                                                : availablePool;
 
                                             const currentRoundMapping = workflowMapping[index] || {};
 
@@ -1397,7 +1408,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                         >
                                             <option value="">-- Select Evaluator --</option>
-                                            {(selectedRoleForRound ? users.filter(u => u.roles?.some(r => r._id === selectedRoleForRound || r === selectedRoleForRound)) : users).map(u => (
+                                            {((interviewers.length > 0 ? interviewers : users).filter(u => !selectedRoleForRound || u.roles?.some(r => r._id === selectedRoleForRound || r === selectedRoleForRound || r.name === selectedRoleForRound))).map(u => (
                                                 <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
                                             ))}
                                         </select>
@@ -1815,9 +1826,16 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
                                                                             >
                                                                                 <option value="">-- Unassigned --</option>
-                                                                                {users.map(u => (
-                                                                                    <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
-                                                                                ))}
+                                                                                {(() => {
+                                                                                    const pool = interviewers.length > 0 ? [...interviewers] : [...users];
+                                                                                    if (editingRoundForm.assignedTo && !pool.some(u => u._id === editingRoundForm.assignedTo)) {
+                                                                                        const currentAssigned = users.find(u => u._id === editingRoundForm.assignedTo);
+                                                                                        if (currentAssigned) pool.push(currentAssigned);
+                                                                                    }
+                                                                                    return pool.map(u => (
+                                                                                        <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
+                                                                                    ));
+                                                                                })()}
                                                                             </select>
                                                                         </div>
                                                                         <div>

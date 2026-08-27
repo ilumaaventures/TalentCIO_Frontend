@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '@/lib/apiClient';
-import { Plus, Trash2, Save, X, Check, ArrowRight, Loader } from 'lucide-react';
+import { Plus, Trash2, Save, X, Check, ArrowRight, Loader, Search, Users, UserCheck, Filter, AlertCircle, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -11,7 +11,8 @@ const WorkflowSettings = () => {
         || user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.config.edit')
         || user?.permissions?.includes('*');
-    // Tabs Support
+    
+    // Tabs: 'APPROVAL' | 'INTERVIEW' | 'INTERVIEWERS'
     const [activeTab, setActiveTab] = useState('APPROVAL');
 
     // Shared State
@@ -47,10 +48,24 @@ const WorkflowSettings = () => {
     const [emailTemplates, setEmailTemplates] = useState([]);
     const [senderOptions, setSenderOptions] = useState([]);
 
+    // ==========================================
+    // 3. INTERVIEWERS POOL STATE
+    // ==========================================
+    const [interviewers, setInterviewers] = useState([]);
+    const [loadingInterviewers, setLoadingInterviewers] = useState(true);
+    const [showAddInterviewersModal, setShowAddInterviewersModal] = useState(false);
+    const [savingInterviewers, setSavingInterviewers] = useState(false);
+    const [interviewerSearch, setInterviewerSearch] = useState('');
+    const [interviewerRoleFilter, setInterviewerRoleFilter] = useState('');
+    const [selectedUserIdsForModal, setSelectedUserIdsForModal] = useState(new Set());
+    const [modalSearch, setModalSearch] = useState('');
+    const [modalRoleFilter, setModalRoleFilter] = useState('');
+
     // Init
     useEffect(() => {
         fetchWorkflows();
         fetchInterviewWorkflows();
+        fetchInterviewers();
         fetchEmailTemplates();
         fetchSenderOptions();
         if (canConfigEdit) {
@@ -62,7 +77,10 @@ const WorkflowSettings = () => {
     const fetchUsers = async () => {
         try {
             const res = await api.get('/admin/users');
-            setUsers(res.data);
+            const userList = res.data?.success
+                ? (res.data.data || [])
+                : (Array.isArray(res.data) ? res.data : []);
+            setUsers(userList);
         } catch (error) {
             console.error('Failed to fetch users', error);
         }
@@ -71,7 +89,7 @@ const WorkflowSettings = () => {
     const fetchRoles = async () => {
         try {
             const res = await api.get('/admin/roles');
-            setRoles(res.data);
+            setRoles(Array.isArray(res.data) ? res.data : (res.data?.data || []));
         } catch (error) {
             console.error('Failed to fetch roles', error);
         }
@@ -106,7 +124,7 @@ const WorkflowSettings = () => {
     const fetchWorkflows = async () => {
         try {
             const res = await api.get('/workflows?module=TA');
-            setWorkflows(res.data);
+            setWorkflows(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error(error);
         } finally {
@@ -190,7 +208,7 @@ const WorkflowSettings = () => {
     const fetchInterviewWorkflows = async () => {
         try {
             const res = await api.get('/ta/interview-workflows');
-            setInterviewWorkflows(res.data);
+            setInterviewWorkflows(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
             console.error(error);
         } finally {
@@ -292,30 +310,150 @@ const WorkflowSettings = () => {
         }
     };
 
+    // ==========================================
+    // 3. INTERVIEWERS POOL LOGIC
+    // ==========================================
+    const fetchInterviewers = async () => {
+        try {
+            setLoadingInterviewers(true);
+            const res = await api.get('/ta/interviewers');
+            const data = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+            setInterviewers(data);
+        } catch (error) {
+            console.error('Failed to fetch interviewers:', error);
+        } finally {
+            setLoadingInterviewers(false);
+        }
+    };
+
+    const handleOpenAddInterviewersModal = () => {
+        // Pre-select existing interviewers in the modal
+        const currentIds = new Set(interviewers.map(i => i._id));
+        setSelectedUserIdsForModal(currentIds);
+        setModalSearch('');
+        setModalRoleFilter('');
+        setShowAddInterviewersModal(true);
+    };
+
+    const handleToggleModalUser = (userId) => {
+        setSelectedUserIdsForModal(prev => {
+            const next = new Set(prev);
+            if (next.has(userId)) {
+                next.delete(userId);
+            } else {
+                next.add(userId);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAllModalUsers = (usersToSelect) => {
+        setSelectedUserIdsForModal(prev => {
+            const next = new Set(prev);
+            usersToSelect.forEach(u => next.add(u._id));
+            return next;
+        });
+    };
+
+    const handleDeselectAllModalUsers = (usersToDeselect) => {
+        setSelectedUserIdsForModal(prev => {
+            const next = new Set(prev);
+            usersToDeselect.forEach(u => next.delete(u._id));
+            return next;
+        });
+    };
+
+    const handleSaveInterviewersModal = async () => {
+        try {
+            setSavingInterviewers(true);
+            const userIdsArray = Array.from(selectedUserIdsForModal);
+            await api.put('/ta/interviewers', { userIds: userIdsArray });
+            toast.success('Interviewers list updated successfully');
+            setShowAddInterviewersModal(false);
+            await Promise.all([fetchInterviewers(), fetchUsers()]);
+        } catch (error) {
+            console.error('Failed to save interviewers:', error);
+            toast.error(error.response?.data?.message || 'Failed to update interviewers');
+        } finally {
+            setSavingInterviewers(false);
+        }
+    };
+
+    const handleRemoveInterviewer = async (userId, userName) => {
+        if (!window.confirm(`Are you sure you want to remove ${userName || 'this user'} from the interviewers list?`)) return;
+        try {
+            await api.delete(`/ta/interviewers/${userId}`);
+            toast.success('Interviewer removed successfully');
+            await Promise.all([fetchInterviewers(), fetchUsers()]);
+        } catch (error) {
+            console.error('Failed to remove interviewer:', error);
+            toast.error(error.response?.data?.message || 'Failed to remove interviewer');
+        }
+    };
+
+    // Filtered interviewers table list
+    const filteredInterviewers = useMemo(() => {
+        return interviewers.filter(interviewer => {
+            const searchLower = interviewerSearch.trim().toLowerCase();
+            const fullName = `${interviewer.firstName || ''} ${interviewer.lastName || ''}`.toLowerCase();
+            const email = (interviewer.email || '').toLowerCase();
+            const employeeCode = (interviewer.employeeCode || '').toLowerCase();
+            const matchesSearch = !searchLower || fullName.includes(searchLower) || email.includes(searchLower) || employeeCode.includes(searchLower);
+
+            const roleNames = interviewer.roles?.map(r => (typeof r === 'string' ? r : r.name || '')) || [];
+            const matchesRole = !interviewerRoleFilter || roleNames.some(r => r === interviewerRoleFilter || r.toLowerCase() === interviewerRoleFilter.toLowerCase());
+
+            return matchesSearch && matchesRole;
+        });
+    }, [interviewers, interviewerSearch, interviewerRoleFilter]);
+
+    // Filtered modal users list
+    const filteredModalUsers = useMemo(() => {
+        return users.filter(u => {
+            if (u.isActive === false) return false;
+            const searchLower = modalSearch.trim().toLowerCase();
+            const fullName = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            const employeeCode = (u.employeeCode || '').toLowerCase();
+            const matchesSearch = !searchLower || fullName.includes(searchLower) || email.includes(searchLower) || employeeCode.includes(searchLower);
+
+            const roleNames = u.roles?.map(r => (typeof r === 'string' ? r : r.name || '')) || [];
+            const matchesRole = !modalRoleFilter || roleNames.some(r => r === modalRoleFilter || r.toLowerCase() === modalRoleFilter.toLowerCase());
+
+            return matchesSearch && matchesRole;
+        });
+    }, [users, modalSearch, modalRoleFilter]);
+
     return (
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
             {/* Header Area */}
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">TA Workflows</h1>
-                    <p className="text-slate-500">Configure hiring rules and candidate interview templates</p>
+                    <p className="text-slate-500">Configure hiring rules, candidate interview templates, and interviewers</p>
                 </div>
                 {canConfigEdit && activeTab === 'APPROVAL' ? (
-                    <button onClick={() => setShowCreate(!showCreate)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                    <button onClick={() => setShowCreate(!showCreate)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium shadow-sm transition-colors">
                         {showCreate ? <X size={18} /> : <Plus size={18} />}
                         {showCreate ? 'Cancel' : 'Create Approval Workflow'}
                     </button>
-                ) : canConfigEdit ? (
-                    <button onClick={() => setShowCreateInterview(!showCreateInterview)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                ) : canConfigEdit && activeTab === 'INTERVIEW' ? (
+                    <button onClick={() => setShowCreateInterview(!showCreateInterview)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium shadow-sm transition-colors">
                         {showCreateInterview ? <X size={18} /> : <Plus size={18} />}
                         {showCreateInterview ? 'Cancel' : 'Create Interview Workflow'}
+                    </button>
+                ) : canConfigEdit && activeTab === 'INTERVIEWERS' ? (
+                    <button onClick={handleOpenAddInterviewersModal} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium shadow-sm transition-colors">
+                        <Plus size={18} />
+                        Manage Interviewers
                     </button>
                 ) : null}
             </div>
 
             {!canConfigEdit && (
-                <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    Workflows are available in read-only mode. You can review existing approval and interview workflows, but you cannot create, edit, or delete them.
+                <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
+                    <AlertCircle size={18} className="flex-shrink-0" />
+                    <span>Workflows are available in read-only mode. You can review existing approval workflows, templates, and interviewers, but you cannot modify them.</span>
                 </div>
             )}
 
@@ -323,15 +461,21 @@ const WorkflowSettings = () => {
             <div className="flex gap-4 border-b border-slate-200 mb-6 font-medium">
                 <button
                     onClick={() => setActiveTab('APPROVAL')}
-                    className={`pb-3 px-4 transition-colors ${activeTab === 'APPROVAL' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`pb-3 px-4 transition-colors ${activeTab === 'APPROVAL' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     Hiring Approvals
                 </button>
                 <button
                     onClick={() => setActiveTab('INTERVIEW')}
-                    className={`pb-3 px-4 transition-colors ${activeTab === 'INTERVIEW' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`pb-3 px-4 transition-colors ${activeTab === 'INTERVIEW' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     Candidate Interviews
+                </button>
+                <button
+                    onClick={() => setActiveTab('INTERVIEWERS')}
+                    className={`pb-3 px-4 transition-colors ${activeTab === 'INTERVIEWERS' ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                    Interviewers
                 </button>
             </div>
 
@@ -361,7 +505,7 @@ const WorkflowSettings = () => {
                                 <label className="block text-sm font-medium text-slate-700 mb-2">Approval Levels</label>
                                 <div className="space-y-3">
                                     {levels.map((level, index) => {
-                                        const roleUsers = users.filter(u => u.roles && u.roles.some(r => r._id === level.role || r === level.role));
+                                        const roleUsers = users.filter(u => u.roles && u.roles.some(r => r._id === level.role || r === level.role || r.name === level.role));
                                         return (
                                             <div key={index} className="flex flex-col gap-3 bg-slate-50 p-4 rounded-md border border-slate-200">
                                                 <div className="flex items-center justify-between">
@@ -398,7 +542,7 @@ const WorkflowSettings = () => {
                                                     </div>
                                                 </div>
                                             </div>
-                                        )
+                                        );
                                     })}
                                 </div>
                                 <button onClick={handleAddLevel} className="mt-3 text-sm text-blue-600 font-medium hover:text-blue-800 flex items-center gap-1"><Plus size={16} /> Add Level</button>
@@ -513,124 +657,133 @@ const WorkflowSettings = () => {
                             <div className="mb-4">
                                 <label className="block text-sm font-medium text-slate-700 mb-2">Sequential Interview Rounds</label>
                                 <div className="space-y-4">
-                                    {interviewRounds.map((round, index) => (
-                                        <div key={index} className="flex flex-col gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">{round.levelCheck}</div>
-                                                    <span className="font-semibold text-sm text-slate-700">Round {round.levelCheck}</span>
-                                                </div>
-                                                {index > 0 && <button onClick={() => handleRemoveInterviewRound(index)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>}
-                                            </div>
+                                    {interviewRounds.map((round, index) => {
+                                        // Filter designated user from interviewers pool if available, otherwise from company users
+                                        const availableUserPool = interviewers.length > 0 ? interviewers : users;
+                                        const roundUsers = availableUserPool.filter(u => !round.role || u.roles?.some(r => r._id === round.role || r === round.role || r.name === round.role));
 
-                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Round Title</label>
-                                                    <input type="text" value={round.levelName} onChange={(e) => handleInterviewRoundChange(index, 'levelName', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" placeholder="e.g., L1 Technical" />
+                                        return (
+                                            <div key={index} className="flex flex-col gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">{round.levelCheck}</div>
+                                                        <span className="font-semibold text-sm text-slate-700">Round {round.levelCheck}</span>
+                                                    </div>
+                                                    {index > 0 && <button onClick={() => handleRemoveInterviewRound(index)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>}
                                                 </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Target Evaluator Role (Optional)</label>
-                                                    <select value={round.role || ''} onChange={(e) => { handleInterviewRoundChange(index, 'role', e.target.value); handleInterviewRoundChange(index, 'user', ''); }} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
-                                                        <option value="">Any Role</option>
-                                                        {roles.map(r => <option key={r._id} value={r._id}>{r.name}</option>)}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Designated User (Optional)</label>
-                                                    <select value={round.user || ''} onChange={(e) => handleInterviewRoundChange(index, 'user', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
-                                                        <option value="">Any User</option>
-                                                        {(round.role ? users.filter(u => u.roles?.some(r => r._id === round.role || r === round.role)) : users).map(u => (
-                                                            <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Default Email Template</label>
-                                                    <select value={round.emailTemplateId || ''} onChange={(e) => handleInterviewRoundChange(index, 'emailTemplateId', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
-                                                        <option value="">Standard Invite</option>
-                                                        {emailTemplates.map(t => (
-                                                            <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                {senderOptions.length > 0 && (
+
+                                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                                     <div>
-                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Default Sender Account</label>
-                                                        <select value={round.emailAccountId || ''} onChange={(e) => handleInterviewRoundChange(index, 'emailAccountId', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
-                                                            <option value="">Company Default</option>
-                                                            {senderOptions.map(option => (
-                                                                <option key={option._id} value={option._id}>
-                                                                    {option.name} – {option.fromAddress}
-                                                                </option>
+                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Round Title</label>
+                                                        <input type="text" value={round.levelName} onChange={(e) => handleInterviewRoundChange(index, 'levelName', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" placeholder="e.g., L1 Technical" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Target Evaluator Role (Optional)</label>
+                                                        <select value={round.role || ''} onChange={(e) => { handleInterviewRoundChange(index, 'role', e.target.value); handleInterviewRoundChange(index, 'user', ''); }} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
+                                                            <option value="">Any Role</option>
+                                                            {roles.map(r => <option key={r._id} value={r._id}>{r.name}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-500 mb-1">
+                                                            Designated User (Optional)
+                                                            {interviewers.length > 0 && <span className="ml-1 text-[10px] text-indigo-600 font-semibold">(From Interviewers)</span>}
+                                                        </label>
+                                                        <select value={round.user || ''} onChange={(e) => handleInterviewRoundChange(index, 'user', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
+                                                            <option value="">Any User</option>
+                                                            {roundUsers.map(u => (
+                                                                <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
                                                             ))}
                                                         </select>
                                                     </div>
-                                                )}
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Default CC Emails (Optional)</label>
-                                                    <input type="text" placeholder="e.g. hr@company.com" value={round.cc || ''} onChange={(e) => handleInterviewRoundChange(index, 'cc', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-500 mb-1">Default BCC Emails (Optional)</label>
-                                                    <input type="text" placeholder="e.g. audit@company.com" value={round.bcc || ''} onChange={(e) => handleInterviewRoundChange(index, 'bcc', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" />
-                                                </div>
-                                            </div>
-
-                                            {/* Round Custom Fields */}
-                                            <div className="border-t border-slate-200/80 pt-2.5 mt-1">
-                                                <div className="flex items-center justify-between mb-1.5">
-                                                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                                                        Default Custom Fields (Key / Value)
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleAddRoundCustomField(index)}
-                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
-                                                    >
-                                                        <Plus size={12} /> Add Field
-                                                    </button>
-                                                </div>
-                                                {(!round.customFields || round.customFields.length === 0) ? (
-                                                    <p className="text-[11px] text-slate-400 italic">No custom fields configured for this round.</p>
-                                                ) : (
-                                                    <div className="space-y-1.5">
-                                                        {round.customFields.map((field, fieldIdx) => (
-                                                            <div key={fieldIdx} className="flex items-center gap-2">
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Key (e.g. Meeting Link)"
-                                                                    value={field.key || ''}
-                                                                    onChange={(e) => handleRoundCustomFieldChange(index, fieldIdx, 'key', e.target.value)}
-                                                                    className="w-1/3 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
-                                                                />
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Default Value (e.g. https://meet.google.com/xyz)"
-                                                                    value={field.value || ''}
-                                                                    onChange={(e) => handleRoundCustomFieldChange(index, fieldIdx, 'value', e.target.value)}
-                                                                    className="flex-1 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleRemoveRoundCustomField(index, fieldIdx)}
-                                                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                                                    title="Remove field"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
-                                                            </div>
-                                                        ))}
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Default Email Template</label>
+                                                        <select value={round.emailTemplateId || ''} onChange={(e) => handleInterviewRoundChange(index, 'emailTemplateId', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
+                                                            <option value="">Standard Invite</option>
+                                                            {emailTemplates.map(t => (
+                                                                <option key={t._id} value={t._id}>{t.name} ({t.category || 'General'})</option>
+                                                            ))}
+                                                        </select>
                                                     </div>
-                                                )}
+                                                    {senderOptions.length > 0 && (
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Default Sender Account</label>
+                                                            <select value={round.emailAccountId || ''} onChange={(e) => handleInterviewRoundChange(index, 'emailAccountId', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm">
+                                                                <option value="">Company Default</option>
+                                                                {senderOptions.map(option => (
+                                                                    <option key={option._id} value={option._id}>
+                                                                        {option.name} – {option.fromAddress}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Default CC Emails (Optional)</label>
+                                                        <input type="text" placeholder="e.g. hr@company.com" value={round.cc || ''} onChange={(e) => handleInterviewRoundChange(index, 'cc', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-500 mb-1">Default BCC Emails (Optional)</label>
+                                                        <input type="text" placeholder="e.g. audit@company.com" value={round.bcc || ''} onChange={(e) => handleInterviewRoundChange(index, 'bcc', e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm outline-none focus:border-indigo-500" />
+                                                    </div>
+                                                </div>
+
+                                                {/* Round Custom Fields */}
+                                                <div className="border-t border-slate-200/80 pt-2.5 mt-1">
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                                            Default Custom Fields (Key / Value)
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleAddRoundCustomField(index)}
+                                                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
+                                                        >
+                                                            <Plus size={12} /> Add Field
+                                                        </button>
+                                                    </div>
+                                                    {(!round.customFields || round.customFields.length === 0) ? (
+                                                        <p className="text-[11px] text-slate-400 italic">No custom fields configured for this round.</p>
+                                                    ) : (
+                                                        <div className="space-y-1.5">
+                                                            {round.customFields.map((field, fieldIdx) => (
+                                                                <div key={fieldIdx} className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Key (e.g. Meeting Link)"
+                                                                        value={field.key || ''}
+                                                                        onChange={(e) => handleRoundCustomFieldChange(index, fieldIdx, 'key', e.target.value)}
+                                                                        className="w-1/3 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
+                                                                    />
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Default Value (e.g. https://meet.google.com/xyz)"
+                                                                        value={field.value || ''}
+                                                                        onChange={(e) => handleRoundCustomFieldChange(index, fieldIdx, 'value', e.target.value)}
+                                                                        className="flex-1 px-2.5 py-1 border border-slate-300 rounded text-xs outline-none focus:border-indigo-500"
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRemoveRoundCustomField(index, fieldIdx)}
+                                                                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                                        title="Remove field"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 <button onClick={handleAddInterviewRound} className="mt-3 text-sm text-indigo-600 font-medium hover:text-indigo-800 flex items-center gap-1"><Plus size={16} /> Add Round</button>
                             </div>
 
                             <div className="flex justify-end">
-                                <button onClick={handleCreateInterviewWorkflow} disabled={actionLoadingInterview} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50">
+                                <button onClick={handleCreateInterviewWorkflow} disabled={actionLoadingInterview} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50 font-medium">
                                     {actionLoadingInterview ? <Loader size={18} className="animate-spin" /> : <Save size={18} />} Save Interview Workflow
                                 </button>
                             </div>
@@ -701,6 +854,336 @@ const WorkflowSettings = () => {
                         )}
                     </div>
                 </>
+            )}
+
+            {/* =========================================================================
+                                INTERVIEWERS TAB CONTENT
+            ========================================================================== */}
+            {activeTab === 'INTERVIEWERS' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                    {/* Controls & Search Toolbar */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex flex-wrap items-center gap-3 flex-1">
+                            <div className="relative flex-1 min-w-[220px] max-w-md">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search interviewers by name, email, code..."
+                                    value={interviewerSearch}
+                                    onChange={(e) => setInterviewerSearch(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50"
+                                />
+                            </div>
+
+                            <div className="relative min-w-[160px]">
+                                <select
+                                    value={interviewerRoleFilter}
+                                    onChange={(e) => setInterviewerRoleFilter(e.target.value)}
+                                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-slate-50/50 text-slate-700"
+                                >
+                                    <option value="">All Roles</option>
+                                    {roles.map(r => (
+                                        <option key={r._id} value={r.name}>{r.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <div className="text-xs text-slate-500 font-medium px-3 py-1.5 bg-slate-100 rounded-lg">
+                                Showing <span className="font-bold text-slate-800">{filteredInterviewers.length}</span> of <span className="font-bold text-slate-800">{interviewers.length}</span> Interviewers
+                            </div>
+                            {canConfigEdit && (
+                                <button
+                                    onClick={handleOpenAddInterviewersModal}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm transition-colors"
+                                >
+                                    <Plus size={16} /> Add / Manage
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Interviewers Data Table */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        {loadingInterviewers ? (
+                            <div className="p-6">
+                                {[...Array(3)].map((_, i) => (
+                                    <Skeleton key={i} className="h-14 w-full mb-3 last:mb-0 rounded-lg" />
+                                ))}
+                            </div>
+                        ) : interviewers.length === 0 ? (
+                            <div className="p-12 text-center">
+                                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-sm">
+                                    <Users size={32} />
+                                </div>
+                                <h3 className="text-base font-bold text-slate-800 mb-1">No Interviewers Added Yet</h3>
+                                <p className="text-sm text-slate-500 max-w-md mx-auto mb-5">
+                                    Choose team members from your company user list to designate them as interviewers. Only designated interviewers will appear when assigning interview rounds.
+                                </p>
+                                {canConfigEdit && (
+                                    <button
+                                        onClick={handleOpenAddInterviewersModal}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold inline-flex items-center gap-2 shadow-sm transition-colors"
+                                    >
+                                        <Plus size={18} /> Choose Interviewers
+                                    </button>
+                                )}
+                            </div>
+                        ) : filteredInterviewers.length === 0 ? (
+                            <div className="p-8 text-center text-slate-500 text-sm">
+                                No interviewers match your search criteria. Try clearing the search or filters.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200">
+                                            <th className="font-semibold text-slate-600 text-xs uppercase tracking-wider px-6 py-3.5">Interviewer</th>
+                                            <th className="font-semibold text-slate-600 text-xs uppercase tracking-wider px-6 py-3.5">Role(s)</th>
+                                            <th className="font-semibold text-slate-600 text-xs uppercase tracking-wider px-6 py-3.5">Department & Designation</th>
+                                            <th className="font-semibold text-slate-600 text-xs uppercase tracking-wider px-6 py-3.5">Status</th>
+                                            <th className="font-semibold text-slate-600 text-xs uppercase tracking-wider px-6 py-3.5 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                        {filteredInterviewers.map(interviewer => {
+                                            const roleNames = interviewer.roles?.map(r => (typeof r === 'string' ? r : r.name || '')) || [];
+                                            const deptName = interviewer.departmentRef?.name || interviewer.department || '';
+                                            const desigTitle = interviewer.designationRef?.title || '';
+                                            const initials = `${(interviewer.firstName || '')[0] || ''}${(interviewer.lastName || '')[0] || ''}`.toUpperCase() || 'U';
+
+                                            return (
+                                                <tr key={interviewer._id} className="hover:bg-slate-50/80 transition-colors">
+                                                    <td className="px-6 py-4 align-middle">
+                                                        <div className="flex items-center gap-3">
+                                                            {interviewer.profilePicture ? (
+                                                                <img src={interviewer.profilePicture} alt="" className="w-9 h-9 rounded-full object-cover border border-slate-200" />
+                                                            ) : (
+                                                                <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-200/60">
+                                                                    {initials}
+                                                                </div>
+                                                            )}
+                                                            <div>
+                                                                <div className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                                                                    <span>{interviewer.firstName} {interviewer.lastName}</span>
+                                                                    {interviewer.employeeCode && (
+                                                                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                                                            {interviewer.employeeCode}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-xs text-slate-500">{interviewer.email}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 align-middle">
+                                                        <div className="flex flex-wrap gap-1.5 max-w-[260px]">
+                                                            {roleNames.length > 0 ? (
+                                                                roleNames.map((roleName, rIdx) => (
+                                                                    <span key={rIdx} className="text-xs px-2.5 py-0.5 rounded-md font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                                                                        {roleName}
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                <span className="text-xs text-slate-400 italic">No role assigned</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 align-middle">
+                                                        <div className="text-sm text-slate-700 font-medium">{deptName || '—'}</div>
+                                                        {desigTitle && <div className="text-xs text-slate-500">{desigTitle}</div>}
+                                                    </td>
+                                                    <td className="px-6 py-4 align-middle">
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                            Active Interviewer
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right align-middle">
+                                                        {canConfigEdit ? (
+                                                            <button
+                                                                onClick={() => handleRemoveInterviewer(interviewer._id, `${interviewer.firstName} ${interviewer.lastName}`)}
+                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                title="Remove Interviewer"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-xs font-semibold text-slate-400">Read only</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* =========================================================================
+                            ADD / MANAGE INTERVIEWERS MODAL
+            ========================================================================== */}
+            {showAddInterviewersModal && (
+                <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800">Manage Interviewers</h3>
+                                <p className="text-xs text-slate-500">Select users from your organization who will be available to conduct candidate interviews.</p>
+                            </div>
+                            <button
+                                onClick={() => setShowAddInterviewersModal(false)}
+                                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Search & Filters */}
+                        <div className="p-4 border-b border-slate-100 bg-white flex flex-col sm:flex-row gap-3">
+                            <div className="relative flex-1">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search users by name, email, code..."
+                                    value={modalSearch}
+                                    onChange={(e) => setModalSearch(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div className="min-w-[150px]">
+                                <select
+                                    value={modalRoleFilter}
+                                    onChange={(e) => setModalRoleFilter(e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                                >
+                                    <option value="">All Roles</option>
+                                    {roles.map(r => (
+                                        <option key={r._id} value={r.name}>{r.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Selection status & Select All / Deselect All bar */}
+                        <div className="px-6 py-2.5 bg-blue-50/60 border-b border-blue-100/80 flex items-center justify-between text-xs">
+                            <div className="font-semibold text-blue-900">
+                                {selectedUserIdsForModal.size} user{selectedUserIdsForModal.size !== 1 ? 's' : ''} selected as interviewers
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => handleSelectAllModalUsers(filteredModalUsers)}
+                                    className="text-blue-700 hover:text-blue-900 font-semibold hover:underline"
+                                >
+                                    Select All Filtered ({filteredModalUsers.length})
+                                </button>
+                                <span className="text-blue-300">|</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleDeselectAllModalUsers(filteredModalUsers)}
+                                    className="text-slate-600 hover:text-slate-800 font-medium hover:underline"
+                                >
+                                    Deselect Filtered
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Users List */}
+                        <div className="flex-1 overflow-y-auto p-4 divide-y divide-slate-100 max-h-[50vh]">
+                            {filteredModalUsers.length === 0 ? (
+                                <div className="py-8 text-center text-slate-400 text-sm">
+                                    No users found matching your search.
+                                </div>
+                            ) : (
+                                filteredModalUsers.map(u => {
+                                    const isSelected = selectedUserIdsForModal.has(u._id);
+                                    const roleNames = u.roles?.map(r => (typeof r === 'string' ? r : r.name || '')) || [];
+                                    const initials = `${(u.firstName || '')[0] || ''}${(u.lastName || '')[0] || ''}`.toUpperCase() || 'U';
+
+                                    return (
+                                        <div
+                                            key={u._id}
+                                            onClick={() => handleToggleModalUser(u._id)}
+                                            className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/50 hover:bg-blue-50' : 'hover:bg-slate-50'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => {}} // Handled by container click
+                                                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                />
+                                                {u.profilePicture ? (
+                                                    <img src={u.profilePicture} alt="" className="w-8 h-8 rounded-full object-cover border border-slate-200" />
+                                                ) : (
+                                                    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs">
+                                                        {initials}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                                                        <span>{u.firstName} {u.lastName}</span>
+                                                        {u.employeeCode && (
+                                                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">
+                                                                {u.employeeCode}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-slate-500">{u.email}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {roleNames.slice(0, 2).map((roleName, rIdx) => (
+                                                    <span key={rIdx} className="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">
+                                                        {roleName}
+                                                    </span>
+                                                ))}
+                                                {isSelected && (
+                                                    <span className="text-[11px] font-bold text-blue-600 px-2 py-0.5 rounded bg-blue-100 flex items-center gap-1">
+                                                        <Check size={12} /> Interviewer
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
+                            <div className="text-xs text-slate-500">
+                                {selectedUserIdsForModal.size} interviewer{selectedUserIdsForModal.size !== 1 ? 's' : ''} will be configured
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAddInterviewersModal(false)}
+                                    disabled={savingInterviewers}
+                                    className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200/70 rounded-lg transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveInterviewersModal}
+                                    disabled={savingInterviewers}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
+                                >
+                                    {savingInterviewers ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
+                                    Save Interviewers
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
