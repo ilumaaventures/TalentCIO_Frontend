@@ -107,16 +107,16 @@ const StatCard = ({ label, value, tone, meta, icon }) => {
     const IconComponent = icon;
 
     return (
-        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
             <div className={`absolute inset-x-0 top-0 h-1 ${tone}`} />
             <div className="flex items-start justify-between gap-3">
                 <div>
-                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{label}</p>
-                    <p className="font-ta-head mt-2 text-[1.8rem] font-bold tracking-tight text-slate-950">{value}</p>
-                    <p className="mt-1.5 text-[11px] text-slate-500">{meta}</p>
+                    <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+                    <p className="font-ta-head mt-1 text-[1.3rem] font-bold tracking-tight text-slate-900">{value}</p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">{meta}</p>
                 </div>
-                <div className="rounded-xl bg-slate-100 p-2 text-slate-600">
-                    <IconComponent size={16} />
+                <div className="rounded-lg bg-slate-100 p-1.5 text-slate-600">
+                    <IconComponent size={14} />
                 </div>
             </div>
         </div>
@@ -126,27 +126,27 @@ const StatCard = ({ label, value, tone, meta, icon }) => {
 const primaryStatThemes = {
     blue: {
         accent: 'bg-blue-600',
-        surface: 'from-blue-50 via-white to-white',
+        surface: 'from-blue-50/70 via-white to-white',
         icon: 'bg-blue-100 text-blue-700',
-        meta: 'text-blue-700/75'
+        meta: 'text-blue-700/80'
     },
     emerald: {
         accent: 'bg-emerald-600',
-        surface: 'from-emerald-50 via-white to-white',
+        surface: 'from-emerald-50/70 via-white to-white',
         icon: 'bg-emerald-100 text-emerald-700',
-        meta: 'text-emerald-700/75'
+        meta: 'text-emerald-700/80'
     },
     amber: {
         accent: 'bg-amber-500',
-        surface: 'from-amber-50 via-white to-white',
+        surface: 'from-amber-50/70 via-white to-white',
         icon: 'bg-amber-100 text-amber-700',
-        meta: 'text-amber-700/75'
+        meta: 'text-amber-700/80'
     },
     violet: {
         accent: 'bg-violet-600',
-        surface: 'from-violet-50 via-white to-white',
+        surface: 'from-violet-50/70 via-white to-white',
         icon: 'bg-violet-100 text-violet-700',
-        meta: 'text-violet-700/75'
+        meta: 'text-violet-700/80'
     }
 };
 
@@ -155,16 +155,16 @@ const PrimaryStatCard = ({ label, value, meta, icon, theme = 'blue' }) => {
     const styles = primaryStatThemes[theme] || primaryStatThemes.blue;
 
     return (
-        <div className={`relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br ${styles.surface} p-4 shadow-sm`}>
-            <div className={`absolute inset-x-0 top-0 h-1.5 ${styles.accent}`} />
-            <div className="flex items-start justify-between gap-4">
+        <div className={`relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br ${styles.surface} p-3.5 shadow-xs`}>
+            <div className={`absolute inset-x-0 top-0 h-1 ${styles.accent}`} />
+            <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-slate-500">{label}</p>
-                    <p className="font-ta-head mt-3 text-[1.95rem] font-black tracking-tight text-slate-950 sm:text-[2.1rem]">{value}</p>
-                    <p className={`mt-1.5 text-[11px] font-semibold ${styles.meta}`}>{meta}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-500">{label}</p>
+                    <p className="font-ta-head mt-1 text-[1.4rem] font-bold tracking-tight text-slate-900 sm:text-[1.5rem]">{value}</p>
+                    <p className={`mt-0.5 text-[10px] font-medium ${styles.meta}`}>{meta}</p>
                 </div>
-                <div className={`rounded-xl p-2.5 ${styles.icon}`}>
-                    <IconComponent size={16} />
+                <div className={`rounded-lg p-2 ${styles.icon}`}>
+                    <IconComponent size={15} />
                 </div>
             </div>
         </div>
@@ -203,37 +203,37 @@ const TrendMetricCard = ({ label, value, meta, icon, trend, theme = 'blue' }) =>
     const trendArrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '→';
 
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
-            <div className={`mb-2.5 h-1.5 w-12 rounded-full ${styles.accent}`} />
-            <div className="flex items-start justify-between gap-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
+            <div className={`mb-2 h-1 w-10 rounded-full ${styles.accent}`} />
+            <div className="flex items-start justify-between gap-2.5">
                 <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{label}</p>
-                    <p className="font-ta-head mt-1.5 text-[1.55rem] font-black tracking-tight text-slate-950">{value}</p>
-                    <p className="mt-1 text-[10px] text-slate-500">{meta}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+                    <p className="font-ta-head mt-1 text-[1.2rem] font-bold tracking-tight text-slate-900">{value}</p>
+                    <p className="mt-0.5 text-[9.5px] text-slate-500 line-clamp-1">{meta}</p>
                 </div>
-                <div className={`rounded-xl p-2 ${styles.icon}`}>
-                    <IconComponent size={15} />
+                <div className={`rounded-lg p-1.5 ${styles.icon}`}>
+                    <IconComponent size={14} />
                 </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-between gap-3">
-                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${trendTone}`}>
+            <div className="mt-2.5 flex items-center justify-between gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold ${trendTone}`}>
                     <span>{trendArrow}</span>
                     <span>{trend?.delta ?? 0}%</span>
                 </span>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Vs previous month</span>
+                <span className="text-[8.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vs previous month</span>
             </div>
         </div>
     );
 };
 
 const SectionCard = ({ title, action, children }) => (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-            <h3 className="font-ta-head text-sm font-bold text-slate-900">{title}</h3>
+    <section className="rounded-xl border border-slate-200 bg-white shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5">
+            <h3 className="font-ta-head text-xs font-bold text-slate-800">{title}</h3>
             {action}
         </div>
-        <div className="p-4">{children}</div>
+        <div className="p-3.5">{children}</div>
     </section>
 );
 
@@ -885,55 +885,55 @@ const canShowApplicationsTab = (user) => {
     ]), [metricTrends, topMetrics]);
 
     const renderOverview = () => (
-        <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {primaryStatCards.map((card) => <PrimaryStatCard key={card.label} {...card} />)}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {overviewTrendCards.map((card) => <TrendMetricCard key={card.label} {...card} />)}
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+            <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
                 <SectionCard
                     title="Hiring Momentum"
-                    action={<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Last sourced trend</span>}
+                    action={<span className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Last sourced trend</span>}
                 >
                     {trendData.length ? (
-                        <div className="h-64">
+                        <div className="h-56">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={trendData}>
                                     <defs>
                                         <linearGradient id="taTrendFill" x1="0" x2="0" y1="0" y2="1">
-                                            <stop offset="0%" stopColor="#1A56DB" stopOpacity={0.28} />
-                                            <stop offset="100%" stopColor="#1A56DB" stopOpacity={0.04} />
+                                            <stop offset="0%" stopColor="#1A56DB" stopOpacity={0.25} />
+                                            <stop offset="100%" stopColor="#1A56DB" stopOpacity={0.03} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                                    <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={10} />
-                                    <YAxis tickLine={false} axisLine={false} fontSize={10} width={28} />
+                                    <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={9} />
+                                    <YAxis tickLine={false} axisLine={false} fontSize={9} width={24} />
                                     <Tooltip />
-                                    <Area type="monotone" dataKey="sourced" stroke="#1A56DB" strokeWidth={3} fill="url(#taTrendFill)" />
+                                    <Area type="monotone" dataKey="sourced" stroke="#1A56DB" strokeWidth={2.5} fill="url(#taTrendFill)" />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
                     ) : (
-                        <p className="text-[11px] text-slate-500">Not enough trend data yet.</p>
+                        <p className="text-[10px] text-slate-500">Not enough trend data yet.</p>
                     )}
                 </SectionCard>
 
                 <SectionCard
                     title="Source Breakdown"
-                    action={<Link to="/ta/analysis" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open full analysis</Link>}
+                    action={<Link to="/ta/analysis" className="text-[10px] font-semibold text-blue-600 hover:text-blue-700">Open full analysis</Link>}
                 >
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         {overviewSourceAnalysis.length ? overviewSourceAnalysis.map((item) => (
                             <div key={item.name}>
-                                <div className="mb-2 flex items-center justify-between text-[11px]">
+                                <div className="mb-1.5 flex items-center justify-between text-[10px]">
                                     <span className="font-semibold text-slate-700">{item.name}</span>
                                     <span className="text-slate-500">{formatCompact(item.sourced || 0)}</span>
                                 </div>
-                                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                                     <div
                                         className="h-full rounded-full bg-blue-600"
                                         style={{ width: `${Math.max(8, ((item.sourced || 0) / maxSourceValue) * 100)}%` }}
@@ -941,52 +941,52 @@ const canShowApplicationsTab = (user) => {
                                 </div>
                             </div>
                         )) : (
-                            <p className="text-[11px] text-slate-500">No source data available yet.</p>
+                            <p className="text-[10px] text-slate-500">No source data available yet.</p>
                         )}
                     </div>
                 </SectionCard>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-2">
+            <div className="grid gap-4 xl:grid-cols-2">
                 <SectionCard
                     title="Recent Requisitions"
-                    action={<Link to="/ta?tab=clients" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open client workspace</Link>}
+                    action={<Link to="/ta?tab=clients" className="text-[10px] font-semibold text-blue-600 hover:text-blue-700">Open client workspace</Link>}
                 >
                     <div className="scrollbar-hide overflow-x-auto">
                         {recentRequests.length ? (
                             <table className="min-w-full text-xs">
                                 <thead>
-                                    <tr className="border-b border-slate-200 text-left text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                                        <th className="px-4 py-3">Requisition</th>
-                                        <th className="px-4 py-3">Client</th>
-                                        <th className="px-4 py-3">Department</th>
-                                        <th className="px-4 py-3">Status</th>
-                                        <th className="px-4 py-3">Applied</th>
-                                        <th className="px-4 py-3 text-right">Action</th>
+                                    <tr className="border-b border-slate-200 text-left text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-3 py-2.5">Requisition</th>
+                                        <th className="px-3 py-2.5">Client</th>
+                                        <th className="px-3 py-2.5">Department</th>
+                                        <th className="px-3 py-2.5">Status</th>
+                                        <th className="px-3 py-2.5">Applied</th>
+                                        <th className="px-3 py-2.5 text-right">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {recentRequests.map((request) => (
                                         <tr key={request._id} className="border-b border-slate-100 transition hover:bg-slate-50">
-                                            <td className="px-4 py-3.5">
+                                            <td className="px-3 py-2.5">
                                                 <div className="min-w-0">
-                                                    <p className="font-semibold text-slate-900">{request.roleDetails?.title}</p>
-                                                    <p className="text-[11px] text-slate-500">{request.requestId}</p>
+                                                    <p className="text-[11px] font-semibold text-slate-900">{request.roleDetails?.title}</p>
+                                                    <p className="text-[9.5px] text-slate-500">{request.requestId}</p>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3.5 text-xs text-slate-700">{request.client}</td>
-                                            <td className="px-4 py-3.5 text-xs text-slate-700">{request.roleDetails?.department || 'General'}</td>
-                                            <td className="px-4 py-3.5">
-                                                <span className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em] ${requestStatusClasses[request.status] || requestStatusClasses.Draft}`}>
+                                            <td className="px-3 py-2.5 text-[10.5px] text-slate-700">{request.client}</td>
+                                            <td className="px-3 py-2.5 text-[10.5px] text-slate-700">{request.roleDetails?.department || 'General'}</td>
+                                            <td className="px-3 py-2.5">
+                                                <span className={`rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-[0.14em] ${requestStatusClasses[request.status] || requestStatusClasses.Draft}`}>
                                                     {String(request.status || 'Draft').replaceAll('_', ' ')}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3.5 text-[11px] text-slate-500">{formatRelativeTimestamp(request.createdAt)}</td>
-                                            <td className="px-4 py-3.5 text-right">
+                                            <td className="px-3 py-2.5 text-[10px] text-slate-500">{formatRelativeTimestamp(request.createdAt)}</td>
+                                            <td className="px-3 py-2.5 text-right">
                                                 <button
                                                     type="button"
                                                     onClick={() => navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`)}
-                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                                                    className="rounded-lg border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100"
                                                 >
                                                     View
                                                 </button>
@@ -996,35 +996,35 @@ const canShowApplicationsTab = (user) => {
                                 </tbody>
                             </table>
                         ) : (
-                            <p className="text-[11px] text-slate-500">No requisitions found for this workspace yet.</p>
+                            <p className="text-[10px] text-slate-500">No requisitions found for this workspace yet.</p>
                         )}
                     </div>
                 </SectionCard>
 
                 <SectionCard
                     title="Top Sourcers"
-                    action={<Link to="/ta/analysis" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Open analytics</Link>}
+                    action={<Link to="/ta/analysis" className="text-[10px] font-semibold text-blue-600 hover:text-blue-700">Open analytics</Link>}
                 >
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         {sourcingPerformance.length ? sourcingPerformance.map((member, index) => (
-                            <div key={member.name} className="flex items-center justify-between rounded-[1.35rem] bg-slate-50 px-4 py-4">
-                                <div className="flex items-center gap-4">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-[13px] font-black text-white">
+                            <div key={member.name} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white">
                                         {index + 1}
                                     </div>
                                     <div>
-                                        <p className="text-[12px] font-bold text-slate-900 sm:text-[14px]">{member.name}</p>
-                                        <p className="mt-0.5 text-[11px] text-slate-500">
+                                        <p className="text-[11px] font-bold text-slate-900">{member.name}</p>
+                                        <p className="mt-0.5 text-[9.5px] text-slate-500">
                                             {member.sourced} sourced / {member.joined} joined
                                         </p>
                                     </div>
                                 </div>
-                                <span className="font-ta-head text-[1.8rem] font-black tracking-tight text-slate-950">
+                                <span className="font-ta-head text-[1.25rem] font-bold tracking-tight text-slate-950">
                                     {member.conversion}%
                                 </span>
                             </div>
                         )) : (
-                            <p className="text-[11px] text-slate-500">Sourcing conversion data is not available yet.</p>
+                            <p className="text-[10px] text-slate-500">Sourcing conversion data is not available yet.</p>
                         )}
                     </div>
                 </SectionCard>
@@ -2294,24 +2294,22 @@ const canShowApplicationsTab = (user) => {
                 <LoadingDashboard />
             ) : (
                 <div className="space-y-5">
-                    <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <section className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <h1 className="font-ta-head text-xl font-bold tracking-tight text-slate-950 sm:text-[1.7rem]">
+                            <h1 className="font-ta-head text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
                                 Talent Acquisition Dashboard
                             </h1>
-                            <p className="mt-1.5 text-[11px] text-slate-500">
-                                {canViewAnalytics
-                                    ? 'Requisitions, clients, interviews, candidates, and applications in one workspace.'
-                                    : 'Requisitions, clients, interviews, candidates, and applications in one workspace.'}
+                            <p className="mt-1 text-[10px] text-slate-500">
+                                Requisitions, clients, interviews, candidates, and applications in one workspace.
                             </p>
                         </div>
 
                         <button
                             type="button"
                             onClick={() => loadDashboard({ silent: true })}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
                         >
-                            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+                            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
                             Refresh
                         </button>
                     </section>

@@ -104,14 +104,18 @@ const MassInterviewScheduleModal = ({
         const fetchInterviewers = async () => {
             try {
                 setLoadingInterviewers(true);
-                const [usersRes, tmplRes, senderRes] = await Promise.all([
-                    api.get('/admin/users'),
+                const [interviewersRes, tmplRes, senderRes] = await Promise.all([
+                    api.get('/ta/interviewers').catch(async () => {
+                        const res = await api.get('/admin/users');
+                        const allUsers = res.data?.success ? (res.data.data || []) : (Array.isArray(res.data) ? res.data : []);
+                        return { data: allUsers.filter((u) => u.isInterviewer === true && u.isActive !== false) };
+                    }),
                     api.get('/ta/email-templates').catch(() => ({ data: [] })),
                     api.get('/company/email-settings/senders').catch(() => ({ data: {} }))
                 ]);
-                const users = usersRes.data?.success
-                    ? (usersRes.data.data || [])
-                    : (Array.isArray(usersRes.data) ? usersRes.data : []);
+                const loadedInterviewers = Array.isArray(interviewersRes.data)
+                    ? interviewersRes.data
+                    : (interviewersRes.data?.data || []);
                 const tmpls = tmplRes.data?.data || (Array.isArray(tmplRes.data) ? tmplRes.data : []);
 
                 const senderData = senderRes.data || {};
@@ -121,7 +125,7 @@ const MassInterviewScheduleModal = ({
                 ].filter(Boolean);
 
                 if (active) {
-                    setInterviewers(users.filter((u) => u.isActive !== false));
+                    setInterviewers(loadedInterviewers.filter((u) => u.isActive !== false));
                     setEmailTemplates(tmpls);
                     setSenderOptions(nextSenderOptions);
                     const defaultAccId = nextSenderOptions.some((o) => o._id === senderData.defaultAccountId)
@@ -865,7 +869,13 @@ const MassInterviewScheduleModal = ({
                                         ) : (
                                             <div className="max-h-[280px] overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200">
                                                 {filteredInterviewers.length === 0 ? (
-                                                    <p className="px-3 py-4 text-center text-xs text-slate-500">No users found.</p>
+                                                    <div className="p-4 text-center">
+                                                        <p className="text-xs text-slate-500 font-medium">
+                                                            {interviewers.length === 0
+                                                                ? 'No designated interviewers found. Please add interviewers in TA Workflows > Interviewers tab.'
+                                                                : 'No interviewers match your search.'}
+                                                        </p>
+                                                    </div>
                                                 ) : (
                                                     filteredInterviewers.map((user) => {
                                                         const isSelected = (activeRound?.assignedTo || []).includes(user._id);
