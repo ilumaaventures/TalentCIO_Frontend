@@ -503,7 +503,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               {showTalent && (
                 <Link to="/talent" className={getSidebarLinkClass(location.pathname === '/talent' || location.pathname.startsWith('/talent/'))} onClick={onClose}>
                   <Award size={18} />
-                  <span>Talent</span>
+                  <span>Talent Card</span>
                 </Link>
               )}
               {showOnboarding && (
