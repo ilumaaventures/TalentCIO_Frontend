@@ -210,7 +210,22 @@ export const RevisedDetailsTab = ({
     currentUserRoles = [],
     onRevisionApplied
 }) => {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, hasModule } = useAuth();
+
+    const hasLeaveModule = useMemo(() => {
+        if (typeof hasModule === 'function') {
+            return Boolean(hasModule('leaves') || hasModule('leave'));
+        }
+        const mods = currentUser?.company?.enabledModules || [];
+        return mods.includes('leaves') || mods.includes('leave');
+    }, [hasModule, currentUser]);
+
+    const availableModuleOptions = useMemo(() => {
+        return MODULE_OPTIONS.filter(mod => {
+            if (mod.id === 'leave' && !hasLeaveModule) return false;
+            return true;
+        });
+    }, [hasLeaveModule]);
 
     // Data States
     const [revisions, setRevisions] = useState([]);
@@ -355,25 +370,36 @@ export const RevisedDetailsTab = ({
     // Fetch Reference Dropdowns & Payroll Config
     const fetchReferenceData = useCallback(async () => {
         try {
-            const [deptRes, desigRes, rolesRes, usersRes, configRes, leaveRes] = await Promise.allSettled([
+            const apiCalls = [
                 api.get('/organization/departments'),
                 api.get('/organization/designations'),
                 api.get('/admin/roles'),
                 api.get('/admin/users'),
-                api.get('/payroll/config'),
-                api.get(`/employees/${employeeId}/leave-balances`)
-            ]);
+                api.get('/payroll/config')
+            ];
 
-            if (deptRes.status === 'fulfilled' && deptRes.value?.data) {
+            if (hasLeaveModule) {
+                apiCalls.push(api.get(`/employees/${employeeId}/leave-balances`));
+            }
+
+            const results = await Promise.allSettled(apiCalls);
+            const deptRes = results[0];
+            const desigRes = results[1];
+            const rolesRes = results[2];
+            const usersRes = results[3];
+            const configRes = results[4];
+            const leaveRes = hasLeaveModule ? results[5] : null;
+
+            if (deptRes?.status === 'fulfilled' && deptRes.value?.data) {
                 setDepartments(Array.isArray(deptRes.value.data) ? deptRes.value.data : (deptRes.value.data?.departments || []));
             }
-            if (desigRes.status === 'fulfilled' && desigRes.value?.data) {
+            if (desigRes?.status === 'fulfilled' && desigRes.value?.data) {
                 setDesignations(Array.isArray(desigRes.value.data) ? desigRes.value.data : (desigRes.value.data?.designations || []));
             }
-            if (rolesRes.status === 'fulfilled' && rolesRes.value?.data) {
+            if (rolesRes?.status === 'fulfilled' && rolesRes.value?.data) {
                 setRoles(Array.isArray(rolesRes.value.data) ? rolesRes.value.data : (rolesRes.value.data?.roles || []));
             }
-            if (usersRes.status === 'fulfilled' && usersRes.value?.data) {
+            if (usersRes?.status === 'fulfilled' && usersRes.value?.data) {
                 const uList = Array.isArray(usersRes.value.data) ? usersRes.value.data : (usersRes.value.data?.users || []);
                 const activeOnly = uList.filter(u =>
                     String(u._id) !== String(employeeId) &&
@@ -385,44 +411,49 @@ export const RevisedDetailsTab = ({
                 );
                 setAllEmployees(activeOnly);
             }
-            if (configRes.status === 'fulfilled' && configRes.value?.data) {
+            if (configRes?.status === 'fulfilled' && configRes.value?.data) {
                 setPayrollConfig(configRes.value.data);
             }
-            if (leaveRes.status === 'fulfilled' && leaveRes.value?.data?.leaves) {
-                const fetchedLeaves = (leaveRes.value.data.leaves || []).map(l => ({
-                    ...l,
-                    enabled: l.enabled !== false
-                }));
-                setLeavePolicies(fetchedLeaves);
-                setLeaveAllocations(fetchedLeaves);
-            } else {
-                // Fallback to /leaves/config if needed
-                api.get('/leaves/config').then(res => {
-                    const policies = Array.isArray(res.data) ? res.data : [];
-                    const normalized = policies.map(p => ({
-                        policyId: p._id,
-                        leaveType: p.leaveType,
-                        name: p.name,
-                        description: p.description || '',
-                        isPaid: p.isPaid,
-                        allocatedBalance: p.accrualType === 'Yearly' ? (p.accrualAmount || 0) : (p.accrualAmount || 0),
-                        accrualType: p.accrualType || 'Monthly',
-                        accrualAmount: p.accrualAmount || 0,
-                        carryForward: p.carryForward || false,
-                        carryForwardFrequency: 'Monthly',
-                        maxCarryForward: p.maxCarryForward || 0,
-                        expiryBalance: p.maxLimitPerYear || 0,
-                        expiryMonths: 12,
-                        autoRenew: true,
-                        allowNegativeBalance: p.allowNegativeBalance || false,
-                        sandwichRule: p.sandwichRule || false,
-                        proRata: p.proRata ?? true,
-                        currentClosingBalance: 0,
-                        enabled: true
+            if (hasLeaveModule) {
+                if (leaveRes?.status === 'fulfilled' && leaveRes.value?.data?.leaves) {
+                    const fetchedLeaves = (leaveRes.value.data.leaves || []).map(l => ({
+                        ...l,
+                        enabled: l.enabled !== false
                     }));
-                    setLeavePolicies(normalized);
-                    setLeaveAllocations(normalized);
-                }).catch(() => {});
+                    setLeavePolicies(fetchedLeaves);
+                    setLeaveAllocations(fetchedLeaves);
+                } else {
+                    // Fallback to /leaves/config if needed
+                    api.get('/leaves/config').then(res => {
+                        const policies = Array.isArray(res.data) ? res.data : [];
+                        const normalized = policies.map(p => ({
+                            policyId: p._id,
+                            leaveType: p.leaveType,
+                            name: p.name,
+                            description: p.description || '',
+                            isPaid: p.isPaid,
+                            allocatedBalance: p.accrualType === 'Yearly' ? (p.accrualAmount || 0) : (p.accrualAmount || 0),
+                            accrualType: p.accrualType || 'Monthly',
+                            accrualAmount: p.accrualAmount || 0,
+                            carryForward: p.carryForward || false,
+                            carryForwardFrequency: 'Monthly',
+                            maxCarryForward: p.maxCarryForward || 0,
+                            expiryBalance: p.maxLimitPerYear || 0,
+                            expiryMonths: 12,
+                            autoRenew: true,
+                            allowNegativeBalance: p.allowNegativeBalance || false,
+                            sandwichRule: p.sandwichRule || false,
+                            proRata: p.proRata ?? true,
+                            currentClosingBalance: 0,
+                            enabled: true
+                        }));
+                        setLeavePolicies(normalized);
+                        setLeaveAllocations(normalized);
+                    }).catch(() => {});
+                }
+            } else {
+                setLeavePolicies([]);
+                setLeaveAllocations([]);
             }
 
             if (currentUser?.company?.settings?.attendance?.attendanceShifts) {
@@ -431,7 +462,7 @@ export const RevisedDetailsTab = ({
         } catch (err) {
             console.error('Failed to load revision reference data:', err);
         }
-    }, [employeeId, currentUser]);
+    }, [employeeId, currentUser, hasLeaveModule]);
 
     // Fetch Revisions
     const fetchRevisions = useCallback(async () => {
@@ -632,17 +663,65 @@ export const RevisedDetailsTab = ({
         }));
     };
 
+    // Handle Click on Top Module Bundling Tabs
+    const handleModuleTabClick = (modId) => {
+        const isSelected = selectedModules.includes(modId);
+
+        const openSectionState = (id, state) => {
+            if (id === 'employment') setShowEmploymentSection(state);
+            if (id === 'attendance') setShowAttendanceSection(state);
+            if (id === 'leave') setShowLeaveSection(state);
+            if (id === 'compensation') setShowSalarySection(state);
+        };
+
+        const isSectionOpen = (id) => {
+            if (id === 'employment') return showEmploymentSection;
+            if (id === 'attendance') return showAttendanceSection;
+            if (id === 'leave') return showLeaveSection;
+            if (id === 'compensation') return showSalarySection;
+            return false;
+        };
+
+        if (!isSelected) {
+            setSelectedModules(prev => [...prev, modId]);
+            openSectionState(modId, true);
+        } else {
+            if (!isSectionOpen(modId)) {
+                openSectionState(modId, true);
+            } else {
+                if (selectedModules.length > 1) {
+                    setSelectedModules(prev => prev.filter(m => m !== modId));
+                    openSectionState(modId, false);
+                } else {
+                    toast.error('At least one module must remain selected');
+                    openSectionState(modId, true);
+                }
+            }
+        }
+
+        setTimeout(() => {
+            const el = document.getElementById(`revision-section-${modId}`) || document.getElementById(`revision-edit-section-${modId}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }, 60);
+    };
+
     // Populate Initial Create Form State
     const initCreateForm = () => {
         setEffectiveDate(format(new Date(), 'yyyy-MM-dd'));
         setReason('');
         setIsBackdatedConfirmed(false);
         setSelectedModules(['employment']);
+        setShowEmploymentSection(true);
+        setShowAttendanceSection(false);
         setShowLeaveSection(false);
         setShowSalarySection(false);
 
-        if (leavePolicies.length > 0) {
+        if (hasLeaveModule && leavePolicies.length > 0) {
             setLeaveAllocations(leavePolicies.map(p => ({ ...p, enabled: true })));
+        } else {
+            setLeaveAllocations([]);
         }
 
         setRevisionForm({
@@ -680,7 +759,7 @@ export const RevisedDetailsTab = ({
         const activeModules = new Set(['employment']);
 
         (rev.changes || []).forEach(ch => {
-            if (ch.module) activeModules.add(ch.module);
+            if (ch.module && (ch.module !== 'leave' || hasLeaveModule)) activeModules.add(ch.module);
             if (ch.field === 'department' || ch.field === 'departmentRef') formValues.departmentRef = ch.revisedValue || '';
             if (ch.field === 'designation' || ch.field === 'designationRef') formValues.designationRef = ch.revisedValue || '';
             if (ch.field === 'reportingManager' || ch.field === 'primaryManagerId') formValues.primaryManagerId = ch.revisedValue || '';
@@ -692,19 +771,28 @@ export const RevisedDetailsTab = ({
             if (ch.field === 'roles' || ch.field === 'roleId') formValues.roleId = ch.revisedValue || '';
         });
 
-        const hasLeaveChanges = Boolean(rev.metadata?.leaveAllocations || rev.changes?.some(c => c.module === 'leave'));
+        const hasAttendanceChanges = Boolean(rev.changes?.some(c => c.module === 'attendance'));
+        const hasLeaveChanges = hasLeaveModule && Boolean(rev.metadata?.leaveAllocations || rev.changes?.some(c => c.module === 'leave'));
+        const hasSalaryChanges = Boolean(rev.metadata?.salaryBreakup || rev.changes?.some(c => c.module === 'compensation'));
+        const hasEmploymentChanges = Boolean(rev.changes?.some(c => !c.module || c.module === 'employment'));
+
+        setShowEmploymentSection(hasEmploymentChanges || (!hasAttendanceChanges && !hasLeaveChanges && !hasSalaryChanges));
+        setShowAttendanceSection(hasAttendanceChanges);
         setShowLeaveSection(hasLeaveChanges);
         if (hasLeaveChanges) {
             activeModules.add('leave');
         }
 
-        if (rev.metadata?.leaveAllocations && Array.isArray(rev.metadata.leaveAllocations)) {
-            setLeaveAllocations(rev.metadata.leaveAllocations);
-        } else if (leavePolicies.length > 0) {
-            setLeaveAllocations(leavePolicies.map(p => ({ ...p, enabled: true })));
+        if (hasLeaveModule) {
+            if (rev.metadata?.leaveAllocations && Array.isArray(rev.metadata.leaveAllocations)) {
+                setLeaveAllocations(rev.metadata.leaveAllocations);
+            } else if (leavePolicies.length > 0) {
+                setLeaveAllocations(leavePolicies.map(p => ({ ...p, enabled: true })));
+            }
+        } else {
+            setLeaveAllocations([]);
         }
 
-        const hasSalaryChanges = Boolean(rev.metadata?.salaryBreakup || rev.changes?.some(c => c.module === 'compensation'));
         setShowSalarySection(hasSalaryChanges);
         if (hasSalaryChanges) {
             activeModules.add('compensation');
@@ -862,7 +950,7 @@ export const RevisedDetailsTab = ({
             }
         }
 
-        if (selectedModules.includes('leave')) {
+        if (hasLeaveModule && selectedModules.includes('leave')) {
             leaveAllocations.forEach(item => {
                 const prevAlloc = leavePolicies.find(p => p.leaveType === item.leaveType);
                 const prevBal = prevAlloc?.currentClosingBalance ?? prevAlloc?.allocatedBalance ?? 0;
@@ -967,7 +1055,7 @@ export const RevisedDetailsTab = ({
                 metadata: {
                     previousSnapshot: currentEmployeeState,
                     salaryBreakup: selectedModules.includes('compensation') ? { ...salaryDraft } : null,
-                    leaveAllocations: selectedModules.includes('leave') ? [...leaveAllocations] : null
+                    leaveAllocations: (hasLeaveModule && selectedModules.includes('leave')) ? [...leaveAllocations] : null
                 }
             };
 
@@ -1007,7 +1095,7 @@ export const RevisedDetailsTab = ({
                 metadata: {
                     previousSnapshot: selectedRevision.metadata?.previousSnapshot || currentEmployeeState,
                     salaryBreakup: selectedModules.includes('compensation') ? { ...salaryDraft } : null,
-                    leaveAllocations: selectedModules.includes('leave') ? [...leaveAllocations] : null
+                    leaveAllocations: (hasLeaveModule && selectedModules.includes('leave')) ? [...leaveAllocations] : null
                 }
             };
 
@@ -1155,11 +1243,13 @@ export const RevisedDetailsTab = ({
                                         Reason: {rev.reason || 'Scheduled revision'}
                                     </p>
                                     <div className="flex flex-wrap gap-1 mt-1.5">
-                                        {(rev.changes || []).map((ch, i) => (
-                                             <span key={i} className="text-[9px] font-semibold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">
-                                                {ch.fieldLabel || ch.field}: <span className="text-amber-700">{ch.revisedDisplayValue}</span>
-                                            </span>
-                                        ))}
+                                        {(rev.changes || [])
+                                            .filter(ch => hasLeaveModule || ch.module !== 'leave')
+                                            .map((ch, i) => (
+                                                <span key={i} className="text-[9px] font-semibold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">
+                                                    {ch.fieldLabel || ch.field}: <span className="text-amber-700">{ch.revisedDisplayValue}</span>
+                                                </span>
+                                            ))}
                                     </div>
                                 </div>
 
@@ -1499,44 +1589,46 @@ export const RevisedDetailsTab = ({
                                             </div>
 
                                             {/* Card 4: Assigned Leave Policies */}
-                                            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-                                                <div className="bg-slate-50/80 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                                                    <div className="flex items-center gap-2 font-bold text-xs text-slate-800">
-                                                        <CalendarDays size={15} className="text-purple-600" />
-                                                        <span>Assigned Leave Balances & Accrual Rules</span>
+                                            {hasLeaveModule && (
+                                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                                                    <div className="bg-slate-50/80 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2 font-bold text-xs text-slate-800">
+                                                            <CalendarDays size={15} className="text-purple-600" />
+                                                            <span>Assigned Leave Balances & Accrual Rules</span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                {leavePolicies.length > 0 ? (
-                                                    <div className="divide-y divide-slate-100 text-xs">
-                                                        {leavePolicies.map((lp, idx) => (
-                                                            <div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                                                <div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="font-bold text-slate-900">{lp.name} ({lp.leaveType})</span>
-                                                                        {lp.isPaid ? (
-                                                                            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold border border-emerald-200">Paid</span>
-                                                                        ) : (
-                                                                            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">Unpaid</span>
-                                                                        )}
+                                                    {leavePolicies.length > 0 ? (
+                                                        <div className="divide-y divide-slate-100 text-xs">
+                                                            {leavePolicies.map((lp, idx) => (
+                                                                <div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-bold text-slate-900">{lp.name} ({lp.leaveType})</span>
+                                                                            {lp.isPaid ? (
+                                                                                <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold border border-emerald-200">Paid</span>
+                                                                            ) : (
+                                                                                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">Unpaid</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="text-[11px] text-slate-500 mt-0.5">
+                                                                            Accrual: <span className="font-medium text-slate-700">{lp.accrualType} (+{lp.accrualAmount} / cycle)</span> • Carry Forward: <span className="font-medium text-slate-700">{lp.carryForward ? `Max ${lp.maxCarryForward || '∞'} days` : 'Disabled'}</span>
+                                                                        </p>
                                                                     </div>
-                                                                    <p className="text-[11px] text-slate-500 mt-0.5">
-                                                                        Accrual: <span className="font-medium text-slate-700">{lp.accrualType} (+{lp.accrualAmount} / cycle)</span> • Carry Forward: <span className="font-medium text-slate-700">{lp.carryForward ? `Max ${lp.maxCarryForward || '∞'} days` : 'Disabled'}</span>
-                                                                    </p>
+                                                                    <div className="text-right">
+                                                                        <span className="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200">
+                                                                            {lp.allocatedBalance !== undefined ? lp.allocatedBalance : (lp.currentClosingBalance || 0)} Days
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
-                                                                <div className="text-right">
-                                                                    <span className="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200">
-                                                                        {lp.allocatedBalance !== undefined ? lp.allocatedBalance : (lp.currentClosingBalance || 0)} Days
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <div className="p-4 text-center text-xs text-slate-400">
-                                                        Standard company leave policy applies.
-                                                    </div>
-                                                )}
-                                            </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-4 text-center text-xs text-slate-400">
+                                                            Standard company leave policy applies.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
 
                                             {/* Card 5: Baseline Compensation & Salary Structure */}
                                             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
@@ -1821,28 +1913,30 @@ export const RevisedDetailsTab = ({
                                                 </div>
 
                                                 {/* Prior Leave Management */}
-                                                <div className="space-y-1.5 pt-1">
-                                                    <h5 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                                        <CalendarDays size={13} className="text-slate-400" />
-                                                        Leave Management & Balances (Prior)
-                                                    </h5>
-                                                    {leaveDiffItems.length > 0 ? (
-                                                        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-2xs overflow-hidden">
-                                                            {leaveDiffItems.map((item, idx) => (
-                                                                <div key={idx} className="px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs">
-                                                                    <span className="text-slate-500 font-medium">{item.fieldLabel}</span>
-                                                                    <span className="text-slate-700 font-semibold">
-                                                                        {item.previousDisplayValue || 'Not Assigned'}
-                                                                    </span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="bg-white rounded-xl border border-slate-200 p-3 text-center text-slate-400 text-xs">
-                                                            Standard policy / No prior leave changes.
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                {hasLeaveModule && (
+                                                    <div className="space-y-1.5 pt-1">
+                                                        <h5 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                            <CalendarDays size={13} className="text-slate-400" />
+                                                            Leave Management & Balances (Prior)
+                                                        </h5>
+                                                        {leaveDiffItems.length > 0 ? (
+                                                            <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-2xs overflow-hidden">
+                                                                {leaveDiffItems.map((item, idx) => (
+                                                                    <div key={idx} className="px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs">
+                                                                        <span className="text-slate-500 font-medium">{item.fieldLabel}</span>
+                                                                        <span className="text-slate-700 font-semibold">
+                                                                            {item.previousDisplayValue || 'Not Assigned'}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="bg-white rounded-xl border border-slate-200 p-3 text-center text-slate-400 text-xs">
+                                                                Standard policy / No prior leave changes.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
 
                                                 {/* Prior Compensation */}
                                                 <div className="space-y-1.5 pt-1">
@@ -1970,28 +2064,30 @@ export const RevisedDetailsTab = ({
                                                 </div>
 
                                                 {/* Revised Leave Management */}
-                                                <div className="space-y-1.5 pt-1">
-                                                    <h5 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                                        <CalendarDays size={13} className="text-slate-400" />
-                                                        Leave Management & Balances (Revised)
-                                                    </h5>
-                                                    {leaveDiffItems.length > 0 ? (
-                                                        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-2xs overflow-hidden">
-                                                            {leaveDiffItems.map((item, idx) => (
-                                                                <div key={idx} className="px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs">
-                                                                    <span className="text-slate-500 font-medium">{item.fieldLabel}</span>
-                                                                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
-                                                                        {item.revisedDisplayValue}
-                                                                    </span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="bg-white rounded-xl border border-slate-200 p-3 text-center text-slate-400 text-xs">
-                                                            No leave balance modifications in this revision.
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                {hasLeaveModule && (
+                                                    <div className="space-y-1.5 pt-1">
+                                                        <h5 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                                            <CalendarDays size={13} className="text-slate-400" />
+                                                            Leave Management & Balances (Revised)
+                                                        </h5>
+                                                        {leaveDiffItems.length > 0 ? (
+                                                            <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-2xs overflow-hidden">
+                                                                {leaveDiffItems.map((item, idx) => (
+                                                                    <div key={idx} className="px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs">
+                                                                        <span className="text-slate-500 font-medium">{item.fieldLabel}</span>
+                                                                        <span className="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                                                                            {item.revisedDisplayValue}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="bg-white rounded-xl border border-slate-200 p-3 text-center text-slate-400 text-xs">
+                                                                No leave balance modifications in this revision.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
 
                                                 {/* Compensation & Salary Structure */}
                                                 <div className="space-y-1.5 pt-1">
@@ -2214,29 +2310,15 @@ export const RevisedDetailsTab = ({
                                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                                     Select Modules to Bundle in this Revision
                                 </label>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                    {MODULE_OPTIONS.map(mod => {
+                                <div className={`grid gap-2.5 ${availableModuleOptions.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'}`}>
+                                    {availableModuleOptions.map(mod => {
                                         const isSelected = selectedModules.includes(mod.id);
                                         const Icon = mod.icon;
                                         return (
                                             <button
                                                 key={mod.id}
                                                 type="button"
-                                                onClick={() => {
-                                                    if (isSelected) {
-                                                        if (selectedModules.length > 1) {
-                                                            setSelectedModules(selectedModules.filter(m => m !== mod.id));
-                                                            if (mod.id === 'compensation') setShowSalarySection(false);
-                                                            if (mod.id === 'leave') setShowLeaveSection(false);
-                                                        } else {
-                                                            toast.error('At least one module must remain selected');
-                                                        }
-                                                    } else {
-                                                        setSelectedModules([...selectedModules, mod.id]);
-                                                        if (mod.id === 'compensation') setShowSalarySection(true);
-                                                        if (mod.id === 'leave') setShowLeaveSection(true);
-                                                    }
-                                                }}
+                                                onClick={() => handleModuleTabClick(mod.id)}
                                                 className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${isSelected
                                                     ? 'bg-blue-50/80 border-blue-500 text-blue-900 shadow-xs'
                                                     : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
@@ -2256,7 +2338,7 @@ export const RevisedDetailsTab = ({
                             {/* Step 4: Module Fields */}
                             <div className="space-y-4 pt-2">
                                 {/* 1. Employment & Org Structure Accordion */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
+                                <div id="revision-section-employment" className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -2312,24 +2394,6 @@ export const RevisedDetailsTab = ({
                                                 </select>
                                                 <p className="text-[10px] text-slate-400 mt-1">
                                                     Current: {currentEmployeeState.designation || 'None'}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                                                    Employment Type
-                                                </label>
-                                                <select
-                                                    value={revisionForm.employmentType}
-                                                    onChange={(e) => setRevisionForm({ ...revisionForm, employmentType: e.target.value })}
-                                                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                >
-                                                    {DEFAULT_EMPLOYMENT_TYPES.map(t => (
-                                                        <option key={t} value={t}>{t}</option>
-                                                    ))}
-                                                </select>
-                                                <p className="text-[10px] text-slate-400 mt-1">
-                                                    Current: {currentEmployeeState.employmentType}
                                                 </p>
                                             </div>
 
@@ -2414,7 +2478,7 @@ export const RevisedDetailsTab = ({
                                 </div>
 
                                 {/* 2. Attendance & Shifts Accordion */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden p-4">
+                                <div id="revision-section-attendance" className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden p-4">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -2467,270 +2531,272 @@ export const RevisedDetailsTab = ({
                                         </div>
                                     )}
                                 </div>
-
-                                {/* 3. Leave Management Accordion (Inserted between Attendance and Compensation) */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const next = !showLeaveSection;
-                                            setShowLeaveSection(next);
-                                            if (next && !selectedModules.includes('leave')) {
-                                                setSelectedModules(prev => [...prev, 'leave']);
-                                            }
-                                        }}
-                                        className="w-full flex items-center justify-between py-1 text-sm font-semibold text-slate-700 hover:text-slate-900 transition focus:outline-none cursor-pointer"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <CalendarDays size={16} className="text-emerald-600" />
-                                            <span className="font-semibold text-slate-800">Leave Management & Allocations</span>
-                                            <span className="ml-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                                {leaveAllocations.filter(l => l.enabled !== false).length} leaves active
-                                            </span>
-                                        </div>
-                                        {showLeaveSection ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
-                                    </button>
-
-                                    {showLeaveSection && (
-                                        <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
-                                            <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 flex items-start gap-2.5">
-                                                <Info size={16} className="shrink-0 text-emerald-600 mt-0.5" />
-                                                <p>
-                                                    From <span className="font-bold">{effectiveDate || 'the effective date'}</span>, these revised leave allocations and rules will apply to the employee. Configure the credited balance, monthly/yearly carry forward, accrual cycle, and expiration limits below.
-                                                </p>
+                                          
+                                {/* 3. Leave Management Accordion */}
+                                {hasLeaveModule && (
+                                    <div id="revision-section-leave" className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const next = !showLeaveSection;
+                                                setShowLeaveSection(next);
+                                                if (next && !selectedModules.includes('leave')) {
+                                                    setSelectedModules(prev => [...prev, 'leave']);
+                                                }
+                                            }}
+                                            className="w-full flex items-center justify-between py-1 text-sm font-semibold text-slate-700 hover:text-slate-900 transition focus:outline-none cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <CalendarDays size={16} className="text-emerald-600" />
+                                                <span className="font-semibold text-slate-800">Leave Management & Allocations</span>
+                                                <span className="ml-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                                    {leaveAllocations.filter(l => l.enabled !== false).length} leaves active
+                                                </span>
                                             </div>
+                                            {showLeaveSection ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                                        </button>
 
-                                            {/* Quick Leave Type Toggle Pills */}
-                                            <div className="space-y-1.5">
-                                                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                                                    Assigned Leave Types for Employee
-                                                </label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {leaveAllocations.map(l => {
-                                                        const isEn = l.enabled !== false;
-                                                        return (
-                                                            <button
-                                                                key={l.leaveType}
-                                                                type="button"
-                                                                onClick={() => toggleLeaveEnabled(l.leaveType)}
-                                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
-                                                                    isEn
-                                                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                                                                }`}
-                                                            >
-                                                                <span className="uppercase">{l.leaveType}</span>
-                                                                <span className="font-medium text-[11px] opacity-90">({l.name})</span>
-                                                                {isEn && <Check size={13} className="stroke-[3]" />}
-                                                            </button>
-                                                        );
-                                                    })}
+                                        {showLeaveSection && (
+                                            <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+                                                <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 flex items-start gap-2.5">
+                                                    <Info size={16} className="shrink-0 text-emerald-600 mt-0.5" />
+                                                    <p>
+                                                        From <span className="font-bold">{effectiveDate || 'the effective date'}</span>, these revised leave allocations and rules will apply to the employee. Configure the credited balance, monthly/yearly carry forward, accrual cycle, and expiration limits below.
+                                                    </p>
                                                 </div>
-                                            </div>
 
-                                            {/* Config Cards per Enabled Leave Type */}
-                                            <div className="space-y-4 pt-1">
-                                                {leaveAllocations.filter(l => l.enabled !== false).length === 0 ? (
-                                                    <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
-                                                        <div className="h-10 w-10 mx-auto rounded-full bg-slate-200/80 flex items-center justify-center text-slate-500">
-                                                            <CalendarDays size={20} />
-                                                        </div>
-                                                        <p className="text-xs font-bold text-slate-700">No leave types assigned to this employee</p>
-                                                        <p className="text-[11px] text-slate-400">All leave types are currently excluded. Click any leave type pill above to add it back to this revision.</p>
+                                                {/* Quick Leave Type Toggle Pills */}
+                                                <div className="space-y-1.5">
+                                                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                                        Assigned Leave Types for Employee
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {leaveAllocations.map(l => {
+                                                            const isEn = l.enabled !== false;
+                                                            return (
+                                                                <button
+                                                                    key={l.leaveType}
+                                                                    type="button"
+                                                                    onClick={() => toggleLeaveEnabled(l.leaveType)}
+                                                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+                                                                        isEn
+                                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                                                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                                                    }`}
+                                                                >
+                                                                    <span className="uppercase">{l.leaveType}</span>
+                                                                    <span className="font-medium text-[11px] opacity-90">({l.name})</span>
+                                                                    {isEn && <Check size={13} className="stroke-[3]" />}
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
-                                                ) : (
-                                                    leaveAllocations.filter(l => l.enabled !== false).map(item => (
-                                                        <div key={item.leaveType} className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 space-y-3.5">
-                                                            <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-900 text-white">
-                                                                        {item.leaveType}
-                                                                    </span>
-                                                                    <span className="text-xs font-bold text-slate-800">{item.name}</span>
-                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                                                        item.isPaid ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'
-                                                                    }`}>
-                                                                        {item.isPaid ? 'Paid Leave' : 'Unpaid Leave'}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="text-[11px] font-medium text-slate-500">
-                                                                        Current Balance: <strong className="text-slate-800">{item.currentClosingBalance ?? item.allocatedBalance ?? 0} Days</strong>
-                                                                    </span>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => toggleLeaveEnabled(item.leaveType)}
-                                                                        className="px-2.5 py-1 rounded-lg text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer"
-                                                                        title={`Delete / Exclude ${item.name} from this employee`}
-                                                                    >
-                                                                        <Trash2 size={13} className="text-rose-500" />
-                                                                        <span>Delete</span>
-                                                                    </button>
-                                                                </div>
+                                                </div>
+
+                                                {/* Config Cards per Enabled Leave Type */}
+                                                <div className="space-y-4 pt-1">
+                                                    {leaveAllocations.filter(l => l.enabled !== false).length === 0 ? (
+                                                        <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
+                                                            <div className="h-10 w-10 mx-auto rounded-full bg-slate-200/80 flex items-center justify-center text-slate-500">
+                                                                <CalendarDays size={20} />
                                                             </div>
-
-                                                            {/* 4-Grid Input Parameters */}
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                                                                {/* 1. Revised Opening/Credited Balance */}
-                                                                <div>
-                                                                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                                                                        Credited Balance (Days) *
-                                                                    </label>
-                                                                    <input
-                                                                        type="number"
-                                                                        step="0.25"
-                                                                        min="0"
-                                                                        value={item.allocatedBalance ?? ''}
-                                                                        onChange={(e) => updateLeaveAllocation(item.leaveType, { allocatedBalance: e.target.value })}
-                                                                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white"
-                                                                        placeholder="e.g. 12"
-                                                                    />
-                                                                    <p className="text-[10px] text-slate-400 mt-0.5">Opening balance from date</p>
+                                                            <p className="text-xs font-bold text-slate-700">No leave types assigned to this employee</p>
+                                                            <p className="text-[11px] text-slate-400">All leave types are currently excluded. Click any leave type pill above to add it back to this revision.</p>
+                                                        </div>
+                                                    ) : (
+                                                        leaveAllocations.filter(l => l.enabled !== false).map(item => (
+                                                            <div key={item.leaveType} className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 space-y-3.5">
+                                                                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-900 text-white">
+                                                                            {item.leaveType}
+                                                                        </span>
+                                                                        <span className="text-xs font-bold text-slate-800">{item.name}</span>
+                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                                            item.isPaid ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                                        }`}>
+                                                                            {item.isPaid ? 'Paid Leave' : 'Unpaid Leave'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-[11px] font-medium text-slate-500">
+                                                                            Current Balance: <strong className="text-slate-800">{item.currentClosingBalance ?? item.allocatedBalance ?? 0} Days</strong>
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => toggleLeaveEnabled(item.leaveType)}
+                                                                            className="px-2.5 py-1 rounded-lg text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+                                                                            title={`Delete / Exclude ${item.name} from this employee`}
+                                                                        >
+                                                                            <Trash2 size={13} className="text-rose-500" />
+                                                                            <span>Delete</span>
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
 
-                                                                {/* 2. Accrual Mode & Rate */}
-                                                                <div>
-                                                                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                                                                        Accrual Cycle & Rate
-                                                                    </label>
-                                                                    <div className="grid grid-cols-2 gap-1.5">
-                                                                        <select
-                                                                            value={item.accrualType || 'Monthly'}
-                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualType: e.target.value })}
-                                                                            className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                        >
-                                                                            <option value="Monthly">Monthly</option>
-                                                                            <option value="Yearly">Yearly</option>
-                                                                            <option value="Policy">Lump Sum</option>
-                                                                            <option value="None">None</option>
-                                                                        </select>
+                                                                {/* 4-Grid Input Parameters */}
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                                                                    {/* 1. Revised Opening/Credited Balance */}
+                                                                    <div>
+                                                                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                                                                            Credited Balance (Days) *
+                                                                        </label>
                                                                         <input
                                                                             type="number"
                                                                             step="0.25"
                                                                             min="0"
-                                                                            value={item.accrualAmount ?? ''}
-                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualAmount: e.target.value })}
-                                                                            className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                            placeholder="Days"
+                                                                            value={item.allocatedBalance ?? ''}
+                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { allocatedBalance: e.target.value })}
+                                                                            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white"
+                                                                            placeholder="e.g. 12"
                                                                         />
+                                                                        <p className="text-[10px] text-slate-400 mt-0.5">Opening balance from date</p>
                                                                     </div>
-                                                                    <p className="text-[10px] text-slate-400 mt-0.5">Accrual rate per cycle</p>
-                                                                </div>
 
-                                                                {/* 3. Carry Forward Rules */}
-                                                                <div>
-                                                                    <div className="flex items-center justify-between mb-1">
-                                                                        <label className="text-[11px] font-bold text-slate-700 uppercase">
-                                                                            Carry Forward
+                                                                    {/* 2. Accrual Mode & Rate */}
+                                                                    <div>
+                                                                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                                                                            Accrual Cycle & Rate
                                                                         </label>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => updateLeaveAllocation(item.leaveType, { carryForward: !item.carryForward })}
-                                                                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                                                                                item.carryForward ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
-                                                                            }`}
-                                                                        >
-                                                                            {item.carryForward ? 'Enabled' : 'Disabled'}
-                                                                        </button>
-                                                                    </div>
-                                                                    {item.carryForward ? (
                                                                         <div className="grid grid-cols-2 gap-1.5">
                                                                             <select
-                                                                                value={item.carryForwardFrequency || 'Monthly'}
-                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { carryForwardFrequency: e.target.value })}
+                                                                                value={item.accrualType || 'Monthly'}
+                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualType: e.target.value })}
                                                                                 className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
                                                                             >
                                                                                 <option value="Monthly">Monthly</option>
                                                                                 <option value="Yearly">Yearly</option>
+                                                                                <option value="Policy">Lump Sum</option>
+                                                                                <option value="None">None</option>
                                                                             </select>
                                                                             <input
                                                                                 type="number"
-                                                                                step="1"
+                                                                                step="0.25"
                                                                                 min="0"
-                                                                                value={item.maxCarryForward ?? ''}
-                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { maxCarryForward: e.target.value })}
+                                                                                value={item.accrualAmount ?? ''}
+                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualAmount: e.target.value })}
                                                                                 className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                                placeholder="Max Days"
+                                                                                placeholder="Days"
                                                                             />
                                                                         </div>
-                                                                    ) : (
-                                                                        <div className="px-3 py-2 bg-slate-100 rounded-xl text-slate-400 text-xs font-medium border border-slate-200/60">
-                                                                            Unused leaves lapse
+                                                                        <p className="text-[10px] text-slate-400 mt-0.5">Accrual rate per cycle</p>
+                                                                    </div>
+
+                                                                    {/* 3. Carry Forward Rules */}
+                                                                    <div>
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                                                                                Carry Forward
+                                                                            </label>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => updateLeaveAllocation(item.leaveType, { carryForward: !item.carryForward })}
+                                                                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                                                                    item.carryForward ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                                                                                }`}
+                                                                            >
+                                                                                {item.carryForward ? 'Enabled' : 'Disabled'}
+                                                                            </button>
                                                                         </div>
-                                                                    )}
-                                                                    <p className="text-[10px] text-slate-400 mt-0.5">
-                                                                        {item.carryForward ? `Max cap: ${item.maxCarryForward || '∞'} days` : 'No rollover'}
-                                                                    </p>
+                                                                        {item.carryForward ? (
+                                                                            <div className="grid grid-cols-2 gap-1.5">
+                                                                                <select
+                                                                                    value={item.carryForwardFrequency || 'Monthly'}
+                                                                                    onChange={(e) => updateLeaveAllocation(item.leaveType, { carryForwardFrequency: e.target.value })}
+                                                                                    className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
+                                                                                >
+                                                                                    <option value="Monthly">Monthly</option>
+                                                                                    <option value="Yearly">Yearly</option>
+                                                                                </select>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="1"
+                                                                                    min="0"
+                                                                                    value={item.maxCarryForward ?? ''}
+                                                                                    onChange={(e) => updateLeaveAllocation(item.leaveType, { maxCarryForward: e.target.value })}
+                                                                                    className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
+                                                                                    placeholder="Max Days"
+                                                                                />
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="px-3 py-2 bg-slate-100 rounded-xl text-slate-400 text-xs font-medium border border-slate-200/60">
+                                                                                Unused leaves lapse
+                                                                            </div>
+                                                                        )}
+                                                                        <p className="text-[10px] text-slate-400 mt-0.5">
+                                                                            {item.carryForward ? `Max cap: ${item.maxCarryForward || '∞'} days` : 'No rollover'}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    {/* 4. Expiry / Reset Cycle & Cap */}
+                                                                    <div>
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                                                                                Validity & Expiry
+                                                                            </label>
+                                                                            <span className="text-[10px] text-slate-400">Reset cycle</span>
+                                                                        </div>
+                                                                        <div className="space-y-1.5">
+                                                                            <select
+                                                                                value={item.expiryMonths !== undefined ? String(item.expiryMonths) : '2'}
+                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryMonths: e.target.value })}
+                                                                                className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
+                                                                            >
+                                                                                <option value="2">Expires every 2 Months (Bi-monthly)</option>
+                                                                                <option value="3">Expires every 3 Months (Quarterly)</option>
+                                                                                <option value="6">Expires every 6 Months (Half-Yearly)</option>
+                                                                                <option value="12">Expires at Year End (Annual)</option>
+                                                                                <option value="0">Never Expires (Accumulates)</option>
+                                                                            </select>
+                                                                            <div className="flex items-center justify-between gap-1 text-[10px]">
+                                                                                <span className="text-slate-500 font-medium whitespace-nowrap">Max Day Cap:</span>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="0.5"
+                                                                                    min="0"
+                                                                                    value={item.expiryBalance ?? ''}
+                                                                                    onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryBalance: e.target.value })}
+                                                                                    className="w-20 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white text-right"
+                                                                                    placeholder="e.g. 3"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between mt-1 text-[10px]">
+                                                                            <span className="text-slate-500 font-medium">Auto-renew next cycle:</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => updateLeaveAllocation(item.leaveType, { autoRenew: item.autoRenew === false ? true : false })}
+                                                                                className={`font-bold px-1.5 py-0.5 rounded ${item.autoRenew !== false ? 'text-emerald-700 bg-emerald-100' : 'text-slate-600 bg-slate-200'}`}
+                                                                            >
+                                                                                {item.autoRenew !== false ? 'Yes (Auto Add)' : 'No'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
 
-                                                                {/* 4. Expiry / Reset Cycle & Cap */}
-                                                                <div>
-                                                                    <div className="flex items-center justify-between mb-1">
-                                                                        <label className="text-[11px] font-bold text-slate-700 uppercase">
-                                                                            Validity & Expiry
-                                                                        </label>
-                                                                        <span className="text-[10px] text-slate-400">Reset cycle</span>
-                                                                    </div>
-                                                                    <div className="space-y-1.5">
-                                                                        <select
-                                                                            value={item.expiryMonths !== undefined ? String(item.expiryMonths) : '2'}
-                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryMonths: e.target.value })}
-                                                                            className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                        >
-                                                                            <option value="2">Expires every 2 Months (Bi-monthly)</option>
-                                                                            <option value="3">Expires every 3 Months (Quarterly)</option>
-                                                                            <option value="6">Expires every 6 Months (Half-Yearly)</option>
-                                                                            <option value="12">Expires at Year End (Annual)</option>
-                                                                            <option value="0">Never Expires (Accumulates)</option>
-                                                                        </select>
-                                                                        <div className="flex items-center justify-between gap-1 text-[10px]">
-                                                                            <span className="text-slate-500 font-medium whitespace-nowrap">Max Day Cap:</span>
-                                                                            <input
-                                                                                type="number"
-                                                                                step="0.5"
-                                                                                min="0"
-                                                                                value={item.expiryBalance ?? ''}
-                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryBalance: e.target.value })}
-                                                                                className="w-20 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white text-right"
-                                                                                placeholder="e.g. 3"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center justify-between mt-1 text-[10px]">
-                                                                        <span className="text-slate-500 font-medium">Auto-renew next cycle:</span>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => updateLeaveAllocation(item.leaveType, { autoRenew: item.autoRenew === false ? true : false })}
-                                                                            className={`font-bold px-1.5 py-0.5 rounded ${item.autoRenew !== false ? 'text-emerald-700 bg-emerald-100' : 'text-slate-600 bg-slate-200'}`}
-                                                                        >
-                                                                            {item.autoRenew !== false ? 'Yes (Auto Add)' : 'No'}
-                                                                        </button>
+                                                                {/* Live Summary Footer */}
+                                                                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-600">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="font-semibold text-slate-700">Summary:</span>
+                                                                        <span>
+                                                                            {item.allocatedBalance || 0} Days opening •{' '}
+                                                                            {item.accrualAmount > 0 ? `+${item.accrualAmount}/${item.accrualType === 'Monthly' ? 'month' : 'year'}` : (item.accrualType === 'None' ? 'No accrual' : 'Fixed lump sum')} •{' '}
+                                                                            {item.carryForward ? `Carry forward ${item.carryForwardFrequency || 'Monthly'} (Max ${item.maxCarryForward || '3'})` : 'No carry forward'} •{' '}
+                                                                            {Number(item.expiryMonths) === 2 ? 'Rolling 2-Month Validity (Leaves credited 2 months earlier expire; max 3.0 days cap)' : (Number(item.expiryMonths) === 3 ? 'Rolling 3-Month Validity (Quarterly FIFO expiry)' : (Number(item.expiryMonths) === 12 ? 'Expires at year end' : (Number(item.expiryMonths) > 0 ? `Expires every ${item.expiryMonths} months` : (item.expiryBalance > 0 ? `Max accumulated cap: ${item.expiryBalance} days` : 'No accumulation cap'))))}
+                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                             </div>
-
-                                                            {/* Live Summary Footer */}
-                                                            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-600">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span className="font-semibold text-slate-700">Summary:</span>
-                                                                    <span>
-                                                                        {item.allocatedBalance || 0} Days opening •{' '}
-                                                                        {item.accrualAmount > 0 ? `+${item.accrualAmount}/${item.accrualType === 'Monthly' ? 'month' : 'year'}` : (item.accrualType === 'None' ? 'No accrual' : 'Fixed lump sum')} •{' '}
-                                                                        {item.carryForward ? `Carry forward ${item.carryForwardFrequency || 'Monthly'} (Max ${item.maxCarryForward || '3'})` : 'No carry forward'} •{' '}
-                                                                        {Number(item.expiryMonths) === 2 ? 'Rolling 2-Month Validity (Leaves credited 2 months earlier expire; max 3.0 days cap)' : (Number(item.expiryMonths) === 3 ? 'Rolling 3-Month Validity (Quarterly FIFO expiry)' : (Number(item.expiryMonths) === 12 ? 'Expires at year end' : (Number(item.expiryMonths) > 0 ? `Expires every ${item.expiryMonths} months` : (item.expiryBalance > 0 ? `Max accumulated cap: ${item.expiryBalance} days` : 'No accumulation cap'))))}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                )}
+                                                        ))
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* 4. Salary & Compensation Details Accordion */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
+                                <div id="revision-section-compensation" className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -2892,29 +2958,15 @@ export const RevisedDetailsTab = ({
                                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                                     Select Modules in this Revision
                                 </label>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                    {MODULE_OPTIONS.map(mod => {
+                                <div className={`grid gap-2.5 ${availableModuleOptions.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'}`}>
+                                    {availableModuleOptions.map(mod => {
                                         const isSelected = selectedModules.includes(mod.id);
                                         const Icon = mod.icon;
                                         return (
                                             <button
                                                 key={mod.id}
                                                 type="button"
-                                                onClick={() => {
-                                                    if (isSelected) {
-                                                        if (selectedModules.length > 1) {
-                                                            setSelectedModules(selectedModules.filter(m => m !== mod.id));
-                                                            if (mod.id === 'compensation') setShowSalarySection(false);
-                                                            if (mod.id === 'leave') setShowLeaveSection(false);
-                                                        } else {
-                                                            toast.error('At least one module must remain selected');
-                                                        }
-                                                    } else {
-                                                        setSelectedModules([...selectedModules, mod.id]);
-                                                        if (mod.id === 'compensation') setShowSalarySection(true);
-                                                        if (mod.id === 'leave') setShowLeaveSection(true);
-                                                    }
-                                                }}
+                                                onClick={() => handleModuleTabClick(mod.id)}
                                                 className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${isSelected
                                                     ? 'bg-blue-50/80 border-blue-500 text-blue-900 shadow-xs'
                                                     : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
@@ -2931,10 +2983,10 @@ export const RevisedDetailsTab = ({
                                 </div>
                             </div>
 
-                            {/* Step 4: Accordions */}
+                            {/* Step 4: Module Fields */}
                             <div className="space-y-4 pt-2">
                                 {/* 1. Employment & Org Structure Accordion */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
+                                <div id="revision-edit-section-employment" className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -3092,7 +3144,7 @@ export const RevisedDetailsTab = ({
                                 </div>
 
                                 {/* 2. Attendance & Shifts Accordion */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
+                                <div id="revision-edit-section-attendance" className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -3146,269 +3198,271 @@ export const RevisedDetailsTab = ({
                                     )}
                                 </div>
 
-                                {/* 3. Leave Management Accordion (Inserted between Attendance and Compensation) */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const next = !showLeaveSection;
-                                            setShowLeaveSection(next);
-                                            if (next && !selectedModules.includes('leave')) {
-                                                setSelectedModules(prev => [...prev, 'leave']);
-                                            }
-                                        }}
-                                        className="w-full flex items-center justify-between py-1 text-sm font-semibold text-slate-700 hover:text-slate-900 transition focus:outline-none cursor-pointer"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <CalendarDays size={16} className="text-emerald-600" />
-                                            <span className="font-semibold text-slate-800">Leave Management & Allocations</span>
-                                            <span className="ml-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                                {leaveAllocations.filter(l => l.enabled !== false).length} leaves active
-                                            </span>
-                                        </div>
-                                        {showLeaveSection ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
-                                    </button>
-
-                                    {showLeaveSection && (
-                                        <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
-                                            <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 flex items-start gap-2.5">
-                                                <Info size={16} className="shrink-0 text-emerald-600 mt-0.5" />
-                                                <p>
-                                                    From <span className="font-bold">{effectiveDate || 'the effective date'}</span>, these revised leave allocations and rules will apply to the employee. Configure the credited balance, monthly/yearly carry forward, accrual cycle, and expiration limits below.
-                                                </p>
+                                {/* 3. Leave Management Accordion */}
+                                {hasLeaveModule && (
+                                    <div id="revision-edit-section-leave" className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const next = !showLeaveSection;
+                                                setShowLeaveSection(next);
+                                                if (next && !selectedModules.includes('leave')) {
+                                                    setSelectedModules(prev => [...prev, 'leave']);
+                                                }
+                                            }}
+                                            className="w-full flex items-center justify-between py-1 text-sm font-semibold text-slate-700 hover:text-slate-900 transition focus:outline-none cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <CalendarDays size={16} className="text-emerald-600" />
+                                                <span className="font-semibold text-slate-800">Leave Management & Allocations</span>
+                                                <span className="ml-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                                    {leaveAllocations.filter(l => l.enabled !== false).length} leaves active
+                                                </span>
                                             </div>
+                                            {showLeaveSection ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                                        </button>
 
-                                            {/* Quick Leave Type Toggle Pills */}
-                                            <div className="space-y-1.5">
-                                                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                                                    Assigned Leave Types for Employee
-                                                </label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {leaveAllocations.map(l => {
-                                                        const isEn = l.enabled !== false;
-                                                        return (
-                                                            <button
-                                                                key={l.leaveType}
-                                                                type="button"
-                                                                onClick={() => toggleLeaveEnabled(l.leaveType)}
-                                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
-                                                                    isEn
-                                                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                                                                }`}
-                                                            >
-                                                                <span className="uppercase">{l.leaveType}</span>
-                                                                <span className="font-medium text-[11px] opacity-90">({l.name})</span>
-                                                                {isEn && <Check size={13} className="stroke-[3]" />}
-                                                            </button>
-                                                        );
-                                                    })}
+                                        {showLeaveSection && (
+                                            <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+                                                <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 flex items-start gap-2.5">
+                                                    <Info size={16} className="shrink-0 text-emerald-600 mt-0.5" />
+                                                    <p>
+                                                        From <span className="font-bold">{effectiveDate || 'the effective date'}</span>, these revised leave allocations and rules will apply to the employee. Configure the credited balance, monthly/yearly carry forward, accrual cycle, and expiration limits below.
+                                                    </p>
                                                 </div>
-                                            </div>
 
-                                            {/* Config Cards per Enabled Leave Type */}
-                                            <div className="space-y-4 pt-1">
-                                                {leaveAllocations.filter(l => l.enabled !== false).length === 0 ? (
-                                                    <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
-                                                        <div className="h-10 w-10 mx-auto rounded-full bg-slate-200/80 flex items-center justify-center text-slate-500">
-                                                            <CalendarDays size={20} />
-                                                        </div>
-                                                        <p className="text-xs font-bold text-slate-700">No leave types assigned to this employee</p>
-                                                        <p className="text-[11px] text-slate-400">All leave types are currently excluded. Click any leave type pill above to add it back to this revision.</p>
+                                                {/* Quick Leave Type Toggle Pills */}
+                                                <div className="space-y-1.5">
+                                                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                                        Assigned Leave Types for Employee
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {leaveAllocations.map(l => {
+                                                            const isEn = l.enabled !== false;
+                                                            return (
+                                                                <button
+                                                                    key={l.leaveType}
+                                                                    type="button"
+                                                                    onClick={() => toggleLeaveEnabled(l.leaveType)}
+                                                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+                                                                        isEn
+                                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                                                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                                                    }`}
+                                                                >
+                                                                    <span className="uppercase">{l.leaveType}</span>
+                                                                    <span className="font-medium text-[11px] opacity-90">({l.name})</span>
+                                                                    {isEn && <Check size={13} className="stroke-[3]" />}
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
-                                                ) : (
-                                                    leaveAllocations.filter(l => l.enabled !== false).map(item => (
-                                                        <div key={item.leaveType} className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 space-y-3.5">
-                                                            <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-900 text-white">
-                                                                        {item.leaveType}
-                                                                    </span>
-                                                                    <span className="text-xs font-bold text-slate-800">{item.name}</span>
-                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                                                        item.isPaid ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'
-                                                                    }`}>
-                                                                        {item.isPaid ? 'Paid Leave' : 'Unpaid Leave'}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="text-[11px] font-medium text-slate-500">
-                                                                        Current Balance: <strong className="text-slate-800">{item.currentClosingBalance ?? item.allocatedBalance ?? 0} Days</strong>
-                                                                    </span>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => toggleLeaveEnabled(item.leaveType)}
-                                                                        className="px-2.5 py-1 rounded-lg text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer"
-                                                                        title={`Delete / Exclude ${item.name} from this employee`}
-                                                                    >
-                                                                        <Trash2 size={13} className="text-rose-500" />
-                                                                        <span>Delete</span>
-                                                                    </button>
-                                                                </div>
+                                                </div>
+
+                                                {/* Config Cards per Enabled Leave Type */}
+                                                <div className="space-y-4 pt-1">
+                                                    {leaveAllocations.filter(l => l.enabled !== false).length === 0 ? (
+                                                        <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
+                                                            <div className="h-10 w-10 mx-auto rounded-full bg-slate-200/80 flex items-center justify-center text-slate-500">
+                                                                <CalendarDays size={20} />
                                                             </div>
-
-                                                            {/* 4-Grid Input Parameters */}
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                                                                {/* 1. Revised Opening/Credited Balance */}
-                                                                <div>
-                                                                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                                                                        Credited Balance (Days) *
-                                                                    </label>
-                                                                    <input
-                                                                        type="number"
-                                                                        step="0.25"
-                                                                        min="0"
-                                                                        value={item.allocatedBalance ?? ''}
-                                                                        onChange={(e) => updateLeaveAllocation(item.leaveType, { allocatedBalance: e.target.value })}
-                                                                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white"
-                                                                        placeholder="e.g. 12"
-                                                                    />
-                                                                    <p className="text-[10px] text-slate-400 mt-0.5">Opening balance from date</p>
+                                                            <p className="text-xs font-bold text-slate-700">No leave types assigned to this employee</p>
+                                                            <p className="text-[11px] text-slate-400">All leave types are currently excluded. Click any leave type pill above to add it back to this revision.</p>
+                                                        </div>
+                                                    ) : (
+                                                        leaveAllocations.filter(l => l.enabled !== false).map(item => (
+                                                            <div key={item.leaveType} className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 space-y-3.5">
+                                                                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-900 text-white">
+                                                                            {item.leaveType}
+                                                                        </span>
+                                                                        <span className="text-xs font-bold text-slate-800">{item.name}</span>
+                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                                            item.isPaid ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                                        }`}>
+                                                                            {item.isPaid ? 'Paid Leave' : 'Unpaid Leave'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-[11px] font-medium text-slate-500">
+                                                                            Current Balance: <strong className="text-slate-800">{item.currentClosingBalance ?? item.allocatedBalance ?? 0} Days</strong>
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => toggleLeaveEnabled(item.leaveType)}
+                                                                            className="px-2.5 py-1 rounded-lg text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+                                                                            title={`Delete / Exclude ${item.name} from this employee`}
+                                                                        >
+                                                                            <Trash2 size={13} className="text-rose-500" />
+                                                                            <span>Delete</span>
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
 
-                                                                {/* 2. Accrual Mode & Rate */}
-                                                                <div>
-                                                                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                                                                        Accrual Cycle & Rate
-                                                                    </label>
-                                                                    <div className="grid grid-cols-2 gap-1.5">
-                                                                        <select
-                                                                            value={item.accrualType || 'Monthly'}
-                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualType: e.target.value })}
-                                                                            className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                        >
-                                                                            <option value="Monthly">Monthly</option>
-                                                                            <option value="Yearly">Yearly</option>
-                                                                            <option value="Policy">Lump Sum</option>
-                                                                            <option value="None">None</option>
-                                                                        </select>
+                                                                {/* 4-Grid Input Parameters */}
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                                                                    {/* 1. Revised Opening/Credited Balance */}
+                                                                    <div>
+                                                                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                                                                            Credited Balance (Days) *
+                                                                        </label>
                                                                         <input
                                                                             type="number"
                                                                             step="0.25"
                                                                             min="0"
-                                                                            value={item.accrualAmount ?? ''}
-                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualAmount: e.target.value })}
-                                                                            className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                            placeholder="Days"
+                                                                            value={item.allocatedBalance ?? ''}
+                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { allocatedBalance: e.target.value })}
+                                                                            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white"
+                                                                            placeholder="e.g. 12"
                                                                         />
+                                                                        <p className="text-[10px] text-slate-400 mt-0.5">Opening balance from date</p>
                                                                     </div>
-                                                                    <p className="text-[10px] text-slate-400 mt-0.5">Accrual rate per cycle</p>
-                                                                </div>
 
-                                                                {/* 3. Carry Forward Rules */}
-                                                                <div>
-                                                                    <div className="flex items-center justify-between mb-1">
-                                                                        <label className="text-[11px] font-bold text-slate-700 uppercase">
-                                                                            Carry Forward
+                                                                    {/* 2. Accrual Mode & Rate */}
+                                                                    <div>
+                                                                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                                                                            Accrual Cycle & Rate
                                                                         </label>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => updateLeaveAllocation(item.leaveType, { carryForward: !item.carryForward })}
-                                                                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                                                                                item.carryForward ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
-                                                                            }`}
-                                                                        >
-                                                                            {item.carryForward ? 'Enabled' : 'Disabled'}
-                                                                        </button>
-                                                                    </div>
-                                                                    {item.carryForward ? (
                                                                         <div className="grid grid-cols-2 gap-1.5">
                                                                             <select
-                                                                                value={item.carryForwardFrequency || 'Monthly'}
-                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { carryForwardFrequency: e.target.value })}
+                                                                                value={item.accrualType || 'Monthly'}
+                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualType: e.target.value })}
                                                                                 className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
                                                                             >
                                                                                 <option value="Monthly">Monthly</option>
                                                                                 <option value="Yearly">Yearly</option>
+                                                                                <option value="Policy">Lump Sum</option>
+                                                                                <option value="None">None</option>
                                                                             </select>
                                                                             <input
                                                                                 type="number"
-                                                                                step="1"
+                                                                                step="0.25"
                                                                                 min="0"
-                                                                                value={item.maxCarryForward ?? ''}
-                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { maxCarryForward: e.target.value })}
+                                                                                value={item.accrualAmount ?? ''}
+                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { accrualAmount: e.target.value })}
                                                                                 className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                                placeholder="Max Days"
+                                                                                placeholder="Days"
                                                                             />
                                                                         </div>
-                                                                    ) : (
-                                                                        <div className="px-3 py-2 bg-slate-100 rounded-xl text-slate-400 text-xs font-medium border border-slate-200/60">
-                                                                            Unused leaves lapse
+                                                                        <p className="text-[10px] text-slate-400 mt-0.5">Accrual rate per cycle</p>
+                                                                    </div>
+
+                                                                    {/* 3. Carry Forward Rules */}
+                                                                    <div>
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                                                                                Carry Forward
+                                                                            </label>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => updateLeaveAllocation(item.leaveType, { carryForward: !item.carryForward })}
+                                                                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                                                                    item.carryForward ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                                                                                }`}
+                                                                            >
+                                                                                {item.carryForward ? 'Enabled' : 'Disabled'}
+                                                                            </button>
                                                                         </div>
-                                                                    )}
-                                                                    <p className="text-[10px] text-slate-400 mt-0.5">
-                                                                        {item.carryForward ? `Max cap: ${item.maxCarryForward || '∞'} days` : 'No rollover'}
-                                                                    </p>
+                                                                        {item.carryForward ? (
+                                                                            <div className="grid grid-cols-2 gap-1.5">
+                                                                                <select
+                                                                                    value={item.carryForwardFrequency || 'Monthly'}
+                                                                                    onChange={(e) => updateLeaveAllocation(item.leaveType, { carryForwardFrequency: e.target.value })}
+                                                                                    className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
+                                                                                >
+                                                                                    <option value="Monthly">Monthly</option>
+                                                                                    <option value="Yearly">Yearly</option>
+                                                                                </select>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="1"
+                                                                                    min="0"
+                                                                                    value={item.maxCarryForward ?? ''}
+                                                                                    onChange={(e) => updateLeaveAllocation(item.leaveType, { maxCarryForward: e.target.value })}
+                                                                                    className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
+                                                                                    placeholder="Max Days"
+                                                                                />
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="px-3 py-2 bg-slate-100 rounded-xl text-slate-400 text-xs font-medium border border-slate-200/60">
+                                                                                Unused leaves lapse
+                                                                            </div>
+                                                                        )}
+                                                                        <p className="text-[10px] text-slate-400 mt-0.5">
+                                                                            {item.carryForward ? `Max cap: ${item.maxCarryForward || '∞'} days` : 'No rollover'}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    {/* 4. Expiry / Reset Cycle & Cap */}
+                                                                    <div>
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                                                                                Validity & Expiry
+                                                                            </label>
+                                                                            <span className="text-[10px] text-slate-400">Reset cycle</span>
+                                                                        </div>
+                                                                        <div className="space-y-1.5">
+                                                                            <select
+                                                                                value={item.expiryMonths !== undefined ? String(item.expiryMonths) : '2'}
+                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryMonths: e.target.value })}
+                                                                                className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
+                                                                            >
+                                                                                <option value="2">Expires every 2 Months (Bi-monthly)</option>
+                                                                                <option value="3">Expires every 3 Months (Quarterly)</option>
+                                                                                <option value="6">Expires every 6 Months (Half-Yearly)</option>
+                                                                                <option value="12">Expires at Year End (Annual)</option>
+                                                                                <option value="0">Never Expires (Accumulates)</option>
+                                                                            </select>
+                                                                            <div className="flex items-center justify-between gap-1 text-[10px]">
+                                                                                <span className="text-slate-500 font-medium whitespace-nowrap">Max Day Cap:</span>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="0.5"
+                                                                                    min="0"
+                                                                                    value={item.expiryBalance ?? ''}
+                                                                                    onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryBalance: e.target.value })}
+                                                                                    className="w-20 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white text-right"
+                                                                                    placeholder="e.g. 3"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between mt-1 text-[10px]">
+                                                                            <span className="text-slate-500 font-medium">Auto-renew next cycle:</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => updateLeaveAllocation(item.leaveType, { autoRenew: item.autoRenew === false ? true : false })}
+                                                                                className={`font-bold px-1.5 py-0.5 rounded ${item.autoRenew !== false ? 'text-emerald-700 bg-emerald-100' : 'text-slate-600 bg-slate-200'}`}
+                                                                            >
+                                                                                {item.autoRenew !== false ? 'Yes (Auto Add)' : 'No'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
 
-                                                                {/* 4. Expiry / Reset Cycle & Cap */}
-                                                                <div>
-                                                                    <div className="flex items-center justify-between mb-1">
-                                                                        <label className="text-[11px] font-bold text-slate-700 uppercase">
-                                                                            Validity & Expiry
-                                                                        </label>
-                                                                        <span className="text-[10px] text-slate-400">Reset cycle</span>
-                                                                    </div>
-                                                                    <div className="space-y-1.5">
-                                                                        <select
-                                                                            value={item.expiryMonths !== undefined ? String(item.expiryMonths) : '2'}
-                                                                            onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryMonths: e.target.value })}
-                                                                            className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
-                                                                        >
-                                                                            <option value="2">Expires every 2 Months (Bi-monthly)</option>
-                                                                            <option value="3">Expires every 3 Months (Quarterly)</option>
-                                                                            <option value="6">Expires every 6 Months (Half-Yearly)</option>
-                                                                            <option value="12">Expires at Year End (Annual)</option>
-                                                                            <option value="0">Never Expires (Accumulates)</option>
-                                                                        </select>
-                                                                        <div className="flex items-center justify-between gap-1 text-[10px]">
-                                                                            <span className="text-slate-500 font-medium whitespace-nowrap">Max Day Cap:</span>
-                                                                            <input
-                                                                                type="number"
-                                                                                step="0.5"
-                                                                                min="0"
-                                                                                value={item.expiryBalance ?? ''}
-                                                                                onChange={(e) => updateLeaveAllocation(item.leaveType, { expiryBalance: e.target.value })}
-                                                                                className="w-20 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white text-right"
-                                                                                placeholder="e.g. 3"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center justify-between mt-1 text-[10px]">
-                                                                        <span className="text-slate-500 font-medium">Auto-renew next cycle:</span>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => updateLeaveAllocation(item.leaveType, { autoRenew: item.autoRenew === false ? true : false })}
-                                                                            className={`font-bold px-1.5 py-0.5 rounded ${item.autoRenew !== false ? 'text-emerald-700 bg-emerald-100' : 'text-slate-600 bg-slate-200'}`}
-                                                                        >
-                                                                            {item.autoRenew !== false ? 'Yes (Auto Add)' : 'No'}
-                                                                        </button>
+                                                                {/* Live Summary Footer */}
+                                                                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-600">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="font-semibold text-slate-700">Summary:</span>
+                                                                        <span>
+                                                                            {item.allocatedBalance || 0} Days opening •{' '}
+                                                                            {item.accrualAmount > 0 ? `+${item.accrualAmount}/${item.accrualType === 'Monthly' ? 'month' : 'year'}` : (item.accrualType === 'None' ? 'No accrual' : 'Fixed lump sum')} •{' '}
+                                                                            {item.carryForward ? `Carry forward ${item.carryForwardFrequency || 'Monthly'} (Max ${item.maxCarryForward || '3'})` : 'No carry forward'} •{' '}
+                                                                            {Number(item.expiryMonths) === 2 ? 'Rolling 2-Month Validity (Leaves credited 2 months earlier expire; max 3.0 days cap)' : (Number(item.expiryMonths) === 3 ? 'Rolling 3-Month Validity (Quarterly FIFO expiry)' : (Number(item.expiryMonths) === 12 ? 'Expires at year end' : (Number(item.expiryMonths) > 0 ? `Expires every ${item.expiryMonths} months` : (item.expiryBalance > 0 ? `Max accumulated cap: ${item.expiryBalance} days` : 'No accumulation cap'))))}
+                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                             </div>
-
-                                                            {/* Live Summary Footer */}
-                                                            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-600">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span className="font-semibold text-slate-700">Summary:</span>
-                                                                    <span>
-                                                                        {item.allocatedBalance || 0} Days opening •{' '}
-                                                                        {item.accrualAmount > 0 ? `+${item.accrualAmount}/${item.accrualType === 'Monthly' ? 'month' : 'year'}` : (item.accrualType === 'None' ? 'No accrual' : 'Fixed lump sum')} •{' '}
-                                                                        {item.carryForward ? `Carry forward ${item.carryForwardFrequency || 'Monthly'} (Max ${item.maxCarryForward || '3'})` : 'No carry forward'} •{' '}
-                                                                        {Number(item.expiryMonths) === 2 ? 'Rolling 2-Month Validity (Leaves credited 2 months earlier expire; max 3.0 days cap)' : (Number(item.expiryMonths) === 3 ? 'Rolling 3-Month Validity (Quarterly FIFO expiry)' : (Number(item.expiryMonths) === 12 ? 'Expires at year end' : (Number(item.expiryMonths) > 0 ? `Expires every ${item.expiryMonths} months` : (item.expiryBalance > 0 ? `Max accumulated cap: ${item.expiryBalance} days` : 'No accumulation cap'))))}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                )}
+                                                        ))
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* 4. Salary & Compensation Details Accordion */}
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
+                                <div id="revision-edit-section-compensation" className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4">
                                     <button
                                         type="button"
                                         onClick={() => {
