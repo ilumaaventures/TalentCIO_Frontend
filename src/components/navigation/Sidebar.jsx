@@ -26,6 +26,7 @@ import {
   Megaphone,
   Network,
   Award,
+  BadgeDollarSign,
   ShieldCheck,
   Settings,
   Trash2,
@@ -210,8 +211,10 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('settings.notification.view')
     || user?.permissions?.includes('settings.notification.manage')
     || user?.permissions?.includes('*');
-  const showSalaryCalculator = isAdmin
+  const showPayroll = isAdmin
     || user?.permissions?.includes('payroll.calculator.view')
+    || user?.permissions?.includes('payroll.config.manage')
+    || user?.permissions?.includes('payroll.salary.view')
     || user?.permissions?.includes('*');
   const homeRoute = showDashboard ? '/' : (showAttendance ? '/attendance' : '/');
   const sectionLabelClass = isTalentAcquisitionRoute
@@ -581,13 +584,13 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </>
               )}
 
-              {/* Breakup Section */}
-              {showSalaryCalculator && (
+              {/* Payroll Section */}
+              {showPayroll && (
                 <>
-                  <div className="mt-8"><div className={sectionLabelClass}>Breakup</div></div>
-                  <Link to="/salary-calculator" className={getSidebarLinkClass(location.pathname === '/salary-calculator')} onClick={onClose}>
-                    <Calculator size={18} />
-                    <span>Salary Calculator</span>
+                  <div className="mt-8"><div className={sectionLabelClass}>Payroll</div></div>
+                  <Link to="/payroll" className={getSidebarLinkClass(location.pathname === '/payroll' || location.pathname === '/salary-calculator')} onClick={onClose}>
+                    <BadgeDollarSign size={18} />
+                    <span>Payroll</span>
                   </Link>
                 </>
               )}

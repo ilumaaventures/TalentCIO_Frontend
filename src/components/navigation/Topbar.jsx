@@ -117,6 +117,9 @@ const getPageMetadata = (pathname) => {
     if (pathname === '/settings/notifications') {
         return { title: 'Notification Settings', subtitle: 'Preferences & alerts' };
     }
+    if (pathname === '/payroll' || pathname.startsWith('/payroll')) {
+        return { title: 'Payroll', subtitle: 'Salary calculation & compensation management' };
+    }
     if (pathname === '/salary-calculator') {
         return { title: 'Salary Calculator', subtitle: 'Payroll & CTC computation' };
     }
