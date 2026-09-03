@@ -42,7 +42,9 @@ const CandidateFilters = ({
     dateFilterField,
     setDateFilterField,
     setCreatedDatePreset,
+    dateFrom,
     setDateFrom,
+    dateTo,
     setDateTo,
     filterProfileShared,
     setFilterProfileShared,
@@ -53,6 +55,51 @@ const CandidateFilters = ({
     setOpenMultiFilter
 }) => {
     if (selectedCandidateId) return null;
+
+    const hasActiveFilters = Boolean(
+        (candidateNameSearch && candidateNameSearch.trim() !== '') ||
+        (filterStatus && filterStatus !== 'All') ||
+        filterProfileShared ||
+        (filterDecision && filterDecision !== 'All') ||
+        (filterExperience && filterExperience !== '') ||
+        (filterInterviewStatus && filterInterviewStatus !== 'All') ||
+        (filterRating && filterRating !== 'All') ||
+        (filterPulledBy && filterPulledBy.length > 0) ||
+        (filterUploadedBy && filterUploadedBy.length > 0) ||
+        (filterUploadType && filterUploadType !== 'All') ||
+        Boolean(dateFilterField) ||
+        Boolean(dateFrom) ||
+        Boolean(dateTo) ||
+        !isDefaultDateFilterState ||
+        (filterTransferred && filterTransferred !== 'All') ||
+        (filterInterviewRound && filterInterviewRound !== '') ||
+        (filterDynamicStage && filterDynamicStage !== 'All')
+    );
+
+    const handleClearAllFilters = () => {
+        setCandidateNameSearch?.('');
+        setFilterStatus?.('All');
+        setFilterProfileShared?.(false);
+        setFilterDecision?.('All');
+        setFilterExperience?.('');
+        setFilterInterviewStatus?.('All');
+        setFilterRating?.('All');
+        setFilterPulledBy?.([]);
+        setFilterUploadedBy?.([]);
+        setFilterUploadType?.('All');
+        setFilterTransferred?.('All');
+        setFilterInterviewRound?.('');
+        setFilterDynamicStage?.('All');
+        setDateFilterField?.('');
+        setCreatedDatePreset?.('');
+        setDateFrom?.('');
+        setDateTo?.('');
+        if (typeof resetDateFiltersToDefault === 'function') {
+            resetDateFiltersToDefault();
+        }
+        setShowCreatedDateSortMenu?.(false);
+        setOpenMultiFilter?.(null);
+    };
 
     return (
         <div className="scrollbar-hide bg-white p-4 rounded-xl border border-slate-200 overflow-x-auto">
@@ -276,15 +323,15 @@ const CandidateFilters = ({
                 <div className="shrink-0">
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Date Filter</label>
                     <select
-                        value={dateFilterField}
+                        value={dateFilterField || ''}
                         onChange={(e) => {
                             const value = e.target.value;
-                            setDateFilterField(value);
+                            setDateFilterField?.(value);
 
                             if (!value) {
-                                setCreatedDatePreset('');
-                                setDateFrom('');
-                                setDateTo('');
+                                setCreatedDatePreset?.('');
+                                setDateFrom?.('');
+                                setDateTo?.('');
                             }
                         }}
                         className="w-40 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 outline-none transition focus:ring-2 focus:ring-blue-500"
@@ -296,27 +343,41 @@ const CandidateFilters = ({
                         ))}
                     </select>
                 </div>
-                {(candidateNameSearch !== '' || (activePhase === 1 && (filterStatus !== 'All' || filterProfileShared)) || filterDecision !== 'All' || filterExperience !== '' || filterInterviewStatus !== 'All' || filterRating !== 'All' || filterPulledBy.length > 0 || filterUploadedBy.length > 0 || filterUploadType !== 'All' || !isDefaultDateFilterState || filterTransferred !== 'All' || filterInterviewRound !== '') && (
+                {Boolean(dateFilterField) && (
+                    <>
+                        <div className="shrink-0">
+                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">From</label>
+                            <input
+                                type="date"
+                                value={dateFrom || ''}
+                                onChange={(e) => {
+                                    setDateFrom?.(e.target.value);
+                                    setCreatedDatePreset?.('custom');
+                                }}
+                                max={dateTo || undefined}
+                                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32 bg-white"
+                            />
+                        </div>
+                        <div className="shrink-0">
+                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">To</label>
+                            <input
+                                type="date"
+                                value={dateTo || ''}
+                                onChange={(e) => {
+                                    setDateTo?.(e.target.value);
+                                    setCreatedDatePreset?.('custom');
+                                }}
+                                min={dateFrom || undefined}
+                                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 w-32 bg-white"
+                            />
+                        </div>
+                    </>
+                )}
+                {hasActiveFilters && (
                     <button
-                        onClick={() => {
-                            if (activePhase === 1) setFilterStatus('All');
-                            else setFilterStatus('All');
-                            setCandidateNameSearch('');
-                            setFilterProfileShared(false);
-                            setFilterDecision('All');
-                            setFilterExperience('');
-                            setFilterInterviewStatus('All');
-                            setFilterRating('');
-                            setFilterPulledBy([]);
-                            setFilterUploadedBy([]);
-                            setFilterUploadType('All');
-                            resetDateFiltersToDefault();
-                            setFilterTransferred('All');
-                            setFilterInterviewRound('');
-                            setShowCreatedDateSortMenu(false);
-                            setOpenMultiFilter(null);
-                        }}
-                        className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5"
+                        type="button"
+                        onClick={handleClearAllFilters}
+                        className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors mb-0.5 font-medium"
                     >
                         Clear Filters
                     </button>
