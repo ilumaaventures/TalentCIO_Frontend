@@ -65,6 +65,7 @@ const HREmailSend = lazy(() => import('@/features/email/pages/HREmailSend'));
 const RecycleBin = lazy(() => import('@/features/recycle-bin/pages/RecycleBin'));
 const PreOnboardingLogin = lazy(() => import('@/features/onboarding/pages/PreOnboardingLogin'));
 const PreOnboardingPortal = lazy(() => import('@/features/onboarding/pages/PreOnboardingPortal'));
+const Payroll = lazy(() => import('@/features/payroll/pages/Payroll'));
 const SalaryCalculator = lazy(() => import('@/features/payroll/pages/SalaryCalculator'));
 const EssDashboard     = lazy(() => import('@/features/ess/pages/EssDashboard'));
 const MyClaims         = lazy(() => import('@/features/reimbursement/pages/MyClaims'));
@@ -187,6 +188,16 @@ function App() {
                         <NotificationSettings />
                       </ProtectedRoute>
                     )} />
+                    <Route path="/payroll" element={(
+                      <ProtectedRoute
+                        requiredPermissions={SALARY_CALCULATOR_PERMISSIONS}
+                        requiredRoles={ADMIN_ROLES}
+                        allowAllPermissions
+                        redirectTo="/"
+                      >
+                        <Payroll />
+                      </ProtectedRoute>
+                    )} />
                     <Route path="/salary-calculator" element={(
                       <ProtectedRoute
                         requiredPermissions={SALARY_CALCULATOR_PERMISSIONS}
@@ -194,7 +205,7 @@ function App() {
                         allowAllPermissions
                         redirectTo="/"
                       >
-                        <SalaryCalculator />
+                        <Payroll defaultTab="calculator" />
                       </ProtectedRoute>
                     )} />
                     <Route path="/timesheet" element={(

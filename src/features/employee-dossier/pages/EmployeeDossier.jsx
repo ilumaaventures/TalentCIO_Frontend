@@ -88,10 +88,20 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
     const [hrisSearchTerm, setHrisSearchTerm] = useState('');
 
     const [companyBranding, setCompanyBranding] = useState({
+        name: '',
+        subdomain: '',
+        email: '',
+        contactPerson: '',
+        contactPhone: '',
+        industry: '',
+        country: '',
+        timezone: 'Asia/Kolkata',
+        address: '',
         displayMode: 'talentcio',
         companyLogoUrl: '',
         logoAlignment: DEFAULT_COMPANY_LOGO_ALIGNMENT,
-        logoSize: DEFAULT_COMPANY_LOGO_SIZE
+        logoSize: DEFAULT_COMPANY_LOGO_SIZE,
+        requireCameraCapture: false
     });
     const [loadingCompanyBranding, setLoadingCompanyBranding] = useState(false);
     const [savingCompanyBranding, setSavingCompanyBranding] = useState(false);
@@ -162,6 +172,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
             setLoadingCompanyBranding(true);
             const { data } = await api.get('/admin/company-settings/branding');
             setCompanyBranding({
+                name: data?.name || '',
+                subdomain: data?.subdomain || '',
+                email: data?.email || '',
+                contactPerson: data?.contactPerson || '',
+                contactPhone: data?.contactPhone || '',
+                industry: data?.industry || '',
+                country: data?.country || '',
+                timezone: data?.timezone || 'Asia/Kolkata',
+                address: data?.address || '',
                 displayMode: data?.displayMode || 'talentcio',
                 companyLogoUrl: data?.companyLogoUrl || '',
                 logoAlignment: data?.logoAlignment || DEFAULT_COMPANY_LOGO_ALIGNMENT,
@@ -690,6 +709,13 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
         try {
             setSavingCompanyBranding(true);
             const { data } = await api.put('/admin/company-settings/branding', {
+                name: companyBranding.name,
+                contactPerson: companyBranding.contactPerson,
+                contactPhone: companyBranding.contactPhone,
+                industry: companyBranding.industry,
+                country: companyBranding.country,
+                timezone: companyBranding.timezone,
+                address: companyBranding.address,
                 displayMode: companyBranding.displayMode,
                 logoAlignment: companyBranding.logoAlignment,
                 logoSize: companyBranding.logoSize,
@@ -698,6 +724,15 @@ const EmployeeDossier = ({ userId: propUserId, embedded = false, initialTab = 'p
 
             setCompanyBranding((current) => ({
                 ...current,
+                name: data?.name !== undefined ? data.name : current.name,
+                subdomain: data?.subdomain !== undefined ? data.subdomain : current.subdomain,
+                email: data?.email !== undefined ? data.email : current.email,
+                contactPerson: data?.contactPerson !== undefined ? data.contactPerson : current.contactPerson,
+                contactPhone: data?.contactPhone !== undefined ? data.contactPhone : current.contactPhone,
+                industry: data?.industry !== undefined ? data.industry : current.industry,
+                country: data?.country !== undefined ? data.country : current.country,
+                timezone: data?.timezone !== undefined ? data.timezone : current.timezone,
+                address: data?.address !== undefined ? data.address : current.address,
                 displayMode: data?.displayMode || current.displayMode,
                 logoAlignment: data?.logoAlignment || current.logoAlignment,
                 logoSize: Number(data?.logoSize) || current.logoSize,
