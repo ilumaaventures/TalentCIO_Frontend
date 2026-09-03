@@ -1156,12 +1156,16 @@ const Users = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        const submitPayload = {
+            ...formData,
+            employeeCode: formData.employeeCode?.trim() || undefined
+        };
         try {
             if (editingUser) {
-                await api.put(`/admin/users/${editingUser._id}`, formData);
+                await api.put(`/admin/users/${editingUser._id}`, submitPayload);
                 toast.success('User Updated Successfully');
             } else {
-                await api.post('/admin/users', formData);
+                await api.post('/admin/users', submitPayload);
                 toast.success('User Created Successfully');
             }
             sessionStorage.removeItem(`user_data_${user?._id}`);
