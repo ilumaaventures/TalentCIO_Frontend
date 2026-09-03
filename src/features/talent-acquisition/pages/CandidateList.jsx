@@ -626,7 +626,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
 
             let matchRating = true;
-            if (filterRating !== 'All') {
+            if (filterRating && filterRating !== 'All' && !isNaN(Number(filterRating))) {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === 1) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) {
@@ -761,7 +761,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchRating = true;
-            if (filterRating !== 'All') {
+            if (filterRating && filterRating !== 'All' && !isNaN(Number(filterRating))) {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === 2) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) { matchRating = false; } else {
@@ -867,7 +867,7 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             const matchPreference = filterPreference === 'All' || candidate.preference === filterPreference;
             const matchExperience = !filterExperience || (candidate.totalExperience && Number(candidate.totalExperience) >= Number(filterExperience));
             let matchRating = true;
-            if (filterRating !== 'All') {
+            if (filterRating && filterRating !== 'All' && !isNaN(Number(filterRating))) {
                 const rounds = candidate.interviewRounds ? candidate.interviewRounds.filter(r => Number(r.phase || 1) === 3) : [];
                 const ratedRounds = rounds.filter(r => r.rating && r.rating > 0);
                 if (ratedRounds.length === 0) { matchRating = false; } else {
@@ -1603,7 +1603,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
                         dateFilterField={dateFilterField}
                         setDateFilterField={setDateFilterField}
                         setCreatedDatePreset={setCreatedDatePreset}
+                        dateFrom={dateFrom}
                         setDateFrom={setDateFrom}
+                        dateTo={dateTo}
                         setDateTo={setDateTo}
                         filterProfileShared={filterProfileShared}
                         setFilterProfileShared={setFilterProfileShared}
