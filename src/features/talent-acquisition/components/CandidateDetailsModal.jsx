@@ -167,7 +167,9 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                     {candidate.remark && (
                                         <div>
                                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Remark</p>
-                                            <p className="text-slate-700 font-medium text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 mt-1">{candidate.remark}</p>
+                                            <div className={`text-sm p-3 rounded-lg border whitespace-pre-wrap leading-relaxed mt-1 ${candidate.remark.startsWith('Transferred') ? 'bg-blue-50/70 border-blue-200/80 text-blue-950 font-medium' : 'bg-slate-50 border-slate-100 text-slate-700 font-medium'}`}>
+                                                {candidate.remark}
+                                            </div>
                                         </div>
                                     )}
 

@@ -17,6 +17,7 @@ const BulkTransferModal = ({
     const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
     const [targetRequisitionId, setTargetRequisitionId] = useState('');
     const [search, setSearch] = useState('');
+    const [includeInterviewDetails, setIncludeInterviewDetails] = useState(true);
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
@@ -24,6 +25,7 @@ const BulkTransferModal = ({
         setSelectedIds(initialSelectedIds);
         setTargetRequisitionId('');
         setSearch('');
+        setIncludeInterviewDetails(true);
     }, [isOpen, initialSelectedIds]);
 
     useEffect(() => {
@@ -84,15 +86,18 @@ const BulkTransferModal = ({
         try {
             setSubmitting(true);
             const payload = {
+                includeInterviewDetails,
                 transfers: selectedIds.map((candidateId) => ({
                     candidateId,
                     fromRequisitionId: fromHiringRequestId,
-                    toRequisitionId: targetRequisitionId
+                    toRequisitionId: targetRequisitionId,
+                    includeInterviewDetails
                 }))
             };
 
             const response = await api.post('/ta/transfer-candidates-bulk', payload);
-            toast.success(`Transferred ${response.data.transferred} candidates`);
+            const count = response.data.transferred ?? response.data.results?.transferred?.length ?? selectedIds.length;
+            toast.success(`Transferred ${count} candidate${count !== 1 ? 's' : ''}`);
             onTransferred?.(response.data);
             onClose();
         } catch (error) {
@@ -135,8 +140,15 @@ const BulkTransferModal = ({
                                             className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                         />
                                         <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-slate-800">{candidate.candidateName}</p>
-                                            <p className="text-xs text-slate-500">{candidate.email}</p>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <p className="text-sm font-semibold text-slate-800">{candidate.candidateName}</p>
+                                                {candidate.isTransferred && (
+                                                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
+                                                        Transferred
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500">{candidate.email || candidate.mobile || 'No contact details'}</p>
                                         </div>
                                     </label>
                                 ))}
@@ -185,11 +197,35 @@ const BulkTransferModal = ({
                             <p className="mt-2 text-sm text-slate-600">
                                 Target requisition: <span className="font-bold text-slate-900">{targetRequest ? `${targetRequest.requestId} · ${targetRequest.roleDetails?.title}` : 'Not selected'}</span>
                             </p>
+
+                            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3.5 transition-colors hover:border-slate-300">
+                                <label className="flex cursor-pointer items-start gap-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={includeInterviewDetails}
+                                        onChange={(e) => setIncludeInterviewDetails(e.target.checked)}
+                                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                    <div className="select-none">
+                                        <span className="text-xs font-bold text-slate-800">
+                                            Include interview details & history
+                                        </span>
+                                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                                            Preserve or update interview rounds, interviewer ratings, feedback, and pipeline decisions in the target requisition.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <p className="mt-3 text-[11px] text-slate-400">
+                                Note: If a candidate was previously transferred to this requisition, transferring again updates their profile & interview details.
+                            </p>
+
                             <button
                                 type="button"
                                 onClick={handleSubmit}
                                 disabled={submitting}
-                                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 transition"
                             >
                                 <Send size={16} />
                                 {submitting ? 'Transferring...' : 'Transfer Candidates'}
