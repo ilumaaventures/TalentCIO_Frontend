@@ -219,18 +219,33 @@ const MyPayslips = () => {
                                                 </span>
                                             </div>
 
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setViewingPayslip(pay);
-                                                }}
-                                                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 border border-blue-100 px-3.5 py-2 text-xs font-bold text-blue-700 hover:bg-blue-600 hover:text-white transition-all shadow-2xs cursor-pointer"
-                                            >
-                                                <FileText size={14} />
-                                                View Statement
-                                                <ChevronRight size={14} />
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                {pay.payslipUrl && (
+                                                    <a
+                                                        href={pay.payslipUrl.startsWith('http') ? pay.payslipUrl : `${api.defaults?.baseURL?.replace('/api/v1', '') || ''}${pay.payslipUrl}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all shadow-2xs"
+                                                        title="Download Official Payslip PDF"
+                                                    >
+                                                        <Download size={14} />
+                                                        PDF
+                                                    </a>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setViewingPayslip(pay);
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 border border-blue-100 px-3.5 py-2 text-xs font-bold text-blue-700 hover:bg-blue-600 hover:text-white transition-all shadow-2xs cursor-pointer"
+                                                >
+                                                    <FileText size={14} />
+                                                    View Statement
+                                                    <ChevronRight size={14} />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 );

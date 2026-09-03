@@ -80,7 +80,7 @@ const SALARY_TEMPLATES = {
   }
 };
 
-const SalaryCalculator = () => {
+const SalaryCalculator = ({ embedded = false }) => {
   const { user } = useAuth();
   const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role))
     || user?.permissions?.includes('*');
@@ -637,33 +637,53 @@ const SalaryCalculator = () => {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-            Salary Calculator
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Simulate compensation structures, enforce statutory rules, apply default profiles, and compare regimes.
-          </p>
-        </div>
-
-        {activeTab !== 'settings' && (
-          <div className="flex items-center gap-3 bg-slate-55 border border-slate-200 px-4 py-2 rounded-xl">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Salary Profile:</label>
-            <select
-              value={form.salaryTemplate}
-              onChange={(e) => handleTemplateChange(e.target.value)}
-              className="bg-white text-xs font-bold text-blue-600 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="custom">Custom Structure</option>
-              <option value="sde">SDE Preset</option>
-              <option value="sales">Sales Preset</option>
-              <option value="operations">Operations Preset</option>
-            </select>
+    <div className={embedded ? "space-y-6" : "p-6 max-w-7xl mx-auto space-y-6"}>
+      {!embedded ? (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+              Salary Calculator
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">
+              Simulate compensation structures, enforce statutory rules, apply default profiles, and compare regimes.
+            </p>
           </div>
-        )}
-      </div>
+
+          {activeTab !== 'settings' && (
+            <div className="flex items-center gap-3 bg-slate-55 border border-slate-200 px-4 py-2 rounded-xl">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Salary Profile:</label>
+              <select
+                value={form.salaryTemplate}
+                onChange={(e) => handleTemplateChange(e.target.value)}
+                className="bg-white text-xs font-bold text-blue-600 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="custom">Custom Structure</option>
+                <option value="sde">SDE Preset</option>
+                <option value="sales">Sales Preset</option>
+                <option value="operations">Operations Preset</option>
+              </select>
+            </div>
+          )}
+        </div>
+      ) : (
+        activeTab !== 'settings' && (
+          <div className="flex justify-end">
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Salary Profile:</label>
+              <select
+                value={form.salaryTemplate}
+                onChange={(e) => handleTemplateChange(e.target.value)}
+                className="bg-white text-xs font-bold text-blue-600 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="custom">Custom Structure</option>
+                <option value="sde">SDE Preset</option>
+                <option value="sales">Sales Preset</option>
+                <option value="operations">Operations Preset</option>
+              </select>
+            </div>
+          </div>
+        )
+      )}
 
       {/* Main Tab Bar at Page Level - Restyled to prevent wrapping */}
       <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide gap-1 mb-2">
