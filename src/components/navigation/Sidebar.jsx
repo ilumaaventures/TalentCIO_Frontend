@@ -158,6 +158,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
   const showEss = hasModule('mySpace');
+  const showTalent = isAdmin;
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (isAdmin || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.company?.enabledModules?.includes('onboarding') && (
     isAdmin
@@ -200,7 +201,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showOrgChart = hasModule('organization') && Boolean(user);
   const showOrgStructureSection = showOrgChart;
   const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || showEss || canAccessTA;
-  const showOrganizationSection = showEmployees || showOnboarding || showOffboarding || showHREmail;
+  const showOrganizationSection = showEmployees || showTalent || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = isAdmin
     || user?.permissions?.includes('settings.email.view')
@@ -497,6 +498,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <Link to="/users" className={getSidebarLinkClass(location.pathname === '/users')} onClick={onClose}>
                   <Users size={18} />
                   <span>Employees</span>
+                </Link>
+              )}
+              {showTalent && (
+                <Link to="/talent" className={getSidebarLinkClass(location.pathname === '/talent' || location.pathname.startsWith('/talent/'))} onClick={onClose}>
+                  <Award size={18} />
+                  <span>Talent</span>
                 </Link>
               )}
               {showOnboarding && (
