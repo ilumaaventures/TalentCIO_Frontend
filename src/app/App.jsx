@@ -71,6 +71,7 @@ const MyClaims         = lazy(() => import('@/features/reimbursement/pages/MyCla
 const ApprovalQueue    = lazy(() => import('@/features/reimbursement/pages/ApprovalQueue'));
 const CompanyDocuments = lazy(() => import('@/features/ess-documents/pages/CompanyDocuments'));
 const MyPayslips       = lazy(() => import('@/features/ess/pages/MyPayslips'));
+const TalentPage       = lazy(() => import('@/features/talent/TalentPage'));
 
 
 import ProtectedRoute from '@/app/guards/ProtectedRoute';
@@ -371,6 +372,13 @@ function App() {
                     <Route path="/bin" element={(
                       <ProtectedRoute requiredPermissions={BIN_VIEW_PERMISSIONS} requiredRoles={ADMIN_ROLES}>
                         <RecycleBin />
+                      </ProtectedRoute>
+                    )} />
+
+                    {/* Talent Management (Admin-Only) */}
+                    <Route path="/talent" element={(
+                      <ProtectedRoute requiredRoles={ADMIN_ROLES} allowAllPermissions redirectTo="/">
+                        <TalentPage />
                       </ProtectedRoute>
                     )} />
 
