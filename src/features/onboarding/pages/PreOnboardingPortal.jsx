@@ -560,6 +560,8 @@ const PreOnboardingPortal = () => {
 
   const submitSignature = async (e) => {
     e.preventDefault();
+    const candidateFullName = profile ? `${profile.firstName} ${profile.lastName || ''}`.trim() : '';
+    let signName = (eSignName || '').trim() || candidateFullName;
     let signValue = '';
     if (eSignType === 'drawn') {
       const canvas = canvasRef.current;
@@ -574,17 +576,17 @@ const PreOnboardingPortal = () => {
       }
       signValue = canvas.toDataURL('image/png');
     } else {
-      if (!eSignName.trim()) {
+      if (!signName) {
         toast.error('Please type your name before submitting.');
         return;
       }
-      signValue = eSignName;
+      signValue = signName;
     }
 
     try {
       setAccepting(true);
       await axios.post(`${API_URL}/my-profile/accept-offer`, {
-        eSignName,
+        eSignName: signName,
         eSignType,
         eSignValue: signValue
       }, { headers: getHeaders() });
@@ -1751,12 +1753,14 @@ const PreOnboardingPortal = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                               <div>
                                 <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed By</span>
-                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>{offerDeclaration.eSignName}</span>
+                                <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>
+                                  {offerDeclaration.eSignName || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || '—'}
+                                </span>
                               </div>
                               <div>
                                 <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>Signed On</span>
                                 <span style={{ fontSize: '15px', fontWeight: '700', color: '#334155' }}>
-                                  {offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
+                                  {offerDeclaration.eSignDate ? new Date(offerDeclaration.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : (profile?.offerDeclaration?.isComplete || profile?.status === 'Submitted' || profile?.offerStatus === 'Accepted' ? (profile?.submittedAt ? new Date(profile.submittedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : (profile?.updatedAt ? new Date(profile.updatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—')) : '—')}
                                 </span>
                               </div>
                               <div>
@@ -1765,10 +1769,10 @@ const PreOnboardingPortal = () => {
                               </div>
                               <div style={{ gridColumn: '1 / -1' }}>
                                 <span style={{ display: 'block', fontSize: '12px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>Digital Signature Preview</span>
-                                {offerDeclaration.eSignType === 'drawn' && offerDeclaration.eSignValue ? (
+                                {(offerDeclaration.eSignType === 'drawn' || offerDeclaration.eSignValue?.startsWith('data:image')) && offerDeclaration.eSignValue ? (
                                   <img src={offerDeclaration.eSignValue} alt="Digital Signature" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px', maxWidth: '240px', height: '80px', display: 'block' }} />
                                 ) : (
-                                  <span style={{ fontFamily: inlineSignatureStyle, fontSize: '24px', color: '#1e3a8a', padding: '8px 16px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'inline-block', minWidth: '180px', textAlign: 'center' }}>{offerDeclaration.eSignName || 'Signature'}</span>
+                                  <span style={{ fontFamily: inlineSignatureStyle, fontSize: '24px', color: '#1e3a8a', padding: '8px 16px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'inline-block', minWidth: '180px', textAlign: 'center' }}>{offerDeclaration.eSignName || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Signature'}</span>
                                 )}
                               </div>
                             </div>
@@ -1822,9 +1826,11 @@ const PreOnboardingPortal = () => {
                               <input type="checkbox" id="od_complete" checked={offerDeclaration.isComplete || false} onChange={(e) => {
                                 const isChecked = e.target.checked;
                                 const canvas = inlineCanvasRef.current;
+                                const candidateFullName = profile ? `${profile.firstName} ${profile.lastName || ''}`.trim() : '';
+                                let signName = (offerDeclaration.eSignName || '').trim() || candidateFullName;
                                 let signValue = offerDeclaration.eSignValue || '';
                                 if (isChecked) {
-                                  if (!offerDeclaration.eSignName?.trim()) {
+                                  if (!signName) {
                                     toast.error('Signature name is required.');
                                     return;
                                   }
@@ -1838,18 +1844,15 @@ const PreOnboardingPortal = () => {
                                     }
                                     signValue = canvas.toDataURL('image/png');
                                   } else if (offerDeclaration.eSignType !== 'drawn') {
-                                    signValue = offerDeclaration.eSignName;
-                                  }
-                                  if (!offerDeclaration.eSignDate) {
-                                    toast.error('Signature date is required.');
-                                    return;
+                                    signValue = signName;
                                   }
                                 }
                                 const updated = { 
                                   ...offerDeclaration, 
                                   isComplete: isChecked, 
+                                  eSignName: signName,
                                   eSignValue: signValue,
-                                  eSignDate: isChecked ? new Date().toISOString() : offerDeclaration.eSignDate 
+                                  eSignDate: isChecked ? (offerDeclaration.eSignDate || new Date().toISOString()) : offerDeclaration.eSignDate 
                                 };
                                 setOfferDeclaration(updated);
                                 if (isChecked) handleSaveSection('offerDeclaration', false, updated);

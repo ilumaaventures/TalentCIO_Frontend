@@ -187,6 +187,31 @@ const Onboarding = () => {
   const initialEmployeesFetchDoneRef = useRef(false);
   const initialSettingsFetchDoneRef = useRef(false);
   const [payrollConfig, setPayrollConfig] = useState(null);
+  const [showEditItemModal, setShowEditItemModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editItemType, setEditItemType] = useState('dynamic');
+  const [editFormData, setEditFormData] = useState({ name: '', isRequired: true, file: null, content: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editContentLoading, setEditContentLoading] = useState(false);
+  const contentTextareaRef = useRef(null);
+  const [editModalView, setEditModalView] = useState('split'); // 'preview', 'split', 'edit'
+  const [editPreviewBlob, setEditPreviewBlob] = useState(null);
+  const [editPreviewLoading, setEditPreviewLoading] = useState(false);
+  const [editInitialContent, setEditInitialContent] = useState('');
+  const editDocxPreviewRef = useRef(null);
+
+  const [showCandidateTemplateModal, setShowCandidateTemplateModal] = useState(false);
+  const [editingCandidateTemplate, setEditingCandidateTemplate] = useState(null);
+  const [candidateTemplateContent, setCandidateTemplateContent] = useState('');
+  const [candidateInitialContent, setCandidateInitialContent] = useState('');
+  const [candidateTemplateLoading, setCandidateTemplateLoading] = useState(false);
+  const [candidateTemplateSaving, setCandidateTemplateSaving] = useState(false);
+  const [isTemplateCustomized, setIsTemplateCustomized] = useState(false);
+  const candidateTextareaRef = useRef(null);
+  const [candidateModalView, setCandidateModalView] = useState('split'); // 'preview', 'split', 'edit'
+  const [candidatePreviewBlob, setCandidatePreviewBlob] = useState(null);
+  const [candidatePreviewLoading, setCandidatePreviewLoading] = useState(false);
+  const candidateDocxPreviewRef = useRef(null);
 
   // Close menu when clicking outside or scrolling
   useEffect(() => {
@@ -295,12 +320,19 @@ const Onboarding = () => {
       }),
       ...templatesList.map((template) => {
         const req = getRequestedDoc(template.name);
+        const templateId = template._id ? String(template._id) : (template.id ? String(template.id) : (template.name || ''));
+        const isOffer = /offer/i.test(template.name) || templateId === 'offerLetter';
+        const isAccepted = Boolean(
+          (employee.offerDeclaration?.acceptedTemplates || []).some((acceptedTemplate) => acceptedTemplate.templateId === templateId || acceptedTemplate.templateId === template._id) ||
+          (isOffer && (employee.offerStatus === 'Accepted' || employee.status === 'Submitted'))
+        );
         return {
           label: template.name,
           status: 'Template',
           itemType: 'template',
-          _id: template._id,
-          isAccepted: (employee.offerDeclaration?.acceptedTemplates || []).some((acceptedTemplate) => acceptedTemplate.templateId === template._id),
+          _id: templateId,
+          id: templateId,
+          isAccepted,
           emailSentAt: req?.emailSentAt,
           url: template.url
         };
@@ -697,19 +729,19 @@ const Onboarding = () => {
   const calculateSalaryBreakdown = (updatedSalaryFields) => {
     setFormData(prev => {
       const mergedSalary = { ...prev.salary, ...updatedSalaryFields };
-      
+
       // Keep compensationType and payType synchronized
       const compType = mergedSalary.compensationType || (mergedSalary.payType === 'hourly' ? 'hourly' : mergedSalary.payType === 'flat' ? 'flat_project' : 'monthly_salary');
       const payType = compType === 'hourly' ? 'hourly' : (compType === 'monthly_salary' ? 'salaried' : 'flat');
       mergedSalary.compensationType = compType;
       mergedSalary.payType = payType;
-      
+
       let rawAnnualStr = updatedSalaryFields.annualCTC !== undefined ? updatedSalaryFields.annualCTC : mergedSalary.annualCTC;
       let rawMonthlyStr = updatedSalaryFields.monthlyCTC !== undefined ? updatedSalaryFields.monthlyCTC : mergedSalary.monthlyCTC;
-      
+
       let annualCTC = parseFloat(String(rawAnnualStr || 0).replace(/[^0-9.]/g, '')) || 0;
       let monthlyCTC = parseFloat(String(rawMonthlyStr || 0).replace(/[^0-9.]/g, '')) || 0;
-      
+
       if (updatedSalaryFields.annualCTC !== undefined && updatedSalaryFields.monthlyCTC === undefined) {
         monthlyCTC = annualCTC > 0 ? Math.round(annualCTC / 12) : 0;
       } else if (updatedSalaryFields.monthlyCTC !== undefined && updatedSalaryFields.annualCTC === undefined) {
@@ -793,7 +825,7 @@ const Onboarding = () => {
             hraVal = String(master.hraMaster);
             specialVal = String(master.specialAllowance || 0);
             grossVal = String(master.totalEarnings);
-            
+
             mergedSalary.pfEmployer = String(master.pfEmployer || 0);
             mergedSalary.pfEmployee = String(master.pfEmployee || 0);
             mergedSalary.gratuity = String(master.gratuity || 0);
@@ -805,7 +837,7 @@ const Onboarding = () => {
             mergedSalary.tds = String(master.tds || 0);
             mergedSalary.netTakeHome = String(master.netTakeHome || 0);
             mergedSalary.monthlyGross = String(master.totalEarnings);
-            
+
             if (master.earningsMap) {
               Object.entries(master.earningsMap).forEach(([id, val]) => {
                 mergedSalary[id] = String(val);
@@ -965,6 +997,271 @@ const Onboarding = () => {
     } catch {
       toast.error('Failed to delete policy');
       fetchSettings();
+    }
+  };
+
+  const insertPlaceholderAtCursor = (tag) => {
+    const textarea = contentTextareaRef.current;
+    const current = editFormData.content || '';
+    if (!textarea) {
+      setEditFormData(prev => ({ ...prev, content: (prev.content || '') + tag }));
+      return;
+    }
+    const start = textarea.selectionStart ?? current.length;
+    const end = textarea.selectionEnd ?? current.length;
+    const nextContent = current.substring(0, start) + tag + current.substring(end);
+    setEditFormData(prev => ({ ...prev, content: nextContent }));
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  };
+
+  const loadEditItemPreview = async (item, customContent = null, fileOverride = null) => {
+    if (!item) return;
+    setEditPreviewLoading(true);
+    try {
+      if (fileOverride) {
+        setEditPreviewBlob(fileOverride);
+        return;
+      }
+
+      const targetId = item._id || item.id || item.name;
+      if (customContent !== null && customContent !== undefined && customContent.trim()) {
+        const res = await api.post(`/onboarding/settings/templates/dynamic/${encodeURIComponent(targetId)}/preview-buffer`, {
+          content: customContent,
+          targetUrl: item.url
+        }, { responseType: 'blob' });
+        setEditPreviewBlob(res.data);
+      } else if (item.url) {
+        const res = await axios.get(item.url, { responseType: 'blob' });
+        setEditPreviewBlob(res.data);
+      } else {
+        const res = await api.post(`/onboarding/settings/templates/dynamic/${encodeURIComponent(targetId)}/preview-buffer`, {
+          content: editFormData.content || ''
+        }, { responseType: 'blob' });
+        setEditPreviewBlob(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to load edit item preview:', err);
+    } finally {
+      setEditPreviewLoading(false);
+    }
+  };
+
+  const loadCandidateTemplatePreview = async (employee, item, customContent = null) => {
+    if (!employee || !item) return;
+    setCandidatePreviewLoading(true);
+    const templateIdentifier = item._id || item.id || item.label || item.name;
+    try {
+      if (customContent !== null && customContent !== undefined && customContent.trim()) {
+        const res = await api.post(`/onboarding/employees/${employee._id}/templates/${encodeURIComponent(templateIdentifier)}/preview-buffer`, {
+          content: customContent
+        }, { responseType: 'blob' });
+        setCandidatePreviewBlob(res.data);
+      } else {
+        let previewUrl = '';
+        if (/offer\s*letter/i.test(item.label) || item.label === 'Offer Letter') {
+          previewUrl = `onboarding/employees/${employee._id}/offer-letter`;
+        } else if (/declaration/i.test(item.label) || item.label === 'Declaration') {
+          previewUrl = `onboarding/employees/${employee._id}/declaration`;
+        } else {
+          previewUrl = `onboarding/employees/${employee._id}/dynamic-template/${encodeURIComponent(templateIdentifier)}`;
+        }
+        const res = await api.get(previewUrl, { responseType: 'blob' });
+        setCandidatePreviewBlob(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to load candidate preview:', err);
+    } finally {
+      setCandidatePreviewLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (editPreviewBlob && editDocxPreviewRef.current && showEditItemModal && editModalView !== 'edit') {
+      editDocxPreviewRef.current.innerHTML = '';
+      renderAsync(editPreviewBlob, editDocxPreviewRef.current, null, {
+        className: "docx-content",
+        inWrapper: false,
+        breakPages: false,
+        ignoreWidth: true,
+        ignoreHeight: true,
+        debug: false
+      }).catch(err => console.error('Edit modal docx-preview error:', err));
+    }
+  }, [editPreviewBlob, showEditItemModal, editModalView]);
+
+  useEffect(() => {
+    if (candidatePreviewBlob && candidateDocxPreviewRef.current && showCandidateTemplateModal && candidateModalView !== 'edit') {
+      candidateDocxPreviewRef.current.innerHTML = '';
+      renderAsync(candidatePreviewBlob, candidateDocxPreviewRef.current, null, {
+        className: "docx-content",
+        inWrapper: false,
+        breakPages: false,
+        ignoreWidth: true,
+        ignoreHeight: true,
+        debug: false
+      }).catch(err => console.error('Candidate modal docx-preview error:', err));
+    }
+  }, [candidatePreviewBlob, showCandidateTemplateModal, candidateModalView]);
+
+  const handleOpenEditModal = async (item, type = 'dynamic') => {
+    setEditingItem(item);
+    setEditItemType(type);
+    setEditModalView('split');
+    setEditPreviewBlob(null);
+    setEditFormData({
+      name: item.name || '',
+      isRequired: item.isRequired ?? (type === 'dynamic'),
+      file: null,
+      content: ''
+    });
+    setShowEditItemModal(true);
+
+    if (type === 'dynamic') {
+      loadEditItemPreview(item);
+    }
+
+    setEditInitialContent('');
+    const targetId = item._id || item.id || item.name;
+    if (type === 'dynamic' && targetId) {
+      setEditContentLoading(true);
+      try {
+        const res = await api.get(`/onboarding/settings/templates/dynamic/${encodeURIComponent(targetId)}/content`);
+        if (res.data?.content) {
+          const cleaned = res.data.content.replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+          setEditFormData(prev => ({ ...prev, content: cleaned }));
+          setEditInitialContent(cleaned);
+        }
+      } catch (err) {
+        console.error('Failed to load template content:', err);
+      } finally {
+        setEditContentLoading(false);
+      }
+    }
+  };
+
+  const handleSaveEditItem = async (e) => {
+    e.preventDefault();
+    if (!editingItem) return;
+    if (!editFormData.name.trim()) {
+      toast.error('Document name is required');
+      return;
+    }
+
+    setEditSaving(true);
+    const fd = new FormData();
+    fd.append('name', editFormData.name.trim());
+    fd.append('isRequired', String(editFormData.isRequired));
+    if (editFormData.file) {
+      fd.append('document', editFormData.file);
+    } else if (editItemType === 'dynamic' && editFormData.content !== undefined) {
+      fd.append('content', editFormData.content);
+    }
+
+    try {
+      const targetId = editingItem._id || editingItem.id || editingItem.name;
+      const endpoint = editItemType === 'dynamic'
+        ? `/onboarding/settings/templates/dynamic/${encodeURIComponent(targetId)}`
+        : `/onboarding/settings/policies/${editingItem._id || editingItem.id}`;
+
+      await api.put(endpoint, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`${editItemType === 'dynamic' ? 'Dynamic template' : 'Policy'} updated successfully!`);
+      setShowEditItemModal(false);
+      setEditingItem(null);
+      fetchSettings();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update item');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const insertCandidatePlaceholder = (tag) => {
+    const textarea = candidateTextareaRef.current;
+    const current = candidateTemplateContent || '';
+    if (!textarea) {
+      setCandidateTemplateContent(prev => prev + tag);
+      return;
+    }
+    const start = textarea.selectionStart ?? current.length;
+    const end = textarea.selectionEnd ?? current.length;
+    const nextContent = current.substring(0, start) + tag + current.substring(end);
+    setCandidateTemplateContent(nextContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  };
+
+  const handleOpenCandidateTemplateEdit = async (employee, item) => {
+    if (item.isAccepted || ((employee?.offerStatus === 'Accepted' || employee?.status === 'Submitted') && (/offer/i.test(item.label) || item.label === 'Offer Letter'))) {
+      toast.info('Cannot edit a document that has already been accepted by the candidate.');
+      return;
+    }
+    setEditingCandidateTemplate({ employee, item });
+    setCandidateTemplateContent('');
+    setIsTemplateCustomized(false);
+    setCandidateModalView('split');
+    setCandidatePreviewBlob(null);
+    setShowCandidateTemplateModal(true);
+    setCandidateTemplateLoading(true);
+
+    loadCandidateTemplatePreview(employee, item);
+
+    const templateIdentifier = item._id || item.id || item.label || item.name;
+    setCandidateInitialContent('');
+    try {
+      const res = await api.get(`/onboarding/employees/${employee._id}/templates/${encodeURIComponent(templateIdentifier)}/content`);
+      const cleaned = (res.data?.content || '').replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+      setCandidateTemplateContent(cleaned);
+      setCandidateInitialContent(cleaned);
+      setIsTemplateCustomized(Boolean(res.data?.isCustomized));
+    } catch (err) {
+      console.error('Failed to load candidate template content:', err);
+      toast.error('Could not load document content for this candidate');
+    } finally {
+      setCandidateTemplateLoading(false);
+    }
+  };
+
+  const handleSaveCandidateTemplate = async (e) => {
+    e.preventDefault();
+    if (!editingCandidateTemplate) return;
+
+    const { employee, item } = editingCandidateTemplate;
+    setCandidateTemplateSaving(true);
+    const templateIdentifier = item._id || item.id || item.label || item.name;
+
+    try {
+      const res = await api.put(`/onboarding/employees/${employee._id}/templates/${encodeURIComponent(templateIdentifier)}`, {
+        content: candidateTemplateContent
+      });
+
+      toast.success(`${item.label} customized specifically for ${employee.firstName}!`);
+
+      if (res.data?.customTemplates) {
+        setSelectedEmployee(prev => prev ? ({
+          ...prev,
+          customTemplates: res.data.customTemplates
+        }) : prev);
+        setEmployees(prev => prev.map(emp => emp._id === employee._id ? {
+          ...emp,
+          customTemplates: res.data.customTemplates
+        } : emp));
+      }
+
+      setShowCandidateTemplateModal(false);
+      setEditingCandidateTemplate(null);
+    } catch (err) {
+      console.error('Failed to save candidate template:', err);
+      toast.error(err.response?.data?.message || 'Failed to save template for this candidate');
+    } finally {
+      setCandidateTemplateSaving(false);
     }
   };
 
@@ -1349,7 +1646,7 @@ const Onboarding = () => {
         salaryData.hra = String(master.hraMaster);
         salaryData.specialAllowance = String(master.specialAllowance || 0);
         salaryData.monthlyGross = String(master.totalEarnings);
-        
+
         salaryData.pfEmployer = String(master.pfEmployer || 0);
         salaryData.pfEmployee = String(master.pfEmployee || 0);
         salaryData.gratuity = String(master.gratuity || 0);
@@ -1360,7 +1657,7 @@ const Onboarding = () => {
         salaryData.professionalTax = String(master.professionalTax || 0);
         salaryData.tds = String(master.tds || 0);
         salaryData.netTakeHome = String(master.netTakeHome || 0);
-        
+
         if (master.earningsMap) {
           Object.entries(master.earningsMap).forEach(([id, val]) => {
             salaryData[id] = String(val);
@@ -1419,9 +1716,9 @@ const Onboarding = () => {
 
   const handleRegenerateCredentials = async (empId) => {
     if (!confirm('Are you sure you want to regenerate credentials? The old password will stop working immediately.')) return;
-    
+
     const sendEmail = confirm('Would you like to email these new credentials to the candidate immediately?');
-    
+
     try {
       const emailAccountId = selectedEmailAccountId || 'platform';
       const res = await api.post(`/onboarding/employees/${empId}/regenerate-credentials`, {
@@ -1857,25 +2154,26 @@ const Onboarding = () => {
                 </label>
               </div>
 
-                {!onboardingSettings.dynamicTemplates || onboardingSettings.dynamicTemplates.length === 0 ? (
-                  <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '14px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>No dynamic templates uploaded yet.</div>
-                ) : (
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {onboardingSettings.dynamicTemplates?.map((temp) => (
-                      <div key={temp._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-                        <FileText size={20} style={{ color: '#64748b' }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>{temp.name}</div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>Custom Dynamic Template</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handleFilePreview(temp.url, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Template"><Eye size={16} /></button>
-                          <button onClick={() => handleDeleteDynamicTemplate(temp._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
-                        </div>
+              {!onboardingSettings.dynamicTemplates || onboardingSettings.dynamicTemplates.length === 0 ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '14px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>No dynamic templates uploaded yet.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {onboardingSettings.dynamicTemplates?.map((temp) => (
+                    <div key={temp._id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                      <FileText size={20} style={{ color: '#64748b' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>{temp.name}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>Custom Dynamic Template</div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleFilePreview(temp.url, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Template"><Eye size={16} /></button>
+                        <button onClick={() => handleOpenEditModal(temp, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#0284c7', display: 'flex', cursor: 'pointer' }} title="Edit Template"><Edit2 size={16} /></button>
+                        <button onClick={() => handleDeleteDynamicTemplate(temp._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Portion 2: Static Policies */}
@@ -1907,6 +2205,7 @@ const Onboarding = () => {
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button onClick={() => handleFilePreview(policy.url, 'policy')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Policy"><Eye size={16} /></button>
+                          <button onClick={() => handleOpenEditModal(policy, 'policy')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#0284c7', display: 'flex', cursor: 'pointer' }} title="Edit Policy"><Edit2 size={16} /></button>
                           <button onClick={() => handleDeletePolicy(policy._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer', display: 'flex' }} title="Delete Policy"><Trash2 size={16} /></button>
                         </div>
                       </div>
@@ -1921,7 +2220,7 @@ const Onboarding = () => {
                 <AlertTriangle size={18} style={{ color: '#f59e0b' }} /> Available Placeholders Reference
               </h3>
               <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Copy and paste these exact tags into your Word document. The system will automatically replace them with real data.</p>
-              
+
               <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>Single Values</h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', marginBottom: '24px' }}>
                 {(() => {
@@ -1962,7 +2261,7 @@ const Onboarding = () => {
 
               <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>Table Format Loops (Automatic Table Breakups)</h4>
               <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>Create a table in Word with the headers. In the data row, start with the loop opener and end with the loop closer. The row will automatically duplicate for each item in the breakdown.</p>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
                 {[
                   { tag: '{#earnings_breakdown}...{/earnings_breakdown}', desc: 'Earnings List. Fields: {name}, {monthly}, {annual}' },
@@ -2396,19 +2695,19 @@ const Onboarding = () => {
                                 <div style={{ display: 'flex', gap: '8px' }}>{s.data?.agreesToOriginalVerification ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Agrees to Verification</span></div>
                                 <div style={{ marginTop: '8px', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
                                   <span style={{ color: '#94a3b8' }}>E-Signature:</span> <br />
-                                  <strong>{s.data?.eSignName || '—'}</strong> <br />
-                                  {s.data?.eSignType === 'drawn' && s.data?.eSignValue && (
+                                  <strong>{s.data?.eSignName || `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || '—'}</strong> <br />
+                                  {(s.data?.eSignType === 'drawn' || s.data?.eSignValue?.startsWith('data:image')) && s.data?.eSignValue ? (
                                     <div style={{ margin: '8px 0', border: '1px solid #e2e8f0', padding: '6px', background: '#f8fafc', borderRadius: '8px', maxWidth: '200px' }}>
                                       <img src={s.data.eSignValue} alt="Signature" style={{ width: '100%', height: 'auto', display: 'block' }} />
                                     </div>
-                                  )}
+                                  ) : null}
                                   {s.data?.eSignType === 'typed' && (
                                     <div style={{ margin: '8px 0', fontStyle: 'italic', fontSize: '15px', color: '#1e293b', fontFamily: 'cursive' }}>
-                                      {s.data?.eSignName}
+                                      {s.data?.eSignName || `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim()}
                                     </div>
                                   )}
                                   <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
+                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : (s.done || selectedEmployee?.offerStatus === 'Accepted' || selectedEmployee?.status === 'Submitted' ? (selectedEmployee?.submittedAt ? new Date(selectedEmployee.submittedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : (selectedEmployee?.updatedAt ? new Date(selectedEmployee.updatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—')) : '—')}
                                     {s.data?.eSignIp ? ` (IP: ${s.data.eSignIp})` : ''}
                                   </span>
                                 </div>
@@ -2441,11 +2740,16 @@ const Onboarding = () => {
                         {item.itemType === 'policy' ? <ScrollText size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
                           item.itemType === 'template' ? <FileSignature size={16} style={{ color: item.isAccepted ? '#059669' : '#f59e0b', flexShrink: 0 }} /> :
                             isLiveRequired ? <Camera size={16} style={{ color: '#d97706', flexShrink: 0 }} /> :
-                            <FileText size={16} style={{ color: '#64748b', flexShrink: 0 }} />}
+                              <FileText size={16} style={{ color: '#64748b', flexShrink: 0 }} />}
 
                         <div style={{ flex: 1, minWidth: '120px' }}>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
                           {item.itemType === 'policy' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>STATIC POLICY</span></div>}
+                          {item.itemType === 'template' && (selectedEmployee?.customTemplates || []).some(t => t.templateId === item._id || (item.label === 'Offer Letter' && t.templateId === 'offerLetter')) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                              <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 5px', borderRadius: '4px', background: '#ecfdf5', color: '#047857' }}>CUSTOMIZED FOR CANDIDATE</span>
+                            </div>
+                          )}
                           {item.isCustomSentFile && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>Added FILE</span></div>}
                           {isLiveRequired && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#92400e' }}>📷 LIVE PHOTO REQUIRED</span></div>}
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
@@ -2468,19 +2772,30 @@ const Onboarding = () => {
                           <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>{item.status}</span>
                         )}
 
-                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                          {item.itemType === 'template' && !item.isAccepted && !(selectedEmployee?.offerStatus === 'Accepted' && (/offer/i.test(item.label) || item.label === 'Offer Letter')) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCandidateTemplateEdit(selectedEmployee, item)}
+                              style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', fontSize: '12px', cursor: 'pointer', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              title={`Edit ${item.label} specifically for this candidate`}
+                            >
+                              <Edit2 size={12} /> Edit
+                            </button>
+                          )}
                           {(item.url || isDoc) && (
                             <>
                               {item.url && (
                                 <button onClick={() => {
                                   if (item.itemType === 'template') {
+                                    const templateIdentifier = item._id || item.id || item.label;
                                     let templatePreviewUrl = '';
-                                    if (item.label === 'Offer Letter') {
+                                    if (/offer\s*letter/i.test(item.label) || item.label === 'Offer Letter') {
                                       templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/offer-letter`;
-                                    } else if (item.label === 'Declaration') {
+                                    } else if (/declaration/i.test(item.label) || item.label === 'Declaration') {
                                       templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/declaration`;
                                     } else {
-                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${item._id}`;
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${encodeURIComponent(templateIdentifier)}`;
                                     }
                                     handleFilePreview(templatePreviewUrl, item.label, 'document');
                                   } else {
@@ -2829,9 +3144,22 @@ const Onboarding = () => {
 
             <div style={{ flex: 1, overflow: 'auto', padding: '40px', background: '#f1f5f9', display: 'flex', justifyContent: 'center' }}>
               <style>{`
-                .docx-content {
+                #docx-preview-root section,
+                #docx-preview-root .docx-content {
                   padding: 0 !important;
                   background: transparent !important;
+                  min-height: auto !important;
+                  height: auto !important;
+                  width: 100% !important;
+                  overflow: visible !important;
+                  box-shadow: none !important;
+                  margin-bottom: 0 !important;
+                }
+                #docx-preview-root article {
+                  min-height: auto !important;
+                  height: auto !important;
+                  width: 100% !important;
+                  overflow: visible !important;
                 }
                 /* Force constant black text and standard size for EVERY element inside the doc */
                 #docx-preview-root span, 
@@ -2880,7 +3208,11 @@ const Onboarding = () => {
                     boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
                     display: 'flex',
                     flexDirection: 'column',
-                    minHeight: 'fit-content'
+                    minHeight: 'fit-content',
+                    height: 'fit-content',
+                    flexShrink: 0,
+                    boxSizing: 'border-box',
+                    marginBottom: '40px'
                   }}
                 >
                   {/* Manual logo injection ONLY for offer letters/declarations/templates, NOT for candidate docs/files */}
@@ -2920,6 +3252,818 @@ const Onboarding = () => {
         </div>
       )}
 
+      {/* Edit Dynamic Template / Policy Modal */}
+      {showEditItemModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '16px' }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: editItemType === 'dynamic' ? (editModalView === 'split' ? '1280px' : (editModalView === 'preview' ? '960px' : '760px')) : '520px',
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            overflow: 'hidden',
+            transition: 'max-width 0.25s ease'
+          }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+                  Edit {editItemType === 'dynamic' ? 'Dynamic Template' : 'Static Policy'}{editingItem?.name ? `: ${editingItem.name}` : ''}
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                  {editItemType === 'dynamic' ? 'Preview complete document file, edit clauses & placeholders, or replace file' : 'Update document name, replace file, or adjust requirements'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {editItemType === 'dynamic' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: '#e2e8f0', padding: '3px', borderRadius: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setEditModalView('preview')}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: editModalView === 'preview' ? '#fff' : 'transparent',
+                        color: editModalView === 'preview' ? '#2563eb' : '#64748b',
+                        boxShadow: editModalView === 'preview' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
+                      title="View complete formatted document as in Word"
+                    >
+                      <Eye size={13} /> Complete File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditModalView('split')}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: editModalView === 'split' ? '#fff' : 'transparent',
+                        color: editModalView === 'split' ? '#2563eb' : '#64748b',
+                        boxShadow: editModalView === 'split' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
+                      title="View editor and live document preview side-by-side"
+                    >
+                      <Layout size={13} /> Split View
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditModalView('edit')}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: editModalView === 'edit' ? '#fff' : 'transparent',
+                        color: editModalView === 'edit' ? '#2563eb' : '#64748b',
+                        boxShadow: editModalView === 'edit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
+                      title="Edit text clauses and placeholders"
+                    >
+                      <Edit2 size={13} /> Edit Text
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => { setShowEditItemModal(false); setEditingItem(null); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              {/* Left Column: Form Editor (hidden in pure preview mode) */}
+              {(editModalView !== 'preview' || editItemType !== 'dynamic') && (
+                <form onSubmit={handleSaveEditItem} style={{
+                  width: editItemType === 'dynamic' && editModalView === 'split' ? '460px' : '100%',
+                  minWidth: editItemType === 'dynamic' && editModalView === 'split' ? '420px' : 'auto',
+                  flexShrink: 0,
+                  overflowY: 'auto',
+                  padding: '24px',
+                  borderRight: editItemType === 'dynamic' && editModalView === 'split' ? '1px solid #e2e8f0' : 'none'
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                        Document Name *
+                      </label>
+                      <input
+                        required
+                        value={editFormData.name}
+                        onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                        placeholder="e.g. Letter of Intent, Offer Letter, Employee Handbook"
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {editItemType === 'dynamic' && (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <label style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
+                            Template Content & Placeholders
+                          </label>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            Click tag to insert
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                          {[
+                            { label: 'Full Name', tag: '{employee_full_name}' },
+                            { label: 'First Name', tag: '{employee_first_name}' },
+                            { label: 'Last Name', tag: '{employee_last_name}' },
+                            { label: 'Designation', tag: '{designation}' },
+                            { label: 'Joining Date', tag: '{joining_date}' },
+                            { label: 'Annual CTC', tag: '{annual_ctc}' },
+                            { label: 'Address', tag: '{employee_address}' },
+                            { label: 'Salary Table', tag: '{@salary_table}' },
+                            { label: 'Signature', tag: '{@employee_signature}' }
+                          ].map(p => (
+                            <button
+                              key={p.tag}
+                              type="button"
+                              onClick={() => insertPlaceholderAtCursor(p.tag)}
+                              title={`Insert ${p.tag}`}
+                              style={{
+                                fontSize: '11px',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #c7d2fe',
+                                background: '#eef2ff',
+                                color: '#4338ca',
+                                cursor: 'pointer',
+                                fontFamily: 'monospace',
+                                fontWeight: '600'
+                              }}
+                            >
+                              +{p.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {editContentLoading ? (
+                          <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '13px', gap: '8px' }}>
+                            <RefreshCw size={18} className="animate-spin" />
+                            Extracting template text...
+                          </div>
+                        ) : (
+                          <textarea
+                            ref={contentTextareaRef}
+                            rows={editModalView === 'split' ? 14 : 12}
+                            value={editFormData.content ?? ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, content: e.target.value })}
+                            placeholder="Edit template text, clauses, and placeholders directly here..."
+                            style={{
+                              width: '100%',
+                              padding: '12px',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '8px',
+                              fontSize: '13px',
+                              lineHeight: '1.6',
+                              fontFamily: 'inherit',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                              resize: 'vertical'
+                            }}
+                          />
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', width: '100%', gap: '8px', flexWrap: 'nowrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditFormData(prev => ({
+                                ...prev,
+                                content: (prev.content || '').replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim()
+                              }));
+                              toast.success('Excess blank lines removed');
+                            }}
+                            style={{
+                              fontSize: '11px',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #fed7aa',
+                              background: '#fff7ed',
+                              color: '#c2410c',
+                              cursor: 'pointer',
+                              fontWeight: '600',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title="Remove excessive blank lines and clean up spacing"
+                          >
+                            🧹 Clean Spacing
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const isUnchanged = (editFormData.content || '').trim() === (editInitialContent || '').trim();
+                              if (isUnchanged) {
+                                loadEditItemPreview(editingItem);
+                                toast.success('Preview updated (document unchanged)');
+                              } else {
+                                loadEditItemPreview(editingItem, editFormData.content);
+                              }
+                            }}
+                            style={{
+                              fontSize: '11px',
+                              color: '#2563eb',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontWeight: '600',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title="Render current text into complete document preview"
+                          >
+                            <RefreshCw size={11} className={editPreviewLoading ? 'animate-spin' : ''} /> Update Live Preview
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                        Replace File (Optional)
+                      </label>
+                      <input
+                        type="file"
+                        accept={editItemType === 'dynamic' ? '.docx' : '.pdf,.doc,.docx'}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setEditFormData({ ...editFormData, file });
+                            loadEditItemPreview(editingItem, null, file);
+                            toast.success(`Loaded preview for ${file.name}`);
+                          }
+                        }}
+                        style={{ width: '100%', fontSize: '13px', color: '#475569' }}
+                      />
+                      <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#94a3b8' }}>
+                        {editFormData.file
+                          ? `Selected: ${editFormData.file.name}. Preview updated on right.`
+                          : `Leave empty to keep current file. ${editItemType === 'dynamic' ? 'Only .docx files allowed.' : 'PDF or Word documents.'}`}
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                      <input
+                        type="checkbox"
+                        id="editIsRequiredCheckbox"
+                        checked={editFormData.isRequired}
+                        onChange={(e) => setEditFormData({ ...editFormData, isRequired: e.target.checked })}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <label htmlFor="editIsRequiredCheckbox" style={{ fontSize: '13px', fontWeight: '500', color: '#334151', cursor: 'pointer' }}>
+                        Mandatory for candidates
+                      </label>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowEditItemModal(false); setEditingItem(null); }}
+                      disabled={editSaving}
+                      style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', color: '#475569' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={editSaving}
+                      style={{ padding: '9px 20px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(37,99,235,0.25)', opacity: editSaving ? 0.7 : 1 }}
+                    >
+                      {editSaving ? <RefreshCw size={15} className="animate-spin" /> : null}
+                      {editSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Right Column: Complete Document Preview (shown in split and preview modes) */}
+              {editItemType === 'dynamic' && editModalView !== 'edit' && (
+                <div style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '24px',
+                  background: '#f1f5f9',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center'
+                }}>
+                  <div style={{ width: '100%', maxWidth: '780px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', background: '#dbeafe', color: '#1e40af', padding: '3px 8px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <FileText size={12} /> Actual Document (.docx)
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>Complete file appearance</span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => loadEditItemPreview(editingItem, editFormData.content)}
+                        disabled={editPreviewLoading}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          color: '#2563eb',
+                          background: '#fff',
+                          border: '1px solid #bfdbfe',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          cursor: editPreviewLoading ? 'wait' : 'pointer',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                        title="Re-render document preview with current edited text"
+                      >
+                        <RefreshCw size={13} className={editPreviewLoading ? 'animate-spin' : ''} />
+                        {editPreviewLoading ? 'Rendering...' : 'Refresh Preview'}
+                      </button>
+
+                      {editModalView === 'preview' && (
+                        <button
+                          type="button"
+                          onClick={() => setEditModalView('split')}
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#475569',
+                            background: '#fff',
+                            border: '1px solid #cbd5e1',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Switch to Split View
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    id="edit-docx-preview-root"
+                    style={{
+                      width: '100%',
+                      maxWidth: '850px',
+                      background: '#fff',
+                      padding: '60px 70px',
+                      borderRadius: '8px',
+                      boxShadow: '0 15px 35px -5px rgba(0,0,0,0.1), 0 5px 15px rgba(0,0,0,0.04)',
+                      minHeight: 'fit-content',
+                      height: 'fit-content',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      flexShrink: 0,
+                      boxSizing: 'border-box',
+                      marginBottom: '40px'
+                    }}
+                  >
+                    {/* Company Header */}
+                    {user?.company?.logo ? (
+                      <div style={{ textAlign: 'left', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+                        <img src={user.company.logo} alt="Company Logo" style={{ maxHeight: '48px', maxWidth: '200px', objectFit: 'contain' }} />
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>{user?.company?.name || 'Resource Gateway'}</span>
+                      </div>
+                    )}
+
+                    {editPreviewLoading ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', gap: '12px', color: '#64748b' }}>
+                        <RefreshCw size={28} className="animate-spin text-blue-600" />
+                        <span style={{ fontSize: '13px', fontWeight: '500' }}>Rendering complete document preview...</span>
+                      </div>
+                    ) : (
+                      <div ref={editDocxPreviewRef} style={{ width: '100%' }} />
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate-Specific Template Customization Modal */}
+      {showCandidateTemplateModal && editingCandidateTemplate && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1150, padding: '16px' }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: candidateModalView === 'split' ? '1280px' : (candidateModalView === 'preview' ? '960px' : '780px'),
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            overflow: 'hidden',
+            transition: 'max-width 0.25s ease'
+          }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+                    Edit {editingCandidateTemplate.item.label} for {editingCandidateTemplate.employee.firstName} {editingCandidateTemplate.employee.lastName || ''}
+                  </h3>
+                  {isTemplateCustomized && (
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', background: '#ecfdf5', color: '#047857' }}>
+                      Customized for Candidate
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Changes will only apply to this candidate. The global company template remains untouched.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: '#e2e8f0', padding: '3px', borderRadius: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCandidateModalView('preview')}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: candidateModalView === 'preview' ? '#fff' : 'transparent',
+                      color: candidateModalView === 'preview' ? '#2563eb' : '#64748b',
+                      boxShadow: candidateModalView === 'preview' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                    title="View candidate's complete formatted document as in Word"
+                  >
+                    <Eye size={13} /> Complete File
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCandidateModalView('split')}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: candidateModalView === 'split' ? '#fff' : 'transparent',
+                      color: candidateModalView === 'split' ? '#2563eb' : '#64748b',
+                      boxShadow: candidateModalView === 'split' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                    title="View editor and candidate document preview side-by-side"
+                  >
+                    <Layout size={13} /> Split View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCandidateModalView('edit')}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: candidateModalView === 'edit' ? '#fff' : 'transparent',
+                      color: candidateModalView === 'edit' ? '#2563eb' : '#64748b',
+                      boxShadow: candidateModalView === 'edit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                    title="Edit candidate text clauses and placeholders"
+                  >
+                    <Edit2 size={13} /> Edit Text
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { setShowCandidateTemplateModal(false); setEditingCandidateTemplate(null); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              {/* Left Column: Form Editor */}
+              {candidateModalView !== 'preview' && (
+                <form onSubmit={handleSaveCandidateTemplate} style={{
+                  width: candidateModalView === 'split' ? '460px' : '100%',
+                  minWidth: candidateModalView === 'split' ? '420px' : 'auto',
+                  flexShrink: 0,
+                  overflowY: 'auto',
+                  padding: '24px',
+                  borderRight: candidateModalView === 'split' ? '1px solid #e2e8f0' : 'none'
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
+                          Document Clauses & Placeholders
+                        </label>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                          Click tag to insert
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                        {[
+                          { label: 'Full Name', tag: '{employee_full_name}' },
+                          { label: 'First Name', tag: '{employee_first_name}' },
+                          { label: 'Last Name', tag: '{employee_last_name}' },
+                          { label: 'Designation', tag: '{designation}' },
+                          { label: 'Joining Date', tag: '{joining_date}' },
+                          { label: 'Annual CTC', tag: '{annual_ctc}' },
+                          { label: 'Address', tag: '{employee_address}' },
+                          { label: 'Salary Table', tag: '{@salary_table}' },
+                          { label: 'Signature', tag: '{@employee_signature}' }
+                        ].map(p => (
+                          <button
+                            key={p.tag}
+                            type="button"
+                            onClick={() => insertCandidatePlaceholder(p.tag)}
+                            title={`Insert ${p.tag}`}
+                            style={{
+                              fontSize: '11px',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #c7d2fe',
+                              background: '#eef2ff',
+                              color: '#4338ca',
+                              cursor: 'pointer',
+                              fontFamily: 'monospace',
+                              fontWeight: '600'
+                            }}
+                          >
+                            +{p.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {candidateTemplateLoading ? (
+                        <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '13px', gap: '8px' }}>
+                          <RefreshCw size={18} className="animate-spin" />
+                          Loading candidate template text...
+                        </div>
+                      ) : (
+                        <textarea
+                          ref={candidateTextareaRef}
+                          rows={candidateModalView === 'split' ? 16 : 14}
+                          value={candidateTemplateContent}
+                          onChange={(e) => setCandidateTemplateContent(e.target.value)}
+                          placeholder="Edit document clauses, special terms, or placeholders specifically for this employee..."
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            lineHeight: '1.6',
+                            fontFamily: 'inherit',
+                            outline: 'none',
+                            boxSizing: 'border-box',
+                            resize: 'vertical'
+                          }}
+                        />
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', width: '100%', gap: '8px', flexWrap: 'nowrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCandidateTemplateContent(prev =>
+                              (prev || '').replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim()
+                            );
+                            toast.success('Excess blank lines removed');
+                          }}
+                          style={{
+                            fontSize: '11px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #fed7aa',
+                            background: '#fff7ed',
+                            color: '#c2410c',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title="Remove excessive blank lines and clean up spacing"
+                        >
+                          🧹 Clean Spacing
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const isUnchanged = (candidateTemplateContent || '').trim() === (candidateInitialContent || '').trim();
+                            if (isUnchanged) {
+                              loadCandidateTemplatePreview(editingCandidateTemplate.employee, editingCandidateTemplate.item);
+                              toast.success('Preview updated (document unchanged)');
+                            } else {
+                              loadCandidateTemplatePreview(editingCandidateTemplate.employee, editingCandidateTemplate.item, candidateTemplateContent);
+                            }
+                          }}
+                          style={{
+                            fontSize: '11px',
+                            color: '#2563eb',
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title="Render current text into complete candidate document preview"
+                        >
+                          <RefreshCw size={11} className={candidatePreviewLoading ? 'animate-spin' : ''} /> Update Live Preview
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowCandidateTemplateModal(false); setEditingCandidateTemplate(null); }}
+                      disabled={candidateTemplateSaving}
+                      style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', color: '#475569' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={candidateTemplateSaving || candidateTemplateLoading}
+                      style={{ padding: '9px 20px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(37,99,235,0.25)', opacity: candidateTemplateSaving ? 0.7 : 1 }}
+                    >
+                      {candidateTemplateSaving ? <RefreshCw size={15} className="animate-spin" /> : null}
+                      {candidateTemplateSaving ? 'Saving...' : `Save for ${editingCandidateTemplate.employee.firstName}`}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Right Column: Candidate Complete Document Preview */}
+              {candidateModalView !== 'edit' && (
+                <div style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '24px',
+                  background: '#f1f5f9',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center'
+                }}>
+                  <div style={{ width: '100%', maxWidth: '780px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', background: '#dbeafe', color: '#1e40af', padding: '3px 8px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <FileText size={12} /> Candidate Populated Document (.docx)
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>Complete file appearance</span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => loadCandidateTemplatePreview(editingCandidateTemplate.employee, editingCandidateTemplate.item, candidateTemplateContent)}
+                        disabled={candidatePreviewLoading}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          color: '#2563eb',
+                          background: '#fff',
+                          border: '1px solid #bfdbfe',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          cursor: candidatePreviewLoading ? 'wait' : 'pointer',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                        title="Re-render document preview with current candidate text"
+                      >
+                        <RefreshCw size={13} className={candidatePreviewLoading ? 'animate-spin' : ''} />
+                        {candidatePreviewLoading ? 'Rendering...' : 'Refresh Preview'}
+                      </button>
+
+                      {candidateModalView === 'preview' && (
+                        <button
+                          type="button"
+                          onClick={() => setCandidateModalView('split')}
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#475569',
+                            background: '#fff',
+                            border: '1px solid #cbd5e1',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Switch to Split View
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    id="candidate-docx-preview-root"
+                    style={{
+                      width: '100%',
+                      maxWidth: '850px',
+                      background: '#fff',
+                      padding: '60px 70px',
+                      borderRadius: '8px',
+                      boxShadow: '0 15px 35px -5px rgba(0,0,0,0.1), 0 5px 15px rgba(0,0,0,0.04)',
+                      minHeight: 'fit-content',
+                      height: 'fit-content',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      flexShrink: 0,
+                      boxSizing: 'border-box',
+                      marginBottom: '40px'
+                    }}
+                  >
+                    {/* Company Header */}
+                    {user?.company?.logo ? (
+                      <div style={{ textAlign: 'left', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+                        <img src={user.company.logo} alt="Company Logo" style={{ maxHeight: '48px', maxWidth: '200px', objectFit: 'contain' }} />
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>{user?.company?.name || 'Resource Gateway'}</span>
+                      </div>
+                    )}
+
+                    {candidatePreviewLoading ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', gap: '12px', color: '#64748b' }}>
+                        <RefreshCw size={28} className="animate-spin text-blue-600" />
+                        <span style={{ fontSize: '13px', fontWeight: '500' }}>Rendering populated candidate document...</span>
+                      </div>
+                    ) : (
+                      <div ref={candidateDocxPreviewRef} style={{ width: '100%' }} />
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         .animate-spin { animation: spin 1s linear infinite; }
@@ -2934,9 +4078,104 @@ const Onboarding = () => {
         .template-preview-content h1, .template-preview-content h2 { margin-top: 1.5em; margin-bottom: 0.5em; }
         .template-preview-content table { width: 100%; border-collapse: collapse; margin: 1em 0; }
         .template-preview-content th, .template-preview-content td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
+
+        /* DOCX Preview styles for Document Viewer and Template Editor modals */
+        #docx-preview-root,
+        #edit-docx-preview-root,
+        #candidate-docx-preview-root {
+          background: #fff !important;
+          min-height: fit-content !important;
+          height: auto !important;
+          flex-shrink: 0 !important;
+        }
+
+        #docx-preview-root section,
+        #edit-docx-preview-root section,
+        #candidate-docx-preview-root section,
+        #docx-preview-root .docx-content,
+        #edit-docx-preview-root .docx-content,
+        #candidate-docx-preview-root .docx-content {
+          padding: 0 !important;
+          background: transparent !important;
+          min-height: auto !important;
+          height: auto !important;
+          width: 100% !important;
+          overflow: visible !important;
+          box-shadow: none !important;
+          margin-bottom: 0 !important;
+        }
+
+        #docx-preview-root article,
+        #edit-docx-preview-root article,
+        #candidate-docx-preview-root article {
+          min-height: auto !important;
+          height: auto !important;
+          width: 100% !important;
+          overflow: visible !important;
+        }
+
+        #docx-preview-root .docx-wrapper,
+        #edit-docx-preview-root .docx-wrapper,
+        #candidate-docx-preview-root .docx-wrapper {
+          background: transparent !important;
+          padding: 0 !important;
+        }
+        #docx-preview-root .docx-wrapper > section.docx,
+        #edit-docx-preview-root .docx-wrapper > section.docx,
+        #candidate-docx-preview-root .docx-wrapper > section.docx {
+          box-shadow: none !important;
+          margin-bottom: 0 !important;
+          padding: 0 !important;
+          min-height: auto !important;
+          width: 100% !important;
+        }
+        #docx-preview-root span, 
+        #docx-preview-root p, 
+        #docx-preview-root div,
+        #edit-docx-preview-root span,
+        #edit-docx-preview-root p,
+        #edit-docx-preview-root div,
+        #candidate-docx-preview-root span,
+        #candidate-docx-preview-root p,
+        #candidate-docx-preview-root div {
+          color: #000 !important;
+          font-family: 'Inter', system-ui, sans-serif !important;
+          font-size: 11.5pt !important;
+          line-height: 1.5 !important;
+        }
+        #docx-preview-root [style*="Brush Script" i],
+        #edit-docx-preview-root [style*="Brush Script" i],
+        #candidate-docx-preview-root [style*="Brush Script" i] {
+          font-family: 'Brush Script MT', cursive !important;
+        }
+        #docx-preview-root [style*="Lucida" i],
+        #edit-docx-preview-root [style*="Lucida" i],
+        #candidate-docx-preview-root [style*="Lucida" i] {
+          font-family: 'Lucida Handwriting', cursive !important;
+        }
+        #docx-preview-root [style*="Segoe" i],
+        #edit-docx-preview-root [style*="Segoe" i],
+        #candidate-docx-preview-root [style*="Segoe" i] {
+          font-family: 'Segoe Print', cursive !important;
+        }
+        #docx-preview-root [style*="Courier" i],
+        #edit-docx-preview-root [style*="Courier" i],
+        #candidate-docx-preview-root [style*="Courier" i] {
+          font-family: 'Courier New', monospace !important;
+        }
+        #docx-preview-root strong,
+        #docx-preview-root b,
+        #edit-docx-preview-root strong,
+        #edit-docx-preview-root b,
+        #candidate-docx-preview-root strong,
+        #candidate-docx-preview-root b {
+          font-weight: 700 !important;
+        }
       `}</style>
     </div>
   );
 };
 
 export default Onboarding;
+
+
