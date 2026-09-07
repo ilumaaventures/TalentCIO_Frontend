@@ -187,6 +187,21 @@ const Onboarding = () => {
   const initialEmployeesFetchDoneRef = useRef(false);
   const initialSettingsFetchDoneRef = useRef(false);
   const [payrollConfig, setPayrollConfig] = useState(null);
+  const [showEditItemModal, setShowEditItemModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editItemType, setEditItemType] = useState('dynamic');
+  const [editFormData, setEditFormData] = useState({ name: '', isRequired: true, file: null, content: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editContentLoading, setEditContentLoading] = useState(false);
+  const contentTextareaRef = useRef(null);
+
+  const [showCandidateTemplateModal, setShowCandidateTemplateModal] = useState(false);
+  const [editingCandidateTemplate, setEditingCandidateTemplate] = useState(null);
+  const [candidateTemplateContent, setCandidateTemplateContent] = useState('');
+  const [candidateTemplateLoading, setCandidateTemplateLoading] = useState(false);
+  const [candidateTemplateSaving, setCandidateTemplateSaving] = useState(false);
+  const [isTemplateCustomized, setIsTemplateCustomized] = useState(false);
+  const candidateTextareaRef = useRef(null);
 
   // Close menu when clicking outside or scrolling
   useEffect(() => {
@@ -295,12 +310,19 @@ const Onboarding = () => {
       }),
       ...templatesList.map((template) => {
         const req = getRequestedDoc(template.name);
+        const templateId = template._id ? String(template._id) : (template.id ? String(template.id) : (template.name || ''));
+        const isOffer = /offer/i.test(template.name) || templateId === 'offerLetter';
+        const isAccepted = Boolean(
+          (employee.offerDeclaration?.acceptedTemplates || []).some((acceptedTemplate) => acceptedTemplate.templateId === templateId || acceptedTemplate.templateId === template._id) ||
+          (isOffer && (employee.offerStatus === 'Accepted' || employee.status === 'Submitted'))
+        );
         return {
           label: template.name,
           status: 'Template',
           itemType: 'template',
-          _id: template._id,
-          isAccepted: (employee.offerDeclaration?.acceptedTemplates || []).some((acceptedTemplate) => acceptedTemplate.templateId === template._id),
+          _id: templateId,
+          id: templateId,
+          isAccepted,
           emailSentAt: req?.emailSentAt,
           url: template.url
         };
@@ -965,6 +987,168 @@ const Onboarding = () => {
     } catch {
       toast.error('Failed to delete policy');
       fetchSettings();
+    }
+  };
+
+  const insertPlaceholderAtCursor = (tag) => {
+    const textarea = contentTextareaRef.current;
+    const current = editFormData.content || '';
+    if (!textarea) {
+      setEditFormData(prev => ({ ...prev, content: (prev.content || '') + tag }));
+      return;
+    }
+    const start = textarea.selectionStart ?? current.length;
+    const end = textarea.selectionEnd ?? current.length;
+    const nextContent = current.substring(0, start) + tag + current.substring(end);
+    setEditFormData(prev => ({ ...prev, content: nextContent }));
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  };
+
+  const handleOpenEditModal = async (item, type = 'dynamic') => {
+    setEditingItem(item);
+    setEditItemType(type);
+    setEditFormData({
+      name: item.name || '',
+      isRequired: item.isRequired ?? (type === 'dynamic'),
+      file: null,
+      content: ''
+    });
+    setShowEditItemModal(true);
+
+    const targetId = item._id || item.id || item.name;
+    if (type === 'dynamic' && targetId) {
+      setEditContentLoading(true);
+      try {
+        const res = await api.get(`/onboarding/settings/templates/dynamic/${encodeURIComponent(targetId)}/content`);
+        if (res.data?.content) {
+          const cleaned = res.data.content.replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+          setEditFormData(prev => ({ ...prev, content: cleaned }));
+        }
+      } catch (err) {
+        console.error('Failed to load template content:', err);
+      } finally {
+        setEditContentLoading(false);
+      }
+    }
+  };
+
+  const handleSaveEditItem = async (e) => {
+    e.preventDefault();
+    if (!editingItem) return;
+    if (!editFormData.name.trim()) {
+      toast.error('Document name is required');
+      return;
+    }
+
+    setEditSaving(true);
+    const fd = new FormData();
+    fd.append('name', editFormData.name.trim());
+    fd.append('isRequired', String(editFormData.isRequired));
+    if (editFormData.file) {
+      fd.append('document', editFormData.file);
+    } else if (editItemType === 'dynamic' && editFormData.content !== undefined) {
+      fd.append('content', editFormData.content);
+    }
+
+    try {
+      const targetId = editingItem._id || editingItem.id || editingItem.name;
+      const endpoint = editItemType === 'dynamic'
+        ? `/onboarding/settings/templates/dynamic/${encodeURIComponent(targetId)}`
+        : `/onboarding/settings/policies/${editingItem._id || editingItem.id}`;
+
+      await api.put(endpoint, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`${editItemType === 'dynamic' ? 'Dynamic template' : 'Policy'} updated successfully!`);
+      setShowEditItemModal(false);
+      setEditingItem(null);
+      fetchSettings();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update item');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const insertCandidatePlaceholder = (tag) => {
+    const textarea = candidateTextareaRef.current;
+    const current = candidateTemplateContent || '';
+    if (!textarea) {
+      setCandidateTemplateContent(prev => prev + tag);
+      return;
+    }
+    const start = textarea.selectionStart ?? current.length;
+    const end = textarea.selectionEnd ?? current.length;
+    const nextContent = current.substring(0, start) + tag + current.substring(end);
+    setCandidateTemplateContent(nextContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  };
+
+  const handleOpenCandidateTemplateEdit = async (employee, item) => {
+    if (item.isAccepted || ((employee?.offerStatus === 'Accepted' || employee?.status === 'Submitted') && (/offer/i.test(item.label) || item.label === 'Offer Letter'))) {
+      toast.info('Cannot edit a document that has already been accepted by the candidate.');
+      return;
+    }
+    setEditingCandidateTemplate({ employee, item });
+    setCandidateTemplateContent('');
+    setIsTemplateCustomized(false);
+    setShowCandidateTemplateModal(true);
+    setCandidateTemplateLoading(true);
+
+    const templateIdentifier = item._id || item.id || item.label || item.name;
+    try {
+      const res = await api.get(`/onboarding/employees/${employee._id}/templates/${encodeURIComponent(templateIdentifier)}/content`);
+      const cleaned = (res.data?.content || '').replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+      setCandidateTemplateContent(cleaned);
+      setIsTemplateCustomized(Boolean(res.data?.isCustomized));
+    } catch (err) {
+      console.error('Failed to load candidate template content:', err);
+      toast.error('Could not load document content for this candidate');
+    } finally {
+      setCandidateTemplateLoading(false);
+    }
+  };
+
+  const handleSaveCandidateTemplate = async (e) => {
+    e.preventDefault();
+    if (!editingCandidateTemplate) return;
+
+    const { employee, item } = editingCandidateTemplate;
+    setCandidateTemplateSaving(true);
+    const templateIdentifier = item._id || item.id || item.label || item.name;
+
+    try {
+      const res = await api.put(`/onboarding/employees/${employee._id}/templates/${encodeURIComponent(templateIdentifier)}`, {
+        content: candidateTemplateContent
+      });
+
+      toast.success(`${item.label} customized specifically for ${employee.firstName}!`);
+
+      if (res.data?.customTemplates) {
+        setSelectedEmployee(prev => prev ? ({
+          ...prev,
+          customTemplates: res.data.customTemplates
+        }) : prev);
+        setEmployees(prev => prev.map(emp => emp._id === employee._id ? {
+          ...emp,
+          customTemplates: res.data.customTemplates
+        } : emp));
+      }
+
+      setShowCandidateTemplateModal(false);
+      setEditingCandidateTemplate(null);
+    } catch (err) {
+      console.error('Failed to save candidate template:', err);
+      toast.error(err.response?.data?.message || 'Failed to save template for this candidate');
+    } finally {
+      setCandidateTemplateSaving(false);
     }
   };
 
@@ -1870,6 +2054,7 @@ const Onboarding = () => {
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button onClick={() => handleFilePreview(temp.url, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Template"><Eye size={16} /></button>
+                          <button onClick={() => handleOpenEditModal(temp, 'dynamic')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#0284c7', display: 'flex', cursor: 'pointer' }} title="Edit Template"><Edit2 size={16} /></button>
                           <button onClick={() => handleDeleteDynamicTemplate(temp._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#ef4444', display: 'flex', cursor: 'pointer' }} title="Delete Template"><Trash2 size={16} /></button>
                         </div>
                       </div>
@@ -1907,6 +2092,7 @@ const Onboarding = () => {
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button onClick={() => handleFilePreview(policy.url, 'policy')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#3b82f6', display: 'flex', cursor: 'pointer' }} title="Preview Policy"><Eye size={16} /></button>
+                          <button onClick={() => handleOpenEditModal(policy, 'policy')} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', color: '#0284c7', display: 'flex', cursor: 'pointer' }} title="Edit Policy"><Edit2 size={16} /></button>
                           <button onClick={() => handleDeletePolicy(policy._id)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff', color: '#dc2626', cursor: 'pointer', display: 'flex' }} title="Delete Policy"><Trash2 size={16} /></button>
                         </div>
                       </div>
@@ -2396,19 +2582,19 @@ const Onboarding = () => {
                                 <div style={{ display: 'flex', gap: '8px' }}>{s.data?.agreesToOriginalVerification ? <Check size={14} color="#22c55e" /> : <X size={14} color="#ef4444" />} <span>Agrees to Verification</span></div>
                                 <div style={{ marginTop: '8px', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
                                   <span style={{ color: '#94a3b8' }}>E-Signature:</span> <br />
-                                  <strong>{s.data?.eSignName || '—'}</strong> <br />
-                                  {s.data?.eSignType === 'drawn' && s.data?.eSignValue && (
+                                  <strong>{s.data?.eSignName || `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || '—'}</strong> <br />
+                                  {(s.data?.eSignType === 'drawn' || s.data?.eSignValue?.startsWith('data:image')) && s.data?.eSignValue ? (
                                     <div style={{ margin: '8px 0', border: '1px solid #e2e8f0', padding: '6px', background: '#f8fafc', borderRadius: '8px', maxWidth: '200px' }}>
                                       <img src={s.data.eSignValue} alt="Signature" style={{ width: '100%', height: 'auto', display: 'block' }} />
                                     </div>
-                                  )}
+                                  ) : null}
                                   {s.data?.eSignType === 'typed' && (
                                     <div style={{ margin: '8px 0', fontStyle: 'italic', fontSize: '15px', color: '#1e293b', fontFamily: 'cursive' }}>
-                                      {s.data?.eSignName}
+                                      {s.data?.eSignName || `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim()}
                                     </div>
                                   )}
                                   <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
+                                    Signed on {s.data?.eSignDate ? new Date(s.data.eSignDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : (s.done || selectedEmployee?.offerStatus === 'Accepted' || selectedEmployee?.status === 'Submitted' ? (selectedEmployee?.submittedAt ? new Date(selectedEmployee.submittedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : (selectedEmployee?.updatedAt ? new Date(selectedEmployee.updatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—')) : '—')}
                                     {s.data?.eSignIp ? ` (IP: ${s.data.eSignIp})` : ''}
                                   </span>
                                 </div>
@@ -2446,6 +2632,11 @@ const Onboarding = () => {
                         <div style={{ flex: 1, minWidth: '120px' }}>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{item.label}</div>
                           {item.itemType === 'policy' && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af' }}>STATIC POLICY</span></div>}
+                          {item.itemType === 'template' && (selectedEmployee?.customTemplates || []).some(t => t.templateId === item._id || (item.label === 'Offer Letter' && t.templateId === 'offerLetter')) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                              <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 5px', borderRadius: '4px', background: '#ecfdf5', color: '#047857' }}>CUSTOMIZED FOR CANDIDATE</span>
+                            </div>
+                          )}
                           {item.isCustomSentFile && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 4px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>Added FILE</span></div>}
                           {isLiveRequired && <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 'wider', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#92400e' }}>📷 LIVE PHOTO REQUIRED</span></div>}
                           {item.rejectionReason && <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>⚠️ {item.rejectionReason}</div>}
@@ -2468,19 +2659,30 @@ const Onboarding = () => {
                           <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>{item.status}</span>
                         )}
 
-                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                          {item.itemType === 'template' && !item.isAccepted && !(selectedEmployee?.offerStatus === 'Accepted' && (/offer/i.test(item.label) || item.label === 'Offer Letter')) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCandidateTemplateEdit(selectedEmployee, item)}
+                              style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', fontSize: '12px', cursor: 'pointer', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              title={`Edit ${item.label} specifically for this candidate`}
+                            >
+                              <Edit2 size={12} /> Edit
+                            </button>
+                          )}
                           {(item.url || isDoc) && (
                             <>
                               {item.url && (
                                 <button onClick={() => {
                                   if (item.itemType === 'template') {
+                                    const templateIdentifier = item._id || item.id || item.label;
                                     let templatePreviewUrl = '';
-                                    if (item.label === 'Offer Letter') {
+                                    if (/offer\s*letter/i.test(item.label) || item.label === 'Offer Letter') {
                                       templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/offer-letter`;
-                                    } else if (item.label === 'Declaration') {
+                                    } else if (/declaration/i.test(item.label) || item.label === 'Declaration') {
                                       templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/declaration`;
                                     } else {
-                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${item._id}`;
+                                      templatePreviewUrl = `onboarding/employees/${selectedEmployee._id}/dynamic-template/${encodeURIComponent(templateIdentifier)}`;
                                     }
                                     handleFilePreview(templatePreviewUrl, item.label, 'document');
                                   } else {
@@ -2916,6 +3118,336 @@ const Onboarding = () => {
                 <Download size={16} /> Download
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Dynamic Template / Policy Modal */}
+      {showEditItemModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '16px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: editItemType === 'dynamic' ? '760px' : '520px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+                  Edit {editItemType === 'dynamic' ? 'Dynamic Template' : 'Static Policy'}
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                  {editItemType === 'dynamic' ? 'Edit document text, clauses, and placeholders directly or replace file' : 'Update document name, replace file, or adjust requirements'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowEditItemModal(false); setEditingItem(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditItem} style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                    Document Name *
+                  </label>
+                  <input
+                    required
+                    value={editFormData.name}
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                    placeholder="e.g. Letter of Intent, Offer Letter, Employee Handbook"
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {editItemType === 'dynamic' && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
+                        Template Content & Placeholders
+                      </label>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        Click a tag to insert at cursor
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                      {[
+                        { label: 'Full Name', tag: '{employee_full_name}' },
+                        { label: 'First Name', tag: '{employee_first_name}' },
+                        { label: 'Last Name', tag: '{employee_last_name}' },
+                        { label: 'Designation', tag: '{designation}' },
+                        { label: 'Joining Date', tag: '{joining_date}' },
+                        { label: 'Annual CTC', tag: '{annual_ctc}' },
+                        { label: 'Address', tag: '{employee_address}' },
+                        { label: 'Salary Table', tag: '{@salary_table}' },
+                        { label: 'Signature', tag: '{@employee_signature}' }
+                      ].map(p => (
+                        <button
+                          key={p.tag}
+                          type="button"
+                          onClick={() => insertPlaceholderAtCursor(p.tag)}
+                          title={`Insert ${p.tag}`}
+                          style={{
+                            fontSize: '11px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #c7d2fe',
+                            background: '#eef2ff',
+                            color: '#4338ca',
+                            cursor: 'pointer',
+                            fontFamily: 'monospace',
+                            fontWeight: '600'
+                          }}
+                        >
+                          +{p.label}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditFormData(prev => ({
+                            ...prev,
+                            content: (prev.content || '').replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim()
+                          }));
+                          toast.success('Excess blank lines removed');
+                        }}
+                        style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto' }}
+                        title="Remove excessive blank lines and clean up spacing"
+                      >
+                        🧹 Clean Spacing
+                      </button>
+                    </div>
+
+                    {editContentLoading ? (
+                      <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '13px', gap: '8px' }}>
+                        <RefreshCw size={18} className="animate-spin" />
+                        Extracting template text...
+                      </div>
+                    ) : (
+                      <textarea
+                        ref={contentTextareaRef}
+                        rows={12}
+                        value={editFormData.content ?? ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, content: e.target.value })}
+                        placeholder="Edit template text, clauses, and placeholders directly here..."
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '8px',
+                          fontSize: '13px',
+                          lineHeight: '1.6',
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                          resize: 'vertical'
+                        }}
+                      />
+                    )}
+                    <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#94a3b8' }}>
+                      Edit the text, add/remove clauses, or place tags. Tags will be dynamically replaced when documents are generated.
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                    Replace File (Optional)
+                  </label>
+                  <input
+                    type="file"
+                    accept={editItemType === 'dynamic' ? '.docx' : '.pdf,.doc,.docx'}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setEditFormData({ ...editFormData, file });
+                      }
+                    }}
+                    style={{ width: '100%', fontSize: '13px', color: '#475569' }}
+                  />
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#94a3b8' }}>
+                    {editFormData.file
+                      ? `Selected: ${editFormData.file.name}. Uploading a new file will overwrite existing template file and content.`
+                      : `Leave empty to keep current file. ${editItemType === 'dynamic' ? 'Only .docx files allowed.' : 'PDF or Word documents.'}`}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <input
+                    type="checkbox"
+                    id="editIsRequiredCheckbox"
+                    checked={editFormData.isRequired}
+                    onChange={(e) => setEditFormData({ ...editFormData, isRequired: e.target.checked })}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="editIsRequiredCheckbox" style={{ fontSize: '13px', fontWeight: '500', color: '#334151', cursor: 'pointer' }}>
+                    Mandatory for candidates
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowEditItemModal(false); setEditingItem(null); }}
+                  disabled={editSaving}
+                  style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  style={{ padding: '9px 20px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(37,99,235,0.25)', opacity: editSaving ? 0.7 : 1 }}
+                >
+                  {editSaving ? <RefreshCw size={15} className="animate-spin" /> : null}
+                  {editSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate-Specific Template Customization Modal */}
+      {showCandidateTemplateModal && editingCandidateTemplate && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1150, padding: '16px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '820px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+                    Edit {editingCandidateTemplate.item.label} for {editingCandidateTemplate.employee.firstName} {editingCandidateTemplate.employee.lastName || ''}
+                  </h3>
+                  {isTemplateCustomized && (
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', background: '#ecfdf5', color: '#047857' }}>
+                      Customized for Candidate
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Changes will only apply to this candidate. The global company template will remain untouched.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowCandidateTemplateModal(false); setEditingCandidateTemplate(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCandidateTemplate} style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
+                      Document Clauses & Placeholders
+                    </label>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                      Click a tag to insert at cursor
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                    {[
+                      { label: 'Full Name', tag: '{employee_full_name}' },
+                      { label: 'First Name', tag: '{employee_first_name}' },
+                      { label: 'Last Name', tag: '{employee_last_name}' },
+                      { label: 'Designation', tag: '{designation}' },
+                      { label: 'Joining Date', tag: '{joining_date}' },
+                      { label: 'Annual CTC', tag: '{annual_ctc}' },
+                      { label: 'Address', tag: '{employee_address}' },
+                      { label: 'Salary Table', tag: '{@salary_table}' },
+                      { label: 'Signature', tag: '{@employee_signature}' }
+                    ].map(p => (
+                      <button
+                        key={p.tag}
+                        type="button"
+                        onClick={() => insertCandidatePlaceholder(p.tag)}
+                        title={`Insert ${p.tag}`}
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #c7d2fe',
+                          background: '#eef2ff',
+                          color: '#4338ca',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          fontWeight: '600'
+                        }}
+                      >
+                        +{p.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCandidateTemplateContent(prev =>
+                          (prev || '').replace(/\r\n/g, '\n').replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim()
+                        );
+                        toast.success('Excess blank lines removed');
+                      }}
+                      style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto' }}
+                      title="Remove excessive blank lines and clean up spacing"
+                    >
+                      🧹 Clean Spacing
+                    </button>
+                  </div>
+
+                  {candidateTemplateLoading ? (
+                    <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '13px', gap: '8px' }}>
+                      <RefreshCw size={18} className="animate-spin" />
+                      Loading candidate template text...
+                    </div>
+                  ) : (
+                    <textarea
+                      ref={candidateTextareaRef}
+                      rows={16}
+                      value={candidateTemplateContent}
+                      onChange={(e) => setCandidateTemplateContent(e.target.value)}
+                      placeholder="Edit document clauses, special terms, or placeholders specifically for this employee..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        lineHeight: '1.6',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        resize: 'vertical'
+                      }}
+                    />
+                  )}
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#94a3b8' }}>
+                    You can customize clauses, notice period, special terms, or job requirements specifically for this candidate.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowCandidateTemplateModal(false); setEditingCandidateTemplate(null); }}
+                  disabled={candidateTemplateSaving}
+                  style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={candidateTemplateSaving || candidateTemplateLoading}
+                  style={{ padding: '9px 20px', border: 'none', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff', cursor: 'pointer', fontWeight: '600', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(37,99,235,0.25)', opacity: candidateTemplateSaving ? 0.7 : 1 }}
+                >
+                  {candidateTemplateSaving ? <RefreshCw size={15} className="animate-spin" /> : null}
+                  {candidateTemplateSaving ? 'Saving...' : `Save for ${editingCandidateTemplate.employee.firstName}`}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
