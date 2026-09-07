@@ -697,14 +697,26 @@ const Onboarding = () => {
   const calculateSalaryBreakdown = (updatedSalaryFields) => {
     setFormData(prev => {
       const mergedSalary = { ...prev.salary, ...updatedSalaryFields };
-      const payType = mergedSalary.payType || 'salaried';
       
-      let annualCTC = parseFloat(String(mergedSalary.annualCTC).replace(/[^0-9.]/g, '')) || 0;
-      let monthlyCTC = parseFloat(String(mergedSalary.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
+      // Keep compensationType and payType synchronized
+      const compType = mergedSalary.compensationType || (mergedSalary.payType === 'hourly' ? 'hourly' : mergedSalary.payType === 'flat' ? 'flat_project' : 'monthly_salary');
+      const payType = compType === 'hourly' ? 'hourly' : (compType === 'monthly_salary' ? 'salaried' : 'flat');
+      mergedSalary.compensationType = compType;
+      mergedSalary.payType = payType;
       
-      if (updatedSalaryFields.annualCTC !== undefined) {
+      let rawAnnualStr = updatedSalaryFields.annualCTC !== undefined ? updatedSalaryFields.annualCTC : mergedSalary.annualCTC;
+      let rawMonthlyStr = updatedSalaryFields.monthlyCTC !== undefined ? updatedSalaryFields.monthlyCTC : mergedSalary.monthlyCTC;
+      
+      let annualCTC = parseFloat(String(rawAnnualStr || 0).replace(/[^0-9.]/g, '')) || 0;
+      let monthlyCTC = parseFloat(String(rawMonthlyStr || 0).replace(/[^0-9.]/g, '')) || 0;
+      
+      if (updatedSalaryFields.annualCTC !== undefined && updatedSalaryFields.monthlyCTC === undefined) {
+        monthlyCTC = annualCTC > 0 ? Math.round(annualCTC / 12) : 0;
+      } else if (updatedSalaryFields.monthlyCTC !== undefined && updatedSalaryFields.annualCTC === undefined) {
+        annualCTC = monthlyCTC > 0 ? monthlyCTC * 12 : 0;
+      } else if (annualCTC > 0 && !monthlyCTC) {
         monthlyCTC = Math.round(annualCTC / 12);
-      } else if (updatedSalaryFields.monthlyCTC !== undefined) {
+      } else if (monthlyCTC > 0 && !annualCTC) {
         annualCTC = monthlyCTC * 12;
       }
 
@@ -714,7 +726,7 @@ const Onboarding = () => {
       let grossVal = '';
 
       if (payType === 'hourly') {
-        const hourlyRate = parseFloat(String(mergedSalary.hourlyRate).replace(/[^0-9.]/g, '')) || 0;
+        const hourlyRate = parseFloat(String(mergedSalary.hourlyRate || 0).replace(/[^0-9.]/g, '')) || 0;
         const hoursWorked = parseFloat(String(mergedSalary.hoursWorked || 160).replace(/[^0-9.]/g, '')) || 160;
         monthlyCTC = Math.round(hourlyRate * hoursWorked);
         annualCTC = monthlyCTC * 12;
@@ -733,8 +745,11 @@ const Onboarding = () => {
       } else {
         if (payrollConfig) {
           const source = {
+            ...mergedSalary,
             monthlyCTC,
+            annualCTC,
             payType,
+            compensationType: compType,
             useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(mergedSalary.useSalaryComponents, true),
             pfEnabled: parseBool(mergedSalary.pfEnabled, true),
             esiEnabled: parseBool(mergedSalary.esiEnabled, true),
@@ -745,9 +760,20 @@ const Onboarding = () => {
             includeGratuityInCTC: parseBool(mergedSalary.includeGratuityInCTC, true),
             basicPercent: mergedSalary.basicPercent !== undefined && mergedSalary.basicPercent !== null ? Number(mergedSalary.basicPercent) : null,
             hraPercent: mergedSalary.hraPercent !== undefined && mergedSalary.hraPercent !== null ? Number(mergedSalary.hraPercent) : null,
+            vpfPercent: mergedSalary.vpfPercent !== undefined && mergedSalary.vpfPercent !== null ? Number(mergedSalary.vpfPercent) : 0,
             insuranceAmount: parseFloat(mergedSalary.insuranceAmount) || 0,
             employerNPS: parseFloat(mergedSalary.employerNPS) || 0,
             flexiAmount: parseFloat(mergedSalary.flexiAmount) || 0,
+            hourlyRate: mergedSalary.hourlyRate,
+            hoursWorked: mergedSalary.hoursWorked,
+            dailyRate: mergedSalary.dailyRate,
+            weeklyRate: mergedSalary.weeklyRate,
+            projectFee: mergedSalary.projectFee,
+            milestoneAmount: mergedSalary.milestoneAmount,
+            rateCard: mergedSalary.rateCard,
+            customAllowances: mergedSalary.customAllowances,
+            customDeductions: mergedSalary.customDeductions,
+            additionalBenefits: mergedSalary.additionalBenefits,
             ptState: mergedSalary.ptState || '',
             deductions: {
               professionalTax: mergedSalary.ptState === 'custom' ? (parseFloat(mergedSalary.professionalTax) || 0) : 0,
@@ -765,7 +791,7 @@ const Onboarding = () => {
           if (master) {
             basicVal = String(master.basicMaster);
             hraVal = String(master.hraMaster);
-            specialVal = String(master.specialAllowance);
+            specialVal = String(master.specialAllowance || 0);
             grossVal = String(master.totalEarnings);
             
             mergedSalary.pfEmployer = String(master.pfEmployer || 0);
@@ -801,8 +827,8 @@ const Onboarding = () => {
         ...prev,
         salary: {
           ...mergedSalary,
-          annualCTC: String(annualCTC),
-          monthlyCTC: String(monthlyCTC),
+          annualCTC: rawAnnualStr !== '' ? String(annualCTC) : '',
+          monthlyCTC: rawMonthlyStr !== '' ? String(monthlyCTC) : '',
           basic: basicVal,
           hra: hraVal,
           specialAllowance: specialVal,
@@ -1208,70 +1234,87 @@ const Onboarding = () => {
   };
 
   const handleEditEmployee = (emp) => {
+    const rawSalary = emp.salary || {};
+    const compType = rawSalary.compensationType || (rawSalary.payType === 'hourly' ? 'hourly' : rawSalary.payType === 'flat' ? 'flat_project' : 'monthly_salary');
+    const payType = compType === 'hourly' ? 'hourly' : (compType === 'monthly_salary' ? 'salaried' : 'flat');
+
     const salaryData = {
-      payType: emp.salary?.payType || 'salaried',
-      annualCTC: emp.salary?.annualCTC || '',
-      monthlyCTC: emp.salary?.monthlyCTC || '',
-      basic: emp.salary?.basic || '',
-      hra: emp.salary?.hra || '',
-      specialAllowance: emp.salary?.specialAllowance || '',
-      monthlyGross: emp.salary?.monthlyGross || '',
-      flatSalary: emp.salary?.flatSalary || emp.salary?.monthlyCTC || '',
-      hourlyRate: emp.salary?.hourlyRate || '',
-      hoursWorked: emp.salary?.hoursWorked || '160',
-      insuranceAmount: emp.salary?.insuranceAmount || '0',
-      employerNPS: emp.salary?.employerNPS || '0',
-      pfEnabled: parseBool(emp.salary?.pfEnabled, true),
-      esiEnabled: parseBool(emp.salary?.esiEnabled, true),
-      ptEnabled: parseBool(emp.salary?.ptEnabled, true),
-      lwfEnabled: parseBool(emp.salary?.lwfEnabled, true),
-      gratuityEnabled: parseBool(emp.salary?.gratuityEnabled, true),
-      includePfInCTC: parseBool(emp.salary?.includePfInCTC, false),
-      includeGratuityInCTC: parseBool(emp.salary?.includeGratuityInCTC, true),
-      ptState: emp.salary?.ptState || 'MH',
-      professionalTax: emp.salary?.professionalTax || '200',
-      basicPercent: emp.salary?.basicPercent !== undefined ? emp.salary.basicPercent : 50,
-      hraPercent: emp.salary?.hraPercent !== undefined ? emp.salary.hraPercent : 50,
-      flexiAmount: emp.salary?.flexiAmount !== undefined ? String(emp.salary.flexiAmount) : '0',
-      // Computed/saved values — pre-populate so CTC estimates show correctly on modal open
-      pfEmployer: emp.salary?.pfEmployer !== undefined ? String(emp.salary.pfEmployer) : '0',
-      pfEmployee: emp.salary?.pfEmployee !== undefined ? String(emp.salary.pfEmployee) : '0',
-      gratuity: emp.salary?.gratuity !== undefined ? String(emp.salary.gratuity) : '0',
-      lwfEmployer: emp.salary?.lwfEmployer !== undefined ? String(emp.salary.lwfEmployer) : '0',
-      lwfEmployee: emp.salary?.lwfEmployee !== undefined ? String(emp.salary.lwfEmployee) : '0',
-      esiEmployer: emp.salary?.esiEmployer !== undefined ? String(emp.salary.esiEmployer) : '0',
-      esiEmployee: emp.salary?.esiEmployee !== undefined ? String(emp.salary.esiEmployee) : '0',
-      tds: emp.salary?.tds !== undefined ? String(emp.salary.tds) : '0',
-      netTakeHome: emp.salary?.netTakeHome !== undefined ? String(emp.salary.netTakeHome) : '0',
+      ...rawSalary,
+      compensationType: compType,
+      payType,
+      useSalaryComponents: parseBool(rawSalary.useSalaryComponents, true),
+      attendanceMode: rawSalary.attendanceMode || 'attendance',
+      annualCTC: rawSalary.annualCTC || '',
+      monthlyCTC: rawSalary.monthlyCTC || '',
+      basic: rawSalary.basic || '',
+      hra: rawSalary.hra || '',
+      specialAllowance: rawSalary.specialAllowance || '',
+      monthlyGross: rawSalary.monthlyGross || '',
+      flatSalary: rawSalary.flatSalary || rawSalary.monthlyCTC || '',
+      hourlyRate: rawSalary.hourlyRate || '',
+      hoursWorked: rawSalary.hoursWorked || '160',
+      dailyRate: rawSalary.dailyRate || '',
+      weeklyRate: rawSalary.weeklyRate || '',
+      projectFee: rawSalary.projectFee || '',
+      milestoneAmount: rawSalary.milestoneAmount || '',
+      commissionNotes: rawSalary.commissionNotes || '',
+      rateCard: Array.isArray(rawSalary.rateCard) ? rawSalary.rateCard : [],
+      customAllowances: Array.isArray(rawSalary.customAllowances) ? rawSalary.customAllowances : [],
+      customDeductions: Array.isArray(rawSalary.customDeductions) ? rawSalary.customDeductions : [],
+      additionalBenefits: Array.isArray(rawSalary.additionalBenefits) ? rawSalary.additionalBenefits : [],
+      insuranceAmount: rawSalary.insuranceAmount || '0',
+      employerNPS: rawSalary.employerNPS || '0',
+      pfEnabled: parseBool(rawSalary.pfEnabled, true),
+      esiEnabled: parseBool(rawSalary.esiEnabled, true),
+      ptEnabled: parseBool(rawSalary.ptEnabled, true),
+      lwfEnabled: parseBool(rawSalary.lwfEnabled, true),
+      gratuityEnabled: parseBool(rawSalary.gratuityEnabled, true),
+      includePfInCTC: parseBool(rawSalary.includePfInCTC, false),
+      includeGratuityInCTC: parseBool(rawSalary.includeGratuityInCTC, true),
+      ptState: rawSalary.ptState || 'MH',
+      professionalTax: rawSalary.professionalTax || '200',
+      basicPercent: rawSalary.basicPercent !== undefined ? rawSalary.basicPercent : 50,
+      hraPercent: rawSalary.hraPercent !== undefined ? rawSalary.hraPercent : 50,
+      vpfPercent: rawSalary.vpfPercent !== undefined ? rawSalary.vpfPercent : 0,
+      flexiAmount: rawSalary.flexiAmount !== undefined ? String(rawSalary.flexiAmount) : '0',
+      pfEmployer: rawSalary.pfEmployer !== undefined ? String(rawSalary.pfEmployer) : '0',
+      pfEmployee: rawSalary.pfEmployee !== undefined ? String(rawSalary.pfEmployee) : '0',
+      gratuity: rawSalary.gratuity !== undefined ? String(rawSalary.gratuity) : '0',
+      lwfEmployer: rawSalary.lwfEmployer !== undefined ? String(rawSalary.lwfEmployer) : '0',
+      lwfEmployee: rawSalary.lwfEmployee !== undefined ? String(rawSalary.lwfEmployee) : '0',
+      esiEmployer: rawSalary.esiEmployer !== undefined ? String(rawSalary.esiEmployer) : '0',
+      esiEmployee: rawSalary.esiEmployee !== undefined ? String(rawSalary.esiEmployee) : '0',
+      tds: rawSalary.tds !== undefined ? String(rawSalary.tds) : '0',
+      netTakeHome: rawSalary.netTakeHome !== undefined ? String(rawSalary.netTakeHome) : '0',
     };
+
     if (payrollConfig?.salaryComponents) {
       payrollConfig.salaryComponents.forEach(c => {
-        // Load ALL component values from saved salary — not just fixed.
-          // Remainder/percent-linked components (e.g. Flexi) also need their saved value
-          // so they display correctly without requiring a field-change trigger.
-          if (emp.salary?.[c.id] !== undefined) {
-            salaryData[c.id] = String(emp.salary[c.id]);
-          } else if (c.linkedTo === 'fixed') {
-            salaryData[c.id] = String(c.linkValue || 0);
-          }
+        if (rawSalary[c.id] !== undefined) {
+          salaryData[c.id] = String(rawSalary[c.id]);
+        } else if (c.linkedTo === 'fixed') {
+          salaryData[c.id] = String(c.linkValue || 0);
+        }
       });
     }
 
-    // Recalculate salary breakdown on open to ensure computed components are updated
     let annualCTC = parseFloat(String(salaryData.annualCTC).replace(/[^0-9.]/g, '')) || 0;
     let monthlyCTC = parseFloat(String(salaryData.monthlyCTC).replace(/[^0-9.]/g, '')) || 0;
 
-    if (salaryData.annualCTC) {
+    if (salaryData.annualCTC && !salaryData.monthlyCTC) {
       monthlyCTC = Math.round(annualCTC / 12);
-    } else if (salaryData.monthlyCTC) {
+    } else if (salaryData.monthlyCTC && !salaryData.annualCTC) {
       annualCTC = monthlyCTC * 12;
     }
 
     if (payrollConfig && (annualCTC > 0 || monthlyCTC > 0)) {
       const source = {
+        ...salaryData,
         monthlyCTC,
-        payType: salaryData.payType,
-        useSalaryComponents: salaryData.payType !== 'flat' && salaryData.payType !== 'hourly' && parseBool(salaryData.useSalaryComponents, true),
+        annualCTC,
+        payType,
+        compensationType: compType,
+        useSalaryComponents: payType !== 'flat' && payType !== 'hourly' && parseBool(salaryData.useSalaryComponents, true),
         pfEnabled: parseBool(salaryData.pfEnabled, true),
         esiEnabled: parseBool(salaryData.esiEnabled, true),
         ptEnabled: parseBool(salaryData.ptEnabled, true),
@@ -1281,6 +1324,7 @@ const Onboarding = () => {
         includeGratuityInCTC: parseBool(salaryData.includeGratuityInCTC, true),
         basicPercent: salaryData.basicPercent !== undefined && salaryData.basicPercent !== null ? Number(salaryData.basicPercent) : null,
         hraPercent: salaryData.hraPercent !== undefined && salaryData.hraPercent !== null ? Number(salaryData.hraPercent) : null,
+        vpfPercent: salaryData.vpfPercent !== undefined && salaryData.vpfPercent !== null ? Number(salaryData.vpfPercent) : 0,
         insuranceAmount: parseFloat(salaryData.insuranceAmount) || 0,
         employerNPS: parseFloat(salaryData.employerNPS) || 0,
         flexiAmount: parseFloat(salaryData.flexiAmount) || 0,
@@ -1326,6 +1370,8 @@ const Onboarding = () => {
     }
 
     setFormData({
+      _id: emp._id,
+      isEdit: true,
       firstName: emp.firstName || '',
       lastName: emp.lastName || '',
       email: emp.email || '',
@@ -1347,16 +1393,25 @@ const Onboarding = () => {
   const handleUpdateEmployee = async (e) => {
     e.preventDefault();
     try {
-      const res = await api.patch(`/onboarding/employees/${selectedEmployee._id}`, formData);
+      const payload = {
+        ...formData,
+        joiningDate: formData.joiningDate || undefined,
+        offerDate: formData.offerDate || undefined,
+        documentDeadline: formData.documentDeadline || undefined
+      };
+      const res = await api.patch(`/onboarding/employees/${selectedEmployee._id}`, payload);
       toast.success('Employee updated successfully!');
       setShowEditModal(false);
       setFormData({
         ...INITIAL_FORM_DATA,
         salary: { ...INITIAL_FORM_DATA.salary }
       });
-      setSelectedEmployee(null);
-      if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
-      else fetchEmployees();
+      if (res.data?.employee) {
+        syncEmployeeState(res.data.employee, 'update');
+        setSelectedEmployee(prev => prev?._id === selectedEmployee._id ? { ...prev, ...res.data.employee } : prev);
+      } else {
+        fetchEmployees();
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update');
     }
@@ -1972,6 +2027,10 @@ const Onboarding = () => {
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Joining Date</label>
                   <input type="date" value={formData.joiningDate} onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Document Deadline</label>
+                  <input type="date" value={formData.documentDeadline} onChange={(e) => setFormData({ ...formData, documentDeadline: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
 
 
                 <div style={{ gridColumn: '1 / -1', marginTop: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
@@ -2047,6 +2106,10 @@ const Onboarding = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Joining Date</label>
                   <input type="date" value={formData.joiningDate} onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>Document Deadline</label>
+                  <input type="date" value={formData.documentDeadline} onChange={(e) => setFormData({ ...formData, documentDeadline: e.target.value })} style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
                 </div>
 
 
