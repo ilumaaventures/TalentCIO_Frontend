@@ -496,11 +496,18 @@ const Attendance = () => {
             return;
         }
 
+        const formatTimeInput = (dateVal) => {
+            if (!dateVal) return '';
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return '';
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        };
+
         setRegDate(day);
         setRegForm({
             type: isPresentOnlyMode ? 'PRESENT' : 'BOTH',
-            checkIn: record?.clockIn ? new Date(record.clockIn).toISOString().slice(11, 16) : '09:00',
-            checkOut: record?.clockOut ? new Date(record.clockOut).toISOString().slice(11, 16) : '18:00',
+            checkIn: record?.clockIn ? formatTimeInput(record.clockIn) : '09:00',
+            checkOut: record?.clockOut ? formatTimeInput(record.clockOut) : '18:00',
             reason: ''
         });
         setShowRegModal(true);
@@ -514,14 +521,31 @@ const Attendance = () => {
 
             if (!isPresentOnlyMode) {
                 const reqDate = new Date(regDate);
-                const [inH, inM] = regForm.checkIn.split(':');
-                const [outH, outM] = regForm.checkOut.split(':');
 
-                requestedClockIn = new Date(reqDate);
-                requestedClockIn.setHours(parseInt(inH), parseInt(inM), 0);
+                if (regForm.type === 'IN' || regForm.type === 'BOTH') {
+                    if (!regForm.checkIn) {
+                        toast.error('Check In time is required.');
+                        return;
+                    }
+                    const [inH, inM] = regForm.checkIn.split(':');
+                    requestedClockIn = new Date(reqDate);
+                    requestedClockIn.setHours(parseInt(inH, 10), parseInt(inM, 10), 0, 0);
+                }
 
-                requestedClockOut = new Date(reqDate);
-                requestedClockOut.setHours(parseInt(outH), parseInt(outM), 0);
+                if (regForm.type === 'OUT' || regForm.type === 'BOTH') {
+                    if (!regForm.checkOut) {
+                        toast.error('Check Out time is required.');
+                        return;
+                    }
+                    const [outH, outM] = regForm.checkOut.split(':');
+                    requestedClockOut = new Date(reqDate);
+                    requestedClockOut.setHours(parseInt(outH, 10), parseInt(outM, 10), 0, 0);
+                }
+
+                if (regForm.type === 'BOTH' && requestedClockIn && requestedClockOut && requestedClockIn >= requestedClockOut) {
+                    toast.error('Check In time must be earlier than Check Out time.');
+                    return;
+                }
             }
 
             await api.post('/attendance/regularize', {
@@ -2446,7 +2470,7 @@ const Attendance = () => {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className={`grid ${regForm.type === 'BOTH' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
                                         {(regForm.type === 'IN' || regForm.type === 'BOTH') && (
                                             <div>
                                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Check In Time</label>
@@ -2876,7 +2900,7 @@ const RegularizationRequestsView = ({ requests: rawRequests, onProcess, processi
                                     ) : (
                                         req.status !== 'PENDING' && (
                                             <div className="text-[10px] text-slate-400 italic flex items-center gap-1">
-                                                {req.status === 'APPROVED' ? 'Approved by' : 'Rejected by'} {req.manager?.firstName}
+                                                {req.status === 'APPROVED' ? 'Approved by' : 'Rejected by'} {req.approvedBy?.firstName || req.manager?.firstName || 'Manager'}
                                             </div>
                                         )
                                     )}
