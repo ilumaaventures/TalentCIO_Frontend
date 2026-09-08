@@ -1520,13 +1520,17 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
 
                                 return displayedRounds.map((round, index) => {
                                         const isAssigned = round.assignedTo?.some(u => u._id === user?._id || u._id?.toString() === user?._id?.toString());
-                                        const canManageEvaluation = isAssigned || hasSuperApprove;
+                                        const isUnassignedOrImported = round.isSyntheticPhase2 || !round.assignedTo || round.assignedTo.length === 0;
+                                        const canManageEvaluation = isAssigned || hasSuperApprove || canManageCandidateEdits || (isUnassignedOrImported && (canScheduleRounds || canMakeDecisions || canManageCandidateEdits));
                                         const hasExistingEvaluationData = Boolean(String(round.feedback || '').trim())
                                             || Boolean(round.rating || round.rating === 0)
                                             || (Array.isArray(round.skillRatings) && round.skillRatings.some(sr => sr.rating > 0));
-                                        const canEvaluate = !round.isSyntheticPhase2 && canManageEvaluation && ['Pending', 'Scheduled'].includes(round.status) && !hasExistingEvaluationData;
-                                        const canEditFeedback = !round.isSyntheticPhase2 && canManageEvaluation && (
-                                            ['Passed', 'Failed', 'Skipped'].includes(round.status) || hasExistingEvaluationData
+                                        const canEvaluate = canManageEvaluation && ['Pending', 'Scheduled'].includes(round.status) && !hasExistingEvaluationData;
+                                        const canEditFeedback = canManageEvaluation && (
+                                            round.isSyntheticPhase2
+                                            || ['Passed', 'Failed', 'Skipped', 'Shortlisted', 'Rejected'].includes(round.status)
+                                            || hasExistingEvaluationData
+                                            || isUnassignedOrImported
                                         );
                                         const isEvaluating = evaluatingRoundId === round._id;
                                         const isEditingRound = editingRoundId === round._id;
@@ -1637,15 +1641,13 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                     >
                                                                         <Edit2 size={15} />
                                                                     </button>
-                                                                    {!round.isSyntheticPhase2 && (
-                                                                        <button
-                                                                            onClick={() => handleDeleteRound(round._id)}
-                                                                            className="text-slate-400 hover:text-red-500 transition-colors"
-                                                                            title="Delete Round"
-                                                                        >
-                                                                            <Trash2 size={15} />
-                                                                        </button>
-                                                                    )}
+                                                                    <button
+                                                                        onClick={() => handleDeleteRound(round._id)}
+                                                                        className="text-slate-400 hover:text-red-500 transition-colors"
+                                                                        title="Delete Round"
+                                                                    >
+                                                                        <Trash2 size={15} />
+                                                                    </button>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1762,7 +1764,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                             setEvaluationForm({
                                                                                 status: ['Passed', 'Failed', 'Skipped'].includes(round.status)
                                                                                     ? round.status
-                                                                                    : 'Passed',
+                                                                                    : (['Passed', 'Shortlisted'].includes(round.displayStatusLabel) ? 'Passed' : ['Failed', 'Rejected'].includes(round.displayStatusLabel) ? 'Failed' : 'Passed'),
                                                                                 feedback: round.feedback || '',
                                                                                 rating: round.rating || '',
                                                                                 skillRatings: round.skillRatings && round.skillRatings.length > 0
