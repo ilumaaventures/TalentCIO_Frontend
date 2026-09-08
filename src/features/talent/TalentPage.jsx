@@ -5,7 +5,6 @@ import {
   Award,
   Users,
   Star,
-  Sparkles,
   ArrowLeft,
   X,
   CheckCircle2,
@@ -98,48 +97,39 @@ const TalentPage = () => {
         {/* ---------------------------------------------------------------- */}
         {/* Page Top Header Banner */}
         {/* ---------------------------------------------------------------- */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs">
           <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                <Sparkles size={13} className="text-blue-600" />
-                <span>Admin Intelligence</span>
-              </span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                Static Preview
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               Talent Profiles & Competencies
             </h1>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Explore verified employee profiles, evaluated soft & functional competencies, and interviewer scorecards.
             </p>
           </div>
 
           {/* Key Metrics Badges */}
-          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-            <div className="bg-slate-50 border border-slate-200/70 rounded-xl px-3.5 py-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+            <div className="bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
                 Total Talent
               </span>
-              <span className="text-lg font-extrabold text-slate-900">{stats.total} Profiles</span>
+              <span className="text-sm sm:text-base font-bold text-slate-900">{stats.total} Profiles</span>
             </div>
-            <div className="bg-blue-50/70 border border-blue-200/70 rounded-xl px-3.5 py-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block">
+            <div className="bg-blue-50/70 border border-blue-200/70 rounded-xl px-3 py-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 block">
                 Avg Skill Score
               </span>
-              <div className="flex items-center gap-1 text-lg font-extrabold text-blue-900">
-                <Star size={14} className="fill-amber-400 text-amber-400" />
+              <div className="flex items-center gap-1 text-sm sm:text-base font-bold text-blue-900">
+                <Star size={13} className="fill-amber-400 text-amber-400" />
                 <span>{stats.avgRating}</span>
-                <span className="text-xs font-normal text-blue-700/80">/ 5.0</span>
+                <span className="text-[10px] font-normal text-blue-700/80">/ 5.0</span>
               </div>
             </div>
-            <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-xl px-3.5 py-2 hidden sm:block">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+            <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-xl px-3 py-1.5 hidden sm:block">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 block">
                 Evaluations
               </span>
-              <span className="text-lg font-extrabold text-emerald-900">
+              <span className="text-sm sm:text-base font-bold text-emerald-900">
                 {stats.totalEvaluations} Rated
               </span>
             </div>
@@ -149,12 +139,12 @@ const TalentPage = () => {
         {/* ---------------------------------------------------------------- */}
         {/* Search & Sort Toolbar */}
         {/* ---------------------------------------------------------------- */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             {/* Search Input */}
             <div className="relative flex-1 min-w-[280px]">
               <Search
-                size={18}
+                size={16}
                 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
               />
               <input
@@ -162,28 +152,28 @@ const TalentPage = () => {
                 placeholder="Search talent by name, role, skills (e.g. React, Figma, Python)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium"
+                className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:bg-white focus:border-blue-500 focus:ring-3 focus:ring-blue-500/10 transition-all font-medium"
               />
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <X size={16} />
+                  <X size={14} />
                 </button>
               )}
             </div>
 
             {/* Sort Dropdown */}
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
+              <span className="text-[11px] font-medium text-slate-500 hidden sm:inline">
                 Sort by:
               </span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
               >
                 <option value="rating_desc">Highest Rated (Skill Score)</option>
                 <option value="name_asc">Name (A to Z)</option>
@@ -195,9 +185,9 @@ const TalentPage = () => {
                 <button
                   type="button"
                   onClick={handleCloseSplitView}
-                  className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors shrink-0"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-medium transition-colors shrink-0"
                 >
-                  <ArrowLeft size={14} />
+                  <ArrowLeft size={13} />
                   <span>Full Directory</span>
                 </button>
               )}
@@ -209,21 +199,20 @@ const TalentPage = () => {
         {/* Main Content Area: Switch between Row View and 30/70 Split View */}
         {/* ---------------------------------------------------------------- */}
         {filteredProfiles.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
-            <div className="h-16 w-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
-              <Search size={28} />
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-10 text-center shadow-xs">
+            <div className="h-14 w-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <Search size={24} />
             </div>
-            <h3 className="text-lg font-bold text-slate-800">No Talent Profiles Found</h3>
-            <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
+            <h3 className="text-base font-bold text-slate-800">No Talent Profiles Found</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
               We couldn't find any employee profiles matching "{searchTerm}". Try adjusting your search query or department filter.
             </p>
             <button
               type="button"
               onClick={() => {
                 setSearchTerm('');
-                setSelectedDept('All');
               }}
-              className="mt-4 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors"
+              className="mt-3.5 px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors"
             >
               Reset Filters
             </button>
@@ -237,17 +226,17 @@ const TalentPage = () => {
             <div className="lg:col-span-4 xl:col-span-4 space-y-3">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     Talent List ({filteredProfiles.length})
                   </h3>
                 </div>
-                <span className="text-[11px] text-blue-600 font-semibold">
+                <span className="text-[10px] text-blue-600 font-semibold">
                   Click to preview
                 </span>
               </div>
 
               {/* Scrollable list of compact cards */}
-              <div className="space-y-2.5 max-h-[calc(100vh-14rem)] overflow-y-auto pr-1 scrollbar-subtle">
+              <div className="space-y-2 max-h-[calc(100vh-14rem)] overflow-y-auto pr-1 scrollbar-subtle">
                 {filteredProfiles.map((employee) => (
                   <TalentCard
                     key={employee.id}
@@ -273,12 +262,12 @@ const TalentPage = () => {
           /* ============================================================== */
           /* FULL-WIDTH ROW-BASED DIRECTORY LIST                             */
           /* ============================================================== */
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-1 mb-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1 mb-0.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 Showing {filteredProfiles.length} Employee Profiles
               </span>
-              <span className="text-xs font-medium text-slate-400">
+              <span className="text-[11px] font-medium text-slate-400">
                 Click any row to open the 30/70 split preview
               </span>
             </div>

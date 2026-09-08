@@ -108,7 +108,10 @@ const getPageMetadata = (pathname) => {
     if (pathname === '/meetings' || pathname.startsWith('/meetings')) {
         return { title: 'Meetings & Minutes', subtitle: 'Schedule meetings & track action items' };
     }
-    if (pathname.startsWith('/ta')) {
+    if (pathname === '/talent' || pathname.startsWith('/talent/')) {
+        return { title: 'Talent Card', subtitle: 'Talent profiles & competencies' };
+    }
+    if (pathname === '/ta' || pathname.startsWith('/ta/')) {
         return { title: 'Talent Acquisition', subtitle: 'Recruitment & candidate pipeline' };
     }
     if (pathname === '/settings/email') {
