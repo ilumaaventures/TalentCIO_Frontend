@@ -279,10 +279,17 @@ const Attendance = () => {
         || user?.permissions?.includes('user.read')
         || user?.permissions?.includes('attendance.view_all')
         || user?.permissions?.includes('attendance.view_others');
-    const showDocumentsTab = Boolean(user?.company?.settings?.timesheet?.requireAttachment);
-    const showRGDocumentTrackerTab = showDocumentsTab && isRGWorkspace(user) && canViewRGDocumentTracker(user);
     const [fetchedAttendanceSettings, setFetchedAttendanceSettings] = useState(null);
     const attendanceSettings = fetchedAttendanceSettings || user?.company?.settings?.attendance || {};
+
+    // Both "Documents" and "Submitted Docs" tabs are controlled by "Enable Attendance Documents" from SuperAdmin
+    const isAttendanceDocumentsEnabled = Boolean(
+        user?.company?.settings?.timesheet?.requireAttachment
+        || user?.company?.settings?.attendance?.requireAttachment
+        || attendanceSettings?.requireAttachment
+    );
+    const showDocumentsTab = isAttendanceDocumentsEnabled;
+    const showRGDocumentTrackerTab = isAttendanceDocumentsEnabled;
 
     const effectiveFlexPolicy = useMemo(() => {
         return resolveUserFlexPolicy(viewUser || user, attendanceSettings);
