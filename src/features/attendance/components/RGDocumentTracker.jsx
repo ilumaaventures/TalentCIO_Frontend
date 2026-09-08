@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ExternalLink, Loader2, RefreshCw, Users, X } from 'lucide-react';
 import { useRGDocumentSummary } from '@/features/attendance/hooks/useRGDocumentSummary';
 import api from '@/lib/apiClient';
+import MonthPicker from '@/components/ui/MonthPicker';
 
 const formatTimestamp = (value) => {
   if (!value) return '-';
@@ -80,15 +81,13 @@ const RGDocumentTracker = ({ monthValue, onMonthChange }) => {
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 w-48">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Month</span>
-            <input
-              type="month"
+            <MonthPicker
               value={monthValue}
-              onChange={(event) => onMonthChange(event.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
+              onChange={onMonthChange}
             />
-          </label>
+          </div>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Search</span>
             <input
