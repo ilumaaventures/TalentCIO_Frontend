@@ -138,6 +138,7 @@ export const OnboardingEmailHistory = () => {
   const [selectedLog, setSelectedLog] = useState(null);
   const [modalTab, setModalTab] = useState('email'); // 'email', 'metadata', 'edit'
   const [senderAccounts, setSenderAccounts] = useState([]);
+  const [defaultSenderAccountId, setDefaultSenderAccountId] = useState('platform');
   const [editForm, setEditForm] = useState({
     recipientEmail: '',
     subject: '',
@@ -193,7 +194,7 @@ export const OnboardingEmailHistory = () => {
   useEffect(() => {
     const fetchSenderAccounts = async () => {
       try {
-        const res = await api.get('/email-settings/senders');
+        const res = await api.get('/company/email-settings/senders').catch(() => api.get('/email-settings/senders'));
         if (res.data) {
           const accountsList = [];
           if (res.data.platformOption) {
@@ -201,22 +202,32 @@ export const OnboardingEmailHistory = () => {
               _id: 'platform',
               name: res.data.platformOption.name || 'TalentCIO Platform',
               fromAddress: res.data.platformOption.fromAddress || 'no-reply@talentcio.in',
-              fromName: res.data.platformOption.fromName || 'TalentCIO'
+              fromName: res.data.platformOption.fromName || 'TalentCIO',
+              provider: 'platform'
             });
           }
           if (Array.isArray(res.data.accounts)) {
             res.data.accounts.forEach((acc) => {
               if (acc._id !== 'platform') {
-                accountsList.push(acc);
+                accountsList.push({
+                  ...acc,
+                  name: acc.name || acc.fromName || 'Sender Account',
+                  fromAddress: acc.fromAddress || '',
+                  fromName: acc.fromName || '',
+                  provider: acc.provider || 'smtp'
+                });
               }
             });
           }
           setSenderAccounts(accountsList);
+          if (res.data.defaultAccountId) {
+            setDefaultSenderAccountId(res.data.defaultAccountId);
+          }
         }
       } catch (err) {
         console.warn('Could not fetch email senders:', err);
         setSenderAccounts([
-          { _id: 'platform', name: 'TalentCIO Platform', fromAddress: 'no-reply@talentcio.in' }
+          { _id: 'platform', name: 'TalentCIO Platform', fromAddress: 'no-reply@talentcio.in', provider: 'platform' }
         ]);
       }
     };
@@ -260,7 +271,7 @@ export const OnboardingEmailHistory = () => {
       body: initialBody,
       cc: log.cc || '',
       bcc: log.bcc || '',
-      emailAccountId: log.emailAccountId || 'platform'
+      emailAccountId: log.emailAccountId || defaultSenderAccountId || 'platform'
     });
     setPlainTextBody(htmlToPlainText(initialBody));
     setEditViewMode('plaintext');
@@ -275,7 +286,7 @@ export const OnboardingEmailHistory = () => {
       body: initialBody,
       cc: selectedLog.cc || '',
       bcc: selectedLog.bcc || '',
-      emailAccountId: selectedLog.emailAccountId || 'platform'
+      emailAccountId: selectedLog.emailAccountId || defaultSenderAccountId || 'platform'
     });
     setPlainTextBody(htmlToPlainText(initialBody));
     toast.success('Reset email to original content.');
@@ -1651,11 +1662,18 @@ export const OnboardingEmailHistory = () => {
                           }}
                         >
                           {senderAccounts.length > 0 ? (
-                            senderAccounts.map((acc) => (
-                              <option key={acc._id} value={acc._id}>
-                                {acc.name || acc.fromName || 'Platform'} {acc.fromAddress ? `(${acc.fromAddress})` : ''}
-                              </option>
-                            ))
+                            senderAccounts.map((acc) => {
+                              const providerBadge = acc.provider && acc.provider !== 'platform'
+                                ? ` [${acc.provider.toUpperCase()}]`
+                                : '';
+                              const displayName = acc.name || acc.fromName || (acc._id === 'platform' ? 'TalentCIO Platform' : 'Sender Account');
+                              const address = acc.fromAddress ? ` (${acc.fromAddress})` : '';
+                              return (
+                                <option key={acc._id} value={acc._id}>
+                                  {displayName}{providerBadge}{address}
+                                </option>
+                              );
+                            })
                           ) : (
                             <option value="platform">TalentCIO Platform (no-reply@talentcio.in)</option>
                           )}
