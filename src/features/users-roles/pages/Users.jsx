@@ -337,7 +337,7 @@ const Users = () => {
             const [year, month] = exportMonth.split('-');
 
             const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
-            const { teamMembers, attendanceRecords, leaveRecords, holidays, weeklyOff } = res.data;
+            const { teamMembers, attendanceRecords, leaveRecords, holidays, weeklyOff, flexWeeklyOff } = res.data;
 
             if (!teamMembers || teamMembers.length === 0) {
                 toast.error('No team members found', { id: toastId });
@@ -352,7 +352,7 @@ const Users = () => {
             for (let d = 1; d <= daysInMonth; d++) {
                 const date = new Date(year, month - 1, d);
                 const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                dateColumns.push({ header: `${String(d).padStart(2, '0')}-${dayName}`, key: `day_${d}`, width: 15 });
+                dateColumns.push({ header: `${String(d).padStart(2, '0')}-${dayName}`, key: `day_${d}`, width: 16 });
             }
 
             worksheet.columns = [
@@ -369,8 +369,8 @@ const Users = () => {
             headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
 
             const attendanceMap = {};
-            attendanceRecords.forEach(record => {
-                const userId = record.user.toString();
+            (attendanceRecords || []).forEach(record => {
+                const userId = (record.user?._id || record.user || '').toString();
                 const dateStr = toDateKey(record.date);
                 if (!attendanceMap[userId]) attendanceMap[userId] = {};
                 attendanceMap[userId][dateStr] = record;
@@ -379,7 +379,7 @@ const Users = () => {
             const leaveMap = {};
             if (leaveRecords && leaveRecords.length > 0) {
                 leaveRecords.forEach(leave => {
-                    const userId = leave.user.toString();
+                    const userId = (leave.user?._id || leave.user || '').toString();
                     if (!leaveMap[userId]) leaveMap[userId] = {};
 
                     const start = new Date(leave.startDate);
@@ -403,7 +403,7 @@ const Users = () => {
             const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
             const usersToExport = teamMembers.filter((teamMember) =>
-                selectedEmployeeIds.includes(teamMember._id)
+                selectedEmployeeIds.some(id => String(id) === String(teamMember._id))
             );
 
             if (usersToExport.length === 0) {
@@ -411,9 +411,27 @@ const Users = () => {
                 return;
             }
 
+            const todayIST = new Date();
+            todayIST.setHours(0, 0, 0, 0);
+
             usersToExport.forEach(targetUser => {
-                const userLogs = attendanceMap[targetUser._id] || {};
-                const userLeaves = leaveMap[targetUser._id] || {};
+                const fullUser = users.find(u => String(u._id) === String(targetUser._id)) || targetUser;
+                const userLogs = attendanceMap[String(targetUser._id)] || {};
+                const userLeaves = leaveMap[String(targetUser._id)] || {};
+
+                const joiningDate = (fullUser.joiningDate || targetUser.joiningDate)
+                    ? new Date(fullUser.joiningDate || targetUser.joiningDate)
+                    : null;
+                if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+
+                const dateOfLeaving = (fullUser.dateOfLeaving || targetUser.dateOfLeaving)
+                    ? new Date(fullUser.dateOfLeaving || targetUser.dateOfLeaving)
+                    : null;
+                if (dateOfLeaving) dateOfLeaving.setHours(23, 59, 59, 999);
+
+                const userFlexDays = Array.isArray(fullUser.customFlexibleOffDays)
+                    ? fullUser.customFlexibleOffDays
+                    : (Array.isArray(targetUser.customFlexibleOffDays) ? targetUser.customFlexibleOffDays : []);
 
                 const parentRow = worksheet.addRow({
                     name: `${targetUser.firstName} ${targetUser.lastName || ''}${targetUser.employeeCode ? ` (${targetUser.employeeCode})` : ''}`
@@ -429,38 +447,119 @@ const Users = () => {
                 const leavesRow = { name: '   ↳ Leaves' };
                 const approvedRow = { name: '   ↳ Approved' };
 
+                const statusStyles = {};
+
                 for (let d = 1; d <= daysInMonth; d++) {
                     const dateObj = new Date(year, month - 1, d);
+                    const dayStart = new Date(year, month - 1, d);
+                    dayStart.setHours(0, 0, 0, 0);
                     const dateStr = toDateKey(dateObj);
                     const record = userLogs[dateStr];
                     const colKey = `day_${d}`;
 
                     const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
                     const dayName = format(dateObj, 'EEEE');
-                    const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
+                    const isCompanyWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
+                    const isCustomFlexOff = userFlexDays.some(flexDay => {
+                        const cleanFlex = String(flexDay || '').trim().toLowerCase();
+                        return cleanFlex === dateStr.toLowerCase() || cleanFlex === dayName.toLowerCase();
+                    });
+                    const isWeeklyOff = isCompanyWeeklyOff || isCustomFlexOff;
+
                     const leaveData = userLeaves[dateStr];
                     const holidayName = holidayMap[dateStr];
 
-                    let statusShort = 'Absent';
+                    const isFuture = dayStart > todayIST;
+                    const isBeforeJoining = joiningDate && dayStart < joiningDate;
+                    const isAfterLeaving = dateOfLeaving && dayStart > dateOfLeaving;
+
+                    const hasAttendance = Boolean(
+                        record && (
+                            record.clockIn ||
+                            record.clockInIST ||
+                            record.status === 'PRESENT' ||
+                            record.status === 'HALF_DAY' ||
+                            isAttendanceApproved(record)
+                        )
+                    );
+
+                    let durStr = '-';
+                    let isHalfDay = record?.status === 'HALF_DAY';
+
+                    if (record && (record.clockIn || record.clockInIST)) {
+                        const startTime = new Date(record.clockIn);
+                        const isToday = dateObj.toDateString() === new Date().toDateString();
+                        let endTime = record.clockOut ? new Date(record.clockOut) : (isToday ? new Date() : new Date(dateObj));
+                        if (!record.clockOut && !isToday) {
+                            endTime.setHours(23, 59, 59, 999);
+                        }
+
+                        if (record.clockIn) {
+                            const diffString = Math.max(0, endTime - startTime);
+                            const hours = Math.floor(diffString / (1000 * 60 * 60));
+                            const minutes = Math.floor((diffString % (1000 * 60 * 60)) / (1000 * 60));
+                            durStr = `${hours}h ${minutes}m`;
+                            const durHrs = diffString / 3600000;
+                            if (durHrs >= 4 && durHrs < 8) {
+                                durStr += ' (Half Day)';
+                                isHalfDay = true;
+                            }
+                        }
+                    }
 
                     const isOffDay = !!holidayName || isWeeklyOff;
                     const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
 
-                    if (isAttendanceApproved(record)) {
-                        statusShort = 'Present';
-                    } else if (showLeave || holidayName || isWeeklyOff) {
-                        statusShort = '';
+                    let statusText = '-';
+                    let cellBg = 'FFFFFFFF';
+                    let cellFg = 'FF64748B';
+
+                    if (isBeforeJoining || isAfterLeaving) {
+                        statusText = 'Not Applicable';
+                        cellBg = 'FFFFFFFF';
+                        cellFg = 'FF94A3B8';
+                    } else if (hasAttendance) {
+                        statusText = isHalfDay ? 'Half Day' : 'Present';
+                        cellBg = isHalfDay ? 'FFFEF3C7' : 'FFEBF1DE'; // Light Yellow / Light Green
+                        cellFg = isHalfDay ? 'FF92400E' : 'FF166534'; // Dark Yellow / Dark Green
+                    } else if (showLeave) {
+                        statusText = leaveData.type ? `Leave (${leaveData.type})` : 'Leave';
+                        cellBg = 'FFFFE0B2'; // Light Peach/Orange
+                        cellFg = 'FF9A3412'; // Rust/Brown
+                    } else if (holidayName) {
+                        statusText = holidayName.toLowerCase().includes('holiday') ? holidayName : `Holiday (${holidayName})`;
+                        cellBg = 'FFD1F2EB'; // Light Teal/Mint
+                        cellFg = 'FF115E59'; // Dark Teal
+                    } else if (isWeeklyOff) {
+                        statusText = 'Week Off';
+                        cellBg = 'FFF2F2F2'; // Light Gray
+                        cellFg = 'FF475569'; // Slate
+                    } else if (isFuture) {
+                        statusText = '-';
+                        cellBg = 'FFFFFFFF';
+                        cellFg = 'FF94A3B8';
+                    } else {
+                        // Past working day with no attendance
+                        statusText = 'Absent';
+                        cellBg = 'FFF2DCDB'; // Light Red/Pink
+                        cellFg = 'FF991B1B'; // Dark Red
                     }
 
+                    statusStyles[colKey] = {
+                        bg: cellBg,
+                        fg: cellFg,
+                        bold: statusText !== '-' && statusText !== 'Not Applicable'
+                    };
+
                     if (exportOptions.status) {
-                        statusRow[colKey] = statusShort;
+                        statusRow[colKey] = statusText;
                     }
 
                     if (exportOptions.leaves) {
                         leavesRow[colKey] = leaveData?.type || '-';
                     }
 
-                    if (record) {
+                    if (hasAttendance) {
                         if (record.clockInIST) checkInRow[colKey] = extractTime(record.clockInIST);
                         else if (record.clockIn) checkInRow[colKey] = formatTimeSimple(record.clockIn);
                         else checkInRow[colKey] = '-';
@@ -469,28 +568,13 @@ const Users = () => {
                         else if (record.clockOut) checkOutRow[colKey] = formatTimeSimple(record.clockOut);
                         else checkOutRow[colKey] = '-';
 
-                        const startTime = new Date(record.clockIn);
-                        let endTime = record.clockOut ? new Date(record.clockOut) : new Date(dateObj);
-                        if (!record.clockOut) endTime.setHours(23, 59, 59, 999);
-
-                        let durStr = '--';
-                        if (record.clockIn) {
-                            const diffString = Math.abs(endTime - startTime);
-                            const hours = Math.floor(diffString / (1000 * 60 * 60));
-                            const minutes = Math.floor((diffString % (1000 * 60 * 60)) / (1000 * 60));
-                            durStr = `${hours}h ${minutes}m`;
-                            const durHrs = diffString / 3600000;
-                            if (durHrs >= 5 && durHrs < 8) {
-                                durStr += ' (Half Day)';
-                            }
-                        }
                         durationRow[colKey] = durStr;
-                        approvedRow[colKey] = isAttendanceApproved(record) ? 'Approved' : '';
+                        approvedRow[colKey] = isAttendanceApproved(record) ? 'Approved' : '-';
                     } else {
                         checkInRow[colKey] = '-';
                         checkOutRow[colKey] = '-';
                         durationRow[colKey] = '-';
-                        approvedRow[colKey] = '';
+                        approvedRow[colKey] = '-';
                     }
                 }
 
@@ -512,26 +596,13 @@ const Users = () => {
 
                     if (rowData.name === '   ↳ Status') {
                         for (let d = 1; d <= daysInMonth; d++) {
-                            const dateObj = new Date(year, month - 1, d);
-                            const dateStr = toDateKey(dateObj);
-                            const record = userLogs[dateStr];
-                            const leaveData = userLeaves[dateStr];
-                            const holidayName = holidayMap[dateStr];
-                            const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
-                            const dayName = format(dateObj, 'EEEE');
-                            const isWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
-
-                            let cellColor = 'FFF2DCDB';
-
-                            const isOffDay = !!holidayName || isWeeklyOff;
-                            const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
-
-                            if (isAttendanceApproved(record)) cellColor = 'FFEBF1DE';
-                            else if (showLeave || holidayName || isWeeklyOff) cellColor = 'FFFFFFFF';
-
                             const colKey = `day_${d}`;
-                            const cell = row.getCell(colKey);
-                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellColor } };
+                            const style = statusStyles[colKey];
+                            if (style) {
+                                const cell = row.getCell(colKey);
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: style.bg } };
+                                cell.font = { bold: style.bold, color: { argb: style.fg } };
+                            }
                         }
                     }
                 });

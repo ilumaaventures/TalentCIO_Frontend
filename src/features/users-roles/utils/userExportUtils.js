@@ -218,27 +218,57 @@ export const buildAttendanceWorkbook = async (targetUser, year, month, holidaysD
         const dateStr = format(day, 'yyyy-MM-dd');
         const record = history.find(h => toDateKey(h.date) === dateStr);
         const weeklyOffDays = historyRes.data?.weeklyOff || currentUser?.company?.settings?.attendance?.weeklyOff || ['Sunday'];
-        const isWeeklyOff = weeklyOffDays.includes(format(day, 'EEEE'));
-        let status = 'Absent';
-        let rowColor = 'FFF2DCDB';
+        const dayName = format(day, 'EEEE');
+        const userFlexDays = Array.isArray(targetUser?.customFlexibleOffDays) ? targetUser.customFlexibleOffDays : [];
+        const isCompanyWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
+        const isCustomFlexOff = userFlexDays.some(flexDay => {
+            const cleanFlex = String(flexDay || '').trim().toLowerCase();
+            return cleanFlex === dateStr.toLowerCase() || cleanFlex === dayName.toLowerCase();
+        });
+        const isWeeklyOff = isCompanyWeeklyOff || isCustomFlexOff;
 
         const joiningDate = targetUser.joiningDate ? new Date(targetUser.joiningDate) : null;
         if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
 
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dayStart = new Date(day);
+        dayStart.setHours(0, 0, 0, 0);
+        const isFuture = dayStart > today;
+
+        const hasAttendance = Boolean(
+            record && (
+                record.clockIn ||
+                record.clockInIST ||
+                record.status === 'PRESENT' ||
+                record.status === 'HALF_DAY' ||
+                isAttendanceApproved(record)
+            )
+        );
+
         const holiday = holidaysData.find(h => toDateKey(h.date) === dateStr);
 
-        if (joiningDate && day < joiningDate) {
+        let status = 'Absent';
+        let rowColor = 'FFF2DCDB';
+
+        if (joiningDate && dayStart < joiningDate) {
             status = 'Not Applicable';
             rowColor = 'FFFFFFFF';
-        } else if (isAttendanceApproved(record)) {
-            status = 'Present';
-            rowColor = 'FFEBF1DE';
+        } else if (hasAttendance) {
+            status = record?.status === 'HALF_DAY' ? 'Half Day' : 'Present';
+            rowColor = record?.status === 'HALF_DAY' ? 'FFFEF3C7' : 'FFEBF1DE';
         } else if (holiday) {
-            status = holiday.name;
+            status = holiday.name || 'Holiday';
             rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
         } else if (isWeeklyOff) {
-            status = 'Weekoff';
+            status = 'Week Off';
             rowColor = 'FFF2F2F2';
+        } else if (isFuture) {
+            status = '-';
+            rowColor = 'FFFFFFFF';
+        } else {
+            status = 'Absent';
+            rowColor = 'FFF2DCDB';
         }
 
         const row = sheet.addRow([
