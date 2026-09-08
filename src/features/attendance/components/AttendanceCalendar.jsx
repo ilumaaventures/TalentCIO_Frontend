@@ -110,7 +110,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
             {/* Calendar Rows */}
             <div className="grid grid-cols-7 text-xs">
                 {blanks.map((b) => (
-                    <div key={`blank-${b}`} className="min-h-[56px] sm:min-h-[80px] md:min-h-25 border-b border-r border-slate-100 bg-white"></div>
+                    <div key={`blank-${b}`} className="min-h-[60px] sm:min-h-[92px] md:min-h-[105px] border-b border-r border-slate-100 bg-white"></div>
                 ))}
 
                 {days.map((day) => {
@@ -146,7 +146,7 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                     return (
                         <div
                             key={day.toISOString()}
-                            className={`min-h-[56px] sm:min-h-[80px] md:min-h-25 border-b border-r border-slate-100 p-1 sm:px-2 sm:py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : (isFlexOffDay && !isWeeklyOff ? 'bg-violet-50/40' : (isWeeklyOff ? 'bg-slate-50/40' : 'bg-white'))}`}
+                            className={`min-h-[60px] sm:min-h-[92px] md:min-h-[105px] border-b border-r border-slate-100 p-1 sm:px-2 sm:py-2 relative group transition-colors ${isToday ? 'bg-blue-50/20' : (isFlexOffDay && !isWeeklyOff ? 'bg-violet-50/40' : (isWeeklyOff ? 'bg-slate-50/40' : 'bg-white'))}`}
                         >
                             <div className={`text-right mb-2 font-medium text-[11px] ${isToday ? 'text-blue-600' : (isFlexOffDay && !isWeeklyOff ? 'text-violet-600 font-bold' : (isWeeklyOff ? 'text-slate-300' : 'text-slate-400'))}`}>
                                 {day.getDate()}
@@ -241,6 +241,28 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                             {record ? (
                                 (() => {
                                     const approvalMeta = getApprovalMeta(record);
+                                    const calculateDuration = () => {
+                                        if (!record.clockIn) return null;
+                                        const start = new Date(record.clockIn);
+                                        let end;
+                                        if (record.clockOut) {
+                                            end = new Date(record.clockOut);
+                                        } else {
+                                            const isTodayDate = normalizeDate(day) === normalizeDate(new Date());
+                                            if (isTodayDate) {
+                                                end = new Date();
+                                            } else {
+                                                return null;
+                                            }
+                                        }
+                                        if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return '0h 0m';
+                                        const diffMs = Math.abs(end - start);
+                                        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+                                        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                                        return `${hours}h ${minutes}m`;
+                                    };
+                                    const totalTime = calculateDuration();
+
                                     return (
                                         <div className="space-y-1.5">
                                             <div className="flex items-start space-x-1">
@@ -264,6 +286,11 @@ const AttendanceCalendar = ({ history = [], onMonthChange, user, holidays = [], 
                                             {approvalMeta.showTimes && record.clockOut && (
                                                 <div className="text-[9px] text-slate-500 font-mono pl-3 line-clamp-1">
                                                     Out: {new Date(record.clockOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                                </div>
+                                            )}
+                                            {approvalMeta.showTimes && totalTime && (
+                                                <div className="text-[9px] font-semibold text-slate-700 font-mono pl-3 line-clamp-1" title={`Total Duration: ${totalTime}`}>
+                                                    Total: {totalTime}
                                                 </div>
                                             )}
                                         </div>
