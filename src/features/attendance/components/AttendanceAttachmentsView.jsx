@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { Download, Trash2, Info, Loader2, Calendar, Send, CheckCircle, XCircle, Edit2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import MonthPicker from '@/components/ui/MonthPicker';
 
 const AttendanceAttachmentsView = ({
     attachments,
@@ -73,15 +74,13 @@ const AttendanceAttachmentsView = ({
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     {monthValue && onMonthChange && (
-                        <label className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1 w-48">
                             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Month</span>
-                            <input
-                                type="month"
+                            <MonthPicker
                                 value={monthValue}
-                                onChange={(event) => onMonthChange(event.target.value)}
-                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-500 outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100"
+                                onChange={onMonthChange}
                             />
-                        </label>
+                        </div>
                     )}
                     {!isReadOnly && (
                         <>

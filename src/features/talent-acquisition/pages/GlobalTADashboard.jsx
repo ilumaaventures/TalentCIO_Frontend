@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, TrendingUp, Users, UserCheck, PieChart as PieIcon,
     BarChart3, RefreshCw, Briefcase, Filter, Calendar,
     Search, CheckSquare, Clock, AlertCircle, Inbox,
-    ChevronDown, ExternalLink, Award, PlayCircle, Globe
+    ChevronDown, ExternalLink, Award, PlayCircle, Globe,
+    Check, X
 } from 'lucide-react';
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
@@ -17,6 +18,215 @@ import Skeleton from '@/components/ui/Skeleton';
 import { useAuth } from '@/features/auth/context/AuthContext';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e', '#10b981', '#f59e0b', '#64748b'];
+
+const SearchableFilterSelect = ({
+    label,
+    icon,
+    value,
+    onChange,
+    allLabel = 'All',
+    options = [],
+    placeholder = 'Search...',
+    align = 'left'
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const dropdownRef = useRef(null);
+    const searchInputRef = useRef(null);
+
+    // Normalize options into { label, value, shortLabel }
+    const normalizedOptions = useMemo(() => {
+        return (options || []).map(opt => {
+            if (typeof opt === 'string') {
+                return { label: opt, value: opt, shortLabel: opt };
+            }
+            if (opt && typeof opt === 'object') {
+                if (opt.title !== undefined) {
+                    const clientStr = opt.client ? `(${opt.client})` : '';
+                    const statusStr = opt.status === 'Closed' ? 'Legacy' : 'Active';
+                    const dateStr = opt.createdAt ? new Date(opt.createdAt).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) : '';
+                    const fullLabel = `${opt.title} ${clientStr} - ${statusStr} (${dateStr})`.trim();
+                    return {
+                        label: fullLabel,
+                        value: opt._id || opt.id,
+                        shortLabel: opt.title
+                    };
+                }
+                return {
+                    label: opt.label || opt.name || String(opt.value),
+                    value: opt.value !== undefined ? opt.value : opt._id,
+                    shortLabel: opt.label || opt.name
+                };
+            }
+            return { label: String(opt), value: String(opt), shortLabel: String(opt) };
+        });
+    }, [options]);
+
+    // Currently selected label
+    const selectedItem = normalizedOptions.find(o => String(o.value) === String(value));
+    const displayLabel = selectedItem ? (selectedItem.shortLabel || selectedItem.label) : allLabel;
+
+    // Filter options by search term
+    const filteredOptions = useMemo(() => {
+        if (!searchTerm.trim()) return normalizedOptions;
+        const term = searchTerm.toLowerCase().trim();
+        return normalizedOptions.filter(o => o.label.toLowerCase().includes(term));
+    }, [normalizedOptions, searchTerm]);
+
+    // Close when clicking outside or pressing Escape
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+                setIsOpen(false);
+            }
+        };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setIsOpen(false);
+        };
+        if (isOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('keydown', handleKeyDown);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen]);
+
+    // Auto-focus search input when opened
+    useEffect(() => {
+        if (isOpen) {
+            setSearchTerm('');
+            setTimeout(() => {
+                searchInputRef.current?.focus();
+            }, 50);
+        }
+    }, [isOpen]);
+
+    return (
+        <div className={`relative ${isOpen ? 'z-50' : 'z-10'}`} ref={dropdownRef}>
+            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1 truncate">
+                {label}
+            </label>
+            <div className="relative">
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(prev => !prev)}
+                    className={`w-full flex items-center justify-between pl-8 pr-7 py-2 rounded-xl text-[11px] font-bold transition-all text-left truncate border ${
+                        isOpen || value
+                            ? 'bg-white border-indigo-500 shadow-sm text-slate-800 ring-2 ring-indigo-50'
+                            : 'bg-slate-50 border-transparent hover:bg-white hover:border-slate-200 text-slate-700'
+                    }`}
+                    title={selectedItem?.label || allLabel}
+                >
+                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                        {React.cloneElement(icon, { size: 13 })}
+                    </div>
+                    <span className="truncate">{displayLabel}</span>
+                </button>
+                {value ? (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onChange('');
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded hover:bg-slate-100 transition-colors z-10"
+                        title={`Clear ${label}`}
+                    >
+                        <X size={12} />
+                    </button>
+                ) : (
+                    <ChevronDown
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 transition-transform duration-200 pointer-events-none ${
+                            isOpen ? 'rotate-180 text-indigo-600' : ''
+                        }`}
+                        size={13}
+                    />
+                )}
+            </div>
+
+            {isOpen && (
+                <div
+                    className={`absolute top-full mt-1.5 w-72 max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 p-2 animate-in fade-in zoom-in-95 duration-150 ${
+                        align === 'right' ? 'right-0' : 'left-0'
+                    }`}
+                >
+                    {/* Search Input Box */}
+                    <div className="relative mb-2">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder={placeholder}
+                            className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 focus:outline-none rounded-xl text-xs font-medium text-slate-700 transition-all placeholder:text-slate-400"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        {searchTerm && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Options List */}
+                    <div className="max-h-56 overflow-y-auto space-y-0.5 scrollbar-thin">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onChange('');
+                                setIsOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors text-left ${
+                                !value
+                                    ? 'bg-indigo-50 text-indigo-600 font-bold'
+                                    : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                            <span>{allLabel}</span>
+                            {!value && <Check size={13} className="text-indigo-600 shrink-0" />}
+                        </button>
+
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map((opt) => {
+                                const isSelected = String(value) === String(opt.value);
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(opt.value);
+                                            setIsOpen(false);
+                                        }}
+                                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors text-left group ${
+                                            isSelected
+                                                ? 'bg-indigo-50 text-indigo-600 font-bold'
+                                                : 'text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                        title={opt.label}
+                                    >
+                                        <span className="truncate pr-2">{opt.label}</span>
+                                        {isSelected && <Check size={13} className="text-indigo-600 shrink-0" />}
+                                    </button>
+                                );
+                            })
+                        ) : (
+                            <div className="py-4 text-center text-xs text-slate-400 font-medium">
+                                No matching options
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -140,7 +350,7 @@ const GlobalTADashboard = () => {
         <div className="min-h-screen bg-[#f8fafc] pb-24">
             {/* Header Area */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-                <div className="max-w-400 mx-auto px-6 py-4">
+                <div className="max-w-[1680px] w-full mx-auto px-6 py-4">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
                             <button
@@ -194,129 +404,92 @@ const GlobalTADashboard = () => {
 
                     {/* Dynamic Filter Bar */}
                     {showFilters && (
-                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-4 animate-in slide-in-from-top-2 duration-300">
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Client</label>
-                                <div className="relative">
-                                    <select
-                                        name="client" value={filters.client} onChange={handleFilterChange}
-                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">All Clients</option>
-                                        {filterOptions?.clients?.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                </div>
-                            </div>
+                        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3 animate-in slide-in-from-top-2 duration-300">
+                            <SearchableFilterSelect
+                                label="Client"
+                                icon={<Briefcase />}
+                                value={filters.client}
+                                onChange={(val) => setFilters(prev => ({ ...prev, client: val }))}
+                                allLabel="All Clients"
+                                options={filterOptions?.clients}
+                                placeholder="Search clients..."
+                            />
 
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Department</label>
-                                <div className="relative">
-                                    <select
-                                        name="department" value={filters.department} onChange={handleFilterChange}
-                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">All Departments</option>
-                                        {filterOptions?.departments?.map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                    <Inbox className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                </div>
-                            </div>
+                            <SearchableFilterSelect
+                                label="Department"
+                                icon={<Inbox />}
+                                value={filters.department}
+                                onChange={(val) => setFilters(prev => ({ ...prev, department: val }))}
+                                allLabel="All Departments"
+                                options={filterOptions?.departments}
+                                placeholder="Search departments..."
+                            />
 
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Position</label>
-                                <div className="relative">
-                                    <select
-                                        name="position" value={filters.position} onChange={handleFilterChange}
-                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">All Roles</option>
-                                        {filterOptions?.positions?.map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                </div>
-                            </div>
+                            <SearchableFilterSelect
+                                label="Position"
+                                icon={<Search />}
+                                value={filters.position}
+                                onChange={(val) => setFilters(prev => ({ ...prev, position: val }))}
+                                allLabel="All Roles"
+                                options={filterOptions?.positions}
+                                placeholder="Search roles..."
+                            />
 
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Pulled By</label>
-                                <div className="relative">
-                                    <select
-                                        name="pulledBy" value={filters.pulledBy} onChange={handleFilterChange}
-                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">All Pulled By</option>
-                                        {filterOptions?.pulledBys?.map((name) => <option key={name} value={name}>{name}</option>)}
-                                    </select>
-                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                </div>
-                            </div>
+                            <SearchableFilterSelect
+                                label="Pulled By"
+                                icon={<Users />}
+                                value={filters.pulledBy}
+                                onChange={(val) => setFilters(prev => ({ ...prev, pulledBy: val }))}
+                                allLabel="All Pulled By"
+                                options={filterOptions?.pulledBys}
+                                placeholder="Search sourcers..."
+                            />
 
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Uploaded By</label>
-                                <div className="relative">
-                                    <select
-                                        name="uploadedBy" value={filters.uploadedBy} onChange={handleFilterChange}
-                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">All Uploaded By</option>
-                                        {filterOptions?.uploadedBys?.map((name) => <option key={name} value={name}>{name}</option>)}
-                                    </select>
-                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                </div>
-                            </div>
+                            <SearchableFilterSelect
+                                label="Uploaded By"
+                                icon={<Users />}
+                                value={filters.uploadedBy}
+                                onChange={(val) => setFilters(prev => ({ ...prev, uploadedBy: val }))}
+                                allLabel="All Uploaded By"
+                                options={filterOptions?.uploadedBys}
+                                placeholder="Search uploaders..."
+                            />
 
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Called By</label>
-                                <div className="relative">
-                                    <select
-                                        name="calledBy" value={filters.calledBy} onChange={handleFilterChange}
-                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">All Called By</option>
-                                        {filterOptions?.calledBys?.map((name) => <option key={name} value={name}>{name}</option>)}
-                                    </select>
-                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                </div>
-                            </div>
+                            <SearchableFilterSelect
+                                label="Called By"
+                                icon={<Users />}
+                                value={filters.calledBy}
+                                onChange={(val) => setFilters(prev => ({ ...prev, calledBy: val }))}
+                                allLabel="All Called By"
+                                options={filterOptions?.calledBys}
+                                placeholder="Search callers..."
+                                align="right"
+                            />
 
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">Req / Version</label>
-                                <div className="relative">
-                                    <select
-                                        name="requisitionId" value={filters.requisitionId} onChange={handleFilterChange}
-                                        className="w-full pl-9 pr-10 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all appearance-none cursor-pointer"
-                                    >
-                                        <option value="">All Versions</option>
-                                        {filterOptions?.requisitions?.map(r => (
-                                            <option key={r._id} value={r._id}>
-                                                {r.title} {r.client ? `(${r.client})` : ''} - {r.status === 'Closed' ? 'Legacy' : 'Active'} ({new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })})
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                                </div>
-                            </div>
+                            <SearchableFilterSelect
+                                label="Req / Version"
+                                icon={<Briefcase />}
+                                value={filters.requisitionId}
+                                onChange={(val) => setFilters(prev => ({ ...prev, requisitionId: val }))}
+                                allLabel="All Versions"
+                                options={filterOptions?.requisitions}
+                                placeholder="Search requisitions..."
+                                align="right"
+                            />
 
                             <div className="relative col-span-2 lg:col-span-1 grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">From</label>
                                     <input
                                         type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange}
-                                        className="w-full px-2 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all"
+                                        className="w-full px-2 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-[11px] font-bold transition-all"
                                     />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block px-1">To</label>
                                     <input
                                         type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange}
-                                        className="w-full px-2 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold transition-all"
+                                        className="w-full px-2 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl text-[11px] font-bold transition-all"
                                     />
                                 </div>
                             </div>
@@ -334,7 +507,7 @@ const GlobalTADashboard = () => {
             </div>
 
 
-            <div className="max-w-400 mx-auto px-6 py-8 space-y-8">
+            <div className="max-w-[1680px] w-full mx-auto px-6 py-8 space-y-8">
 
                 {/* 1. TOP METRICS CARDS */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">

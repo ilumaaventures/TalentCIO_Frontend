@@ -108,7 +108,10 @@ const getPageMetadata = (pathname) => {
     if (pathname === '/meetings' || pathname.startsWith('/meetings')) {
         return { title: 'Meetings & Minutes', subtitle: 'Schedule meetings & track action items' };
     }
-    if (pathname.startsWith('/ta')) {
+    if (pathname === '/talent' || pathname.startsWith('/talent/')) {
+        return { title: 'Talent Card', subtitle: 'Talent profiles & competencies' };
+    }
+    if (pathname === '/ta' || pathname.startsWith('/ta/')) {
         return { title: 'Talent Acquisition', subtitle: 'Recruitment & candidate pipeline' };
     }
     if (pathname === '/settings/email') {
@@ -654,17 +657,12 @@ const Topbar = ({ toggleSidebar }) => {
                         </button>
 
                         {showProfileMenu && (
-                            <div className="absolute right-0 top-full z-50 pt-3">
+                            <div className="absolute right-0 top-full z-50 pt-2">
                                 <div
-                                    className="min-w-[220px] w-auto overflow-hidden rounded-2xl border border-white/35 bg-white/20 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/15"
+                                    className="min-w-[220px] w-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
                                     style={{ animation: 'profileMenuGlassIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
                                 >
-                                    <div className="bg-gradient-to-b from-white/18 to-transparent px-4 py-3">
-                                        {/* <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                                            Profile Menu
-                                        </p> */}
-                                    </div>
-                                    <div className="px-2.5 pb-2.5">
+                                    <div className="px-2 py-2 space-y-0.5">
                                         {profileTabs.map((tab, index) => {
                                             const Icon = tab.icon;
 
@@ -673,16 +671,16 @@ const Topbar = ({ toggleSidebar }) => {
                                                     key={tab.id}
                                                     type="button"
                                                     onClick={() => handleProfileTabNavigate(tab.id)}
-                                                    className="group flex w-full items-center justify-end gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm text-slate-700 backdrop-blur-md transition-all hover:bg-white/25 hover:text-indigo-700"
+                                                    className="group flex w-full items-center justify-end gap-2.5 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 transition-all hover:bg-indigo-50/70 hover:text-indigo-600 cursor-pointer"
                                                     style={{
                                                         opacity: 0,
                                                         animation: 'profileMenuItemIn 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
-                                                        animationDelay: `${60 + (index * 55)}ms`,
-                                                        borderBottom: index === profileTabs.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.28)'
+                                                        animationDelay: `${60 + (index * 40)}ms`,
+                                                        borderBottom: index === profileTabs.length - 1 ? 'none' : '1px solid #f1f5f9'
                                                     }}
                                                 >
-                                                    <Icon size={16} className="shrink-0 text-slate-400 transition-colors group-hover:text-indigo-500" />
-                                                    <span className="text-right font-semibold">
+                                                    <Icon size={16} className="shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600" />
+                                                    <span className="text-right">
                                                         {tab.label}
                                                     </span>
                                                 </button>

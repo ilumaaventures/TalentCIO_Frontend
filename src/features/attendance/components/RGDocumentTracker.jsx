@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ExternalLink, Loader2, RefreshCw, Users, X } from 'lucide-react';
 import { useRGDocumentSummary } from '@/features/attendance/hooks/useRGDocumentSummary';
 import api from '@/lib/apiClient';
+import MonthPicker from '@/components/ui/MonthPicker';
 
 const formatTimestamp = (value) => {
   if (!value) return '-';
@@ -74,21 +75,19 @@ const RGDocumentTracker = ({ monthValue, onMonthChange }) => {
     <div className="space-y-5">
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h3 className="text-lg font-bold text-slate-800">RG Submitted Documents</h3>
+          <h3 className="text-lg font-bold text-slate-800">Submitted Documents</h3>
           <p className="mt-1 text-sm text-slate-500">
             Track document status for each employee in the selected month.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 w-48">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Month</span>
-            <input
-              type="month"
+            <MonthPicker
               value={monthValue}
-              onChange={(event) => onMonthChange(event.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
+              onChange={onMonthChange}
             />
-          </label>
+          </div>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Search</span>
             <input

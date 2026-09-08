@@ -1,6 +1,7 @@
 import React from 'react';
 import { Download, X } from 'lucide-react';
 import { ALL_HRIS_SECTIONS } from '../utils/userExportUtils';
+import MonthPicker from '@/components/ui/MonthPicker';
 
 const UserExportModal = ({
     showExportModal,
@@ -59,11 +60,9 @@ const UserExportModal = ({
                         <div className="flex items-center gap-3">
                             <div className="flex-1">
                                 <label className="block text-xs font-medium text-slate-600 mb-1">Select Month</label>
-                                <input
-                                    type="month"
+                                <MonthPicker
                                     value={exportMonth}
-                                    onChange={(e) => setExportMonth(e.target.value)}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
+                                    onChange={setExportMonth}
                                 />
                             </div>
                             <p className="text-xs text-slate-400 pt-5">Used for Attendance &amp; Timesheet data</p>

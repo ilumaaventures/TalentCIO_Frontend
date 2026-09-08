@@ -41,16 +41,16 @@ const SkillRatingBar = ({
   const theme = getRatingTheme(rating);
 
   return (
-    <div className="group rounded-xl border border-slate-200/80 bg-white p-4 transition-all duration-200 hover:border-blue-200 hover:shadow-sm">
+    <div className="group rounded-xl border border-slate-200/80 bg-white p-3 sm:p-3.5 transition-all duration-200 hover:border-blue-200 hover:shadow-sm">
       {/* Top Row: Skill Name */}
-      <div className="mb-2.5">
-        <h4 className="text-sm font-semibold text-slate-900 tracking-tight">
+      <div className="mb-2">
+        <h4 className="text-xs font-semibold text-slate-900 tracking-tight">
           {name}
         </h4>
       </div>
 
       {/* Progress Meter Bar */}
-      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
         <div
           className={`h-full rounded-full bg-gradient-to-r ${theme.barGradient} transition-all duration-500 ease-out`}
           style={{ width: `${percentage}%` }}

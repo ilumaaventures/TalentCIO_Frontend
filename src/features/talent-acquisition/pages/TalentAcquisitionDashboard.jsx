@@ -21,7 +21,14 @@ import {
     Eye,
     Ban,
     AlertTriangle,
-    AlertCircle
+    AlertCircle,
+    ExternalLink,
+    BarChart3,
+    Layers,
+    TrendingUp,
+    UserCheck,
+    Send,
+    X
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
@@ -271,6 +278,13 @@ const TalentAcquisitionDashboard = () => {
     const [openMenuClientId, setOpenMenuClientId] = useState(null);
     const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
     const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+    const [publicApplications, setPublicApplications] = useState([]);
+    const [positionSearchTerm, setPositionSearchTerm] = useState('');
+    const [positionFilterStatus, setPositionFilterStatus] = useState('ALL');
+    const [showAllPublicPositionsModal, setShowAllPublicPositionsModal] = useState(false);
+    const [modalPositionSearchTerm, setModalPositionSearchTerm] = useState('');
+    const [showAllRequisitionsModal, setShowAllRequisitionsModal] = useState(false);
+    const [modalReqSearchTerm, setModalReqSearchTerm] = useState('');
 
     const getSavedVal = (key, defaultVal) => {
         try {
@@ -678,11 +692,12 @@ const canShowApplicationsTab = (user) => {
             ? api.get('/ta/analytics/global', createNoCacheRequestConfig())
             : Promise.resolve({ data: { data: null } });
 
-        const [analyticsResult, requestsResult, interviewsResult, clientsResult] = await Promise.allSettled([
+        const [analyticsResult, requestsResult, interviewsResult, clientsResult, publicAppsResult] = await Promise.allSettled([
             analyticsPromise,
-            api.get('/ta/hiring-request', createNoCacheRequestConfig({ page: 1, limit: 18 })),
+            api.get('/ta/hiring-request', createNoCacheRequestConfig({ page: 1, limit: 'all' })),
             api.get('/ta/candidates/my/interviews', createNoCacheRequestConfig()),
-            refreshTAClientsCache()
+            refreshTAClientsCache(),
+            api.get('/ta/public-applications', createNoCacheRequestConfig())
         ]);
 
         const failures = [];
@@ -709,6 +724,10 @@ const canShowApplicationsTab = (user) => {
             setClients(Array.isArray(clientsResult.value) ? clientsResult.value : []);
         } else if (!cachedClients?.data?.length) {
             failures.push('clients');
+        }
+
+        if (publicAppsResult.status === 'fulfilled') {
+            setPublicApplications(Array.isArray(publicAppsResult.value.data) ? publicAppsResult.value.data : []);
         }
 
         const totalExpectedFailures = canViewAnalytics ? 4 : 3;
@@ -738,7 +757,21 @@ const canShowApplicationsTab = (user) => {
         () => requests.filter((item) => item.status === 'Approved').length,
         [requests]
     );
-    const recentRequests = useMemo(() => requests.slice(0, 8), [requests]);
+    const activeRequests = useMemo(
+        () => requests.filter((item) => String(item.status || '').toLowerCase() !== 'closed'),
+        [requests]
+    );
+    const recentRequests = useMemo(() => activeRequests.slice(0, 10), [activeRequests]);
+    const modalFilteredRequests = useMemo(() => {
+        if (!modalReqSearchTerm.trim()) return activeRequests;
+        const term = modalReqSearchTerm.toLowerCase().trim();
+        return activeRequests.filter((r) => {
+            const title = (r.roleDetails?.title || '').toLowerCase();
+            const client = (r.client || '').toLowerCase();
+            const dept = (r.roleDetails?.department || '').toLowerCase();
+            return title.includes(term) || client.includes(term) || dept.includes(term);
+        });
+    }, [activeRequests, modalReqSearchTerm]);
     const filteredClients = useMemo(() => {
         if (clientStatusFilter === 'Active') {
             return clients.filter((c) => (c.status || 'Active') === 'Active');
@@ -884,151 +917,990 @@ const canShowApplicationsTab = (user) => {
         }
     ]), [metricTrends, topMetrics]);
 
+    const publicProfilesData = useMemo(() => {
+        if (!Array.isArray(publicApplications) || publicApplications.length === 0) {
+            return {
+                positions: [],
+                totalCount: 0,
+                totalWebsite: 0,
+                totalPublicPost: 0,
+                totalPending: 0,
+                totalShortlisted: 0,
+                totalTransferred: 0,
+                totalRejected: 0
+            };
+        }
+
+        const groups = {};
+
+        publicApplications.forEach((app) => {
+            const reqObj = (app.hiringRequestId && typeof app.hiringRequestId === 'object') ? app.hiringRequestId : null;
+            const matchingReq = reqObj || (app.hiringRequestId ? requests.find(r => String(r._id) === String(app.hiringRequestId)) : null);
+
+            // Skip closed applications/requisitions
+            if (matchingReq && String(matchingReq.status || '').toLowerCase() === 'closed') {
+                return;
+            }
+
+            const rawReqId = reqObj?._id 
+                || (typeof app.hiringRequestId === 'string' ? app.hiringRequestId : (app.hiringRequestId?._id || null))
+                || matchingReq?._id;
+            let reqId = rawReqId ? String(rawReqId) : null;
+
+            if (!reqId && app.desiredPosition) {
+                const matchedByTitle = requests.find(r => 
+                    r.roleDetails?.title && (
+                        r.roleDetails.title.toLowerCase().trim() === app.desiredPosition.toLowerCase().trim() ||
+                        r.roleDetails.title.toLowerCase().includes(app.desiredPosition.toLowerCase().trim()) ||
+                        app.desiredPosition.toLowerCase().includes(r.roleDetails.title.toLowerCase().trim())
+                    )
+                );
+                if (matchedByTitle?._id) {
+                    reqId = String(matchedByTitle._id);
+                }
+            }
+
+            const isUnlisted = !reqId;
+            const title = isUnlisted
+                ? 'Unlisted Requisition'
+                : ((reqObj?.roleDetails?.title?.trim())
+                    || (matchingReq?.roleDetails?.title?.trim())
+                    || (app.desiredPosition && app.desiredPosition.trim())
+                    || 'Requisition');
+
+            const department = (reqObj?.roleDetails?.department?.trim())
+                || (matchingReq?.roleDetails?.department?.trim())
+                || 'General';
+
+            const client = (reqObj?.client?.trim())
+                || (matchingReq?.client?.trim())
+                || 'Direct Candidate';
+
+            const sourcedCount = (typeof app.sourcedCandidatesCount === 'number')
+                ? app.sourcedCandidatesCount
+                : (typeof reqObj?.totalSourcedCandidates === 'number'
+                    ? reqObj.totalSourcedCandidates
+                    : (matchingReq?.totalSourcedCandidates ?? 0));
+
+            const isResourceGatewayPublic = Boolean(
+                reqObj?.isResourceGatewayPublic ??
+                matchingReq?.isResourceGatewayPublic ??
+                false
+            );
+
+            const appTimestamp = new Date(
+                app.createdAt || app.appliedDate || app.updatedAt ||
+                matchingReq?.createdAt || matchingReq?.requisitionDate || matchingReq?.openingDate || 0
+            ).getTime();
+
+            const groupKey = isUnlisted ? '__unlisted__' : (reqId || title);
+
+            if (!groups[groupKey]) {
+                groups[groupKey] = {
+                    title,
+                    department,
+                    client,
+                    totalProfiles: 0,
+                    rgProfilesCount: 0,
+                    isResourceGatewayPublic,
+                    totalSourcedCandidates: isUnlisted ? null : sourcedCount,
+                    websiteCount: 0,
+                    publicPostCount: 0,
+                    pendingCount: 0,
+                    shortlistedCount: 0,
+                    transferredCount: 0,
+                    rejectedCount: 0,
+                    reqId: isUnlisted ? null : reqId,
+                    isUnlisted,
+                    desiredPositions: app.desiredPosition ? [app.desiredPosition] : [],
+                    latestDate: appTimestamp
+                };
+            } else {
+                if (appTimestamp > (groups[groupKey].latestDate || 0)) {
+                    groups[groupKey].latestDate = appTimestamp;
+                }
+                if (isResourceGatewayPublic) {
+                    groups[groupKey].isResourceGatewayPublic = true;
+                }
+                if (app.desiredPosition && !groups[groupKey].desiredPositions?.includes(app.desiredPosition)) {
+                    groups[groupKey].desiredPositions = groups[groupKey].desiredPositions || [];
+                    groups[groupKey].desiredPositions.push(app.desiredPosition);
+                }
+                if (!isUnlisted) {
+                    if (!groups[groupKey].reqId && reqId) {
+                        groups[groupKey].reqId = reqId;
+                    }
+                    if ((!groups[groupKey].totalSourcedCandidates || groups[groupKey].totalSourcedCandidates === 0) && sourcedCount > 0) {
+                        groups[groupKey].totalSourcedCandidates = sourcedCount;
+                    }
+                }
+            }
+
+            groups[groupKey].totalProfiles += 1;
+
+            const src = (app.source || '').toLowerCase();
+            const isFromRG = src.includes('resource gateway') || src.includes('rg career') || src.includes('rg page') || src === 'rg';
+            if (isFromRG) {
+                groups[groupKey].rgProfilesCount += 1;
+            }
+
+            const isWebsite = !src || src.includes('website') || src.includes('portal') || src.includes('career') || src.includes('opportunity') || src.includes('direct') || src.includes('general');
+            if (isWebsite) {
+                groups[groupKey].websiteCount += 1;
+            } else {
+                groups[groupKey].publicPostCount += 1;
+            }
+
+            const status = (app.reviewStatus || 'Pending Review').trim().toLowerCase();
+            if (status.includes('shortlist')) {
+                groups[groupKey].shortlistedCount += 1;
+            } else if (status.includes('transfer')) {
+                groups[groupKey].transferredCount += 1;
+            } else if (status.includes('reject')) {
+                groups[groupKey].rejectedCount += 1;
+            } else {
+                groups[groupKey].pendingCount += 1;
+            }
+        });
+
+        const positionList = Object.values(groups).sort((a, b) => {
+            const dateDiff = (b.latestDate || 0) - (a.latestDate || 0);
+            if (dateDiff !== 0) return dateDiff;
+            return b.totalProfiles - a.totalProfiles;
+        });
+        const totalCount = publicApplications.length;
+        const totalWebsite = positionList.reduce((acc, p) => acc + p.websiteCount, 0);
+        const totalPublicPost = positionList.reduce((acc, p) => acc + p.publicPostCount, 0);
+        const totalPending = positionList.reduce((acc, p) => acc + p.pendingCount, 0);
+        const totalShortlisted = positionList.reduce((acc, p) => acc + p.shortlistedCount, 0);
+        const totalTransferred = positionList.reduce((acc, p) => acc + p.transferredCount, 0);
+        const totalRejected = positionList.reduce((acc, p) => acc + p.rejectedCount, 0);
+
+        return {
+            positions: positionList.map(p => ({
+                ...p,
+                percentage: totalCount > 0 ? Number(((p.totalProfiles / totalCount) * 100).toFixed(1)) : 0
+            })),
+            totalCount,
+            totalWebsite,
+            totalPublicPost,
+            totalPending,
+            totalShortlisted,
+            totalTransferred,
+            totalRejected
+        };
+    }, [publicApplications, requests]);
+
+    const filteredPositions = useMemo(() => {
+        return publicProfilesData.positions.filter((pos) => {
+            const term = positionSearchTerm.toLowerCase().trim();
+            if (!term) return true;
+            return (
+                pos.title.toLowerCase().includes(term) ||
+                pos.department.toLowerCase().includes(term) ||
+                pos.client.toLowerCase().includes(term) ||
+                (pos.desiredPositions && pos.desiredPositions.some(dp => dp.toLowerCase().includes(term)))
+            );
+        });
+    }, [publicProfilesData.positions, positionSearchTerm]);
+
+    const modalFilteredPositions = useMemo(() => {
+        if (!modalPositionSearchTerm.trim()) return publicProfilesData.positions;
+        const term = modalPositionSearchTerm.toLowerCase().trim();
+        return publicProfilesData.positions.filter((pos) => (
+            pos.title.toLowerCase().includes(term) ||
+            pos.department.toLowerCase().includes(term) ||
+            pos.client.toLowerCase().includes(term) ||
+            (pos.desiredPositions && pos.desiredPositions.some(dp => dp.toLowerCase().includes(term)))
+        ));
+    }, [publicProfilesData.positions, modalPositionSearchTerm]);
+
     const renderOverview = () => (
-        <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {primaryStatCards.map((card) => <PrimaryStatCard key={card.label} {...card} />)}
-            </div>
+        <div className="space-y-7">
+            {/* ========================================================================= */}
+            {/* FIRST HALF: Inbound & Public Profiles Received via Website & Public Posts */}
+            {/* ========================================================================= */}
+            <section className="space-y-4">
+                {/* Section Header */}
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 via-blue-700 to-indigo-600 text-white shadow-md shadow-blue-500/20">
+                        <Globe size={20} />
+                    </div>
+                    <div>
+                        <h2 className="font-ta-head text-base sm:text-lg font-bold tracking-tight text-slate-900">
+                            Public Profiles Intake & Position Distribution
+                        </h2>
+                    </div>
+                </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {overviewTrendCards.map((card) => <TrendMetricCard key={card.label} {...card} />)}
-            </div>
+                {/* Hero Banner: Real Total Public Profiles Received (White Background Theme) */}
+                <div className="relative overflow-hidden rounded-2xl bg-white p-4 sm:p-5 text-slate-900 shadow-sm border border-slate-200/90">
+                    <div className="absolute right-0 top-0 -mt-10 -mr-10 h-56 w-56 rounded-full bg-blue-50/70 blur-3xl pointer-events-none" />
+                    <div className="absolute left-1/3 bottom-0 -mb-10 h-40 w-40 rounded-full bg-indigo-50/50 blur-2xl pointer-events-none" />
 
-            <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-                <SectionCard
-                    title="Hiring Momentum"
-                    action={<span className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Last sourced trend</span>}
-                >
-                    {trendData.length ? (
-                        <div className="h-56">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={trendData}>
-                                    <defs>
-                                        <linearGradient id="taTrendFill" x1="0" x2="0" y1="0" y2="1">
-                                            <stop offset="0%" stopColor="#1A56DB" stopOpacity={0.25} />
-                                            <stop offset="100%" stopColor="#1A56DB" stopOpacity={0.03} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                                    <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={9} />
-                                    <YAxis tickLine={false} axisLine={false} fontSize={9} width={24} />
-                                    <Tooltip />
-                                    <Area type="monotone" dataKey="sourced" stroke="#1A56DB" strokeWidth={2.5} fill="url(#taTrendFill)" />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <p className="text-[10px] text-slate-500">Not enough trend data yet.</p>
-                    )}
-                </SectionCard>
-
-                <SectionCard
-                    title="Source Breakdown"
-                    action={<Link to="/ta/analysis" className="text-[10px] font-semibold text-blue-600 hover:text-blue-700">Open full analysis</Link>}
-                >
-                    <div className="space-y-3">
-                        {overviewSourceAnalysis.length ? overviewSourceAnalysis.map((item) => (
-                            <div key={item.name}>
-                                <div className="mb-1.5 flex items-center justify-between text-[10px]">
-                                    <span className="font-semibold text-slate-700">{item.name}</span>
-                                    <span className="text-slate-500">{formatCompact(item.sourced || 0)}</span>
-                                </div>
-                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                    <div
-                                        className="h-full rounded-full bg-blue-600"
-                                        style={{ width: `${Math.max(8, ((item.sourced || 0) / maxSourceValue) * 100)}%` }}
-                                    />
+                    <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9.5px] font-semibold text-blue-700 border border-blue-200/60">
+                                    Websites & Public Posts Channels
+                                </span>
+                                <span className="text-[9.5px] text-slate-500 font-medium">Real-time Sourcing</span>
+                            </div>
+                            <div>
+                                <div className="flex items-baseline gap-2 flex-wrap">
+                                    <span className="font-ta-head text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+                                        Total {publicProfilesData.totalCount}
+                                    </span>
+                                    <span className="text-xs sm:text-sm font-semibold text-slate-600">
+                                        Public {publicProfilesData.totalCount === 1 ? 'Profile' : 'Profiles'} Received
+                                    </span>
                                 </div>
                             </div>
-                        )) : (
-                            <p className="text-[10px] text-slate-500">No source data available yet.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Position Titles & Profiles Count Showcase */}
+                <SectionCard
+                    title="Public Applications by Requisition"
+                    action={
+                        publicProfilesData.positions.length > 5 ? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setModalPositionSearchTerm('');
+                                    setShowAllPublicPositionsModal(true);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition"
+                            >
+                                View all ({publicProfilesData.positions.length})
+                                <ArrowRight size={13} />
+                            </button>
+                        ) : null
+                    }
+                >
+                    <div className="space-y-3.5">
+                        {publicProfilesData.positions.length > 0 ? (
+                            <>
+                                {/* Search Toolbar */}
+                                <div className="flex items-center justify-between gap-2.5 pb-1">
+                                    <div className="relative flex-1 max-w-sm">
+                                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            value={positionSearchTerm}
+                                            onChange={(e) => setPositionSearchTerm(e.target.value)}
+                                            placeholder="Search requisition name..."
+                                            className="w-full rounded-lg border border-slate-200 bg-slate-50/70 pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                                        />
+                                        {positionSearchTerm && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setPositionSearchTerm('')}
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 hover:text-slate-600"
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
+                                    </div>
+                                    <span className="text-[11px] font-medium text-slate-500">
+                                        {filteredPositions.length} {filteredPositions.length === 1 ? 'Requisition' : 'Requisitions'}
+                                    </span>
+                                </div>
+
+                                {/* Requisitions Row Format */}
+                                {filteredPositions.length ? (
+                                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                                        {/* Table Header */}
+                                        <div className="hidden sm:grid sm:grid-cols-12 border-b border-slate-200 bg-slate-50/90 px-4 py-2.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-500">
+                                            <div className="sm:col-span-5">Requisition Name</div>
+                                            <div className="sm:col-span-2 text-center">Total Sourced Candidates</div>
+                                            <div className="sm:col-span-3 text-center">RG Public Profiles</div>
+                                            <div className="sm:col-span-2 text-right">Public Profiles</div>
+                                        </div>
+
+                                        {/* Table Rows: Recent 5 */}
+                                        <div className="divide-y divide-slate-100">
+                                            {filteredPositions.slice(0, 5).map((pos) => (
+                                                <div
+                                                    key={pos.title}
+                                                    onClick={() => {
+                                                        if (pos.reqId) {
+                                                            navigate(`/ta/view/${pos.reqId}?tab=public applications`);
+                                                        } else {
+                                                            navigate('/ta?tab=applications');
+                                                        }
+                                                    }}
+                                                    className="group flex flex-col sm:grid sm:grid-cols-12 sm:items-center px-4 py-3 hover:bg-blue-50/40 cursor-pointer transition-colors"
+                                                >
+                                                    {/* Requisition Name */}
+                                                    <div className="sm:col-span-5 flex items-center gap-2 min-w-0">
+                                                        <BriefcaseBusiness size={14} className="text-blue-600 shrink-0" />
+                                                        <span 
+                                                            className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate" 
+                                                            title={pos.title + (pos.desiredPositions?.length ? ` (${pos.desiredPositions.join(', ')})` : '')}
+                                                        >
+                                                            {pos.title}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Total Sourced Candidates on that Requisition */}
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                        {!pos.isUnlisted && (
+                                                            <>
+                                                                <span className="text-[11px] text-slate-500 sm:hidden font-medium">Total Sourced Candidates:</span>
+                                                                <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-slate-100 font-bold text-slate-800 text-xs">
+                                                                    {pos.totalSourcedCandidates ?? 0}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {/* RG Public Profiles on that Requisition */}
+                                                    <div className="sm:col-span-3 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                        {pos.isResourceGatewayPublic ? (
+                                                            <>
+                                                                <span className="text-[11px] text-slate-500 sm:hidden font-medium">RG Public Profiles:</span>
+                                                                <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-cyan-50 border border-cyan-200/70 font-bold text-cyan-700 text-xs">
+                                                                    {pos.rgProfilesCount ?? 0}
+                                                                </span>
+                                                            </>
+                                                        ) : null}
+                                                    </div>
+
+                                                    {/* Public Profiles on that Requisition */}
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-end mt-1.5 sm:mt-0 text-xs">
+                                                        <span className="text-[11px] text-slate-500 sm:hidden font-medium">Public Profiles:</span>
+                                                        <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-blue-50 border border-blue-200/70 font-bold text-blue-700 text-xs">
+                                                            {pos.totalProfiles}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Show More / View All bar if more than 5 */}
+                                        {filteredPositions.length > 5 && (
+                                            <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                                                <span className="text-[11.5px] font-medium text-slate-500">
+                                                    Showing recent 5 of {filteredPositions.length} requisitions
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setModalPositionSearchTerm(positionSearchTerm);
+                                                        setShowAllPublicPositionsModal(true);
+                                                    }}
+                                                    className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 transition"
+                                                >
+                                                    View all ({publicProfilesData.positions.length})
+                                                    <ArrowRight size={13} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
+                                        <FileText size={24} className="mx-auto text-slate-400 mb-2" />
+                                        <p className="text-xs font-semibold text-slate-700">No requisitions match your search</p>
+                                        <p className="text-[10.5px] text-slate-500 mt-0.5">Try clearing your search term.</p>
+                                        {positionSearchTerm && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setPositionSearchTerm('')}
+                                                className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                            >
+                                                Clear Search
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
+                                <Globe size={24} className="mx-auto text-slate-400 mb-2" />
+                                <p className="text-xs font-semibold text-slate-700">No public applications received yet</p>
+                                <p className="text-[10.5px] text-slate-500 mt-0.5 max-w-sm mx-auto">
+                                    Candidate applications received directly through official careers portals and public job postings will appear here in real-time.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/ta?tab=applications')}
+                                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 shadow-xs"
+                                >
+                                    <Users size={13} />
+                                    View Applications Hub
+                                </button>
+                            </div>
                         )}
                     </div>
                 </SectionCard>
+
+                {/* View All Requisitions Pop-up Modal */}
+                {showAllPublicPositionsModal && typeof document !== 'undefined' && createPortal(
+                    <div 
+                        className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/60 p-4 sm:p-6 backdrop-blur-xs"
+                        onClick={() => setShowAllPublicPositionsModal(false)}
+                    >
+                        <div 
+                            className="relative flex flex-col w-full max-w-4xl max-h-[88vh] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50/80">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                                        <BriefcaseBusiness size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-ta-head text-base font-bold text-slate-900">
+                                            All Requisitions & Public Applications
+                                        </h3>
+                                        <p className="text-xs text-slate-500">
+                                            Showing {modalFilteredPositions.length} of {publicProfilesData.positions.length} requisitions
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAllPublicPositionsModal(false)}
+                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
+                                    title="Close"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {/* Modal Search Toolbar */}
+                            <div className="border-b border-slate-100 bg-white px-5 py-3">
+                                <div className="relative">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={modalPositionSearchTerm}
+                                        onChange={(e) => setModalPositionSearchTerm(e.target.value)}
+                                        placeholder="Search requisition name..."
+                                        className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                                        autoFocus
+                                    />
+                                    {modalPositionSearchTerm && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setModalPositionSearchTerm('')}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 hover:text-slate-600"
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Modal Table Content (Scrollable) */}
+                            <div className="flex-1 overflow-y-auto p-5">
+                                {modalFilteredPositions.length ? (
+                                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                                        {/* Table Header (Sticky) */}
+                                        <div className="sticky top-0 z-10 hidden sm:grid sm:grid-cols-12 border-b border-slate-200 bg-slate-100/95 px-4 py-2.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-600 backdrop-blur-xs">
+                                            <div className="sm:col-span-5">Requisition Name</div>
+                                            <div className="sm:col-span-2 text-center">Total Sourced Candidates</div>
+                                            <div className="sm:col-span-3 text-center">RG Public Profiles</div>
+                                            <div className="sm:col-span-2 text-right">Public Profiles</div>
+                                        </div>
+
+                                        {/* Table Rows */}
+                                        <div className="divide-y divide-slate-100">
+                                            {modalFilteredPositions.map((pos) => (
+                                                <div
+                                                    key={pos.title}
+                                                    onClick={() => {
+                                                        setShowAllPublicPositionsModal(false);
+                                                        if (pos.reqId) {
+                                                            navigate(`/ta/view/${pos.reqId}?tab=public applications`);
+                                                        } else {
+                                                            navigate('/ta?tab=applications');
+                                                        }
+                                                    }}
+                                                    className="group flex flex-col sm:grid sm:grid-cols-12 sm:items-center px-4 py-3 hover:bg-blue-50/50 cursor-pointer transition-colors"
+                                                    title="Click to open public applications for this requisition"
+                                                >
+                                                    {/* Requisition Name */}
+                                                    <div className="sm:col-span-5 flex items-center gap-2 min-w-0">
+                                                        <BriefcaseBusiness size={14} className="text-blue-600 shrink-0 group-hover:scale-110 transition-transform" />
+                                                        <span 
+                                                            className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate" 
+                                                            title={pos.title + (pos.desiredPositions?.length ? ` (${pos.desiredPositions.join(', ')})` : '')}
+                                                        >
+                                                            {pos.title}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Total Sourced Candidates */}
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                        {!pos.isUnlisted && (
+                                                            <>
+                                                                <span className="text-[11px] text-slate-500 sm:hidden font-medium">Total Sourced Candidates:</span>
+                                                                <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-slate-100 font-bold text-slate-800 text-xs">
+                                                                    {pos.totalSourcedCandidates ?? 0}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {/* RG Public Profiles */}
+                                                    <div className="sm:col-span-3 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                        {pos.isResourceGatewayPublic ? (
+                                                            <>
+                                                                <span className="text-[11px] text-slate-500 sm:hidden font-medium">RG Public Profiles:</span>
+                                                                <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-cyan-50 border border-cyan-200/70 font-bold text-cyan-700 text-xs">
+                                                                    {pos.rgProfilesCount ?? 0}
+                                                                </span>
+                                                            </>
+                                                        ) : null}
+                                                    </div>
+
+                                                    {/* Public Profiles */}
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-end mt-1.5 sm:mt-0 text-xs">
+                                                        <span className="text-[11px] text-slate-500 sm:hidden font-medium">Public Profiles:</span>
+                                                        <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-blue-50 border border-blue-200/70 font-bold text-blue-700 text-xs group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                                            {pos.totalProfiles}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
+                                        <FileText size={24} className="mx-auto text-slate-400 mb-2" />
+                                        <p className="text-xs font-semibold text-slate-700">No requisitions match your search</p>
+                                        <p className="text-[10.5px] text-slate-500 mt-0.5">Try clearing your search term.</p>
+                                        {modalPositionSearchTerm && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setModalPositionSearchTerm('')}
+                                                className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                            >
+                                                Clear Search
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-500">
+                                <span>Click any requisition to open its public applications</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAllPublicPositionsModal(false)}
+                                    className="rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 font-semibold text-slate-700 hover:bg-slate-100 transition shadow-2xs"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
+            </section>
+
+            {/* ========================================================================= */}
+            {/* SECTION DIVIDER: Separation between First Half and Second Half           */}
+            {/* ========================================================================= */}
+            <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div className="w-full border-t border-slate-300/80" />
+                </div>
+                <div className="relative flex items-center justify-between">
+                    <div className="bg-[#f4f5f7] pr-3 flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-white shadow-xs">
+                            <BarChart3 size={13} />
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded-md shadow-2xs">
+                            Requisition & Sourcing Analytics
+                        </span>
+                    </div>
+                    <div className="bg-[#f4f5f7] pl-3">
+                        <Link to="/ta/analysis" className="text-[10.5px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                            Full KPI Analytics <ArrowRight size={11} />
+                        </Link>
+                    </div>
+                </div>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
+            {/* ========================================================================= */}
+            {/* SECOND HALF: Current Executive Analytics Suite & Requisition Performance  */}
+            {/* ========================================================================= */}
+            <section className="space-y-4">
+                {/* 1. Primary Stat Cards */}
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {primaryStatCards.map((card) => <PrimaryStatCard key={card.label} {...card} />)}
+                </div>
+
+                {/* 2. Trend Metric Cards */}
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {overviewTrendCards.map((card) => <TrendMetricCard key={card.label} {...card} />)}
+                </div>
+
+                {/* 3. Charts Row: Hiring Momentum & Source Breakdown */}
+                <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+                    <SectionCard
+                        title="Hiring Momentum"
+                        action={<span className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Last sourced trend</span>}
+                    >
+                        {trendData.length ? (
+                            <div className="h-56">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={trendData}>
+                                        <defs>
+                                            <linearGradient id="taTrendFill" x1="0" x2="0" y1="0" y2="1">
+                                                <stop offset="0%" stopColor="#1A56DB" stopOpacity={0.25} />
+                                                <stop offset="100%" stopColor="#1A56DB" stopOpacity={0.03} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                                        <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={9} />
+                                        <YAxis tickLine={false} axisLine={false} fontSize={9} width={24} />
+                                        <Tooltip />
+                                        <Area type="monotone" dataKey="sourced" stroke="#1A56DB" strokeWidth={2.5} fill="url(#taTrendFill)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        ) : (
+                            <p className="text-[10px] text-slate-500">Not enough trend data yet.</p>
+                        )}
+                    </SectionCard>
+
+                    <SectionCard
+                        title="Source Breakdown"
+                        action={<Link to="/ta/analysis" className="text-[10px] font-semibold text-blue-600 hover:text-blue-700">Open full analysis</Link>}
+                    >
+                        <div className="space-y-3">
+                            {overviewSourceAnalysis.length ? overviewSourceAnalysis.map((item) => (
+                                <div key={item.name}>
+                                    <div className="mb-1.5 flex items-center justify-between text-[10px]">
+                                        <span className="font-semibold text-slate-700">{item.name}</span>
+                                        <span className="text-slate-500">{formatCompact(item.sourced || 0)}</span>
+                                    </div>
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                        <div
+                                            className="h-full rounded-full bg-blue-600"
+                                            style={{ width: `${Math.max(8, ((item.sourced || 0) / maxSourceValue) * 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            )) : (
+                                <p className="text-[10px] text-slate-500">No source data available yet.</p>
+                            )}
+                        </div>
+                    </SectionCard>
+                </div>
+
+                {/* 4. Operational Table: Recent Requisitions (Full Width) */}
                 <SectionCard
                     title="Recent Requisitions"
-                    action={<Link to="/ta?tab=clients" className="text-[10px] font-semibold text-blue-600 hover:text-blue-700">Open client workspace</Link>}
+                    action={
+                        <div className="flex items-center gap-3">
+                            {activeRequests.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setModalReqSearchTerm('');
+                                        setShowAllRequisitionsModal(true);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition"
+                                >
+                                    View all ({activeRequests.length})
+                                    <ArrowRight size={13} />
+                                </button>
+                            )}
+                            <Link to="/ta?tab=clients" className="text-[10px] font-semibold text-slate-500 hover:text-slate-700">Open client workspace</Link>
+                        </div>
+                    }
                 >
                     <div className="scrollbar-hide overflow-x-auto">
                         {recentRequests.length ? (
-                            <table className="min-w-full text-xs">
-                                <thead>
-                                    <tr className="border-b border-slate-200 text-left text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                        <th className="px-3 py-2.5">Requisition</th>
-                                        <th className="px-3 py-2.5">Client</th>
-                                        <th className="px-3 py-2.5">Department</th>
-                                        <th className="px-3 py-2.5">Status</th>
-                                        <th className="px-3 py-2.5">Applied</th>
-                                        <th className="px-3 py-2.5 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {recentRequests.map((request) => (
-                                        <tr key={request._id} className="border-b border-slate-100 transition hover:bg-slate-50">
-                                            <td className="px-3 py-2.5">
-                                                <div className="min-w-0">
-                                                    <p className="text-[11px] font-semibold text-slate-900">{request.roleDetails?.title}</p>
-                                                    <p className="text-[9.5px] text-slate-500">{request.requestId}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-3 py-2.5 text-[10.5px] text-slate-700">{request.client}</td>
-                                            <td className="px-3 py-2.5 text-[10.5px] text-slate-700">{request.roleDetails?.department || 'General'}</td>
-                                            <td className="px-3 py-2.5">
-                                                <span className={`rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-[0.14em] ${requestStatusClasses[request.status] || requestStatusClasses.Draft}`}>
-                                                    {String(request.status || 'Draft').replaceAll('_', ' ')}
-                                                </span>
-                                            </td>
-                                            <td className="px-3 py-2.5 text-[10px] text-slate-500">{formatRelativeTimestamp(request.createdAt)}</td>
-                                            <td className="px-3 py-2.5 text-right">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`)}
-                                                    className="rounded-lg border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100"
-                                                >
-                                                    View
-                                                </button>
-                                            </td>
+                            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                                <table className="min-w-full text-xs">
+                                    <thead>
+                                        <tr className="border-b border-slate-200 bg-slate-50/90 text-left text-[9.5px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                                            <th className="px-4 py-2.5">Requisition Name</th>
+                                            <th className="px-3.5 py-2.5">Client Name</th>
+                                            <th className="px-3.5 py-2.5">Department Name</th>
+                                            <th className="px-3.5 py-2.5 text-center">Total Sourced Candidates</th>
+                                            <th className="px-3.5 py-2.5 text-center">Interested Candidates</th>
+                                            <th className="px-3.5 py-2.5 text-center">Interview Scheduled Candidates</th>
+                                            <th className="px-3.5 py-2.5">Requisition Opens Date</th>
+                                            <th className="px-4 py-2.5 text-right">Action</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {recentRequests.map((request) => (
+                                            <tr 
+                                                key={request._id} 
+                                                onClick={() => navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`)}
+                                                className="group hover:bg-blue-50/40 cursor-pointer transition-colors"
+                                            >
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <BriefcaseBusiness size={14} className="text-blue-600 shrink-0 group-hover:scale-105 transition-transform" />
+                                                        <span 
+                                                            className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-[220px]" 
+                                                            title={request.roleDetails?.title}
+                                                        >
+                                                            {request.roleDetails?.title || 'Untitled Requisition'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3.5 py-3 text-slate-700 font-medium whitespace-nowrap">{request.client || '-'}</td>
+                                                <td className="px-3.5 py-3 text-slate-700 whitespace-nowrap">{request.roleDetails?.department || 'General'}</td>
+                                                <td className="px-3.5 py-3 text-center">
+                                                    <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-slate-100 font-bold text-slate-800 text-xs">
+                                                        {request.totalSourcedCandidates ?? 0}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3.5 py-3 text-center">
+                                                    <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200/70 font-bold text-emerald-700 text-xs">
+                                                        {request.totalInterestedCandidates ?? 0}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3.5 py-3 text-center">
+                                                    <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-purple-50 border border-purple-200/70 font-bold text-purple-700 text-xs">
+                                                        {request.totalInterviewScheduledCandidates ?? 0}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3.5 py-3 whitespace-nowrap">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-semibold text-slate-800 text-xs">
+                                                            {request.createdAt ? format(new Date(request.createdAt), 'dd MMM yyyy') : '-'}
+                                                        </span>
+                                                        {request.createdAt && (
+                                                            <span className="text-[9.5px] text-slate-400">
+                                                                {formatRelativeTimestamp(request.createdAt)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`);
+                                                        }}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-blue-600 hover:text-white hover:border-blue-600"
+                                                    >
+                                                        View
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+
+                                {/* Footer showing Recent 10 + View All if > 10 */}
+                                {activeRequests.length > 10 && (
+                                    <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                                        <span className="text-[11.5px] font-medium text-slate-500">
+                                            Showing recent 10 of {activeRequests.length} requisitions
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setModalReqSearchTerm('');
+                                                setShowAllRequisitionsModal(true);
+                                            }}
+                                            className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 transition"
+                                        >
+                                            View all ({activeRequests.length})
+                                            <ArrowRight size={13} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         ) : (
                             <p className="text-[10px] text-slate-500">No requisitions found for this workspace yet.</p>
                         )}
                     </div>
                 </SectionCard>
 
-                <SectionCard
-                    title="Top Sourcers"
-                    action={<Link to="/ta/analysis" className="text-[10px] font-semibold text-blue-600 hover:text-blue-700">Open analytics</Link>}
-                >
-                    <div className="space-y-3">
-                        {sourcingPerformance.length ? sourcingPerformance.map((member, index) => (
-                            <div key={member.name} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+
+
+                {/* All Requisitions Pop-up Modal */}
+                {showAllRequisitionsModal && typeof document !== 'undefined' && createPortal(
+                    <div
+                        className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/60 p-4 sm:p-6 backdrop-blur-xs animate-in fade-in duration-200"
+                        onClick={() => setShowAllRequisitionsModal(false)}
+                    >
+                        <div
+                            className="relative flex flex-col w-full max-w-5xl max-h-[88vh] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50/80">
                                 <div className="flex items-center gap-3">
-                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white">
-                                        {index + 1}
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                                        <BriefcaseBusiness size={18} />
                                     </div>
                                     <div>
-                                        <p className="text-[11px] font-bold text-slate-900">{member.name}</p>
-                                        <p className="mt-0.5 text-[9.5px] text-slate-500">
-                                            {member.sourced} sourced / {member.joined} joined
+                                        <h3 className="font-ta-head text-base font-bold text-slate-900">
+                                            All Requisitions
+                                        </h3>
+                                        <p className="text-xs text-slate-500">
+                                            Showing {modalFilteredRequests.length} of {activeRequests.length} requisitions
                                         </p>
                                     </div>
                                 </div>
-                                <span className="font-ta-head text-[1.25rem] font-bold tracking-tight text-slate-950">
-                                    {member.conversion}%
-                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAllRequisitionsModal(false)}
+                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
+                                    title="Close"
+                                >
+                                    <X size={18} />
+                                </button>
                             </div>
-                        )) : (
-                            <p className="text-[10px] text-slate-500">Sourcing conversion data is not available yet.</p>
-                        )}
-                    </div>
-                </SectionCard>
-            </div>
+
+                            {/* Modal Search Toolbar */}
+                            <div className="border-b border-slate-100 bg-white px-5 py-3">
+                                <div className="relative">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={modalReqSearchTerm}
+                                        onChange={(e) => setModalReqSearchTerm(e.target.value)}
+                                        placeholder="Search by requisition name, client, department..."
+                                        className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                                        autoFocus
+                                    />
+                                    {modalReqSearchTerm && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setModalReqSearchTerm('')}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 hover:text-slate-600"
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Modal Table Content (Scrollable) */}
+                            <div className="flex-1 overflow-y-auto p-5">
+                                {modalFilteredRequests.length ? (
+                                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                                        <table className="min-w-full text-xs">
+                                            <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-100/95 text-left text-[9.5px] font-bold uppercase tracking-[0.14em] text-slate-500 backdrop-blur-xs">
+                                                <tr>
+                                                    <th className="px-4 py-2.5">Requisition Name</th>
+                                                    <th className="px-3.5 py-2.5">Client Name</th>
+                                                    <th className="px-3.5 py-2.5">Department Name</th>
+                                                    <th className="px-3.5 py-2.5 text-center">Total Sourced Candidates</th>
+                                                    <th className="px-3.5 py-2.5 text-center">Interested Candidates</th>
+                                                    <th className="px-3.5 py-2.5 text-center">Interview Scheduled Candidates</th>
+                                                    <th className="px-3.5 py-2.5">Requisition Opens Date</th>
+                                                    <th className="px-4 py-2.5 text-right">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {modalFilteredRequests.map((request) => (
+                                                    <tr
+                                                        key={request._id}
+                                                        onClick={() => {
+                                                            setShowAllRequisitionsModal(false);
+                                                            navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`);
+                                                        }}
+                                                        className="group hover:bg-blue-50/40 cursor-pointer transition-colors"
+                                                    >
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <BriefcaseBusiness size={14} className="text-blue-600 shrink-0 group-hover:scale-105 transition-transform" />
+                                                                <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-[220px]" title={request.roleDetails?.title}>
+                                                                    {request.roleDetails?.title || 'Untitled Requisition'}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3.5 py-3 text-slate-700 font-medium whitespace-nowrap">{request.client || '-'}</td>
+                                                        <td className="px-3.5 py-3 text-slate-700 whitespace-nowrap">{request.roleDetails?.department || 'General'}</td>
+                                                        <td className="px-3.5 py-3 text-center">
+                                                            <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-slate-100 font-bold text-slate-800 text-xs">
+                                                                {request.totalSourcedCandidates ?? 0}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3.5 py-3 text-center">
+                                                            <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200/70 font-bold text-emerald-700 text-xs">
+                                                                {request.totalInterestedCandidates ?? 0}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3.5 py-3 text-center">
+                                                            <span className="inline-flex items-center justify-center min-w-[28px] px-2.5 py-0.5 rounded-md bg-purple-50 border border-purple-200/70 font-bold text-purple-700 text-xs">
+                                                                {request.totalInterviewScheduledCandidates ?? 0}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3.5 py-3 whitespace-nowrap">
+                                                            <div className="flex flex-col">
+                                                                <span className="font-semibold text-slate-800 text-xs">
+                                                                    {request.createdAt ? format(new Date(request.createdAt), 'dd MMM yyyy') : '-'}
+                                                                </span>
+                                                                {request.createdAt && (
+                                                                    <span className="text-[9.5px] text-slate-400">
+                                                                        {formatRelativeTimestamp(request.createdAt)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setShowAllRequisitionsModal(false);
+                                                                    navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`);
+                                                                }}
+                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-blue-600 hover:text-white hover:border-blue-600"
+                                                            >
+                                                                View
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
+                                        <FileText size={24} className="mx-auto text-slate-400 mb-2" />
+                                        <p className="text-xs font-semibold text-slate-700">No requisitions match your search</p>
+                                        <p className="text-[10.5px] text-slate-500 mt-0.5">Try clearing your search term.</p>
+                                        {modalReqSearchTerm && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setModalReqSearchTerm('')}
+                                                className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                            >
+                                                Clear Search
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-500">
+                                <span>Click any requisition row or View button to open details</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAllRequisitionsModal(false)}
+                                    className="rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 font-semibold text-slate-700 hover:bg-slate-100 transition shadow-2xs"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
+            </section>
         </div>
     );
 

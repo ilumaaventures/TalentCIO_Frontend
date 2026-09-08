@@ -515,7 +515,7 @@ const HiringRequestDetails = () => {
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', ...((request?.status === 'Approved' || request?.status === 'Closed') ? ['applications'] : []), ...((request?.status === 'Approved' || request?.status === 'Closed') && (request?.wasEverPublished || request?.isPublic || request?.isResourceGatewayPublic || (request?.publicApplicationsCount > 0) || isJobBoardLive || isResourceGatewayLive) ? ['public applications'] : []), ...(request?.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
+                            {['overview', ...((request?.status === 'Approved' || request?.status === 'Closed' || activeTab === 'applications') ? ['applications'] : []), ...(activeTab === 'public applications' || ((request?.status === 'Approved' || request?.status === 'Closed') && (request?.wasEverPublished || request?.isPublic || request?.isResourceGatewayPublic || (request?.publicApplicationsCount > 0) || isJobBoardLive || isResourceGatewayLive)) ? ['public applications'] : []), ...(request?.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => handleTabChange(tab)}
