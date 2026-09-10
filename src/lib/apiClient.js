@@ -136,9 +136,15 @@ const isAuthFailure = (error) => {
 };
 
 const isLoginRequest = (url = '') => String(url).includes('/auth/login') || String(url).includes('/client-portal/auth/login');
+const isClientPublicAuthPath = (pathname = '') => (
+  pathname === '/client-portal/login'
+  || pathname === '/client-portal/accept-invite'
+  || pathname === '/client-portal/forgot-password'
+  || pathname === '/client-portal/reset-password'
+);
 const isPublicAuthFlowPath = (pathname = '') => (
   String(pathname || '').startsWith('/pre-onboarding')
-  || String(pathname || '').startsWith('/client-portal')
+  || isClientPublicAuthPath(pathname)
   || pathname === '/reset-password'
   || pathname === '/auth/handoff'
 );
@@ -289,13 +295,18 @@ api.interceptors.response.use(
             window.location.reload();
           }, 800);
         }
-      } else if (
-        typeof window !== 'undefined'
-        && window.location.pathname !== '/login'
-        && !isPublicAuthFlowPath(window.location.pathname)
-      ) {
-        clearAuthSession();
-        window.location.assign('/login');
+      } else if (typeof window !== 'undefined') {
+        const currentPath = window.location.pathname;
+        if (currentPath.startsWith('/client-portal')) {
+          if (!isClientPublicAuthPath(currentPath)) {
+            localStorage.removeItem('talentcio_client_token');
+            localStorage.removeItem('talentcio_client_user');
+            window.location.assign('/client-portal/login');
+          }
+        } else if (currentPath !== '/login' && !isPublicAuthFlowPath(currentPath)) {
+          clearAuthSession();
+          window.location.assign('/login');
+        }
       }
     }
     return Promise.reject(error);

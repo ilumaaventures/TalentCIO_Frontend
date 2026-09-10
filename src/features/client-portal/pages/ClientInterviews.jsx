@@ -11,9 +11,76 @@ import {
   ChevronRight, 
   Clock, 
   ArrowUpDown,
-  Filter
+  Filter,
+  Copy,
+  ExternalLink,
+  Video,
+  CalendarPlus,
+  Download
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+
+const generateGoogleCalendarUrl = (item) => {
+  if (!item?.scheduledDate) return '#';
+  try {
+    const start = new Date(item.scheduledDate);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const fmt = (d) => d.toISOString().replace(/-|:|\.\d+/g, '');
+    const title = encodeURIComponent(`Interview: ${item.candidateName || 'Candidate'} - ${item.levelName || 'Round'}`);
+    const details = encodeURIComponent(
+      `Candidate: ${item.candidateName || ''}\n` +
+      `Position: ${item.requisitionTitle || ''} (${item.requisitionCode || ''})\n` +
+      `Round: ${item.levelName || 'Interview'}\n` +
+      (item.meetingLink ? `Meeting Link: ${item.meetingLink}\n` : '')
+    );
+    const location = encodeURIComponent(item.meetingLink || 'Online Interview');
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}&location=${location}`;
+  } catch {
+    return '#';
+  }
+};
+
+const downloadIcsFile = (item) => {
+  if (!item?.scheduledDate) return;
+  try {
+    const start = new Date(item.scheduledDate);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const fmt = (d) => d.toISOString().replace(/-|:|\.\d+/g, '');
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//TalentCIO//Client Portal//EN',
+      'BEGIN:VEVENT',
+      `UID:${item.candidateId || 'cand'}-${item.roundId || Date.now()}@talentcio.com`,
+      `DTSTAMP:${fmt(new Date())}`,
+      `DTSTART:${fmt(start)}`,
+      `DTEND:${fmt(end)}`,
+      `SUMMARY:Interview: ${item.candidateName || 'Candidate'} - ${item.levelName || 'Round'}`,
+      `DESCRIPTION:Interview round for ${item.candidateName || 'Candidate'} (${item.requisitionTitle || ''})${item.meetingLink ? '\\nMeeting: ' + item.meetingLink : ''}`,
+      `LOCATION:${item.meetingLink || 'Online'}`,
+      'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `interview-${(item.candidateName || 'round').toLowerCase().replace(/[^a-z0-9]+/g, '_')}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Calendar event (.ics) downloaded');
+  } catch (e) {
+    console.error('Failed to download .ics:', e);
+    toast.error('Could not generate calendar file');
+  }
+};
 
 const ClientInterviews = () => {
   const [interviews, setInterviews] = useState([]);
@@ -198,6 +265,10 @@ const ClientInterviews = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50/70 border border-indigo-100 text-xs font-medium text-indigo-700">
+            <Clock className="h-3.5 w-3.5 text-indigo-500" />
+            <span>Timezone: <strong>{userTimeZone}</strong></span>
+          </div>
           <button
             onClick={fetchInterviews}
             disabled={loading}
@@ -362,16 +433,68 @@ const ClientInterviews = () => {
                           day: 'numeric' 
                         })}
                       </span>
-                      <span className="flex items-center gap-1 text-slate-500">
-                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100/70 font-semibold">
+                        <Clock className="h-3.5 w-3.5 text-indigo-500" />
                         {new Date(item.scheduledDate).toLocaleTimeString(undefined, {
                           hour: '2-digit',
-                          minute: '2-digit'
+                          minute: '2-digit',
+                          timeZoneName: 'short'
                         })}
                       </span>
                     </>
                   )}
                 </div>
+
+                {/* Quick Calendar & Meeting Actions */}
+                {item.scheduledDate && (
+                  <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-slate-100 flex-wrap">
+                    {item.meetingLink && (
+                      <>
+                        <a
+                          href={item.meetingLink.startsWith('http') ? item.meetingLink : `https://${item.meetingLink}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold transition-colors"
+                        >
+                          <Video className="h-3 w-3" />
+                          Join Call
+                          <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
+                        </a>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(item.meetingLink);
+                            toast.success('Meeting link copied to clipboard');
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 text-xs font-medium transition-colors"
+                          title="Copy meeting link"
+                        >
+                          <Copy className="h-3 w-3" />
+                          Copy Link
+                        </button>
+                      </>
+                    )}
+
+                    <a
+                      href={generateGoogleCalendarUrl(item)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 text-xs font-medium transition-colors"
+                      title="Add to Google Calendar"
+                    >
+                      <CalendarPlus className="h-3 w-3 text-slate-500" />
+                      Google Calendar
+                    </a>
+
+                    <button
+                      onClick={() => downloadIcsFile(item)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 text-xs font-medium transition-colors"
+                      title="Download .ics event file for Outlook, Apple Calendar"
+                    >
+                      <Download className="h-3 w-3 text-slate-500" />
+                      .ICS File
+                    </button>
+                  </div>
+                )}
 
                 {item.clientFeedback && (
                   <div className="mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs text-slate-700 flex items-start gap-2">

@@ -5,7 +5,11 @@ import {
   ArrowLeft, 
   Download,
   Calendar,
-  Star
+  Star,
+  Clock,
+  Video,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -213,9 +217,49 @@ const ClientCandidateDetails = () => {
                     </div>
 
                     {round.scheduledDate && (
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                        <Calendar className="h-3.5 w-3.5" />
-                        {new Date(round.scheduledDate).toLocaleString()}
+                      <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 flex-wrap">
+                        <span className="flex items-center gap-1 font-medium text-slate-600">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          {new Date(round.scheduledDate).toLocaleDateString(undefined, {
+                            weekday: 'short',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </span>
+                        <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 font-semibold">
+                          <Clock className="h-3.5 w-3.5 text-indigo-500" />
+                          {new Date(round.scheduledDate).toLocaleTimeString(undefined, {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZoneName: 'short'
+                          })}
+                        </span>
+
+                        {round.meetingLink && (
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <a
+                              href={round.meetingLink.startsWith('http') ? round.meetingLink : `https://${round.meetingLink}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                            >
+                              <Video className="h-3 w-3" />
+                              Join
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(round.meetingLink);
+                                toast.success('Meeting link copied');
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                              title="Copy meeting link"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 

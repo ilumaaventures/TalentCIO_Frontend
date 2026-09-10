@@ -7,11 +7,16 @@ import {
   Users, 
   CheckCircle2, 
   Calendar,
-  ArrowRight 
+  ArrowRight,
+  Sparkles,
+  X
 } from 'lucide-react';
 
 const ClientDashboard = () => {
-  const { clientUser, client } = useClientAuth();
+  const { clientUser, client, agency } = useClientAuth();
+  const [showWelcomeGuide, setShowWelcomeGuide] = useState(() => {
+    return localStorage.getItem('talentcio_client_hide_welcome') !== 'true';
+  });
   const [stats, setStats] = useState({
     activeRequisitions: 0,
     totalVisibleCandidates: 0,
@@ -58,6 +63,58 @@ const ClientDashboard = () => {
 
   return (
     <div className="space-y-8 font-sans">
+      {/* First-Run Welcome Guide */}
+      {showWelcomeGuide && (
+        <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/5 to-slate-50 border border-indigo-100/80 rounded-2xl p-6 relative shadow-2xs">
+          <button
+            onClick={() => {
+              setShowWelcomeGuide(false);
+              localStorage.setItem('talentcio_client_hide_welcome', 'true');
+            }}
+            className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white/80 transition-colors"
+            title="Dismiss guide"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-xl bg-indigo-600 text-white shadow-xs shrink-0">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">
+                Welcome to your {agency?.name ? `${agency.name} ` : ''}Client Recruitment Portal
+              </h2>
+              <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+                This secure portal gives your hiring team direct visibility into candidate submissions, scheduled interview rounds, and real-time hiring progress.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-3.5 border-t border-indigo-100/70">
+                <div className="flex items-start gap-2.5">
+                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold shrink-0">1</span>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Review Candidates</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Explore phase-gated candidate profiles, credentials, and resumes.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold shrink-0">2</span>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Evaluate Rounds</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Submit interview ratings, feedback, and skill evaluations directly.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold shrink-0">3</span>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Submit Decisions</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Shortlist or select candidates to keep your agency partner aligned.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Banner */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -117,8 +174,12 @@ const ClientDashboard = () => {
         </div>
 
         {recentRequisitions.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No active requisitions found.
+          <div className="p-12 text-center">
+            <Briefcase className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+            <p className="text-slate-700 font-bold">No active requisitions shared yet</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+              Your recruitment partner will grant access to relevant requisition pipelines as soon as candidates are ready for review.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">

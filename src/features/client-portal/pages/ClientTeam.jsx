@@ -53,8 +53,26 @@ const ClientTeam = () => {
   }, []);
 
   useEffect(() => {
-    fetchTeam();
-  }, [fetchTeam]);
+    if (clientUser?.role === 'ClientAdmin') {
+      fetchTeam();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchTeam, clientUser?.role]);
+
+  if (clientUser && clientUser.role !== 'ClientAdmin') {
+    return (
+      <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-8 text-center max-w-md mx-auto my-12">
+        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4 text-slate-500">
+          <ShieldCheck className="h-6 w-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Administrator Access Required</h2>
+        <p className="text-sm text-slate-500 mt-2">
+          Only Client Administrators have permission to view and manage team members and interview panels.
+        </p>
+      </div>
+    );
+  }
 
   const handleInvite = async (e) => {
     e.preventDefault();

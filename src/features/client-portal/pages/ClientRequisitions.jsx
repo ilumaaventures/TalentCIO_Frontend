@@ -74,10 +74,29 @@ const ClientRequisitions = () => {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
         </div>
       ) : requisitions.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-          <Briefcase className="h-10 w-10 text-slate-400 mx-auto mb-3" />
-          <p className="text-slate-600 font-medium">No requisitions found</p>
-          <p className="text-xs text-slate-400 mt-1">Try modifying your search or filter</p>
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-2xs max-w-xl mx-auto">
+          <Briefcase className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+          {search || statusFilter ? (
+            <>
+              <p className="text-slate-800 font-bold text-base">No matching requisitions</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                No positions matched your search criteria. Try modifying or clearing your filters.
+              </p>
+              <button
+                onClick={() => { setSearch(''); setStatusFilter(''); }}
+                className="mt-4 px-3.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold hover:bg-indigo-100 transition-colors"
+              >
+                Clear Filters
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-slate-800 font-bold text-base">No requisitions shared yet</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
+                Your recruitment partner will grant access to relevant openings once ready. Need a new requisition started? Contact your dedicated agency recruiter.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

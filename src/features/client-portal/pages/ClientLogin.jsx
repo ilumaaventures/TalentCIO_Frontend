@@ -8,7 +8,7 @@ const ClientLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useClientAuth();
+  const { login, agency } = useClientAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -38,12 +38,21 @@ const ClientLogin = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-100">
-            <Building2 className="h-8 w-8" />
-          </div>
+          {agency?.logo ? (
+            <div className="flex items-center justify-center p-3 rounded-2xl bg-white border border-slate-200 shadow-md max-h-16">
+              <img src={agency.logo} alt={agency.name || 'Agency Logo'} className="h-10 max-w-[160px] object-contain" />
+            </div>
+          ) : (
+            <div 
+              className="flex items-center justify-center h-14 w-14 rounded-2xl text-white shadow-lg"
+              style={{ backgroundColor: agency?.themeColor || '#4f46e5' }}
+            >
+              <Building2 className="h-8 w-8" />
+            </div>
+          )}
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          Client Recruitment Portal
+        <h2 className="mt-5 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
+          {agency?.name ? `${agency.name} Client Portal` : 'Client Recruitment Portal'}
         </h2>
         <p className="mt-2 text-center text-sm text-slate-600">
           Sign in to review candidates, manage interviews, and track requisition progress.

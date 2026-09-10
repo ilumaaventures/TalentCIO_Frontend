@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useClientAuth } from '../context/ClientAuthContext';
 import { 
@@ -7,11 +7,14 @@ import {
   Users, 
   LogOut, 
   BarChart2,
-  ShieldCheck
+  ShieldCheck,
+  Menu,
+  X
 } from 'lucide-react';
 
 const ClientPortalLayout = () => {
-  const { clientUser, client, logout } = useClientAuth();
+  const { clientUser, client, agency, logout } = useClientAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -33,10 +36,19 @@ const ClientPortalLayout = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             {/* Logo & Client Info */}
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-indigo-600 text-white font-bold shadow-md shadow-indigo-100">
-                <Building2 className="h-6 w-6" />
-              </div>
+            <div className="flex items-center space-x-3.5">
+              {agency?.logo ? (
+                <div className="flex items-center justify-center h-10 px-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <img src={agency.logo} alt={agency.name || 'Agency Logo'} className="h-7 max-w-[120px] object-contain" />
+                </div>
+              ) : (
+                <div 
+                  className="flex items-center justify-center h-10 w-10 rounded-xl text-white font-bold shadow-md"
+                  style={{ backgroundColor: agency?.themeColor || '#4f46e5' }}
+                >
+                  <Building2 className="h-5 w-5" />
+                </div>
+              )}
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-slate-900 text-base tracking-tight">
@@ -46,11 +58,13 @@ const ClientPortalLayout = () => {
                     Portal
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">Talent Acquisition & Candidate Review</p>
+                <p className="text-xs text-slate-500">
+                  {agency?.name ? `${agency.name} • Talent Acquisition` : 'Talent Acquisition & Candidate Review'}
+                </p>
               </div>
             </div>
 
-            {/* Nav Links */}
+            {/* Nav Links - Desktop */}
             <nav className="hidden md:flex space-x-1">
               {navItems.map((item) => (
                 <NavLink
@@ -72,7 +86,7 @@ const ClientPortalLayout = () => {
             </nav>
 
             {/* User Profile & Logout */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
                 <div className="text-sm font-semibold text-slate-900">
                   {clientUser?.firstName} {clientUser?.lastName}
@@ -90,8 +104,45 @@ const ClientPortalLayout = () => {
                 <LogOut className="h-5 w-5" />
                 <span className="hidden sm:inline text-xs font-medium">Sign Out</span>
               </button>
+
+              {/* Mobile menu button */}
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-hidden"
+                aria-label="Toggle mobile menu"
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
             </div>
           </div>
+
+          {/* Mobile Navigation Drawer */}
+          {mobileMenuOpen && (
+            <div className="md:hidden border-t border-slate-200 py-3 space-y-1">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.end}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`
+                  }
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.name}
+                </NavLink>
+              ))}
+              <div className="pt-2 border-t border-slate-100 px-3 py-1.5 text-xs text-slate-500">
+                Signed in as <span className="font-semibold text-slate-700">{clientUser?.firstName} {clientUser?.lastName}</span> ({clientUser?.role || 'Client Viewer'})
+              </div>
+            </div>
+          )}
         </div>
       </header>
 

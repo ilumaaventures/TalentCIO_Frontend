@@ -149,11 +149,11 @@ const ClientRequisitionDetails = () => {
         </div>
 
         {candidates.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="p-12 text-center max-w-md mx-auto">
             <User className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm font-medium text-slate-600">No candidates currently presented</p>
-            <p className="text-xs text-slate-400 mt-1">
-              Candidates will appear here as the recruitment team moves them through the pipeline.
+            <p className="text-sm font-bold text-slate-700">No candidates ready for review yet</p>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              Recruiters are currently sourcing and screening talent for this position. Candidate profiles will automatically appear here once they reach your configured review stage.
             </p>
           </div>
         ) : (
