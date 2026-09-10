@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/context/AuthContext';
+import { ClientAuthProvider } from '@/features/client-portal/context/ClientAuthContext';
 import { Toaster } from 'react-hot-toast';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 
@@ -74,6 +75,18 @@ const CompanyDocuments = lazy(() => import('@/features/ess-documents/pages/Compa
 const MyPayslips       = lazy(() => import('@/features/ess/pages/MyPayslips'));
 const TalentPage       = lazy(() => import('@/features/talent/TalentPage'));
 
+// Client Portal Pages
+const ClientLogin = lazy(() => import('@/features/client-portal/pages/ClientLogin'));
+const ClientForgotPassword = lazy(() => import('@/features/client-portal/pages/ClientForgotPassword'));
+const ClientAcceptInvite = lazy(() => import('@/features/client-portal/pages/ClientAcceptInvite'));
+const ClientDashboard = lazy(() => import('@/features/client-portal/pages/ClientDashboard'));
+const ClientRequisitions = lazy(() => import('@/features/client-portal/pages/ClientRequisitions'));
+const ClientRequisitionDetails = lazy(() => import('@/features/client-portal/pages/ClientRequisitionDetails'));
+const ClientCandidateDetails = lazy(() => import('@/features/client-portal/pages/ClientCandidateDetails'));
+const ClientInterviews = lazy(() => import('@/features/client-portal/pages/ClientInterviews'));
+const ClientTeam = lazy(() => import('@/features/client-portal/pages/ClientTeam'));
+const ClientProtectedRoute = lazy(() => import('@/features/client-portal/components/ClientProtectedRoute'));
+const ClientPortalLayout = lazy(() => import('@/features/client-portal/components/ClientPortalLayout'));
 
 import ProtectedRoute from '@/app/guards/ProtectedRoute';
 import SystemRoute from '@/app/guards/SystemRoute';
@@ -128,18 +141,33 @@ function App() {
     <Provider store={store}>
       <Router>
         <AuthProvider>
-          <Toaster position="top-right" />
-          <ErrorBoundary>
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/auth/handoff" element={<HandoffLogin />} />
-                <Route path="/reset-password" element={<OTPReset />} />
-                <Route path="/pre-onboarding/login" element={<PreOnboardingLogin />} />
-                <Route path="/pre-onboarding/portal" element={<PreOnboardingPortal />} />
+          <ClientAuthProvider>
+            <Toaster position="top-right" />
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/auth/handoff" element={<HandoffLogin />} />
+                  <Route path="/reset-password" element={<OTPReset />} />
+                  <Route path="/pre-onboarding/login" element={<PreOnboardingLogin />} />
+                  <Route path="/pre-onboarding/portal" element={<PreOnboardingPortal />} />
 
+                  {/* Client Portal Routes */}
+                  <Route path="/client-portal/login" element={<ClientLogin />} />
+                  <Route path="/client-portal/forgot-password" element={<ClientForgotPassword />} />
+                  <Route path="/client-portal/accept-invite" element={<ClientAcceptInvite />} />
+                  <Route element={<ClientProtectedRoute />}>
+                    <Route element={<ClientPortalLayout />}>
+                      <Route path="/client-portal" element={<ClientDashboard />} />
+                      <Route path="/client-portal/requisitions" element={<ClientRequisitions />} />
+                      <Route path="/client-portal/requisitions/:id" element={<ClientRequisitionDetails />} />
+                      <Route path="/client-portal/candidates/:id" element={<ClientCandidateDetails />} />
+                      <Route path="/client-portal/interviews" element={<ClientInterviews />} />
+                      <Route path="/client-portal/team" element={<ClientTeam />} />
+                    </Route>
+                  </Route>
 
-                {/* Protected Routes */}
+                  {/* Protected Routes */}
                 <Route element={<ProtectedRoute />}>
                   <Route element={<Layout />}>
                     <Route path="/" element={
@@ -430,6 +458,7 @@ function App() {
               </Routes>
             </Suspense>
           </ErrorBoundary>
+          </ClientAuthProvider>
         </AuthProvider>
       </Router>
     </Provider>

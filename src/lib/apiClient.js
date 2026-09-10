@@ -135,9 +135,10 @@ const isAuthFailure = (error) => {
   return status === 401 || (status === 403 && errorCode === 'TENANT_MISMATCH');
 };
 
-const isLoginRequest = (url = '') => String(url).includes('/auth/login');
+const isLoginRequest = (url = '') => String(url).includes('/auth/login') || String(url).includes('/client-portal/auth/login');
 const isPublicAuthFlowPath = (pathname = '') => (
   String(pathname || '').startsWith('/pre-onboarding')
+  || String(pathname || '').startsWith('/client-portal')
   || pathname === '/reset-password'
   || pathname === '/auth/handoff'
 );
@@ -167,7 +168,9 @@ api.interceptors.request.use(
         }
       });
     }
-    const accessToken = getStoredAccessToken();
+    const isClientPortalReq = String(config.url || '').includes('/client-portal');
+    const clientToken = typeof localStorage !== 'undefined' ? localStorage.getItem('talentcio_client_token') : null;
+    const accessToken = (isClientPortalReq && clientToken) ? clientToken : getStoredAccessToken();
     if (accessToken && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }

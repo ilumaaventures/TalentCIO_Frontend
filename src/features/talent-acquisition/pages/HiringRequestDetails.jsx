@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/lib/apiClient';
-import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip, Globe } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip, Globe, Shield, ExternalLink, Settings } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -83,8 +83,50 @@ const HiringRequestDetails = () => {
     const [closeMode, setCloseMode] = useState('all');
     const [partialCloseCount, setPartialCloseCount] = useState(1);
     const initialTab = searchParams.get('tab') || ((searchParams.get('phase') || searchParams.get('activePhase')) ? 'applications' : 'overview');
-    const [activeTab, setActiveTab] = useState(initialTab); // overview, applications, reviews
+    const [activeTab, setActiveTab] = useState(initialTab);
     const [usersMap, setUsersMap] = useState({});
+
+    // Client Portal Visibility State
+    const [clientVisibility, setClientVisibility] = useState({
+        enabled: false,
+        visibleFromPhaseIndex: 0,
+        maskCandidateContact: true,
+        maskCompensation: true,
+        showInternalNotes: false
+    });
+    const [savingClientVisibility, setSavingClientVisibility] = useState(false);
+    const [showClientSettingsModal, setShowClientSettingsModal] = useState(false);
+
+    useEffect(() => {
+        if (request?.clientVisibility) {
+            setClientVisibility({
+                enabled: Boolean(request.clientVisibility.enabled),
+                visibleFromPhaseIndex: Number(request.clientVisibility.visibleFromPhaseIndex) || 0,
+                maskCandidateContact: request.clientVisibility.maskCandidateContact !== false,
+                maskCompensation: request.clientVisibility.maskCompensation !== false,
+                showInternalNotes: Boolean(request.clientVisibility.showInternalNotes)
+            });
+        }
+    }, [request?.clientVisibility]);
+
+    const handleSaveClientVisibility = async (newConfig) => {
+        const payload = newConfig || clientVisibility;
+        try {
+            setSavingClientVisibility(true);
+            const res = await api.put(`/ta/hiring-request/${id}`, {
+                clientVisibility: payload
+            });
+            const updatedReq = res.data.hiringRequest || res.data;
+            setRequest(prev => ({ ...prev, clientVisibility: updatedReq.clientVisibility || payload }));
+            toast.success('Client portal access settings updated');
+            setShowClientSettingsModal(false);
+            invalidateTACaches({ requestId: id, client: request?.client });
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to update client visibility');
+        } finally {
+            setSavingClientVisibility(false);
+        }
+    };
 
     const handleTabChange = useCallback((tab) => {
         setActiveTab(tab);
@@ -98,9 +140,9 @@ const HiringRequestDetails = () => {
     useEffect(() => {
         const tab = searchParams.get('tab');
         if (tab) {
-            setActiveTab(tab);
+            setActiveTab(prev => (prev !== tab ? tab : prev));
         } else if (searchParams.get('phase') || searchParams.get('activePhase')) {
-            setActiveTab('applications');
+            setActiveTab(prev => (prev !== 'applications' ? 'applications' : prev));
         }
     }, [searchParams]);
 
@@ -153,13 +195,6 @@ const HiringRequestDetails = () => {
                 : prev.reopenedToId
         };
     }, []);
-
-    useEffect(() => {
-        const tab = searchParams.get('tab');
-        if (tab) {
-            setActiveTab(tab);
-        }
-    }, [searchParams]);
 
     const fetchRequest = useCallback(async ({ force = false } = {}) => {
         try {
@@ -1011,6 +1046,83 @@ const HiringRequestDetails = () => {
                                 </div>
                             )}
 
+                            {/* Client Portal Access Card */}
+                            {canUpdateRequisition && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                    <div className="flex items-center justify-between pb-3 border-b border-slate-50 mb-3">
+                                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                            <div className={`p-1.5 rounded-md ${clientVisibility.enabled ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>
+                                                <Shield size={14} />
+                                            </div>
+                                            Client Portal Access
+                                        </h3>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                            clientVisibility.enabled
+                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                        }`}>
+                                            {clientVisibility.enabled ? 'Active' : 'Disabled'}
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className={`rounded-xl border px-3 py-2.5 ${clientVisibility.enabled ? 'border-indigo-100 bg-indigo-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                                            <p className="text-xs font-semibold text-slate-700">
+                                                {clientVisibility.enabled
+                                                    ? `Visible to client from Phase ${(Number(clientVisibility.visibleFromPhaseIndex) || 0) + 1}`
+                                                    : 'This requisition is private to internal recruiters.'}
+                                            </p>
+                                            <p className="text-[11px] text-slate-500 mt-0.5">
+                                                {clientVisibility.maskCandidateContact && '• Contact masked '}
+                                                {clientVisibility.maskCompensation && '• CTC masked '}
+                                                {clientVisibility.showInternalNotes && '• Notes shared'}
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                disabled={savingClientVisibility}
+                                                onClick={() => handleSaveClientVisibility({ ...clientVisibility, enabled: !clientVisibility.enabled })}
+                                                className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                                                    clientVisibility.enabled
+                                                        ? 'bg-white text-red-600 border-slate-200 hover:bg-red-50 hover:border-red-200'
+                                                        : 'bg-indigo-600 text-white border-transparent hover:bg-indigo-700 shadow-xs'
+                                                } disabled:opacity-50`}
+                                            >
+                                                {savingClientVisibility ? <Loader size={12} className="animate-spin" /> : null}
+                                                {clientVisibility.enabled ? 'Disable Access' : 'Enable Access'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowClientSettingsModal(true)}
+                                                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 transition-all"
+                                            >
+                                                <Settings size={12} /> Configure
+                                            </button>
+                                        </div>
+
+                                        {/* Quick Link to Client Portal Users */}
+                                        {request?.client && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const clientId = request.clientId?._id || request.clientId;
+                                                    if (clientId) {
+                                                        navigate(`/clients/${clientId}?tab=portal`);
+                                                    } else {
+                                                        navigate('/clients');
+                                                    }
+                                                }}
+                                                className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 transition-colors pt-1"
+                                            >
+                                                <Building size={12} /> Manage Client Stakeholders <ExternalLink size={10} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Actions Card */}
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                 <h3 className="text-sm font-bold text-slate-800 mb-3">Actions</h3>
@@ -1246,6 +1358,139 @@ const HiringRequestDetails = () => {
                                 className="w-full sm:w-auto rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 transition disabled:opacity-50 shadow-sm"
                             >
                                 {actionLoading ? 'Saving...' : 'Yes (Unpublish)'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Client Portal Visibility Settings Modal */}
+            {showClientSettingsModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+                    <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+                            <div className="flex items-center space-x-2">
+                                <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                                    <Shield size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-base">Client Portal Rules</h3>
+                                    <p className="text-xs text-slate-500">Configure what client users can view and access</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowClientSettingsModal(false)}
+                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-5">
+                            {/* Enable Toggle */}
+                            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <div>
+                                    <p className="text-xs font-bold text-slate-800">Enable Client Visibility</p>
+                                    <p className="text-[11px] text-slate-500">Show this requisition on the client portal</p>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={clientVisibility.enabled}
+                                    onChange={(e) => setClientVisibility(prev => ({ ...prev, enabled: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                            </div>
+
+                            {/* Visible from phase */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                                    Phase-Gated Access (Visible From)
+                                </label>
+                                <p className="text-[11px] text-slate-500 mb-2">
+                                    Candidates before this phase remain hidden from client users.
+                                </p>
+                                <select
+                                    value={clientVisibility.visibleFromPhaseIndex}
+                                    onChange={(e) => setClientVisibility(prev => ({ ...prev, visibleFromPhaseIndex: Number(e.target.value) }))}
+                                    className="w-full text-xs font-medium border border-slate-300 rounded-lg px-3 py-2 bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    {(request?.recruitmentPhases && request.recruitmentPhases.length > 0) ? (
+                                        request.recruitmentPhases.map((phase, idx) => (
+                                            <option key={phase.phaseId || idx} value={idx}>
+                                                Phase {idx + 1}: {phase.phaseName || `Phase ${idx + 1}`}
+                                            </option>
+                                        ))
+                                    ) : (
+                                        <>
+                                            <option value={0}>Phase 1 (Sourced & Screened)</option>
+                                            <option value={1}>Phase 2 (Interview Rounds)</option>
+                                            <option value={2}>Phase 3 (Offer & Hired)</option>
+                                        </>
+                                    )}
+                                </select>
+                            </div>
+
+                            {/* Privacy Controls */}
+                            <div className="space-y-3 pt-2 border-t border-slate-100">
+                                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Privacy & Masking</p>
+
+                                <label className="flex items-start space-x-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={clientVisibility.maskCandidateContact}
+                                        onChange={(e) => setClientVisibility(prev => ({ ...prev, maskCandidateContact: e.target.checked }))}
+                                        className="h-4 w-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-800">Mask Candidate Contact Info</p>
+                                        <p className="text-[11px] text-slate-500">Hides email address and phone number from client users</p>
+                                    </div>
+                                </label>
+
+                                <label className="flex items-start space-x-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={clientVisibility.maskCompensation}
+                                        onChange={(e) => setClientVisibility(prev => ({ ...prev, maskCompensation: e.target.checked }))}
+                                        className="h-4 w-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-800">Mask Compensation Details</p>
+                                        <p className="text-[11px] text-slate-500">Hides current CTC, expected CTC, and internal budget from client users</p>
+                                    </div>
+                                </label>
+
+                                <label className="flex items-start space-x-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={clientVisibility.showInternalNotes}
+                                        onChange={(e) => setClientVisibility(prev => ({ ...prev, showInternalNotes: e.target.checked }))}
+                                        className="h-4 w-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-800">Share Recruiter Internal Notes</p>
+                                        <p className="text-[11px] text-slate-500">Allows client users to read agency recruiter remarks and internal notes</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end space-x-3 px-6 py-4 bg-slate-50 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => setShowClientSettingsModal(false)}
+                                className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                disabled={savingClientVisibility}
+                                onClick={() => handleSaveClientVisibility()}
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow-sm transition-all disabled:opacity-50"
+                            >
+                                {savingClientVisibility ? <Loader size={12} className="animate-spin" /> : null}
+                                Save Settings
                             </button>
                         </div>
                     </div>

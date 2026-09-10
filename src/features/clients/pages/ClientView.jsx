@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import ClientTADashboard from '@/features/talent-acquisition/pages/ClientTADashboard';
 import ClientForm from '@/features/clients/pages/ClientForm';
+import ClientPortalUsersTab from '@/features/clients/components/ClientPortalUsersTab';
 
 const Field = ({ label, value, icon: Icon }) => (
     <div>
@@ -41,7 +42,7 @@ const ClientView = () => {
 
     useEffect(() => {
         const tab = searchParams.get('tab');
-        if (tab && (tab === 'details' || tab === 'ta')) {
+        if (tab && (tab === 'details' || tab === 'ta' || tab === 'portal')) {
             setActiveTab(tab);
         }
     }, [searchParams]);
@@ -163,17 +164,46 @@ const ClientView = () => {
                 {/* Tabs */}
                 <div className="flex items-center space-x-6 border-b border-slate-200">
                     <button
-                        onClick={() => setActiveTab('details')}
+                        onClick={() => {
+                            setActiveTab('details');
+                            setSearchParams(prev => {
+                                const next = new URLSearchParams(prev);
+                                next.set('tab', 'details');
+                                return next;
+                            }, { replace: true });
+                        }}
                         className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                     >
                         Project Details
                     </button>
                     {(user?.roles?.includes('Admin') || user?.permissions?.includes('ta.view')) && (
                         <button
-                            onClick={() => setActiveTab('ta')}
+                            onClick={() => {
+                                setActiveTab('ta');
+                                setSearchParams(prev => {
+                                    const next = new URLSearchParams(prev);
+                                    next.set('tab', 'ta');
+                                    return next;
+                                }, { replace: true });
+                            }}
                             className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'ta' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                         >
                             Talent Acquisition
+                        </button>
+                    )}
+                    {(user?.roles?.includes('Admin') || user?.permissions?.includes('client.update') || user?.permissions?.includes('ta.manage') || user?.permissions?.includes('ta.view')) && (
+                        <button
+                            onClick={() => {
+                                setActiveTab('portal');
+                                setSearchParams(prev => {
+                                    const next = new URLSearchParams(prev);
+                                    next.set('tab', 'portal');
+                                    return next;
+                                }, { replace: true });
+                            }}
+                            className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'portal' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                        >
+                            Client Portal
                         </button>
                     )}
                 </div>
@@ -327,6 +357,10 @@ const ClientView = () => {
                             You do not have permission to view TA performance analytics for this client.
                         </div>
                     )
+                )}
+
+                {activeTab === 'portal' && (
+                    <ClientPortalUsersTab clientId={client._id} clientName={client.name} />
                 )}
 
             </div>
