@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import WorkflowSettings from '@/features/talent-acquisition/pages/WorkflowSettings';
 import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '@/features/talent-acquisition/utils/taCache';
 import UserMultiSelect from '@/components/common/UserMultiSelect';
+import RichTextEditor from '@/components/common/RichTextEditor';
 
 const SALARY_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR'];
 const NO_TEMPLATE_OPTION = 'STANDARD_3_PHASE_PROCESS';
@@ -461,6 +462,8 @@ const CreateHiringRequest = () => {
                     priority: formData.priority
                 },
                 jobDescription: formData.jobDescription,
+                publicJobDescription: formData.jobDescription,
+                publicJobTitle: formData.title,
                 jobDescriptionFile: formData.jobDescriptionFile,
                 isPublic: Boolean(formData.isPublic),
                 isJobVisible: Boolean(formData.isJobVisible ?? formData.isPublic),
@@ -831,13 +834,11 @@ const CreateHiringRequest = () => {
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                             Job Description (JD)
                         </label>
-                        <textarea
-                            name="jobDescription"
+                        <RichTextEditor
                             value={formData.jobDescription}
-                            onChange={handleChange}
-                            placeholder="Paste the complete job description here..."
-                            rows={8}
-                            className="w-full p-3 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                            onChange={(content) => setFormData((prev) => ({ ...prev, jobDescription: content }))}
+                            placeholder="Paste or write the complete job description here with formatting (headings, bold, bullet points will be preserved)..."
+                            minHeight="240px"
                         />
                     </div>
                     <div className="col-span-1">

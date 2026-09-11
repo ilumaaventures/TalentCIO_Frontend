@@ -10,6 +10,7 @@ import LegacyApplicationsView from '@/features/talent-acquisition/components/Leg
 import PublicApplicationsView from '@/features/talent-acquisition/components/PublicApplicationsView';
 import Skeleton from '@/components/ui/Skeleton';
 import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '@/features/talent-acquisition/utils/taCache';
+import { sanitizeTemplateHtml, hasHtmlMarkup } from '@/features/email/utils/templatePlaceholders';
 
 const DetailRow = ({ label, value }) => (
     <div className="flex justify-between py-2 border-b border-slate-50 last:border-0">
@@ -752,9 +753,24 @@ const HiringRequestDetails = () => {
                                     </div>
                                     <div className="p-5">
                                         {request.jobDescription ? (
-                                            <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-                                                {request.jobDescription}
-                                            </div>
+                                            hasHtmlMarkup(request.jobDescription) ? (
+                                                <div
+                                                    className="prose prose-sm max-w-none text-slate-700 leading-relaxed 
+                                                        [&>h1]:text-lg [&>h1]:font-bold [&>h1]:mb-2 [&>h1]:text-slate-900
+                                                        [&>h2]:text-base [&>h2]:font-bold [&>h2]:mb-2 [&>h2]:mt-3 [&>h2]:text-slate-900
+                                                        [&>h3]:text-sm [&>h3]:font-bold [&>h3]:mb-1 [&>h3]:mt-2 [&>h3]:text-slate-900
+                                                        [&>p]:mb-2 [&>p]:leading-relaxed
+                                                        [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-2 [&>ul]:space-y-1
+                                                        [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:mb-2 [&>ol]:space-y-1
+                                                        [&>li]:leading-relaxed
+                                                        [&>blockquote]:border-l-4 [&>blockquote]:border-blue-400 [&>blockquote]:pl-3 [&>blockquote]:italic [&>blockquote]:text-slate-600 [&>blockquote]:my-2"
+                                                    dangerouslySetInnerHTML={{ __html: sanitizeTemplateHtml(request.jobDescription) }}
+                                                />
+                                            ) : (
+                                                <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
+                                                    {request.jobDescription}
+                                                </div>
+                                            )
                                         ) : (
                                             <div className="text-slate-400 italic text-sm py-4 text-center">
                                                 No text description provided. Please refer to the attached file.
