@@ -2,14 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     FileText, Download, CheckCircle2, Clock, Plus, Search, Users,
-    Loader, RefreshCw, Trash2, ExternalLink, FileStack, ArrowLeft
+    Loader, RefreshCw, Trash2, ExternalLink, FileStack, ArrowLeft, ShieldCheck
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { getEmployeeDocuments, getAdminDocuments, acknowledgeDocument, deleteDocument } from '../api/essDocumentApi';
+import { getEmployeeDocuments, getAdminDocuments, deleteDocument } from '../api/essDocumentApi';
 import UploadDocumentModal from '../components/UploadDocumentModal';
 import AcknowledgementStatusModal from '../components/AcknowledgementStatusModal';
+import DocumentConsentModal from '../components/DocumentConsentModal';
 
 const CATEGORIES = ['All', 'Policy', 'Form', 'Circular', 'Other'];
 
@@ -27,22 +28,8 @@ const BadgeCat = ({ cat }) => {
     );
 };
 
-const DocumentCard = ({ doc, isAdmin, onAcknowledge, onViewReport, onDelete }) => {
-    const [acking, setAcking] = useState(false);
+const DocumentCard = ({ doc, isAdmin, onRequestConsent, onViewReport, onDelete }) => {
     const [deleting, setDeleting] = useState(false);
-
-    const handleAck = async () => {
-        setAcking(true);
-        try {
-            await acknowledgeDocument(doc._id);
-            toast.success('Document acknowledged!');
-            onAcknowledge?.(doc._id);
-        } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to acknowledge.');
-        } finally {
-            setAcking(false);
-        }
-    };
 
     const handleDelete = async () => {
         if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
@@ -72,7 +59,7 @@ const DocumentCard = ({ doc, isAdmin, onAcknowledge, onViewReport, onDelete }) =
                             <div className="mt-1 flex items-center gap-2 flex-wrap">
                                 <BadgeCat cat={doc.category} />
                                 {doc.requiresAcknowledgement && (
-                                    <span className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Acknowledgement required</span>
+                                    <span className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Consent Required</span>
                                 )}
                             </div>
                         </div>
@@ -80,9 +67,9 @@ const DocumentCard = ({ doc, isAdmin, onAcknowledge, onViewReport, onDelete }) =
 
                     {/* Read status */}
                     {!isAdmin && doc.requiresAcknowledgement && doc.viewerAcknowledged && (
-                        <div className="flex items-center gap-1 shrink-0 text-green-600">
-                            <CheckCircle2 size={15} />
-                            <span className="text-xs font-semibold">Acknowledged</span>
+                        <div className="flex items-center gap-1 shrink-0 text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                            <CheckCircle2 size={13} />
+                            <span className="text-[11px] font-bold">Read & Accepted</span>
                         </div>
                     )}
                     {isAdmin && doc.requiresAcknowledgement && (
@@ -114,15 +101,14 @@ const DocumentCard = ({ doc, isAdmin, onAcknowledge, onViewReport, onDelete }) =
                             </a>
                         )}
 
-                        {/* Acknowledge */}
+                        {/* Review & Accept */}
                         {!isAdmin && doc.requiresAcknowledgement && !doc.viewerAcknowledged && (
                             <button
-                                onClick={handleAck}
-                                disabled={acking}
-                                className="flex items-center gap-1.5 rounded-xl bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+                                onClick={() => onRequestConsent?.(doc)}
+                                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-blue-700 shadow-xs transition-colors"
                             >
-                                {acking ? <Loader size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                Mark as Read
+                                <ShieldCheck size={13} />
+                                Review & Accept
                             </button>
                         )}
 
@@ -155,6 +141,7 @@ const CompanyDocuments = () => {
     const [search, setSearch]       = useState('');
     const [showUpload, setShowUpload] = useState(false);
     const [ackReport, setAckReport]   = useState(null); // { _id, title }
+    const [consentDoc, setConsentDoc] = useState(null); // doc selected for consent acceptance
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -205,7 +192,7 @@ const CompanyDocuments = () => {
                             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                                 Company Documents
                                 {unreadCount > 0 && (
-                                    <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{unreadCount} unread</span>
+                                    <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{unreadCount} pending consent</span>
                                 )}
                             </h1>
                             <p className="text-xs text-slate-400 mt-0.5">Policies, forms, and circulars from HR & Admin</p>
@@ -273,7 +260,7 @@ const CompanyDocuments = () => {
                                 key={d._id}
                                 doc={d}
                                 isAdmin={isAdmin}
-                                onAcknowledge={handleAcknowledged}
+                                onRequestConsent={setConsentDoc}
                                 onViewReport={(doc) => setAckReport({ id: doc._id, title: doc.title })}
                                 onDelete={handleDeleted}
                             />
@@ -288,6 +275,16 @@ const CompanyDocuments = () => {
                     documentId={ackReport.id}
                     documentTitle={ackReport.title}
                     onClose={() => setAckReport(null)}
+                />
+            )}
+            {consentDoc && (
+                <DocumentConsentModal
+                    doc={consentDoc}
+                    onClose={() => setConsentDoc(null)}
+                    onSuccess={(docId) => {
+                        handleAcknowledged(docId);
+                        setConsentDoc(null);
+                    }}
                 />
             )}
         </div>

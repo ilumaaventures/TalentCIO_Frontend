@@ -75,6 +75,15 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                                         Decision: {candidate.decision}
                                                     </span>
                                                 )}
+                                                {candidate.clientDecision && candidate.clientDecision !== 'Pending' && (
+                                                    <span className={`px-3 py-1 rounded-full text-sm font-bold border ${
+                                                        candidate.clientDecision === 'Accepted' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                                        candidate.clientDecision === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                        'bg-amber-50 text-amber-700 border-amber-200'
+                                                    }`}>
+                                                        Client: {candidate.clientDecision}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         <div>
@@ -227,6 +236,11 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                                         <div>
                                                             <h4 className="font-bold text-slate-800 flex items-center gap-2">
                                                                 {round.levelName} 
+                                                                {round.isClientInterview && (
+                                                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-md text-[10px] font-bold">
+                                                                        Client Round
+                                                                    </span>
+                                                                )}
                                                                 {getStatusIcon(round.status)}
                                                             </h4>
                                                             {round.scheduledDate && (
@@ -262,13 +276,27 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                                             </div>
                                                         </div>
 
+                                                        {round.assignedClientUsers?.length > 0 && (
+                                                            <div className="flex items-start gap-2 mb-3">
+                                                                <User size={16} className="text-purple-400 mt-0.5" />
+                                                                <div>
+                                                                    <p className="text-xs font-medium text-purple-600 uppercase tracking-wider">Client Interviewers</p>
+                                                                    <p className="text-sm font-medium text-slate-800">
+                                                                        {round.assignedClientUsers.map(u => 
+                                                                            typeof u === 'object' ? ([u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || 'Client User') : String(u)
+                                                                        ).join(', ')}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                         {['Passed', 'Failed'].includes(round.status) && (
                                                             <div className={`mt-3 rounded-lg p-3 border ${round.status === 'Passed' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-red-50/60 border-red-100'}`}>
                                                                 <div className="flex items-start gap-2">
                                                                     <MessageSquare size={16} className="text-slate-400 mt-0.5" />
                                                                     <div className="flex-1">
                                                                         <div className="flex items-center justify-between mb-1">
-                                                                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Feedback</p>
+                                                                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Internal Feedback</p>
                                                                             {round.status === 'Passed' && round.rating && (
                                                                                 <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
                                                                                     ⭐ {round.rating}/10
@@ -276,6 +304,30 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                                                             )}
                                                                         </div>
                                                                         <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.feedback || 'No feedback provided.'}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {round.clientFeedback && (
+                                                            <div className="mt-3 rounded-lg p-3 border bg-purple-50/60 border-purple-100">
+                                                                <div className="flex items-start gap-2">
+                                                                    <MessageSquare size={16} className="text-purple-500 mt-0.5" />
+                                                                    <div className="flex-1">
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <p className="text-xs font-semibold text-purple-700 uppercase tracking-wider">Client Feedback</p>
+                                                                            {round.clientRating && (
+                                                                                <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-bold border border-purple-200">
+                                                                                    ⭐ {round.clientRating}/10
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{round.clientFeedback}</p>
+                                                                        {round.clientEvaluatedBy && (
+                                                                            <p className="text-xs text-purple-600 mt-1">
+                                                                                By {typeof round.clientEvaluatedBy === 'object' ? ([round.clientEvaluatedBy.firstName, round.clientEvaluatedBy.lastName].filter(Boolean).join(' ') || round.clientEvaluatedBy.email) : 'Client Reviewer'}
+                                                                            </p>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>

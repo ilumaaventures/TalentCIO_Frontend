@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User, Plus, Sun, Moon, Sunrise, Timer } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, ShieldCheck, User, Plus, Sun, Moon, Sunrise, Timer, Search, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -126,6 +126,9 @@ const getPageMetadata = (pathname) => {
     if (pathname === '/salary-calculator') {
         return { title: 'Salary Calculator', subtitle: 'Payroll & CTC computation' };
     }
+    if (pathname === '/crm' || pathname.startsWith('/crm')) {
+        return { title: 'Sales CRM', subtitle: 'Pipeline, leads & deals workspace' };
+    }
     if (pathname === '/bin') {
         return { title: 'Recycle Bin', subtitle: 'Deleted items & recovery' };
     }
@@ -139,6 +142,11 @@ const Topbar = ({ toggleSidebar }) => {
     const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
     const hasTalentAcquisition = hasModule('talentAcquisition');
     const hasDashboardAccess = user?.roles?.some((role) => role === 'Admin' || role?.name === 'Admin') || user?.hasAllPermissions;
+    const isAdmin = user?.roles?.some((role) => ['Admin', 'Super Admin', 'System Admin'].includes(role?.name || role))
+        || user?.hasAllPermissions
+        || user?.permissions?.includes('*');
+    const canUseCrmAi = isAdmin || user?.permissions?.includes('crm.ai.use') || user?.permissions?.includes('crm.admin');
+    const canCreateCrm = isAdmin || ['crm.leads.create', 'crm.deals.create', 'crm.tasks.manage', 'crm.contacts.manage', 'crm.accounts.manage', 'crm.admin'].some(p => user?.permissions?.includes(p));
     const homeRoute = hasDashboardAccess ? '/' : (hasModule('attendance') ? '/attendance' : '/');
     const [notifications, setNotifications] = useState([]);
     const [interviews, setInterviews] = useState([]);
@@ -170,6 +178,7 @@ const Topbar = ({ toggleSidebar }) => {
     const isRolesPage = location.pathname === '/roles';
     const isAnnouncementsPage = location.pathname === '/announcements';
     const isEssPage = location.pathname === '/ess' || location.pathname.startsWith('/ess');
+    const isCrmPage = location.pathname === '/crm' || location.pathname.startsWith('/crm');
     const profileTabs = [
         { id: 'personal', label: 'Personal', icon: User },
         { id: 'employment', label: 'Employment History', icon: Briefcase },
@@ -260,6 +269,45 @@ const Topbar = ({ toggleSidebar }) => {
                     duration: 6000,
                 });
             }
+
+            if (newNotif?.preferenceKey === 'ess_document.published' || newNotif?.metadata?.preferenceKey === 'ess_document.published') {
+                const toastId = toast.custom((toastInstance) => (
+                    <div
+                        className={`pointer-events-auto flex w-[380px] items-start gap-3 rounded-2xl border border-indigo-100 bg-white p-4 shadow-xl ring-1 ring-indigo-500/10 transition ${
+                            toastInstance.visible ? 'animate-enter' : 'animate-leave'
+                        }`}
+                    >
+                        <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                            <ShieldCheck size={20} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-900">{newNotif?.title || 'New Policy Published'}</div>
+                            <div className="mt-1 text-xs text-slate-500 line-clamp-2 leading-relaxed">{newNotif?.message || 'A new document has been published for your review.'}</div>
+                            <div className="mt-3 flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        toast.dismiss(toastId);
+                                        navigateRef.current((newNotif?.link && newNotif?.link !== '/ess/documents') ? newNotif.link : '/profile?tab=company-documents');
+                                    }}
+                                    className="rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                                >
+                                    Review & Accept
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => toast.dismiss(toastId)}
+                                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ), {
+                    duration: 8000,
+                });
+            }
         };
 
         const handleInterviewUpdate = () => {
@@ -345,6 +393,7 @@ const Topbar = ({ toggleSidebar }) => {
 
     const getIconForType = (type) => {
         switch (type) {
+            case 'Policy': return <ShieldCheck size={16} className="text-indigo-600" />;
             case 'Interview': return <Calendar size={16} className="text-indigo-600" />;
             case 'Approval': return <Clock size={16} className="text-amber-600" />;
             case 'Action': return <ChevronRight size={16} className="text-blue-600" />;
@@ -356,6 +405,7 @@ const Topbar = ({ toggleSidebar }) => {
 
     const getBgForType = (type) => {
         switch (type) {
+            case 'Policy': return 'bg-indigo-50';
             case 'Interview': return 'bg-indigo-50';
             case 'Approval': return 'bg-amber-50';
             case 'Action': return 'bg-blue-50';
@@ -517,6 +567,47 @@ const Topbar = ({ toggleSidebar }) => {
                                 </button>
                             )}
                         </>
+                    )}
+
+                    {isCrmPage && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => window.dispatchEvent(new CustomEvent('crm:open-command-palette'))}
+                                className="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200/90 bg-slate-50/80 hover:bg-slate-100 text-xs text-slate-500 transition-colors cursor-pointer shadow-2xs w-36 lg:w-48"
+                                title="Search CRM records (Ctrl+K)"
+                            >
+                                <Search size={13} className="text-slate-400 shrink-0" />
+                                <span className="truncate">Search records...</span>
+                                <kbd className="ml-auto text-[10px] font-mono bg-white border border-slate-200 rounded px-1 text-slate-400">
+                                    Ctrl K
+                                </kbd>
+                            </button>
+
+                            {canUseCrmAi && (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/crm?tab=ai-assistant')}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs cursor-pointer"
+                                    title="Open AI Copilot"
+                                >
+                                    <Sparkles size={13} className="text-indigo-600" />
+                                    <span className="hidden sm:inline">AI Copilot</span>
+                                </button>
+                            )}
+
+                            {canCreateCrm && (
+                                <button
+                                    type="button"
+                                    onClick={() => window.dispatchEvent(new CustomEvent('crm:open-quick-create'))}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                                    title="Create new Lead, Opportunity, or Task"
+                                >
+                                    <Plus size={13} />
+                                    <span>Create</span>
+                                </button>
+                            )}
+                        </div>
                     )}
 
                     <div className="hidden lg:flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-2 py-1.5">

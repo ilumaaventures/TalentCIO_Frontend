@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, CheckCircle2, Clock, Search, Loader } from 'lucide-react';
+import { X, Users, CheckCircle2, Clock, Search, Loader, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { getDocumentAcknowledgements } from '../api/essDocumentApi';
 import toast from 'react-hot-toast';
@@ -100,10 +100,10 @@ const AcknowledgementStatusModal = ({ documentId, documentTitle, onClose }) => {
                             <button
                                 onClick={() => setActiveTab('read')}
                                 className={`flex items-center gap-2 pb-3 pt-4 text-sm font-semibold border-b-2 mr-6 transition-colors
-                                    ${activeTab === 'read' ? 'border-green-500 text-green-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                    ${activeTab === 'read' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                             >
                                 <CheckCircle2 size={15} />
-                                Read ({data.read?.length || 0})
+                                Read & Accepted ({data.read?.length || 0})
                             </button>
                             <button
                                 onClick={() => setActiveTab('unread')}
@@ -111,9 +111,19 @@ const AcknowledgementStatusModal = ({ documentId, documentTitle, onClose }) => {
                                     ${activeTab === 'unread' ? 'border-amber-500 text-amber-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                             >
                                 <Clock size={15} />
-                                Unread ({data.unread?.length || 0})
+                                Pending Consent ({data.unread?.length || 0})
                             </button>
                         </div>
+
+                        {/* Consent Statement Banner */}
+                        {data.consentDeclaration && (
+                            <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-100 flex items-start gap-2 text-xs text-slate-500">
+                                <ShieldCheck size={14} className="text-blue-600 shrink-0 mt-0.5" />
+                                <span className="leading-snug">
+                                    <strong className="text-slate-700">Consent Statement:</strong> "{data.consentDeclaration}"
+                                </span>
+                            </div>
+                        )}
 
                         {/* Search */}
                         <div className="px-6 py-3 border-b border-slate-50">
@@ -146,7 +156,10 @@ const AcknowledgementStatusModal = ({ documentId, documentTitle, onClose }) => {
                                             </div>
                                             {activeTab === 'read' && item.acknowledgedAt && (
                                                 <div className="text-right shrink-0">
-                                                    <CheckCircle2 size={14} className="text-green-500 ml-auto mb-0.5" />
+                                                    <div className="flex items-center gap-1 text-emerald-600 justify-end mb-0.5">
+                                                        <ShieldCheck size={13} />
+                                                        <span className="text-[10px] font-bold uppercase tracking-wide">Accepted</span>
+                                                    </div>
                                                     <p className="text-[10px] text-slate-400">{format(new Date(item.acknowledgedAt), 'dd MMM, h:mm a')}</p>
                                                 </div>
                                             )}

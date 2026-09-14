@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { getBinItems } from '@/features/recycle-bin/api/bin';
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   Bell,
@@ -13,11 +14,14 @@ import {
   Calculator,
   CalendarClock,
   CalendarDays,
+  CheckSquare,
   ClipboardList,
   Clock,
   FileText,
   FolderKanban,
+  GitBranch,
   History,
+  Layers,
   LayoutDashboard,
   LayoutGrid,
   LifeBuoy,
@@ -29,12 +33,65 @@ import {
   BadgeDollarSign,
   ShieldCheck,
   Settings,
+  Sparkles,
+  Target,
   Trash2,
+  TrendingUp,
   UserPlus,
   Users,
   Workflow,
   X
 } from 'lucide-react';
+
+const CRM_NAV_SECTIONS = [
+  {
+    title: 'Cockpit',
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, permissions: ['crm.view', 'crm.leads.read', 'crm.deals.read', 'crm.analytics.read', 'crm.admin'] },
+    ]
+  },
+  {
+    title: 'Sales Hub',
+    items: [
+      { id: 'leads', label: 'Leads', icon: Users, permissions: ['crm.leads.read', 'crm.leads.create', 'crm.admin'] },
+      { id: 'deals', label: 'Opportunities', icon: Briefcase, permissions: ['crm.deals.read', 'crm.deals.create', 'crm.admin'] },
+      { id: 'pipelines', label: 'Pipelines', icon: GitBranch, permissions: ['crm.pipelines.read', 'crm.pipelines.manage', 'crm.admin'] },
+      { id: 'contacts', label: 'Contacts', icon: UserPlus, permissions: ['crm.contacts.read', 'crm.contacts.manage', 'crm.admin'] },
+      { id: 'companies', label: 'Companies', icon: Building2, permissions: ['crm.accounts.read', 'crm.accounts.manage', 'crm.admin'] },
+      { id: 'follow-ups', label: 'Follow-ups', icon: Clock, permissions: ['crm.followups.read', 'crm.followups.manage', 'crm.admin'] },
+      { id: 'tasks', label: 'Tasks', icon: CheckSquare, permissions: ['crm.tasks.read', 'crm.tasks.manage', 'crm.admin'] },
+      { id: 'calendar', label: 'Calendar', icon: Calendar, permissions: ['crm.tasks.read', 'crm.tasks.manage', 'crm.admin'] },
+      { id: 'activities', label: 'Activities', icon: Activity, permissions: ['crm.activities.read', 'crm.activities.create', 'crm.admin'] },
+    ]
+  },
+  {
+    title: 'Growth & Automation',
+    items: [
+      { id: 'sequences', label: 'Sequences', icon: Layers, permissions: ['crm.growth.read', 'crm.growth.manage', 'crm.admin'] },
+      { id: 'campaigns', label: 'Campaigns', icon: Megaphone, permissions: ['crm.growth.read', 'crm.growth.manage', 'crm.admin'] },
+      { id: 'workflows', label: 'Workflows', icon: Workflow, permissions: ['crm.workflows.read', 'crm.workflows.manage', 'crm.admin'] },
+    ]
+  },
+  {
+    title: 'Analytics & Quotas',
+    items: [
+      { id: 'forecast', label: 'Forecast', icon: TrendingUp, permissions: ['crm.forecast.read', 'crm.forecast.manage', 'crm.admin'] },
+      { id: 'targets', label: 'Targets', icon: Target, permissions: ['crm.forecast.read', 'crm.forecast.manage', 'crm.admin'] },
+      { id: 'reports', label: 'Reports', icon: BarChart3, permissions: ['crm.analytics.read', 'crm.admin'] },
+      { id: 'commissions', label: 'Commissions', icon: BadgeDollarSign, permissions: ['crm.commissions.read', 'crm.commissions.manage', 'crm.admin'] },
+      { id: 'leaderboard', label: 'Leaderboard', icon: Award, permissions: ['crm.forecast.read', 'crm.commissions.read', 'crm.admin'] },
+    ]
+  },
+  {
+    title: 'Administration',
+    items: [
+      { id: 'ai-assistant', label: 'AI Assistant', icon: Sparkles, permissions: ['crm.ai.use', 'crm.admin'] },
+      { id: 'audit-logs', label: 'Audit Logs', icon: History, permissions: ['crm.admin'] },
+      { id: 'data-tools', label: 'Data Tools', icon: FolderKanban, permissions: ['crm.data.import', 'crm.data.export', 'crm.data.merge', 'crm.admin'] },
+      { id: 'settings', label: 'Settings', icon: Settings, permissions: ['crm.admin'] },
+    ]
+  }
+];
 
 const TA_DASHBOARD_VIEWS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -127,6 +184,10 @@ const Sidebar = ({ isOpen, onClose }) => {
       ? 'requisitions'
       : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
+  const isCrmRoute = location.pathname === '/crm' || location.pathname.startsWith('/crm/');
+  const requestedCrmTab = new URLSearchParams(location.search).get('tab');
+  const currentCrmTab = requestedCrmTab || 'dashboard';
+  const isCustomAppRoute = isTalentAcquisitionRoute || isCrmRoute;
   const canAccessTA = user?.company?.enabledModules?.includes('talentAcquisition') && (
     isAdmin
     || user?.permissions?.includes('ta.view')
@@ -199,9 +260,16 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*')
   );
   const showProjects = hasModule('projects');
+  const showCrm = hasModule('crm') && (
+    isAdmin
+    || user?.permissions?.includes('crm.view')
+    || user?.permissions?.includes('crm.admin')
+    || user?.permissions?.includes('*')
+    || user?.permissions?.some((p) => typeof p === 'string' && p.startsWith('crm.'))
+  );
   const showOrgChart = hasModule('organization') && Boolean(user);
   const showOrgStructureSection = showOrgChart;
-  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || showEss || canAccessTA;
+  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || showEss || canAccessTA || showCrm;
   const showOrganizationSection = showEmployees || showTalent || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = isAdmin
@@ -218,24 +286,26 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('payroll.salary.view')
     || user?.permissions?.includes('*');
   const homeRoute = showDashboard ? '/' : (showAttendance ? '/attendance' : '/');
-  const sectionLabelClass = isTalentAcquisitionRoute
+  const sectionLabelClass = isCustomAppRoute
     ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-100/55'
     : 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]';
-  const sidebarCardClass = isTalentAcquisitionRoute
+  const sidebarCardClass = isCustomAppRoute
     ? 'rounded-2xl border border-white/12 bg-white/[0.07] backdrop-blur-sm'
     : 'rounded-2xl border border-white/6 bg-white/[0.03]';
-  const sidebarShellClass = isTalentAcquisitionRoute
+  const sidebarShellClass = isCrmRoute
+    ? 'bg-gradient-to-b from-[#0f172a] via-[#0b1329] to-[#020617] border-r border-slate-800'
+    : isTalentAcquisitionRoute
     ? 'bg-gradient-to-b from-[#134a85] via-[#0f3d70] to-[#0a2f57] border-r border-blue-200/15'
     : 'bg-[#111315] border-r border-white/6';
-  const sidebarLinkClass = isTalentAcquisitionRoute
+  const sidebarLinkClass = isCustomAppRoute
     ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-blue-100/80 transition-all duration-200 hover:bg-white/10 hover:text-white'
     : 'zoho-sidebar-link';
-  const sidebarLinkActiveClass = isTalentAcquisitionRoute
-    ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold text-white bg-white/[0.16] shadow-[0_10px_24px_rgba(6,22,48,0.28)] ring-1 ring-white/10'
+  const sidebarLinkActiveClass = isCustomAppRoute
+    ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold text-white bg-blue-600/30 text-blue-200 shadow-[0_10px_24px_rgba(6,22,48,0.28)] ring-1 ring-blue-500/40'
     : 'zoho-sidebar-link-active';
-  const sidebarSubtleTextClass = isTalentAcquisitionRoute ? 'text-blue-100/55' : 'text-[#6d6258]';
-  const sidebarDividerClass = isTalentAcquisitionRoute ? 'border-white/10' : 'border-white/6';
-  const sidebarLogoutClass = isTalentAcquisitionRoute
+  const sidebarSubtleTextClass = isCustomAppRoute ? 'text-blue-100/55' : 'text-[#6d6258]';
+  const sidebarDividerClass = isCustomAppRoute ? 'border-white/10' : 'border-white/6';
+  const sidebarLogoutClass = isCustomAppRoute
     ? 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/75 transition-colors hover:bg-white/10 hover:text-white'
     : 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition-colors hover:bg-white/5 hover:text-white';
   const getSidebarLinkClass = (isLinkActive) => (isLinkActive ? sidebarLinkActiveClass : sidebarLinkClass);
@@ -348,7 +418,58 @@ const Sidebar = ({ isOpen, onClose }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 scrollbar-hide">
-          {isTalentAcquisitionRoute ? (
+          {isCrmRoute ? (
+            <>
+              <div className="mb-6 px-1">
+                <Link
+                  to="/"
+                  className={`inline-flex items-center gap-2 text-[12px] font-semibold transition ${sidebarSubtleTextClass} hover:text-white`}
+                  onClick={onClose}
+                >
+                  <ArrowLeft size={14} />
+                  <span>Back to workspace</span>
+                </Link>
+                <h2 className="mt-3 text-lg font-semibold text-white flex items-center gap-2">
+                  <TrendingUp size={20} className="text-blue-400" />
+                  <span>Sales CRM</span>
+                </h2>
+              </div>
+
+              {CRM_NAV_SECTIONS.map((section) => {
+                const visibleItems = section.items.filter((item) => {
+                  if (isAdmin) return true;
+                  if (!item.permissions || item.permissions.length === 0) return true;
+                  return item.permissions.some((perm) => user?.permissions?.includes(perm));
+                });
+
+                if (visibleItems.length === 0) return null;
+
+                return (
+                  <div key={section.title} className="mb-5">
+                    <div className={sectionLabelClass}>{section.title}</div>
+                    <div className="space-y-1">
+                      {visibleItems.map((item) => {
+                        const Icon = item.icon;
+                        const isItemActive = currentCrmTab === item.id;
+
+                        return (
+                          <Link
+                            key={item.id}
+                            to={`/crm?tab=${item.id}`}
+                            className={getSidebarLinkClass(isItemActive)}
+                            onClick={onClose}
+                          >
+                            <Icon size={18} />
+                            <span>{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          ) : isTalentAcquisitionRoute ? (
             <>
               <div className="mb-6 px-1">
                 <Link
@@ -496,6 +617,17 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </Link>
               )}
 
+              {showCrm && (
+                <Link
+                  to="/crm"
+                  className={getSidebarLinkClass(location.pathname === '/crm' || location.pathname.startsWith('/crm/'))}
+                  onClick={onClose}
+                >
+                  <TrendingUp size={18} />
+                  <span>Sales CRM</span>
+                </Link>
+              )}
+
               {showOrganizationSection && <div className="mt-8"><div className={sectionLabelClass}>Manage</div></div>}
               {showEmployees && (
                 <Link to="/users" className={getSidebarLinkClass(location.pathname === '/users')} onClick={onClose}>
@@ -609,7 +741,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         <div className={`p-4 border-t ${sidebarDividerClass}`}>
           <Link
             to="/profile"
-            className={`${sidebarCardClass} flex items-center gap-3 p-3 transition-colors group ${isTalentAcquisitionRoute ? 'hover:bg-white/10' : 'hover:bg-white/[0.05]'}`}
+            className={`${sidebarCardClass} flex items-center gap-3 p-3 transition-colors group ${isCustomAppRoute ? 'hover:bg-white/10' : 'hover:bg-white/[0.05]'}`}
             onClick={onClose}
           >
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-white/10 text-xs font-bold text-white ring-1 ring-white/10">

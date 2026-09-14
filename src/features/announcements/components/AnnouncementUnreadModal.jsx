@@ -38,6 +38,14 @@ const AnnouncementUnreadModal = ({
   const checkboxRef = useRef(null);
   const activeAnnouncement = announcements[activeIndex];
   const categoryTheme = getCategoryTheme(activeAnnouncement?.category);
+  const isPolicyAnnouncement = Boolean(
+    activeAnnouncement?.source === 'company_policy' ||
+    activeAnnouncement?.link === '/profile?tab=company-documents' ||
+    activeAnnouncement?.link === '/ess/documents' ||
+    activeAnnouncement?.link?.includes('company-documents') ||
+    activeAnnouncement?.category === 'Policy' ||
+    activeAnnouncement?.documentId
+  );
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -162,7 +170,9 @@ const AnnouncementUnreadModal = ({
               disabled={!acknowledged}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {activeIndex === announcements.length - 1 ? 'Continue to dashboard' : 'Continue'}
+              {isPolicyAnnouncement
+                ? 'Open company policy page'
+                : (activeIndex === announcements.length - 1 ? 'Continue to dashboard' : 'Continue')}
               <ChevronRight size={16} />
             </button>
           </div>

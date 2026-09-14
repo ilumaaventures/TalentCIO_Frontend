@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BadgeCheck,
   CalendarClock,
+  ChevronRight,
+  FileText,
   Loader2,
   MessageCircle,
   Pencil,
@@ -293,6 +296,19 @@ const AnnouncementFeedCard = ({
 
         {announcement?.attachment ? (
           <AnnouncementAttachmentCard attachment={announcement.attachment} className="mt-3" />
+        ) : null}
+
+        {(announcement?.link || announcement?.source === 'company_policy' || announcement?.category === 'Policy') ? (
+          <div className="mt-3.5">
+            <Link
+              to={(!announcement?.link || announcement?.link === '/ess/documents') ? '/profile?tab=company-documents' : announcement.link}
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/70 px-3.5 py-2 text-xs font-semibold text-blue-700 shadow-2xs transition hover:border-blue-300 hover:bg-blue-100/80 hover:text-blue-800"
+            >
+              <FileText size={14} className="text-blue-600" />
+              <span>Open company policy page</span>
+              <ChevronRight size={14} className="text-blue-500" />
+            </Link>
+          </div>
         ) : null}
       </div>
 

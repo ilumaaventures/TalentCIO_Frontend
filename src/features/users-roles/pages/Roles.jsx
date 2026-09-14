@@ -182,6 +182,7 @@ const Roles = () => {
         else if (key.startsWith('discussion.')) groupName = 'DISCUSSIONS';
         else if (key.startsWith('dossier.') || key.startsWith('employee.revision.') || groupName === 'DOSSIER') groupName = 'EMPLOYEE DOSSIER';
         else if (key.startsWith('leave.')) groupName = 'LEAVES';
+        else if (key.startsWith('crm.')) groupName = 'SALES CRM';
 
         const moduleMapping = {
             'ATTENDANCE': 'attendance',

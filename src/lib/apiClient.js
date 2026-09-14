@@ -135,9 +135,16 @@ const isAuthFailure = (error) => {
   return status === 401 || (status === 403 && errorCode === 'TENANT_MISMATCH');
 };
 
-const isLoginRequest = (url = '') => String(url).includes('/auth/login');
+const isLoginRequest = (url = '') => String(url).includes('/auth/login') || String(url).includes('/client-portal/auth/login');
+const isClientPublicAuthPath = (pathname = '') => (
+  pathname === '/client-portal/login'
+  || pathname === '/client-portal/accept-invite'
+  || pathname === '/client-portal/forgot-password'
+  || pathname === '/client-portal/reset-password'
+);
 const isPublicAuthFlowPath = (pathname = '') => (
   String(pathname || '').startsWith('/pre-onboarding')
+  || isClientPublicAuthPath(pathname)
   || pathname === '/reset-password'
   || pathname === '/auth/handoff'
 );
@@ -167,7 +174,9 @@ api.interceptors.request.use(
         }
       });
     }
-    const accessToken = getStoredAccessToken();
+    const isClientPortalReq = String(config.url || '').includes('/client-portal');
+    const clientToken = typeof localStorage !== 'undefined' ? localStorage.getItem('talentcio_client_token') : null;
+    const accessToken = (isClientPortalReq && clientToken) ? clientToken : getStoredAccessToken();
     if (accessToken && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
@@ -286,13 +295,18 @@ api.interceptors.response.use(
             window.location.reload();
           }, 800);
         }
-      } else if (
-        typeof window !== 'undefined'
-        && window.location.pathname !== '/login'
-        && !isPublicAuthFlowPath(window.location.pathname)
-      ) {
-        clearAuthSession();
-        window.location.assign('/login');
+      } else if (typeof window !== 'undefined') {
+        const currentPath = window.location.pathname;
+        if (currentPath.startsWith('/client-portal')) {
+          if (!isClientPublicAuthPath(currentPath)) {
+            localStorage.removeItem('talentcio_client_token');
+            localStorage.removeItem('talentcio_client_user');
+            window.location.assign('/client-portal/login');
+          }
+        } else if (currentPath !== '/login' && !isPublicAuthFlowPath(currentPath)) {
+          clearAuthSession();
+          window.location.assign('/login');
+        }
       }
     }
     return Promise.reject(error);
