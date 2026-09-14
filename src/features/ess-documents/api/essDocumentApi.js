@@ -7,8 +7,8 @@ const BASE = '/ess-documents';
 export const getEmployeeDocuments = (params = {}) =>
     api.get(`${BASE}/mine`, { params });
 
-export const acknowledgeDocument = (id) =>
-    api.post(`${BASE}/${id}/acknowledge`);
+export const acknowledgeDocument = (id, data = {}) =>
+    api.post(`${BASE}/${id}/acknowledge`, data);
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
 

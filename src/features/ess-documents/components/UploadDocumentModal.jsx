@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, ChevronDown, Loader, FileText, Trash2, Plus } from 'lucide-react';
+import { X, Upload, ChevronDown, Loader, FileText, Trash2, Plus, Bell, ShieldCheck, Megaphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { uploadDocument } from '../api/essDocumentApi';
 import UserMultiSelect from '@/components/common/UserMultiSelect';
+import PolicyAnnouncementDrawer from './PolicyAnnouncementDrawer';
 import api from '@/lib/apiClient';
 
 const CATEGORIES = ['Policy', 'Form', 'Circular', 'Other'];
@@ -28,31 +29,70 @@ const UploadDocumentModal = ({ onClose, onSuccess }) => {
     const [form, setForm] = useState({
         title: '', description: '', category: 'Policy',
         requiresAcknowledgement: false,
+        notifyUsers: true,
         visibilityType: 'All'
     });
-    const [files, setFiles]             = useState([]);
-    const [dragging, setDragging]       = useState(false);
-    const [submitting, setSubmitting]   = useState(false);
-    const [errors, setErrors]           = useState({});
-    const [allUsers, setAllUsers]       = useState([]);
+    const [files, setFiles] = useState([]);
+    const [dragging, setDragging] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState({});
+    const [allUsers, setAllUsers] = useState([]);
     const [selectedUserIds, setSelectedUserIds] = useState([]);
-    const [allDepts, setAllDepts]       = useState([]);
+    const [allDepts, setAllDepts] = useState([]);
     const [selectedDepts, setSelectedDepts] = useState([]);
+    const [announcementDrawerOpen, setAnnouncementDrawerOpen] = useState(false);
+    const [hasCustomizedAnnouncement, setHasCustomizedAnnouncement] = useState(false);
+    const [announcementForm, setAnnouncementForm] = useState({
+        title: '',
+        summary: '',
+        content: '',
+        category: 'Policy',
+        pinned: false,
+        audienceType: 'all',
+        audienceDepartments: [],
+        audienceEmploymentTypes: [],
+        audienceUserIds: [],
+        expiresAt: ''
+    });
     const fileInputRef = useRef(null);
 
     // Load users for Custom visibility picker
     useEffect(() => {
         api.get('/admin/users')
             .then(res => setAllUsers(Array.isArray(res.data) ? res.data : (res.data?.data || [])))
-            .catch(() => {});
+            .catch(() => { });
         api.get('/admin/users?select=department')
             .then(res => {
                 const users = Array.isArray(res.data) ? res.data : (res.data?.data || []);
                 const depts = [...new Set(users.map(u => u.department).filter(Boolean))].sort();
                 setAllDepts(depts);
             })
-            .catch(() => {});
+            .catch(() => { });
     }, []);
+
+    // Keep announcementForm in sync with document form unless manually customized
+    useEffect(() => {
+        if (hasCustomizedAnnouncement) return;
+        setAnnouncementForm(prev => ({
+            ...prev,
+            title: form.title ? `New Policy: ${form.title}` : prev.title,
+            summary: form.description ? form.description.slice(0, 240) : prev.summary,
+            content: form.description
+                ? `${form.description}\n\nPlease review and accept the document under Company Documents.`
+                : (form.title ? `A new company ${form.category?.toLowerCase() || 'document'} "${form.title}" has been published. Please review and confirm your consent in Company Documents.` : prev.content),
+            category: form.category === 'Policy' ? 'Policy' : (form.category === 'Form' ? 'HR' : 'General'),
+            audienceType: form.visibilityType === 'Department' ? 'departments' : (form.visibilityType === 'Custom' ? 'specificUsers' : 'all'),
+            audienceDepartments: selectedDepts,
+            audienceUserIds: selectedUserIds,
+        }));
+    }, [form.title, form.description, form.category, form.visibilityType, selectedDepts, selectedUserIds, hasCustomizedAnnouncement]);
+
+    const handleToggleNotify = (checked) => {
+        setForm(p => ({ ...p, notifyUsers: checked }));
+        if (checked) {
+            setAnnouncementDrawerOpen(true);
+        }
+    };
 
     const addFiles = (newFiles) => {
         if (!newFiles || newFiles.length === 0) return;
@@ -110,6 +150,22 @@ const UploadDocumentModal = ({ onClose, onSuccess }) => {
         fd.append('category', form.category);
         fd.append('requiresAcknowledgement', String(form.requiresAcknowledgement));
         fd.append('visibilityType', form.visibilityType);
+        fd.append('notifyUsers', String(form.notifyUsers));
+        fd.append('createAnnouncement', String(form.notifyUsers));
+        if (form.notifyUsers) {
+            const finalAnnouncement = {
+                ...announcementForm,
+                title: announcementForm.title?.trim() || (form.title.trim() ? `New Policy: ${form.title.trim()}` : 'New Company Policy'),
+                summary: announcementForm.summary?.trim() || form.description?.trim() || '',
+                content: announcementForm.content?.trim() || (form.description?.trim()
+                    ? `${form.description.trim()}\n\nPlease review and accept the document under Company Documents.`
+                    : `A new company ${form.category?.toLowerCase() || 'document'} "${form.title.trim() || 'policy'}" has been published. Please review and acknowledge it under Company Documents.`),
+                category: announcementForm.category || (form.category === 'Policy' ? 'Policy' : 'General'),
+                source: 'company_policy',
+                link: '/profile?tab=company-documents',
+            };
+            fd.append('announcementData', JSON.stringify(finalAnnouncement));
+        }
         if (form.visibilityType === 'Department') {
             selectedDepts.forEach(d => fd.append('targetDepartments', d));
         }
@@ -241,28 +297,84 @@ const UploadDocumentModal = ({ onClose, onSuccess }) => {
                         )}
                     </div>
 
-                    {/* Category + Acknowledgement */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Category</label>
-                            <div className="relative">
-                                <select
-                                    className={`${inputClass('category')} appearance-none pr-8 bg-white`}
-                                    value={form.category}
-                                    onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
-                                >
-                                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            </div>
+                    {/* Category Selection */}
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Category</label>
+                        <div className="relative">
+                            <select
+                                className={`${inputClass('category')} appearance-none pr-8 bg-white`}
+                                value={form.category}
+                                onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+                            >
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                         </div>
-                        <div className="flex flex-col justify-end">
-                            <label className="flex items-center gap-2.5 cursor-pointer rounded-xl border border-slate-200 bg-white p-3 hover:border-indigo-300 transition-colors">
-                                <div className={`h-5 w-5 flex items-center justify-center rounded-md border-2 transition-all
-                                    ${form.requiresAcknowledgement ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
+                    </div>
+
+                    {/* Publishing & Compliance Options */}
+                    <div className="space-y-2.5">
+                        <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                            Notification & Consent Options
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Notify & Create Announcement Card */}
+                            <div
+                                className={`flex flex-col justify-between rounded-2xl border p-3.5 transition-all
+                                    ${form.notifyUsers ? 'border-indigo-300 bg-indigo-50/40' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                            >
+                                <div className="flex items-start gap-3">
+                                    <div
+                                        onClick={() => handleToggleNotify(!form.notifyUsers)}
+                                        className={`mt-0.5 h-5 w-5 shrink-0 flex items-center justify-center rounded-md border-2 cursor-pointer transition-all
+                                            ${form.notifyUsers ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 bg-white'}`}
+                                    >
+                                        {form.notifyUsers && (
+                                            <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+                                                <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div
+                                            onClick={() => handleToggleNotify(!form.notifyUsers)}
+                                            className="flex items-center gap-1.5 text-xs font-bold text-slate-800 cursor-pointer"
+                                        >
+                                            <Megaphone size={13} className="text-indigo-600 shrink-0" />
+                                            <span>Notify & Create Announcement</span>
+                                        </div>
+                                        <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
+                                            Publish on company policy page & generate announcement in-app.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {form.notifyUsers && (
+                                    <div className="mt-2.5 pt-2 border-t border-indigo-100 flex items-center justify-between gap-2">
+                                        <div className="min-w-0 truncate text-[11px] font-medium text-indigo-900">
+                                            📢 {announcementForm.title || (form.title ? `New Policy: ${form.title}` : 'Configure announcement')}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAnnouncementDrawerOpen(true)}
+                                            className="shrink-0 px-2 py-0.5 text-[11px] font-bold text-indigo-700 bg-indigo-100 hover:bg-indigo-200 rounded-md transition"
+                                        >
+                                            Edit
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Require Consent Toggle */}
+                            <label
+                                className={`flex items-start gap-3 cursor-pointer rounded-2xl border p-3.5 transition-all select-none
+                                    ${form.requiresAcknowledgement ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                            >
+                                <div className={`mt-0.5 h-5 w-5 shrink-0 flex items-center justify-center rounded-md border-2 transition-all
+                                    ${form.requiresAcknowledgement ? 'bg-amber-600 border-amber-600 text-white' : 'border-slate-300 bg-white'}`}>
                                     {form.requiresAcknowledgement && (
                                         <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
-                                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                                         </svg>
                                     )}
                                 </div>
@@ -272,7 +384,15 @@ const UploadDocumentModal = ({ onClose, onSuccess }) => {
                                     checked={form.requiresAcknowledgement}
                                     onChange={e => setForm(p => ({ ...p, requiresAcknowledgement: e.target.checked }))}
                                 />
-                                <span className="text-xs font-semibold text-slate-700">Requires acknowledgement</span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                        <ShieldCheck size={13} className="text-amber-600 shrink-0" />
+                                        <span>Require Consent</span>
+                                    </div>
+                                    <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
+                                        Employees must read and check: "I accept all details".
+                                    </p>
+                                </div>
                             </label>
                         </div>
                     </div>
@@ -371,6 +491,23 @@ const UploadDocumentModal = ({ onClose, onSuccess }) => {
                     </button>
                 </div>
             </div>
+
+            <PolicyAnnouncementDrawer
+                open={announcementDrawerOpen}
+                form={announcementForm}
+                onChange={(patch) => {
+                    setHasCustomizedAnnouncement(true);
+                    setAnnouncementForm(p => ({ ...p, ...patch }));
+                }}
+                onClose={() => setAnnouncementDrawerOpen(false)}
+                onApply={() => {
+                    setHasCustomizedAnnouncement(true);
+                    setAnnouncementDrawerOpen(false);
+                    toast.success('Announcement configured!');
+                }}
+                fallbackUsers={allUsers}
+                fallbackDepts={allDepts}
+            />
         </div>
     );
 };

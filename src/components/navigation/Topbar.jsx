@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, User, Plus, Sun, Moon, Sunrise, Timer, Search, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Bell, Briefcase, Calendar, ChevronRight, Clock, FileText, Megaphone, Settings, Shield, ShieldCheck, User, Plus, Sun, Moon, Sunrise, Timer, Search, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { format, isPast, isToday } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -269,6 +269,45 @@ const Topbar = ({ toggleSidebar }) => {
                     duration: 6000,
                 });
             }
+
+            if (newNotif?.preferenceKey === 'ess_document.published' || newNotif?.metadata?.preferenceKey === 'ess_document.published') {
+                const toastId = toast.custom((toastInstance) => (
+                    <div
+                        className={`pointer-events-auto flex w-[380px] items-start gap-3 rounded-2xl border border-indigo-100 bg-white p-4 shadow-xl ring-1 ring-indigo-500/10 transition ${
+                            toastInstance.visible ? 'animate-enter' : 'animate-leave'
+                        }`}
+                    >
+                        <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                            <ShieldCheck size={20} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-900">{newNotif?.title || 'New Policy Published'}</div>
+                            <div className="mt-1 text-xs text-slate-500 line-clamp-2 leading-relaxed">{newNotif?.message || 'A new document has been published for your review.'}</div>
+                            <div className="mt-3 flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        toast.dismiss(toastId);
+                                        navigateRef.current((newNotif?.link && newNotif?.link !== '/ess/documents') ? newNotif.link : '/profile?tab=company-documents');
+                                    }}
+                                    className="rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                                >
+                                    Review & Accept
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => toast.dismiss(toastId)}
+                                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ), {
+                    duration: 8000,
+                });
+            }
         };
 
         const handleInterviewUpdate = () => {
@@ -354,6 +393,7 @@ const Topbar = ({ toggleSidebar }) => {
 
     const getIconForType = (type) => {
         switch (type) {
+            case 'Policy': return <ShieldCheck size={16} className="text-indigo-600" />;
             case 'Interview': return <Calendar size={16} className="text-indigo-600" />;
             case 'Approval': return <Clock size={16} className="text-amber-600" />;
             case 'Action': return <ChevronRight size={16} className="text-blue-600" />;
@@ -365,6 +405,7 @@ const Topbar = ({ toggleSidebar }) => {
 
     const getBgForType = (type) => {
         switch (type) {
+            case 'Policy': return 'bg-indigo-50';
             case 'Interview': return 'bg-indigo-50';
             case 'Approval': return 'bg-amber-50';
             case 'Action': return 'bg-blue-50';

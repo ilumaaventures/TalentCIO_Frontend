@@ -1,5 +1,5 @@
 import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from '@/components/navigation/Sidebar';
 import Topbar from '@/components/navigation/Topbar';
 import { Loader } from 'lucide-react';
@@ -21,6 +21,7 @@ import {
 } from '@/features/announcements/utils/announcementUtils';
 
 const Layout = () => {
+    const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [progress, setProgress] = useState(0);
     const [isNavigating, setIsNavigating] = useState(false);
@@ -203,11 +204,37 @@ const Layout = () => {
         const nextAckBuffer = [...announcementAckBuffer, String(currentAnnouncement._id)];
         storeAcknowledgedAnnouncementIds(user._id, [String(currentAnnouncement._id), ...nextAckBuffer]);
 
+        const isPolicyAnnouncement = Boolean(
+            currentAnnouncement.source === 'company_policy' ||
+            currentAnnouncement.link === '/profile?tab=company-documents' ||
+            currentAnnouncement.link === '/ess/documents' ||
+            currentAnnouncement.link?.includes('company-documents') ||
+            currentAnnouncement.category === 'Policy' ||
+            currentAnnouncement.documentId
+        );
+
+        const policyTargetUrl = (currentAnnouncement.link && currentAnnouncement.link !== '/ess/documents')
+            ? currentAnnouncement.link
+            : '/profile?tab=company-documents';
+
         if (announcementIndex >= unreadAnnouncements.length - 1) {
             setUnreadAnnouncements([]);
             setAnnouncementIndex(0);
             setAnnouncementConfirmed(false);
             setAnnouncementAckBuffer([]);
+
+            if (isPolicyAnnouncement) {
+                navigate(policyTargetUrl);
+            }
+            return;
+        }
+
+        if (isPolicyAnnouncement) {
+            setUnreadAnnouncements([]);
+            setAnnouncementIndex(0);
+            setAnnouncementConfirmed(false);
+            setAnnouncementAckBuffer([]);
+            navigate(policyTargetUrl);
             return;
         }
 
