@@ -27,6 +27,7 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Modal } from '../../components/ui/Modal';
 import { LeadConvertModal } from './LeadConvertModal';
+import { AddNewLeadModal } from './AddNewLeadModal';
 import { leadsService, activitiesService, followUpsService, tasksService } from '../../services/api';
 
 export const LeadDetailPage = ({ leadId, onBack, onNavigate }) => {
@@ -34,9 +35,25 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isLogActivityOpen, setIsLogActivityOpen] = useState(false);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await leadsService.deleteLead(leadId);
+      setIsDeleteModalOpen(false);
+      if (onBack) onBack();
+    } catch (err) {
+      alert(err.message || 'Failed to delete lead');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Quick activity log state
   const [activityForm, setActivityForm] = useState({
@@ -281,6 +298,25 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }) => {
               onClick={() => setIsTaskOpen(true)}
             >
               + Task
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              icon={Edit3}
+              onClick={() => setIsEditModalOpen(true)}
+            >
+              Edit Lead
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              icon={Trash2}
+              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+              onClick={() => setIsDeleteModalOpen(true)}
+            >
+              Delete Lead
             </Button>
 
             {!lead.isConverted && (
@@ -888,6 +924,68 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }) => {
             />
           </div>
         </form>
+      </Modal>
+
+      {/* Edit Lead Modal */}
+      <AddNewLeadModal
+        isOpen={isEditModalOpen}
+        leadToEdit={lead}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={() => fetchLeadDetails()}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          if (!isDeleting) setIsDeleteModalOpen(false);
+        }}
+        maxWidth="max-w-md"
+        title={
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Delete Lead</h2>
+              <p className="text-xs text-slate-500">This action cannot be undone.</p>
+            </div>
+          </div>
+        }
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteModalOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmDelete}
+              isLoading={isDeleting}
+              icon={Trash2}
+              className="bg-rose-600 hover:bg-rose-700 text-white shadow-xs"
+            >
+              Delete Lead
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 py-2 text-xs text-slate-600">
+          <p>
+            Are you sure you want to permanently delete lead{' '}
+            <strong className="text-slate-900">
+              {lead.fullName || `${lead.firstName} ${lead.lastName || ''}`.trim()}
+            </strong>
+            {lead.companyName ? ` (${lead.companyName})` : ''}?
+          </p>
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1 text-[11px] text-slate-500">
+            {lead.email && <div>Email: <span className="text-slate-700 font-medium">{lead.email}</span></div>}
+            {lead.phone && <div>Phone: <span className="text-slate-700 font-medium">{lead.phone}</span></div>}
+            <div>Status: <span className="text-slate-700 font-medium">{lead.status || 'New'}</span></div>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -24,6 +24,7 @@ import {
   Plus,
   X,
   MapPin,
+  Edit3,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -62,6 +63,7 @@ export const AddNewLeadModal = ({
   onClose,
   onSuccess,
   onViewLead,
+  leadToEdit = null,
 }) => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
@@ -185,6 +187,68 @@ export const AddNewLeadModal = ({
 
   const [formData, setFormData] = useState(initialFormState);
 
+  // Sync formData with leadToEdit or reset on open
+  useEffect(() => {
+    if (isOpen) {
+      if (leadToEdit) {
+        setFormData({
+          firstName: leadToEdit.firstName || '',
+          lastName: leadToEdit.lastName || '',
+          email: leadToEdit.email || '',
+          phone: leadToEdit.phone || '',
+          alternatePhone: leadToEdit.alternatePhone || '',
+          companyName: leadToEdit.companyName || '',
+          jobTitle: leadToEdit.jobTitle || '',
+          website: leadToEdit.website || '',
+          source: leadToEdit.source || 'Website',
+          priority: leadToEdit.priority || 'Medium',
+          status: leadToEdit.status || 'New',
+          temperature: leadToEdit.temperature || 'Cold',
+          estimatedValue: leadToEdit.estimatedValue != null ? String(leadToEdit.estimatedValue) : '',
+          expectedPurchaseDate: leadToEdit.expectedPurchaseDate
+            ? new Date(leadToEdit.expectedPurchaseDate).toISOString().split('T')[0]
+            : '',
+          budget: leadToEdit.budget || '',
+          requirements: leadToEdit.requirements || '',
+          preferredContactMethod: leadToEdit.preferredContactMethod || 'Phone',
+          street: leadToEdit.address?.street || '',
+          city: leadToEdit.address?.city || '',
+          state: leadToEdit.address?.state || '',
+          country: leadToEdit.address?.country || 'India',
+          postalCode: leadToEdit.address?.postalCode || '',
+          ownerId: leadToEdit.ownerId?._id || leadToEdit.ownerId || user?._id || '',
+          team: leadToEdit.team || 'Direct Enterprise',
+          territory: leadToEdit.territory || 'National',
+          tags: Array.isArray(leadToEdit.tags) ? leadToEdit.tags.join(', ') : (leadToEdit.tags || ''),
+          notes: leadToEdit.notes || '',
+        });
+        setIsManualTemperature(Boolean(leadToEdit.temperature));
+        if (
+          leadToEdit.address?.street ||
+          leadToEdit.address?.state ||
+          leadToEdit.address?.postalCode ||
+          leadToEdit.notes ||
+          leadToEdit.requirements ||
+          leadToEdit.budget ||
+          leadToEdit.alternatePhone ||
+          leadToEdit.website
+        ) {
+          setIsExpanded(true);
+        }
+      } else {
+        setFormData({
+          ...initialFormState,
+          ownerId: user?._id || '',
+        });
+        setIsManualTemperature(false);
+        setIsExpanded(false);
+      }
+      setDuplicateMatch(null);
+      setIgnoreDuplicateWarning(false);
+      setError(null);
+    }
+  }, [isOpen, leadToEdit]);
+
   // Fetch sales owners
   useEffect(() => {
     const fetchUsers = async () => {
@@ -192,7 +256,7 @@ export const AddNewLeadModal = ({
         const res = await adminService.getUsers();
         if (res.success) {
           setUsers(res.data);
-          if (!formData.ownerId && user?._id) {
+          if (!formData.ownerId && user?._id && !leadToEdit) {
             setFormData((prev) => ({ ...prev, ownerId: user._id }));
           }
         }
@@ -202,9 +266,6 @@ export const AddNewLeadModal = ({
     };
     if (isOpen) {
       fetchUsers();
-    } else {
-      setIsManualTemperature(false);
-      setError(null);
     }
   }, [isOpen, user]);
 
@@ -334,7 +395,8 @@ export const AddNewLeadModal = ({
         companyName: companyName?.trim(),
       });
       if (res.success && res.duplicates && res.duplicates.length > 0) {
-        setDuplicateMatch(res.duplicates[0]);
+        const filtered = res.duplicates.filter((d) => !leadToEdit?._id || String(d._id) !== String(leadToEdit._id));
+        setDuplicateMatch(filtered.length > 0 ? filtered[0] : null);
       } else {
         setDuplicateMatch(null);
       }
@@ -396,7 +458,10 @@ export const AddNewLeadModal = ({
           : formData.tags,
       };
 
-      const res = await leadsService.createLead(payload);
+      const res = leadToEdit?._id
+        ? await leadsService.updateLead(leadToEdit._id, payload)
+        : await leadsService.createLead(payload);
+
       if (res.success) {
         setFormData(initialFormState);
         setIsManualTemperature(false);
@@ -407,7 +472,7 @@ export const AddNewLeadModal = ({
         if (onSuccess) onSuccess(res.data);
       }
     } catch (err) {
-      setError(err.message || 'Failed to create lead');
+      setError(err.message || (leadToEdit ? 'Failed to update lead' : 'Failed to create lead'));
     } finally {
       setIsLoading(false);
     }
@@ -422,12 +487,16 @@ export const AddNewLeadModal = ({
         <div className="flex items-center justify-between w-full pr-6">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-              <Users className="w-5 h-5" />
+              {leadToEdit ? <Edit3 className="w-5 h-5" /> : <Users className="w-5 h-5" />}
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Add New Lead</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                {leadToEdit ? `Edit Lead: ${leadToEdit.fullName || `${leadToEdit.firstName} ${leadToEdit.lastName || ''}`.trim()}` : 'Add New Lead'}
+              </h2>
               <p className="text-xs text-slate-500">
-                Record a new prospect with automated scoring and duplicate detection.
+                {leadToEdit
+                  ? 'Update prospect contact details, qualification, and sales assignment.'
+                  : 'Record a new prospect with automated scoring and duplicate detection.'}
               </p>
             </div>
           </div>
@@ -500,7 +569,7 @@ export const AddNewLeadModal = ({
               icon={CheckCircle2}
               className="bg-indigo-600 hover:bg-indigo-700 shadow-sm"
             >
-              Create Lead
+              {leadToEdit ? 'Save Changes' : 'Create Lead'}
             </Button>
           </div>
         </div>
@@ -1088,3 +1157,5 @@ export const AddNewLeadModal = ({
     </Modal>
   );
 };
+
+export const EditLeadModal = AddNewLeadModal;
