@@ -74,6 +74,7 @@ const ApprovalQueue    = lazy(() => import('@/features/reimbursement/pages/Appro
 const CompanyDocuments = lazy(() => import('@/features/ess-documents/pages/CompanyDocuments'));
 const MyPayslips       = lazy(() => import('@/features/ess/pages/MyPayslips'));
 const TalentPage       = lazy(() => import('@/features/talent/TalentPage'));
+const CrmApp          = lazy(() => import('@/features/crm/pages/CrmApp'));
 
 // Client Portal Pages
 const ClientLogin = lazy(() => import('@/features/client-portal/pages/ClientLogin'));
@@ -114,7 +115,8 @@ import {
   DESIGNATION_ACCESS_PERMISSIONS,
   canAccessTAAnalytics,
   canAccessUsers,
-  canAccessOrgChart
+  canAccessOrgChart,
+  canAccessCrm
 } from '@/config/accessPolicies';
 
 import { Provider } from 'react-redux';
@@ -418,6 +420,18 @@ function App() {
                     <Route path="/talent" element={(
                       <ProtectedRoute requiredRoles={ADMIN_ROLES} allowAllPermissions redirectTo="/">
                         <TalentPage />
+                      </ProtectedRoute>
+                    )} />
+
+                    {/* Sales CRM Platform */}
+                    <Route path="/crm/*" element={(
+                      <ProtectedRoute check={canAccessCrm} redirectTo="/">
+                        <CrmApp />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/crm" element={(
+                      <ProtectedRoute check={canAccessCrm} redirectTo="/">
+                        <CrmApp />
                       </ProtectedRoute>
                     )} />
 

@@ -77,3 +77,18 @@ export const canAccessOrgChart = (user) => (
     || hasAnyPermission(user, ORG_CHART_VIEW_PERMISSIONS)
     || Boolean(user)
 );
+
+export const CRM_ACCESS_PERMISSIONS = [
+    'crm.view',
+    'crm.leads.read',
+    'crm.deals.read',
+    'crm.analytics.read',
+    'crm.admin'
+];
+
+export const canAccessCrm = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, CRM_ACCESS_PERMISSIONS)
+    || (Array.isArray(user?.permissions) && user.permissions.some((p) => typeof p === 'string' && p.startsWith('crm.')))
+);
+

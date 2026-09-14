@@ -14,6 +14,7 @@ import UserTADashboard from '@/features/talent-acquisition/pages/UserTADashboard
 import Timesheet from '@/features/timesheet/pages/Timesheet';
 import EmployeeDossier from '@/features/employee-dossier/pages/EmployeeDossier';
 import RevisedDetailsTab from '@/features/employee-dossier/components/RevisedDetailsTab';
+import SalesPerformanceTab from '@/features/employee-dossier/components/SalesPerformanceTab';
 import { restoreBinItem } from '@/features/recycle-bin/api/bin';
 import { buildMasterSalaryStructure, PT_STATE_LIST, getMonthlyPT, createDefaultSalaryData } from '@/features/payroll/utils/payroll';
 import CompensationFormSection from '@/features/payroll/components/compensation/CompensationFormSection';
@@ -93,8 +94,17 @@ const EmployeeProfile = () => {
     const hasAttendance = enabledModules.includes('attendance');
     const hasTimesheet = enabledModules.includes('timesheet');
     const hasDossier = enabledModules.includes('employeeDossier');
+    const hasCrm = !enabledModules.length || enabledModules.includes('crm');
     const isSelfProfile = currentUser?._id && profile?.user && (String(currentUser._id) === String(profile.user._id || profile.user));
     const isAuthorizedForTA = (currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read')) && hasTA;
+    const isAuthorizedForCrm = hasCrm && (
+        currentUser?.roles?.includes('Admin') ||
+        currentUser?.hasAllPermissions ||
+        currentUser?.permissions?.includes('*') ||
+        currentUser?.permissions?.includes('crm.view') ||
+        currentUser?.permissions?.includes('crm.manage') ||
+        isSelfProfile
+    );
     const isAuthorizedForEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('user.update');
     const canViewRevisions = Boolean(
         hasDossier && (
@@ -760,6 +770,15 @@ const EmployeeProfile = () => {
                             <Activity size={16} /> TA Analytics
                         </button>
                     )}
+
+                    {isAuthorizedForCrm && (
+                        <button
+                            onClick={() => setActiveTab('sales-performance')}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'sales-performance' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                        >
+                            <TrendingUp size={16} /> Sales Performance
+                        </button>
+                    )}
                 </div>
 
                 {/* Main Content Area */}
@@ -1225,6 +1244,16 @@ const EmployeeProfile = () => {
                     {activeTab === 'ta-analytics' && isAuthorizedForTA && (
                         <div className="w-full">
                             <UserTADashboard providedUserName={`${profile.firstName} ${profile.lastName}`} />
+                        </div>
+                    )}
+
+                    {/* SALES PERFORMANCE TAB */}
+                    {activeTab === 'sales-performance' && isAuthorizedForCrm && (
+                        <div className="w-full">
+                            <SalesPerformanceTab
+                                userId={profile._id || profile.user?._id || profile.user}
+                                userName={`${profile.firstName || ''} ${profile.lastName || ''}`.trim()}
+                            />
                         </div>
                     )}
 
