@@ -425,12 +425,12 @@ function App() {
 
                     {/* Sales CRM Platform */}
                     <Route path="/crm/*" element={(
-                      <ProtectedRoute check={canAccessCrm} redirectTo="/">
+                      <ProtectedRoute moduleName="crm" check={canAccessCrm} redirectTo="/">
                         <CrmApp />
                       </ProtectedRoute>
                     )} />
                     <Route path="/crm" element={(
-                      <ProtectedRoute check={canAccessCrm} redirectTo="/">
+                      <ProtectedRoute moduleName="crm" check={canAccessCrm} redirectTo="/">
                         <CrmApp />
                       </ProtectedRoute>
                     )} />

@@ -1,3 +1,5 @@
+import { hasModuleEnabled } from './enabledModules';
+
 export const ADMIN_ROLES = ['Admin', 'Super Admin', 'System Admin'];
 
 export const ATTENDANCE_SETTINGS_PERMISSIONS = ['user.update'];
@@ -87,8 +89,10 @@ export const CRM_ACCESS_PERMISSIONS = [
 ];
 
 export const canAccessCrm = (user) => (
-    isAdminUser(user)
-    || hasAnyPermission(user, CRM_ACCESS_PERMISSIONS)
-    || (Array.isArray(user?.permissions) && user.permissions.some((p) => typeof p === 'string' && p.startsWith('crm.')))
+    hasModuleEnabled(user?.company?.enabledModules || [], 'crm') && (
+        isAdminUser(user)
+        || hasAnyPermission(user, CRM_ACCESS_PERMISSIONS)
+        || (Array.isArray(user?.permissions) && user.permissions.some((p) => typeof p === 'string' && p.startsWith('crm.')))
+    )
 );
 

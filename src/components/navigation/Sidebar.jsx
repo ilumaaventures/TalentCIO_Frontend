@@ -260,11 +260,13 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*')
   );
   const showProjects = hasModule('projects');
-  const showCrm = isAdmin
+  const showCrm = hasModule('crm') && (
+    isAdmin
     || user?.permissions?.includes('crm.view')
     || user?.permissions?.includes('crm.admin')
     || user?.permissions?.includes('*')
-    || user?.permissions?.some((p) => typeof p === 'string' && p.startsWith('crm.'));
+    || user?.permissions?.some((p) => typeof p === 'string' && p.startsWith('crm.'))
+  );
   const showOrgChart = hasModule('organization') && Boolean(user);
   const showOrgStructureSection = showOrgChart;
   const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || showEss || canAccessTA || showCrm;

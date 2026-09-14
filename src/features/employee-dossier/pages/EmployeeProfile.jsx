@@ -94,7 +94,7 @@ const EmployeeProfile = () => {
     const hasAttendance = enabledModules.includes('attendance');
     const hasTimesheet = enabledModules.includes('timesheet');
     const hasDossier = enabledModules.includes('employeeDossier');
-    const hasCrm = !enabledModules.length || enabledModules.includes('crm');
+    const hasCrm = enabledModules.includes('crm');
     const isSelfProfile = currentUser?._id && profile?.user && (String(currentUser._id) === String(profile.user._id || profile.user));
     const isAuthorizedForTA = (currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read')) && hasTA;
     const isAuthorizedForCrm = hasCrm && (
