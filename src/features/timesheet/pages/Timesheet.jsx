@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import api from '@/lib/apiClient';
-import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText, Paperclip, Trash2, Upload, Loader2, Eye } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Save, Send, Clock, Download, FileText, Paperclip, Trash2, Upload, Loader2, Eye, Search, ChevronDown, Check, X } from 'lucide-react';
 import Skeleton from '@/components/ui/Skeleton';
 import { format, startOfISOWeek, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -156,6 +156,11 @@ const isFullyRejectedTimesheet = (timesheet) =>
     (timesheet.entries || []).length > 0 &&
     timesheet.entries.every(entry => entry.status === 'REJECTED');
 
+const isDiscussionCompleted = (discussion) => {
+    const status = (discussion?.status || '').toLowerCase().trim();
+    return status === 'mark as complete' || status === 'completed' || status === 'complete';
+};
+
 const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false }) => {
     const { user, hasModule, isDossierComplete, dossierMissingSections, dossierMissingFields } = useAuth();
     const [showDossierModal, setShowDossierModal] = useState(false);
@@ -175,10 +180,48 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
     const [viewDiscussionModal, setViewDiscussionModal] = useState(null);
 
+    // Searchable User Picker state
+    const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+    const [userSearchTerm, setUserSearchTerm] = useState('');
+    const userDropdownRef = useRef(null);
+
     // Identification for Manager/Admin View
     const targetUserId = propUserId || routeState.userId;
     const targetUserName = propUserName || routeState.name;
     const effectiveUserId = targetUserId || user?._id;
+
+    // Filter inactive users so only active users appear
+    const activeUsersList = useMemo(() => {
+        return (usersList || []).filter(u => u.isActive !== false);
+    }, [usersList]);
+
+    const filteredUsersList = useMemo(() => {
+        if (!userSearchTerm.trim()) return activeUsersList;
+        const term = userSearchTerm.toLowerCase().trim();
+        return activeUsersList.filter(u => {
+            const fullName = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+            const code = (u.employeeCode || '').toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            return fullName.includes(term) || code.includes(term) || email.includes(term);
+        });
+    }, [activeUsersList, userSearchTerm]);
+
+    const selectedUser = useMemo(() => {
+        if (!targetUserId) return null;
+        return activeUsersList.find(u => String(u._id) === String(targetUserId)) || null;
+    }, [activeUsersList, targetUserId]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+                setUserDropdownOpen(false);
+            }
+        };
+        if (userDropdownOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [userDropdownOpen]);
 
     const lastFetchKeyRef = useRef('');
     const timesheetRef = useRef(null);
@@ -740,8 +783,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [editProjectId, setEditProjectId] = useState('');
     const [editModuleId, setEditModuleId] = useState('');
     const [editTaskId, setEditTaskId] = useState('');
+    const [editDiscussionId, setEditDiscussionId] = useState('');
     const [editFilteredModules, setEditFilteredModules] = useState([]);
     const [editFilteredTasks, setEditFilteredTasks] = useState([]);
+    const [editFilteredDiscussions, setEditFilteredDiscussions] = useState([]);
 
     const resolvedSelectedUserAttendanceMode = (
         viewUser?.attendanceMode === 'present_only'
@@ -837,17 +882,24 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             const pid = entry.project?._id || entry.project;
             const mid = entry.module?._id || entry.module;
             const tid = entry.task?._id || entry.task;
+            const did = entry.discussion?._id || entry.discussion;
 
             setEditProjectId(pid || '');
             setEditModuleId(mid || '');
             setEditTaskId(tid || '');
+            setEditDiscussionId(did || '');
 
             // Fetch dependent dropdowns
             if (pid) {
-                api.get(`/projects/${pid}/modules`, { params: { userId: effectiveUserId } }).then(res => setEditFilteredModules(res.data));
+                api.get(`/projects/${pid}/modules`, { params: { userId: effectiveUserId } }).then(res => setEditFilteredModules(res.data || []));
+                api.get('/discussions', { params: { project: pid, limit: 100, userId: effectiveUserId, excludeCompleted: true } })
+                    .then(res => {
+                        const list = res.data?.discussions || res.data || [];
+                        setEditFilteredDiscussions(list.filter(d => !isDiscussionCompleted(d)));
+                    });
             }
             if (mid) {
-                api.get(`/projects/tasks`, { params: { moduleId: mid, userId: effectiveUserId } }).then(res => setEditFilteredTasks(res.data));
+                api.get(`/projects/tasks`, { params: { moduleId: mid, userId: effectiveUserId } }).then(res => setEditFilteredTasks(res.data || []));
             }
         }
     };
@@ -856,12 +908,19 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         setEditProjectId(projectId);
         setEditModuleId('');
         setEditTaskId('');
+        setEditDiscussionId('');
         setEditFilteredModules([]);
         setEditFilteredTasks([]);
+        setEditFilteredDiscussions([]);
         if (projectId) {
             try {
-                const res = await api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } });
-                setEditFilteredModules(res.data);
+                const [modulesRes, discussionsRes] = await Promise.all([
+                    api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } }),
+                    api.get('/discussions', { params: { project: projectId, limit: 100, userId: effectiveUserId, excludeCompleted: true } })
+                ]);
+                setEditFilteredModules(modulesRes.data || []);
+                const list = discussionsRes.data?.discussions || discussionsRes.data || [];
+                setEditFilteredDiscussions(list.filter(d => !isDiscussionCompleted(d)));
             } catch (error) { console.error(error); }
         }
     };
@@ -1001,7 +1060,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                     // Send hierarchy updates
                     projectId: editProjectId,
                     moduleId: editModuleId,
-                    taskId: editTaskId
+                    taskId: editTaskId,
+                    discussionId: editDiscussionId || undefined
                 })).data;
                 toast.success('Entry updated');
             }
@@ -1269,10 +1329,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         try {
             const [modulesRes, discussionsRes] = await Promise.all([
                 api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } }),
-                api.get('/discussions', { params: { project: projectId, limit: 100 } })
+                api.get('/discussions', { params: { project: projectId, limit: 100, userId: effectiveUserId, excludeCompleted: true } })
             ]);
             setFilteredModules(modulesRes.data || []);
-            setFilteredDiscussions(discussionsRes.data?.discussions || discussionsRes.data || []);
+            const list = discussionsRes.data?.discussions || discussionsRes.data || [];
+            setFilteredDiscussions(list.filter(d => !isDiscussionCompleted(d)));
         } catch (error) {
             console.error("Failed to fetch modules or discussions", error);
         }
@@ -1448,20 +1509,28 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
     };
 
-    const handleUserChange = (e) => {
-        const selectedId = e.target.value;
-        if (!selectedId) {
+    const handleSelectUser = (selectedUserObj) => {
+        setSelectedCell(null);
+        setEntryToEdit(null);
+        setIsAddingEntry(false);
+        setUserDropdownOpen(false);
+        setUserSearchTerm('');
+
+        if (!selectedUserObj) {
             updateRouteContext({ userId: '', name: '' });
             return;
         }
 
-        const selectedUser = usersList.find(u => u._id === selectedId);
-        if (selectedUser) {
-            updateRouteContext({
-                userId: selectedId,
-                name: `${selectedUser.firstName} ${selectedUser.lastName}`
-            });
-        }
+        updateRouteContext({
+            userId: selectedUserObj._id,
+            name: `${selectedUserObj.firstName || ''} ${selectedUserObj.lastName || ''}`.trim()
+        });
+    };
+
+    const handleUserChange = (e) => {
+        const selectedId = e.target.value;
+        const found = activeUsersList.find(u => u._id === selectedId) || null;
+        handleSelectUser(found);
     };
 
     useEffect(() => {
@@ -1876,25 +1945,100 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                         )}
 
                         {/* User Picker — visible to Admin, Manager, or timesheet.view permission */}
-                        {!isEmbedded && (canViewTimesheets || user?.roles?.includes('Manager')) && usersList.length > 0 && (
+                        {!isEmbedded && (canViewTimesheets || user?.roles?.includes('Manager')) && activeUsersList.length > 0 && (
                             <div className="flex flex-wrap items-center space-x-2 w-full sm:w-auto justify-between sm:justify-start">
                                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Viewing:</label>
-                                <select
-                                    onChange={handleUserChange}
-                                    value={targetUserId || ''}
-                                    className="text-xs sm:text-sm border border-slate-200 rounded-lg px-2.5 sm:px-3 py-1.5 bg-white text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-400 outline-none flex-1 sm:flex-initial min-w-[140px]"
-                                >
-                                    <option value="">— Select User —</option>
-                                    {usersList.map(u => (
-                                        <option key={u._id} value={u._id}>
-                                            {u.firstName} {u.lastName}
-                                        </option>
-                                    ))}
-                                </select>
+
+                                <div className="relative flex-1 sm:flex-initial" ref={userDropdownRef}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setUserDropdownOpen(prev => !prev)}
+                                        className="w-full sm:w-64 flex items-center justify-between text-xs sm:text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 shadow-sm hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all text-left"
+                                    >
+                                        <span className={`truncate font-medium ${selectedUser ? 'text-slate-800' : 'text-slate-500'}`}>
+                                            {selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName || ''}`.trim() : '— Select User —'}
+                                        </span>
+                                        <ChevronDown size={14} className={`text-slate-400 transition-transform ml-2 flex-shrink-0 ${userDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {userDropdownOpen && (
+                                        <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-full sm:w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-[70] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                            <div className="p-2 border-b border-slate-100 bg-slate-50/75">
+                                                <div className="relative">
+                                                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search user by name..."
+                                                        value={userSearchTerm}
+                                                        onChange={(e) => setUserSearchTerm(e.target.value)}
+                                                        className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-700 placeholder-slate-400 transition-all"
+                                                        autoFocus
+                                                    />
+                                                    {userSearchTerm && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setUserSearchTerm('')}
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="max-h-60 overflow-y-auto py-1 divide-y divide-slate-50">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSelectUser(null)}
+                                                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center justify-between transition-colors ${!targetUserId ? 'bg-blue-50/70 text-blue-700 font-semibold' : 'text-slate-600'}`}
+                                                >
+                                                    <span>— Select User (Self) —</span>
+                                                    {!targetUserId && <Check size={13} className="text-blue-600" />}
+                                                </button>
+
+                                                {filteredUsersList.length === 0 ? (
+                                                    <div className="px-3 py-4 text-center text-xs text-slate-400 italic">
+                                                        No active users found
+                                                    </div>
+                                                ) : (
+                                                    filteredUsersList.map(u => {
+                                                        const isSelected = String(u._id) === String(targetUserId);
+                                                        return (
+                                                            <button
+                                                                key={u._id}
+                                                                type="button"
+                                                                onClick={() => handleSelectUser(u)}
+                                                                className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center justify-between transition-colors ${isSelected ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'}`}
+                                                            >
+                                                                <div className="truncate pr-2">
+                                                                    <div className="truncate font-medium">{u.firstName} {u.lastName || ''}</div>
+                                                                    {(u.employeeCode || u.email) && (
+                                                                        <div className="text-[10px] text-slate-400 truncate">
+                                                                            {u.employeeCode ? `${u.employeeCode} • ` : ''}{u.email}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                {isSelected && <Check size={13} className="text-blue-600 flex-shrink-0 ml-1.5" />}
+                                                            </button>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
                                 {targetUserId && (
                                     <button
-                                        onClick={() => updateRouteContext({ userId: '', name: '' })}
-                                        className="text-xs text-blue-600 hover:underline font-medium"
+                                        onClick={() => {
+                                            setSelectedCell(null);
+                                            setEntryToEdit(null);
+                                            setIsAddingEntry(false);
+                                            setUserDropdownOpen(false);
+                                            setUserSearchTerm('');
+                                            updateRouteContext({ userId: '', name: '' });
+                                        }}
+                                        className="text-xs text-blue-600 hover:underline font-medium ml-1"
                                     >
                                         View Own
                                     </button>
@@ -2576,7 +2720,20 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     <Button
                                                         onClick={() => {
                                                             setIsAddingEntry(true);
-                                                            setNewEntry(prev => ({ ...prev, date: getLocalDateInputValue(selectedCell.date) }));
+                                                            const defaultProjectId = (selectedCell?.project?._id && availableProjects.some(p => String(p._id) === String(selectedCell.project._id)))
+                                                                ? selectedCell.project._id
+                                                                : '';
+                                                            setNewEntry(prev => ({
+                                                                ...prev,
+                                                                date: getLocalDateInputValue(selectedCell.date),
+                                                                projectId: defaultProjectId,
+                                                                moduleId: '',
+                                                                taskId: '',
+                                                                discussionId: ''
+                                                            }));
+                                                            if (defaultProjectId) {
+                                                                handleProjectChange(defaultProjectId);
+                                                            }
                                                         }}
                                                         variant="ghost"
                                                         className="w-full flex items-center justify-center space-x-2 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium text-sm h-auto"
@@ -2653,7 +2810,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Discussion</option>
-                                                                    {filteredDiscussions.map(d => (
+                                                                    {filteredDiscussions.filter(d => !isDiscussionCompleted(d)).map(d => (
                                                                         <option key={d._id} value={d._id}>
                                                                             {d.discussion ? (d.discussion.length > 50 ? `${d.discussion.substring(0, 50)}...` : d.discussion) : (d.title || 'Discussion')}
                                                                         </option>
@@ -2773,7 +2930,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 // INLINE EDIT FORM
                                                 <div className="bg-white border border-blue-200 rounded-lg p-3 shadow-sm animate-in fade-in zoom-in-95 duration-150">
                                                     <div className="flex flex-col gap-3 mb-3">
-                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                                                             <div>
                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project</label>
                                                                 <select
@@ -2783,6 +2940,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
                                                                     <option value="">Select Project</option>
+                                                                    {editProjectId && !availableProjects.some(p => String(p._id) === String(editProjectId)) && (
+                                                                        <option key={editProjectId} value={editProjectId}>
+                                                                            {entryToEdit?.project?.name || 'Current Project'}
+                                                                        </option>
+                                                                    )}
                                                                     {availableProjects.map(p => (
                                                                         <option key={p._id} value={p._id}>{p.name}</option>
                                                                     ))}
@@ -2813,6 +2975,27 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                      <option value="">{editFilteredTasks.length === 0 ? 'No Tasks (Direct Project Log)' : 'Select Task (Optional)'}</option>
                                                                      {editFilteredTasks.map(t => (
                                                                          <option key={t._id} value={t._id}>{t.name}</option>
+                                                                     ))}
+                                                                 </select>
+                                                             </div>
+                                                             <div>
+                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Discussion</label>
+                                                                 <select
+                                                                     value={editDiscussionId}
+                                                                     onChange={(e) => setEditDiscussionId(e.target.value)}
+                                                                     disabled={isSaving || isDeleting || !editProjectId}
+                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                                 >
+                                                                     <option value="">Select Discussion (Optional)</option>
+                                                                     {editDiscussionId && !editFilteredDiscussions.some(d => String(d._id) === String(editDiscussionId)) && (
+                                                                         <option key={editDiscussionId} value={editDiscussionId}>
+                                                                             {entryToEdit?.discussion?.discussion || entryToEdit?.discussion?.title || 'Current Discussion'}
+                                                                         </option>
+                                                                     )}
+                                                                     {editFilteredDiscussions.filter(d => !isDiscussionCompleted(d) || String(d._id) === String(editDiscussionId)).map(d => (
+                                                                         <option key={d._id} value={d._id}>
+                                                                             {d.discussion ? (d.discussion.length > 40 ? `${d.discussion.substring(0, 40)}...` : d.discussion) : (d.title || 'Discussion')}
+                                                                         </option>
                                                                      ))}
                                                                  </select>
                                                              </div>
