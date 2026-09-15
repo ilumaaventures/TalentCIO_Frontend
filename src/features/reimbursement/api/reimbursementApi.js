@@ -13,6 +13,9 @@ export const getClaimById = (id) =>
 export const submitClaim = (formData) =>
     api.post(BASE, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
+export const updateClaim = (id, formData) =>
+    api.put(`${BASE}/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+
 export const cancelClaim = (id) =>
     api.patch(`${BASE}/${id}/cancel`);
 

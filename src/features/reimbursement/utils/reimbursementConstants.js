@@ -54,6 +54,9 @@ export const getStatusStyle = (status) =>
 /** Returns true if a claim can still be cancelled by the employee */
 export const isCancellable = (status) => status === 'Pending';
 
+/** Returns true if a claim can be edited by the employee (before approval) */
+export const isEditable = (status) => status === 'Pending';
+
 /** Returns true if a claim can be actioned (approved/rejected) by an approver */
 export const isActionable = (status) => ['Pending', 'L1 Approved', 'L2 Approved'].includes(status);
 
