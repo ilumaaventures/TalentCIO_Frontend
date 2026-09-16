@@ -1228,7 +1228,7 @@ const HiringRequestDetails = () => {
                 )}
 
                 {activeTab === 'public applications' && (
-                    <PublicApplicationsView hiringRequestId={id} />
+                    <PublicApplicationsView hiringRequestId={id} hiringRequest={request} />
                 )}
 
                 {activeTab === 'legacy applications' && request.previousRequestId && (

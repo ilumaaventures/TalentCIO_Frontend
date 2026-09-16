@@ -71,7 +71,62 @@ const MetricCard = ({ label, val, icon, color, onClick }) => {
     );
 };
 
-const getApplicantProfile = (application) => {
+export const resolveApplicationPosition = (application, fallbackRequisition = null) => {
+    const desired = String(application?.desiredPosition || '').trim();
+    if (desired && desired.toLowerCase() !== 'unlisted position' && desired.toLowerCase() !== 'unlisted') {
+        return desired;
+    }
+
+    const reqTitle = String(
+        application?.hiringRequestId?.roleDetails?.title ||
+        application?.hiringRequestId?.roleDetails?.jobTitle ||
+        ''
+    ).trim();
+    if (reqTitle) {
+        return reqTitle;
+    }
+
+    const publicJobTitle = String(application?.hiringRequestId?.publicJobTitle || '').trim();
+    if (publicJobTitle) {
+        return publicJobTitle;
+    }
+
+    const fallbackTitle = String(
+        fallbackRequisition?.roleDetails?.title ||
+        fallbackRequisition?.positionName ||
+        fallbackRequisition?.roleDetails?.jobTitle ||
+        ''
+    ).trim();
+    if (fallbackTitle) {
+        return fallbackTitle;
+    }
+
+    const headline = String(
+        application?.profileSnapshot?.headline ||
+        application?.applicantId?.headline ||
+        ''
+    ).trim();
+    if (headline) {
+        return headline.replace(/\s+Candidate$/i, '').trim();
+    }
+
+    const expJobTitle = String(
+        application?.profileSnapshot?.workExperience?.[0]?.jobTitle ||
+        application?.applicantId?.workExperience?.[0]?.jobTitle ||
+        ''
+    ).trim();
+    if (expJobTitle) {
+        return expJobTitle;
+    }
+
+    if (desired) {
+        return desired;
+    }
+
+    return 'General Application';
+};
+
+const getApplicantProfile = (application, fallbackRequisition = null) => {
     const rawProfile = (application?.profileSnapshot && typeof application.profileSnapshot === 'object' && Object.keys(application.profileSnapshot).length > 0)
         ? application.profileSnapshot
         : (application?.applicantId && typeof application.applicantId === 'object')
@@ -101,10 +156,10 @@ const getApplicantProfile = (application) => {
         workExperience: (rawProfile.workExperience && rawProfile.workExperience.length > 0)
             ? rawProfile.workExperience
             : (application?.currentCompany ? [{
-                jobTitle: application?.desiredPosition || 'Position Requested',
+                jobTitle: resolveApplicationPosition(application, fallbackRequisition),
                 companyName: application?.currentCompany,
                 isCurrent: true,
-                description: application?.coverNote || `Applied for position: ${application?.desiredPosition || 'Unlisted Position'}`
+                description: application?.coverNote || `Applied for position: ${resolveApplicationPosition(application, fallbackRequisition)}`
             }] : [])
     };
 };
@@ -168,10 +223,10 @@ const ProfileSection = ({ title, icon: Icon, children }) => (
     </section>
 );
 
-export const ProfileReviewModal = ({ application, onClose }) => {
+export const ProfileReviewModal = ({ application, onClose, hiringRequest = null }) => {
     if (!application) return null;
 
-    const profile = getApplicantProfile(application);
+    const profile = getApplicantProfile(application, hiringRequest);
     const fullName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || application.candidateName;
     const skills = Array.isArray(profile.skills)
         ? profile.skills.map((skill) => (typeof skill === 'string' ? { name: skill } : skill)).filter((skill) => skill?.name)
@@ -248,9 +303,9 @@ export const ProfileReviewModal = ({ application, onClose }) => {
                                         <tr className="hover:bg-purple-50/40">
                                             <td className="p-3 font-bold text-slate-900">Position Requested</td>
                                             <td className="p-3 text-slate-600">{application.lastApplicationData.desiredPosition || 'Not specified'}</td>
-                                            <td className="p-3 font-bold text-purple-900">{application.desiredPosition || 'Not specified'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{resolveApplicationPosition(application, hiringRequest) || 'Not specified'}</td>
                                             <td className="p-3 text-center">
-                                                {application.lastApplicationData.desiredPosition !== application.desiredPosition ? (
+                                                {application.lastApplicationData.desiredPosition !== resolveApplicationPosition(application, hiringRequest) ? (
                                                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">CHANGED</span>
                                                 ) : (
                                                     <span className="text-[10px] text-slate-400">SAME</span>
@@ -430,6 +485,7 @@ export const ProfileReviewModal = ({ application, onClose }) => {
                         <div className="space-y-6">
                             <ProfileSection title="Application" icon={FileText}>
                                 <div className="space-y-3">
+                                    <InfoItem label="Position Requested" value={resolveApplicationPosition(application, hiringRequest)} icon={Briefcase} />
                                     <InfoItem label="Applied On" value={submittedAt ? format(new Date(submittedAt), 'MMM dd, yyyy') : undefined} />
                                     <InfoItem label="Review Status" value={reviewStatus} />
                                     <InfoItem label="Current Company" value={application.currentCompany || profile.currentCompany || undefined} />
@@ -539,7 +595,7 @@ export const ProfileReviewModal = ({ application, onClose }) => {
     );
 };
 
-const PublicApplicationsView = ({ hiringRequestId }) => {
+const PublicApplicationsView = ({ hiringRequestId, hiringRequest = null }) => {
     const { user } = useAuth();
     const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -624,8 +680,10 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
 
         if (searchQuery) {
             const query = searchQuery.toLowerCase();
+            const positionText = resolveApplicationPosition(application, hiringRequest).toLowerCase();
             return (
                 application.candidateName?.toLowerCase().includes(query) ||
+                positionText.includes(query) ||
                 application.desiredPosition?.toLowerCase().includes(query) ||
                 application.email?.toLowerCase().includes(query) ||
                 application.mobile?.includes(query)
@@ -852,10 +910,10 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="text-[12px] font-bold text-slate-800">
-                                                {application.desiredPosition || application.hiringRequestId?.roleDetails?.title || 'Unlisted Position'}
+                                                {resolveApplicationPosition(application, hiringRequest)}
                                             </div>
-                                            {application.hiringRequestId?.client && (
-                                                <div className="text-[10px] text-slate-400">Client: {application.hiringRequestId.client}</div>
+                                            {(application.hiringRequestId?.client || hiringRequest?.client) && (
+                                                <div className="text-[10px] text-slate-400">Client: {application.hiringRequestId?.client || hiringRequest?.client}</div>
                                             )}
                                         </td>
                                         <td className="px-4 py-3">
@@ -1034,6 +1092,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
             {profileTarget && (
                 <ProfileReviewModal
                     application={profileTarget}
+                    hiringRequest={hiringRequest}
                     onClose={() => setProfileTarget(null)}
                 />
             )}
