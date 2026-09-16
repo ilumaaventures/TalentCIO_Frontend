@@ -105,3 +105,15 @@ export const clearAuthSession = ({ preserveTenant = false, userId = '' } = {}) =
   removeMatchingSessionKeys(userId);
 };
 
+export const markManualLogout = () => {
+  sessionStorage.setItem('talentcio_manual_logout', '1');
+};
+
+export const consumeManualLogout = () => {
+  const isManual = sessionStorage.getItem('talentcio_manual_logout') === '1';
+  if (isManual) {
+    sessionStorage.removeItem('talentcio_manual_logout');
+  }
+  return isManual;
+};
+

@@ -13,7 +13,8 @@ const SystemRoute = ({ children }) => {
     const hasAllAccess = hasSystemRole || hasAdminPermission || user?.hasAllPermissions || hasDashboardPermission;
 
     if (!hasAllAccess) {
-        return <Navigate to="/attendance" replace />;
+        const showEss = user?.company?.enabledModules ? user.company.enabledModules.includes('mySpace') : true;
+        return <Navigate to={showEss ? "/ess" : "/attendance"} replace />;
     }
 
     return children;

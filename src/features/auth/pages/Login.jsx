@@ -178,7 +178,30 @@ const Login = () => {
       }
 
       toast.success("Welcome back!", { id: LOGIN_TOAST_ID });
-      const returnUrl = location.state?.from || '/';
+      const userObj = data?.user || data;
+      const roles = Array.isArray(userObj?.roles) ? userObj.roles : [];
+      const permissions = Array.isArray(userObj?.permissions) ? userObj.permissions : [];
+      const hasAdminPermission = permissions.some(p => p === '*' || p === 'all' || p === 'admin');
+      const hasSystemRole = roles.some(r => {
+        const name = typeof r === 'string' ? r : r?.name;
+        return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem === true;
+      });
+      const hasDashboardPermission = permissions.includes('dashboard.view');
+      const hasDashboardAccess = Boolean(hasSystemRole || hasAdminPermission || userObj?.hasAllPermissions || hasDashboardPermission);
+
+      let defaultLanding = '/';
+      if (!hasDashboardAccess) {
+        const enabledMods = userObj?.company?.enabledModules;
+        const showEss = enabledMods ? enabledMods.includes('mySpace') : true;
+        defaultLanding = showEss ? '/ess' : '/attendance';
+      }
+
+      // Non-dashboard users must ALWAYS be redirected directly to the ESS page (/ess) after login,
+      // regardless of which page they were on before logging out.
+      const returnUrl = !hasDashboardAccess
+        ? defaultLanding
+        : (location.state?.from && location.state.from !== '/' ? location.state.from : defaultLanding);
+
       navigate(returnUrl, { replace: true });
     } catch (error) {
       const message = error.response?.data?.message

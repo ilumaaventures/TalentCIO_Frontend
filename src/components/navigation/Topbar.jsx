@@ -141,10 +141,10 @@ const Topbar = ({ toggleSidebar }) => {
     const location = useLocation();
     const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
     const hasTalentAcquisition = hasModule('talentAcquisition');
-    const hasDashboardAccess = user?.roles?.some((role) => role === 'Admin' || role?.name === 'Admin') || user?.hasAllPermissions;
     const isAdmin = user?.roles?.some((role) => ['Admin', 'Super Admin', 'System Admin'].includes(role?.name || role))
         || user?.hasAllPermissions
         || user?.permissions?.includes('*');
+    const hasDashboardAccess = isAdmin || user?.permissions?.includes('dashboard.view');
     const canUseCrmAi = isAdmin || user?.permissions?.includes('crm.ai.use') || user?.permissions?.includes('crm.admin');
     const canCreateCrm = isAdmin || ['crm.leads.create', 'crm.deals.create', 'crm.tasks.manage', 'crm.contacts.manage', 'crm.accounts.manage', 'crm.admin'].some(p => user?.permissions?.includes(p));
     const homeRoute = hasDashboardAccess ? '/' : (hasModule('mySpace') ? '/ess' : (hasModule('attendance') ? '/attendance' : '/'));
