@@ -452,8 +452,10 @@ function App() {
                     {/* ESS — Employee Self Service / My Space */}
                     <Route element={<ProtectedRoute moduleName="mySpace" redirectTo="/" />}>
                       <Route path="/ess" element={<EssDashboard />} />
-                      <Route path="/ess/payslips" element={<MyPayslips />} />
-                      <Route path="/payslips" element={<MyPayslips />} />
+                      <Route element={<ProtectedRoute requiredPermissions={['payroll.payslip.view']} redirectTo="/ess" />}>
+                        <Route path="/ess/payslips" element={<MyPayslips />} />
+                        <Route path="/payslips" element={<MyPayslips />} />
+                      </Route>
                       <Route element={<ProtectedRoute moduleName="reimbursements" redirectTo="/ess" />}>
                         <Route path="/ess/reimbursements" element={<MyClaims />} />
                         <Route path="/ess/reimbursements/approvals" element={<ApprovalQueue />} />

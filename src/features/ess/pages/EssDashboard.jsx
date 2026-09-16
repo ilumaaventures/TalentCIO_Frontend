@@ -915,10 +915,15 @@ const EssDashboard = () => {
     const { user, hasModule } = useAuth();
     const [showSubmitClaim, setShowSubmitClaim] = useState(false);
 
+    const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role?.name || role))
+        || user?.hasAllPermissions
+        || user?.permissions?.includes('*');
+
     const showAttendance    = hasModule('attendance');
     const showTimesheet     = hasModule('timesheet') || user?.company?.enabledModules?.includes('timesheet');
     const showLeave         = hasModule('leaves');
     const showReimburse     = hasModule('reimbursements');
+    const showPayslip       = isAdmin || user?.permissions?.includes('payroll.payslip.view');
     const showAnnouncements = hasModule('announcements') || user?.company?.enabledModules?.includes('announcements');
     const showHelpdesk      = hasModule('helpdesk');
     const showHolidays      = hasModule('holidays');
@@ -932,7 +937,7 @@ const EssDashboard = () => {
                     {showTimesheet      && <TimesheetTile />}
                     {showLeave          && <LeaveTile />}
                     {showReimburse      && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
-                    <PayslipTile />
+                    {showPayslip        && <PayslipTile />}
                     {showAnnouncements  && <AnnouncementsTile />}
                     {showHelpdesk       && <HelpdeskTile />}
                     {showHolidays       && <HolidaysTile />}
