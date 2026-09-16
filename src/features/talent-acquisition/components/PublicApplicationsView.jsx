@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import {
     ArrowRight,
     Award,
     Briefcase,
+    Check,
     CheckCircle,
     Clock,
     Eye,
@@ -71,7 +72,62 @@ const MetricCard = ({ label, val, icon, color, onClick }) => {
     );
 };
 
-const getApplicantProfile = (application) => {
+export const resolveApplicationPosition = (application, fallbackRequisition = null) => {
+    const desired = String(application?.desiredPosition || '').trim();
+    if (desired && desired.toLowerCase() !== 'unlisted position' && desired.toLowerCase() !== 'unlisted') {
+        return desired;
+    }
+
+    const reqTitle = String(
+        application?.hiringRequestId?.roleDetails?.title ||
+        application?.hiringRequestId?.roleDetails?.jobTitle ||
+        ''
+    ).trim();
+    if (reqTitle) {
+        return reqTitle;
+    }
+
+    const publicJobTitle = String(application?.hiringRequestId?.publicJobTitle || '').trim();
+    if (publicJobTitle) {
+        return publicJobTitle;
+    }
+
+    const fallbackTitle = String(
+        fallbackRequisition?.roleDetails?.title ||
+        fallbackRequisition?.positionName ||
+        fallbackRequisition?.roleDetails?.jobTitle ||
+        ''
+    ).trim();
+    if (fallbackTitle) {
+        return fallbackTitle;
+    }
+
+    const headline = String(
+        application?.profileSnapshot?.headline ||
+        application?.applicantId?.headline ||
+        ''
+    ).trim();
+    if (headline) {
+        return headline.replace(/\s+Candidate$/i, '').trim();
+    }
+
+    const expJobTitle = String(
+        application?.profileSnapshot?.workExperience?.[0]?.jobTitle ||
+        application?.applicantId?.workExperience?.[0]?.jobTitle ||
+        ''
+    ).trim();
+    if (expJobTitle) {
+        return expJobTitle;
+    }
+
+    if (desired) {
+        return desired;
+    }
+
+    return 'General Application';
+};
+
+const getApplicantProfile = (application, fallbackRequisition = null) => {
     const rawProfile = (application?.profileSnapshot && typeof application.profileSnapshot === 'object' && Object.keys(application.profileSnapshot).length > 0)
         ? application.profileSnapshot
         : (application?.applicantId && typeof application.applicantId === 'object')
@@ -101,10 +157,10 @@ const getApplicantProfile = (application) => {
         workExperience: (rawProfile.workExperience && rawProfile.workExperience.length > 0)
             ? rawProfile.workExperience
             : (application?.currentCompany ? [{
-                jobTitle: application?.desiredPosition || 'Position Requested',
+                jobTitle: resolveApplicationPosition(application, fallbackRequisition),
                 companyName: application?.currentCompany,
                 isCurrent: true,
-                description: application?.coverNote || `Applied for position: ${application?.desiredPosition || 'Unlisted Position'}`
+                description: application?.coverNote || `Applied for position: ${resolveApplicationPosition(application, fallbackRequisition)}`
             }] : [])
     };
 };
@@ -168,10 +224,10 @@ const ProfileSection = ({ title, icon: Icon, children }) => (
     </section>
 );
 
-export const ProfileReviewModal = ({ application, onClose }) => {
+export const ProfileReviewModal = ({ application, onClose, hiringRequest = null }) => {
     if (!application) return null;
 
-    const profile = getApplicantProfile(application);
+    const profile = getApplicantProfile(application, hiringRequest);
     const fullName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || application.candidateName;
     const skills = Array.isArray(profile.skills)
         ? profile.skills.map((skill) => (typeof skill === 'string' ? { name: skill } : skill)).filter((skill) => skill?.name)
@@ -248,9 +304,9 @@ export const ProfileReviewModal = ({ application, onClose }) => {
                                         <tr className="hover:bg-purple-50/40">
                                             <td className="p-3 font-bold text-slate-900">Position Requested</td>
                                             <td className="p-3 text-slate-600">{application.lastApplicationData.desiredPosition || 'Not specified'}</td>
-                                            <td className="p-3 font-bold text-purple-900">{application.desiredPosition || 'Not specified'}</td>
+                                            <td className="p-3 font-bold text-purple-900">{resolveApplicationPosition(application, hiringRequest) || 'Not specified'}</td>
                                             <td className="p-3 text-center">
-                                                {application.lastApplicationData.desiredPosition !== application.desiredPosition ? (
+                                                {application.lastApplicationData.desiredPosition !== resolveApplicationPosition(application, hiringRequest) ? (
                                                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">CHANGED</span>
                                                 ) : (
                                                     <span className="text-[10px] text-slate-400">SAME</span>
@@ -430,6 +486,7 @@ export const ProfileReviewModal = ({ application, onClose }) => {
                         <div className="space-y-6">
                             <ProfileSection title="Application" icon={FileText}>
                                 <div className="space-y-3">
+                                    <InfoItem label="Position Requested" value={resolveApplicationPosition(application, hiringRequest)} icon={Briefcase} />
                                     <InfoItem label="Applied On" value={submittedAt ? format(new Date(submittedAt), 'MMM dd, yyyy') : undefined} />
                                     <InfoItem label="Review Status" value={reviewStatus} />
                                     <InfoItem label="Current Company" value={application.currentCompany || profile.currentCompany || undefined} />
@@ -539,7 +596,7 @@ export const ProfileReviewModal = ({ application, onClose }) => {
     );
 };
 
-const PublicApplicationsView = ({ hiringRequestId }) => {
+const PublicApplicationsView = ({ hiringRequestId, hiringRequest = null }) => {
     const { user } = useAuth();
     const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -551,6 +608,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
     const [transferTarget, setTransferTarget] = useState(null);
     const [activeRequests, setActiveRequests] = useState([]);
     const [selectedTargetId, setSelectedTargetId] = useState(hiringRequestId);
+    const [transferSearch, setTransferSearch] = useState('');
     const [profileTarget, setProfileTarget] = useState(null);
 
     const isAdmin = user?.roles?.includes('Admin');
@@ -585,8 +643,13 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
 
     const fetchActiveRequests = useCallback(async () => {
         try {
-            const res = await api.get('/ta/hiring-request?status=Approved');
-            setActiveRequests(res.data?.requests || res.data || []);
+            const res = await api.get('/ta/hiring-request?status=Approved&page=1&limit=500');
+            const rawList = res.data?.requests || res.data || [];
+            const activeOnly = rawList.filter((request) => {
+                const status = String(request.status || '').trim().toLowerCase();
+                return (status === 'approved' || status === 'active') && status !== 'closed';
+            });
+            setActiveRequests(activeOnly);
         } catch (error) {
             console.error('Failed to fetch active requests', error);
         }
@@ -596,6 +659,22 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
         fetchApplications();
         fetchActiveRequests();
     }, [fetchApplications, fetchActiveRequests]);
+
+    useEffect(() => {
+        if (!selectedTargetId && activeRequests.length > 0) {
+            setSelectedTargetId(activeRequests[0]._id);
+        }
+    }, [activeRequests, selectedTargetId]);
+
+    const filteredActiveRequests = useMemo(() => {
+        const query = transferSearch.trim().toLowerCase();
+        if (!query) return activeRequests;
+        return activeRequests.filter((request) => {
+            const title = String(request.roleDetails?.title || request.positionName || '').toLowerCase();
+            const client = String(request.client || '').toLowerCase();
+            return title.includes(query) || client.includes(query);
+        });
+    }, [activeRequests, transferSearch]);
 
     const metrics = {
         total: applications.length,
@@ -624,8 +703,10 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
 
         if (searchQuery) {
             const query = searchQuery.toLowerCase();
+            const positionText = resolveApplicationPosition(application, hiringRequest).toLowerCase();
             return (
                 application.candidateName?.toLowerCase().includes(query) ||
+                positionText.includes(query) ||
                 application.desiredPosition?.toLowerCase().includes(query) ||
                 application.email?.toLowerCase().includes(query) ||
                 application.mobile?.includes(query)
@@ -679,12 +760,16 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
 
     const openTransferModal = (application) => {
         setActiveMenu(null);
-        setSelectedTargetId(hiringRequestId || application.hiringRequestId?._id || '');
+        setTransferSearch('');
+        const initialTargetId = hiringRequestId || (typeof application.hiringRequestId === 'string' ? application.hiringRequestId : application.hiringRequestId?._id);
+        const existsInActive = activeRequests.some((req) => String(req._id) === String(initialTargetId));
+        setSelectedTargetId(existsInActive ? String(initialTargetId) : (activeRequests[0]?._id || ''));
         setTransferTarget({ appId: application._id, appName: application.candidateName });
     };
 
     const handleTransfer = async () => {
-        if (!transferTarget) {
+        if (!transferTarget || !selectedTargetId) {
+            toast.error('Please select an active target requisition');
             return;
         }
 
@@ -697,6 +782,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
             await api.post(endpoint, { targetHiringRequestId: selectedTargetId });
             toast.success(`${transferTarget.appName} transferred to active request successfully.`);
             setTransferTarget(null);
+            setTransferSearch('');
             fetchApplications();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Transfer failed');
@@ -852,10 +938,10 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="text-[12px] font-bold text-slate-800">
-                                                {application.desiredPosition || application.hiringRequestId?.roleDetails?.title || 'Unlisted Position'}
+                                                {resolveApplicationPosition(application, hiringRequest)}
                                             </div>
-                                            {application.hiringRequestId?.client && (
-                                                <div className="text-[10px] text-slate-400">Client: {application.hiringRequestId.client}</div>
+                                            {(application.hiringRequestId?.client || hiringRequest?.client) && (
+                                                <div className="text-[10px] text-slate-400">Client: {application.hiringRequestId?.client || hiringRequest?.client}</div>
                                             )}
                                         </td>
                                         <td className="px-4 py-3">
@@ -990,29 +1076,99 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
             {transferTarget && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm px-4">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
-                        <h3 className="text-lg font-bold text-slate-800 mb-1">Transfer Applicant</h3>
-                        <p className="text-sm text-slate-500 mb-5">
+                        <div className="flex items-start justify-between gap-3 mb-1">
+                            <h3 className="text-lg font-bold text-slate-800">Transfer Applicant</h3>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setTransferTarget(null);
+                                    setTransferSearch('');
+                                }}
+                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <p className="text-sm text-slate-500 mb-4">
                             Transfer <strong>{transferTarget.appName}</strong> to an active hiring request as a new candidate.
                         </p>
 
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Select Target Request</label>
-                        <select
-                            value={selectedTargetId}
-                            onChange={(event) => setSelectedTargetId(event.target.value)}
-                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all mb-6"
-                        >
-                            {activeRequests.map((request) => (
-                                <option key={request._id} value={request._id}>
-                                    {request.roleDetails?.title} - {request.client} ({request.requestId})
-                                    {request._id === hiringRequestId ? ' (This Request)' : ''}
-                                </option>
-                            ))}
-                        </select>
+                        <div className="mb-5">
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">
+                                Select Target Request
+                            </label>
+
+                            {/* Search bar */}
+                            <div className="relative mb-2">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={transferSearch}
+                                    onChange={(e) => setTransferSearch(e.target.value)}
+                                    placeholder="Search by requisition name or client name..."
+                                    className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    autoFocus
+                                />
+                                {transferSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTransferSearch('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Active Requisitions list - only requisition name and client name */}
+                            <div className="max-h-56 overflow-y-auto space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/50 p-1.5">
+                                {filteredActiveRequests.length === 0 ? (
+                                    <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                                        {activeRequests.length === 0
+                                            ? 'No active requisitions available.'
+                                            : `No active requisitions match "${transferSearch}"`}
+                                    </div>
+                                ) : (
+                                    filteredActiveRequests.map((request) => {
+                                        const isSelected = selectedTargetId === request._id;
+                                        const reqTitle = request.roleDetails?.title || request.positionName || 'Untitled Requisition';
+                                        const clientName = request.client || 'Direct Client';
+                                        return (
+                                            <div
+                                                key={request._id}
+                                                onClick={() => setSelectedTargetId(request._id)}
+                                                className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border text-left ${
+                                                    isSelected
+                                                        ? 'bg-blue-50/90 border-blue-400/80 shadow-xs'
+                                                        : 'bg-white border-slate-200/80 hover:bg-slate-100/70 hover:border-slate-300'
+                                                }`}
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <div className={`text-xs font-bold truncate ${isSelected ? 'text-blue-950' : 'text-slate-800'}`}>
+                                                        {reqTitle}
+                                                    </div>
+                                                    <div className={`text-[11px] truncate mt-0.5 ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-500'}`}>
+                                                        {clientName}
+                                                    </div>
+                                                </div>
+                                                <div className="shrink-0 flex items-center">
+                                                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                                                        isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'
+                                                    }`}>
+                                                        {isSelected && <Check size={10} strokeWidth={3} />}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
 
                         <div className="flex gap-3">
                             <button
                                 onClick={handleTransfer}
-                                disabled={actionLoading === transferTarget.appId}
+                                disabled={!selectedTargetId || actionLoading === transferTarget.appId}
                                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-bold transition-all shadow-md"
                             >
                                 {actionLoading === transferTarget.appId
@@ -1021,7 +1177,10 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
                                 }
                             </button>
                             <button
-                                onClick={() => setTransferTarget(null)}
+                                onClick={() => {
+                                    setTransferTarget(null);
+                                    setTransferSearch('');
+                                }}
                                 className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all"
                             >
                                 Cancel
@@ -1034,6 +1193,7 @@ const PublicApplicationsView = ({ hiringRequestId }) => {
             {profileTarget && (
                 <ProfileReviewModal
                     application={profileTarget}
+                    hiringRequest={hiringRequest}
                     onClose={() => setProfileTarget(null)}
                 />
             )}

@@ -1213,9 +1213,10 @@ const canShowApplicationsTab = (user) => {
                                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
                                         {/* Table Header */}
                                         <div className="hidden sm:grid sm:grid-cols-12 border-b border-slate-200 bg-slate-50/90 px-4 py-2.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-500">
-                                            <div className="sm:col-span-5">Requisition Name</div>
+                                            <div className="sm:col-span-4">Requisition Name</div>
+                                            <div className="sm:col-span-2">Client Name</div>
                                             <div className="sm:col-span-2 text-center">Total Sourced Candidates</div>
-                                            <div className="sm:col-span-3 text-center">RG Public Profiles</div>
+                                            <div className="sm:col-span-2 text-center">RG Public Profiles</div>
                                             <div className="sm:col-span-2 text-right">Public Profiles</div>
                                         </div>
 
@@ -1234,13 +1235,21 @@ const canShowApplicationsTab = (user) => {
                                                     className="group flex flex-col sm:grid sm:grid-cols-12 sm:items-center px-4 py-3 hover:bg-blue-50/40 cursor-pointer transition-colors"
                                                 >
                                                     {/* Requisition Name */}
-                                                    <div className="sm:col-span-5 flex items-center gap-2 min-w-0">
+                                                    <div className="sm:col-span-4 flex items-center gap-2 min-w-0">
                                                         <BriefcaseBusiness size={14} className="text-blue-600 shrink-0" />
                                                         <span 
                                                             className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate" 
                                                             title={pos.title + (pos.desiredPositions?.length ? ` (${pos.desiredPositions.join(', ')})` : '')}
                                                         >
                                                             {pos.title}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Client Name */}
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-start mt-1.5 sm:mt-0 text-xs min-w-0">
+                                                        <span className="text-[11px] text-slate-500 sm:hidden font-medium">Client Name:</span>
+                                                        <span className="truncate text-slate-700 font-medium" title={pos.client || '-'}>
+                                                            {pos.client || '-'}
                                                         </span>
                                                     </div>
 
@@ -1257,7 +1266,7 @@ const canShowApplicationsTab = (user) => {
                                                     </div>
 
                                                     {/* RG Public Profiles on that Requisition */}
-                                                    <div className="sm:col-span-3 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
                                                         {pos.isResourceGatewayPublic ? (
                                                             <>
                                                                 <span className="text-[11px] text-slate-500 sm:hidden font-medium">RG Public Profiles:</span>
@@ -1401,9 +1410,10 @@ const canShowApplicationsTab = (user) => {
                                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
                                         {/* Table Header (Sticky) */}
                                         <div className="sticky top-0 z-10 hidden sm:grid sm:grid-cols-12 border-b border-slate-200 bg-slate-100/95 px-4 py-2.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-600 backdrop-blur-xs">
-                                            <div className="sm:col-span-5">Requisition Name</div>
+                                            <div className="sm:col-span-4">Requisition Name</div>
+                                            <div className="sm:col-span-2">Client Name</div>
                                             <div className="sm:col-span-2 text-center">Total Sourced Candidates</div>
-                                            <div className="sm:col-span-3 text-center">RG Public Profiles</div>
+                                            <div className="sm:col-span-2 text-center">RG Public Profiles</div>
                                             <div className="sm:col-span-2 text-right">Public Profiles</div>
                                         </div>
 
@@ -1424,13 +1434,21 @@ const canShowApplicationsTab = (user) => {
                                                     title="Click to open public applications for this requisition"
                                                 >
                                                     {/* Requisition Name */}
-                                                    <div className="sm:col-span-5 flex items-center gap-2 min-w-0">
+                                                    <div className="sm:col-span-4 flex items-center gap-2 min-w-0">
                                                         <BriefcaseBusiness size={14} className="text-blue-600 shrink-0 group-hover:scale-110 transition-transform" />
                                                         <span 
                                                             className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate" 
                                                             title={pos.title + (pos.desiredPositions?.length ? ` (${pos.desiredPositions.join(', ')})` : '')}
                                                         >
                                                             {pos.title}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Client Name */}
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-start mt-1.5 sm:mt-0 text-xs min-w-0">
+                                                        <span className="text-[11px] text-slate-500 sm:hidden font-medium">Client Name:</span>
+                                                        <span className="truncate text-slate-700 font-medium" title={pos.client || '-'}>
+                                                            {pos.client || '-'}
                                                         </span>
                                                     </div>
 
@@ -1447,7 +1465,7 @@ const canShowApplicationsTab = (user) => {
                                                     </div>
 
                                                     {/* RG Public Profiles */}
-                                                    <div className="sm:col-span-3 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
+                                                    <div className="sm:col-span-2 flex items-center justify-between sm:justify-center mt-1.5 sm:mt-0 text-xs">
                                                         {pos.isResourceGatewayPublic ? (
                                                             <>
                                                                 <span className="text-[11px] text-slate-500 sm:hidden font-medium">RG Public Profiles:</span>
