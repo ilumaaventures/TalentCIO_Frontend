@@ -185,6 +185,19 @@ const Sidebar = ({ isOpen, onClose }) => {
       : (requestedTATab || (canViewTAAnalytics ? 'overview' : 'requisitions'));
   const isTalentAcquisitionRoute = location.pathname === '/ta' || location.pathname.startsWith('/ta/');
   const isCrmRoute = location.pathname === '/crm' || location.pathname.startsWith('/crm/');
+  const isMySpaceRoute = location.pathname.startsWith('/ess')
+    || location.pathname === '/attendance'
+    || location.pathname.startsWith('/attendance/')
+    || location.pathname === '/leaves'
+    || location.pathname.startsWith('/leaves/')
+    || location.pathname === '/timesheet'
+    || location.pathname.startsWith('/timesheet/')
+    || location.pathname === '/holidays'
+    || location.pathname.startsWith('/holidays/')
+    || location.pathname === '/helpdesk'
+    || location.pathname.startsWith('/helpdesk/')
+    || location.pathname === '/announcements'
+    || location.pathname.startsWith('/announcements/');
   const requestedCrmTab = new URLSearchParams(location.search).get('tab');
   const currentCrmTab = requestedCrmTab || 'dashboard';
   const isCustomAppRoute = isTalentAcquisitionRoute || isCrmRoute;
@@ -269,7 +282,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   );
   const showOrgChart = hasModule('organization') && Boolean(user);
   const showOrgStructureSection = showOrgChart;
-  const showMainSection = showDashboard || showAttendance || showLeaves || showHolidays || showTimesheet || showMeetings || showHelpDesk || showEss || canAccessTA || showCrm;
+  const showMainSection = showDashboard || showEss || showMeetings || canAccessTA || showCrm;
   const showOrganizationSection = showEmployees || showTalent || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = isAdmin
@@ -285,7 +298,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('payroll.config.manage')
     || user?.permissions?.includes('payroll.salary.view')
     || user?.permissions?.includes('*');
-  const homeRoute = showDashboard ? '/' : (showAttendance ? '/attendance' : '/');
+  const homeRoute = showDashboard ? '/' : (showEss ? '/ess' : (showAttendance ? '/attendance' : '/'));
   const sectionLabelClass = isCustomAppRoute
     ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-100/55'
     : 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]';
@@ -551,34 +564,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <span>Dashboard</span>
                 </Link>
               )}
-              {showAttendance && (
-                <Link to="/attendance" className={getSidebarLinkClass(location.pathname === '/attendance')} onClick={onClose}>
-                  <Clock size={18} />
-                  <span>Attendance</span>
-                </Link>
-              )}
-              {user?.company?.enabledModules?.includes('announcements') && (
-                <Link to="/announcements" className={getSidebarLinkClass(location.pathname === '/announcements')} onClick={onClose}>
-                  <Megaphone size={18} />
-                  <span>Announcements</span>
-                </Link>
-              )}
-              {showLeaves && (
-                <Link to="/leaves" className={getSidebarLinkClass(location.pathname === '/leaves')} onClick={onClose}>
-                  <FileText size={18} />
-                  <span>Leaves</span>
-                </Link>
-              )}
-              {showTimesheet && (
-                <Link to="/timesheet" className={getSidebarLinkClass(location.pathname === '/timesheet')} onClick={onClose}>
-                  <Calendar size={18} />
-                  <span>Timesheet</span>
-                </Link>
-              )}
-              {showHolidays && (
-                <Link to="/holidays" className={getSidebarLinkClass(location.pathname === '/holidays')} onClick={onClose}>
-                  <CalendarDays size={18} />
-                  <span>Holidays</span>
+              {showEss && (
+                <Link to="/ess" className={getSidebarLinkClass(isMySpaceRoute)} onClick={onClose}>
+                  <LayoutGrid size={18} />
+                  <span>My Space</span>
                 </Link>
               )}
               {showMeetings && (
@@ -589,18 +578,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 >
                   <ClipboardList size={18} />
                   <span>Meetings</span>
-                </Link>
-              )}
-              {showHelpDesk && (
-                <Link to="/helpdesk" className={getSidebarLinkClass(location.pathname === '/helpdesk')} onClick={onClose}>
-                  <LifeBuoy size={18} />
-                  <span>Help Desk</span>
-                </Link>
-              )}
-              {showEss && (
-                <Link to="/ess" className={getSidebarLinkClass(location.pathname.startsWith('/ess'))} onClick={onClose}>
-                  <LayoutGrid size={18} />
-                  <span>My Space</span>
                 </Link>
               )}
 

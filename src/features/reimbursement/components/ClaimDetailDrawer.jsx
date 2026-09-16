@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
     X, Download, ExternalLink, CheckCircle2, XCircle, Clock,
     FileText, Image as ImageIcon, MessageSquare, Loader, CreditCard,
-    ReceiptText, ChevronRight, User, Check, ShieldCheck, Printer
+    ReceiptText, ChevronRight, User, Check, ShieldCheck, Printer, Edit3
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { getClaimById, actionClaim, cancelClaim, markReimbursed } from '../api/reimbursementApi';
-import { getStatusStyle, isActionable, isCancellable, formatINR } from '../utils/reimbursementConstants';
+import { getStatusStyle, isActionable, isCancellable, isEditable, formatINR } from '../utils/reimbursementConstants';
+import SubmitClaimModal from './SubmitClaimModal';
 
 // ─── Vertical stepper step ─────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ const ClaimDetailDrawer = ({ claimId, onClose, onRefresh, isApprover = false, is
     const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
     const [payNote, setPayNote] = useState('');
     const [acting, setActing]   = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -332,6 +334,16 @@ const ClaimDetailDrawer = ({ claimId, onClose, onRefresh, isApprover = false, is
                                     </button>
                                 )}
 
+                                {String(claim?.employee?._id || claim?.employee) === String(user?._id) && isEditable(claim.status) && (
+                                    <button
+                                        onClick={() => setShowEditModal(true)}
+                                        className="rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-bold text-blue-600 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Edit3 size={14} />
+                                        Edit Claim
+                                    </button>
+                                )}
+
                                 {String(claim?.employee?._id || claim?.employee) === String(user?._id) && isCancellable(claim.status) && (
                                     <button
                                         onClick={() => setActionModal('cancel')}
@@ -425,6 +437,18 @@ const ClaimDetailDrawer = ({ claimId, onClose, onRefresh, isApprover = false, is
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* Edit Claim Modal */}
+                {showEditModal && claim && (
+                    <SubmitClaimModal
+                        claimToEdit={claim}
+                        onClose={() => setShowEditModal(false)}
+                        onSuccess={() => {
+                            load();
+                            onRefresh?.();
+                        }}
+                    />
                 )}
             </div>
         </div>

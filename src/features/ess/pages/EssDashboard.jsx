@@ -4,7 +4,8 @@ import {
     Calendar, Clock, ReceiptText, LifeBuoy,
     CalendarDays, CheckCircle2,
     ChevronRight, Loader, LogOut,
-    Banknote, Eye, EyeOff, Plus, ArrowRight
+    Banknote, Eye, EyeOff, Plus, ArrowRight,
+    Briefcase, AlertCircle, Megaphone, Pin
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -38,17 +39,29 @@ const PremiumCard = ({ children, className = '', to, onClick, hoverable = true }
     return <div className={baseClasses}>{children}</div>;
 };
 
-const CardHeader = ({ icon: Icon, title, iconGradient = 'from-blue-600 to-indigo-600', badge, action }) => (
+const CardHeader = ({ icon: Icon, title, iconGradient = 'from-blue-600 to-indigo-600', badge, action, to }) => (
     <div className="flex items-center justify-between gap-1.5 mb-3">
-        <div className="flex items-center gap-2">
-            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
-                <Icon size={14} />
+        {to ? (
+            <Link to={to} className="flex items-center gap-2 group/header hover:opacity-85 transition-opacity">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
+                    <Icon size={14} />
+                </div>
+                <div>
+                    <h3 className="text-xs font-bold text-slate-800 tracking-tight leading-none group-hover/header:text-indigo-600 transition-colors">{title}</h3>
+                    {badge && <div className="mt-0.5">{badge}</div>}
+                </div>
+            </Link>
+        ) : (
+            <div className="flex items-center gap-2">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
+                    <Icon size={14} />
+                </div>
+                <div>
+                    <h3 className="text-xs font-bold text-slate-800 tracking-tight leading-none">{title}</h3>
+                    {badge && <div className="mt-0.5">{badge}</div>}
+                </div>
             </div>
-            <div>
-                <h3 className="text-xs font-bold text-slate-800 tracking-tight leading-none">{title}</h3>
-                {badge && <div className="mt-0.5">{badge}</div>}
-            </div>
-        </div>
+        )}
         {action}
     </div>
 );
@@ -158,6 +171,7 @@ const AttendanceTile = () => {
             <CardHeader
                 icon={Clock}
                 title="Shift & Attendance"
+                to="/attendance"
                 iconGradient="from-amber-500 to-orange-600"
                 action={<CardActionLink to="/attendance" label="Details" />}
             />
@@ -235,10 +249,167 @@ const AttendanceTile = () => {
                         )}
 
                         {isClockedOut && (
-                            <div className="flex items-center justify-center gap-1.5 rounded-xl bg-purple-50 border border-purple-100 py-1.5 text-xs font-bold text-purple-700">
+                            <Link
+                                to="/attendance"
+                                className="flex items-center justify-center gap-1.5 rounded-xl bg-purple-50 hover:bg-purple-100/80 border border-purple-100 py-1.5 text-xs font-bold text-purple-700 transition-colors cursor-pointer"
+                            >
                                 <CheckCircle2 size={13} className="text-purple-600" />
-                                Shift Completed
+                                Shift Completed • View Log →
+                            </Link>
+                        )}
+                    </div>
+                </div>
+            )}
+        </PremiumCard>
+    );
+};
+
+// ─── Timesheet Tile ────────────────────────────────────────────────────────────
+
+const TimesheetTile = () => {
+    const [timesheet, setTimesheet] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    const fetchTimesheet = useCallback(() => {
+        api.get('/timesheet/current')
+            .then(r => setTimesheet(r.data))
+            .catch(() => {})
+            .finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => {
+        fetchTimesheet();
+    }, [fetchTimesheet]);
+
+    const entries = timesheet?.entries || [];
+    const totalHours = entries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const todayHours = entries
+        .filter(e => {
+            if (!e.date) return false;
+            try {
+                return e.date.startsWith(todayStr) || format(new Date(e.date), 'yyyy-MM-dd') === todayStr;
+            } catch {
+                return false;
+            }
+        })
+        .reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+
+    const rawStatus = (timesheet?.status || 'DRAFT').toUpperCase();
+    const isApproved  = rawStatus === 'APPROVED';
+    const isPending   = rawStatus === 'PENDING' || rawStatus === 'SUBMITTED';
+    const isRejected  = rawStatus === 'REJECTED';
+    const isDraft     = !isApproved && !isPending && !isRejected;
+
+    const statusConfig = isApproved
+        ? { label: 'Approved', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200', dotClass: 'bg-emerald-500' }
+        : isPending
+        ? { label: 'Pending Approval', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200', dotClass: 'bg-amber-500 animate-pulse' }
+        : isRejected
+        ? { label: 'Rejected', badgeClass: 'bg-rose-50 text-rose-600 border-rose-200', dotClass: 'bg-rose-400' }
+        : { label: 'Draft', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200', dotClass: 'bg-blue-500' };
+
+    let periodLabel = format(new Date(), 'MMMM yyyy');
+    if (timesheet?.month && typeof timesheet.month === 'string' && timesheet.month.includes('-')) {
+        try {
+            const [y, m] = timesheet.month.split('-');
+            const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+            if (!isNaN(d.getTime())) periodLabel = format(d, 'MMMM yyyy');
+        } catch (_err) {
+            // Fallback to current date formatting
+        }
+    }
+
+    return (
+        <PremiumCard to="/timesheet">
+            <CardHeader
+                icon={Briefcase}
+                title="Timesheet"
+                iconGradient="from-blue-600 to-indigo-600"
+                action={<CardActionLink to="/timesheet" label="Details" />}
+            />
+
+            {loading ? (
+                <LoadingSkeleton />
+            ) : (
+                <div className="space-y-2.5">
+                    {/* Period and Status pill */}
+                    <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-100 p-1.5 px-2.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <Calendar size={12} className="text-blue-600 shrink-0" />
+                            <span className="text-[11px] font-bold text-slate-700 truncate">
+                                {periodLabel}
+                            </span>
+                        </div>
+                        <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold border shrink-0 ${statusConfig.badgeClass}`}
+                        >
+                            <span className={`h-1.5 w-1.5 rounded-full ${statusConfig.dotClass}`} />
+                            {statusConfig.label}
+                        </span>
+                    </div>
+
+                    {/* Hours Summary Metrics */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-1.5 text-center">
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">Period Total</span>
+                            <span className="text-xs font-bold text-slate-800 mt-0.5 block">
+                                {totalHours > 0 ? `${totalHours.toFixed(1)} hrs` : '0.0 hrs'}
+                            </span>
+                        </div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-1.5 text-center">
+                            <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">Logged Today</span>
+                            <span className="text-xs font-bold text-slate-800 mt-0.5 block">
+                                {todayHours > 0 ? `${todayHours.toFixed(1)} hrs` : '0.0 hrs'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Rejection Alert if applicable */}
+                    {isRejected && (
+                        <div className="rounded-xl bg-rose-50 border border-rose-100 p-1.5 px-2 text-[10px] text-rose-700 flex items-start gap-1">
+                            <AlertCircle size={12} className="shrink-0 mt-0.5 text-rose-600" />
+                            <span className="line-clamp-1 font-medium">
+                                {timesheet?.rejectionReason ? `Reason: ${timesheet.rejectionReason}` : 'Requires revision'}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Action Call to Action */}
+                    <div>
+                        {isDraft && (
+                            <Link
+                                to="/timesheet"
+                                className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-2 text-xs font-bold text-white shadow-xs hover:from-blue-700 hover:to-indigo-700 transition-all cursor-pointer"
+                            >
+                                <Plus size={12} /> Log Working Hours
+                            </Link>
+                        )}
+
+                        {isPending && (
+                            <Link
+                                to="/timesheet"
+                                className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 py-1.5 text-xs font-bold text-amber-800 transition-all cursor-pointer"
+                            >
+                                <Clock size={12} /> View Submission
+                            </Link>
+                        )}
+
+                        {isApproved && (
+                            <div className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-50 border border-emerald-100 py-1.5 text-xs font-bold text-emerald-700">
+                                <CheckCircle2 size={13} className="text-emerald-600" />
+                                Timesheet Approved
                             </div>
+                        )}
+
+                        {isRejected && (
+                            <Link
+                                to="/timesheet"
+                                className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 py-2 text-xs font-bold text-white shadow-xs hover:from-rose-700 hover:to-amber-700 transition-all cursor-pointer"
+                            >
+                                Review & Resubmit
+                            </Link>
                         )}
                     </div>
                 </div>
@@ -665,29 +836,111 @@ const HolidaysTile = () => {
     );
 };
 
+// ─── Company Announcements Tile ────────────────────────────────────────────────
+
+const AnnouncementsTile = () => {
+    const [announcements, setAnnouncements] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get('/announcements?limit=3')
+            .then(r => {
+                const list = Array.isArray(r.data?.announcements)
+                    ? r.data.announcements
+                    : (Array.isArray(r.data) ? r.data : []);
+                setAnnouncements(list);
+            })
+            .catch(() => {})
+            .finally(() => setLoading(false));
+    }, []);
+
+    const recentAnnouncements = announcements.slice(0, 2);
+
+    return (
+        <PremiumCard to="/announcements">
+            <CardHeader
+                icon={Megaphone}
+                title="Announcements"
+                to="/announcements"
+                iconGradient="from-indigo-600 to-violet-600"
+                action={<CardActionLink to="/announcements" label="View Feed" />}
+            />
+
+            {loading ? (
+                <LoadingSkeleton />
+            ) : recentAnnouncements.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+                    <Megaphone size={18} className="mx-auto text-slate-300 mb-1" />
+                    <p className="text-xs text-slate-500">No company announcements yet.</p>
+                    <span className="mt-1 inline-flex items-center gap-0.5 text-xs font-bold text-indigo-600 hover:underline">
+                        Open Feed →
+                    </span>
+                </div>
+            ) : (
+                <div className="space-y-1.5">
+                    {recentAnnouncements.map((item) => (
+                        <div
+                            key={item._id}
+                            className="rounded-xl bg-slate-50/70 p-2 border border-slate-100/90 hover:bg-slate-100/70 transition-colors"
+                        >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100/80 px-1.5 py-0.2 rounded-md">
+                                    {item.category || 'Broadcast'}
+                                </span>
+                                {item.pinned && (
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-600">
+                                        <Pin size={9} /> Pinned
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-xs font-bold text-slate-900 truncate leading-tight">
+                                {item.title}
+                            </p>
+                            {item.summary && (
+                                <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5 leading-tight">
+                                    {item.summary}
+                                </p>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </PremiumCard>
+    );
+};
+
 // ─── Main ESS Dashboard Component ─────────────────────────────────────────────
 
 const EssDashboard = () => {
     const { user, hasModule } = useAuth();
     const [showSubmitClaim, setShowSubmitClaim] = useState(false);
 
-    const showLeave         = hasModule('leaves');
+    const isAdmin = user?.roles?.some(role => ['Admin', 'Super Admin', 'System Admin'].includes(role?.name || role))
+        || user?.hasAllPermissions
+        || user?.permissions?.includes('*');
+
     const showAttendance    = hasModule('attendance');
+    const showTimesheet     = hasModule('timesheet') || user?.company?.enabledModules?.includes('timesheet');
+    const showLeave         = hasModule('leaves');
     const showReimburse     = hasModule('reimbursements');
+    const showPayslip       = isAdmin || user?.permissions?.includes('payroll.payslip.view');
+    const showAnnouncements = hasModule('announcements') || user?.company?.enabledModules?.includes('announcements');
     const showHelpdesk      = hasModule('helpdesk');
     const showHolidays      = hasModule('holidays');
 
     return (
         <div className="bg-[#F8FAFC] min-h-[calc(100vh-4rem)] p-3 sm:p-5 lg:p-6">
             <div className="mx-auto max-w-6xl">
-                {/* 2x3 Compact Responsive Grid */}
+                {/* Compact Responsive Grid */}
                 <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {showAttendance  && <AttendanceTile />}
-                    {showLeave       && <LeaveTile />}
-                    {showReimburse   && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
-                    <PayslipTile />
-                    {showHelpdesk    && <HelpdeskTile />}
-                    {showHolidays    && <HolidaysTile />}
+                    {showAttendance     && <AttendanceTile />}
+                    {showTimesheet      && <TimesheetTile />}
+                    {showLeave          && <LeaveTile />}
+                    {showReimburse      && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
+                    {showPayslip        && <PayslipTile />}
+                    {showAnnouncements  && <AnnouncementsTile />}
+                    {showHelpdesk       && <HelpdeskTile />}
+                    {showHolidays       && <HolidaysTile />}
                 </div>
             </div>
 

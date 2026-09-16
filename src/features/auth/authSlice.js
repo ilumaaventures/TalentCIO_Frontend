@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import api from '@/lib/apiClient';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
-import { clearAuthSession, clearScopedCaches, hasAuthSessionHint, markAuthSessionActive, persistAccessToken, persistAuthUser, readStoredUser } from '@/features/auth/utils/authStorage';
+import { clearAuthSession, clearScopedCaches, hasAuthSessionHint, markAuthSessionActive, markManualLogout, persistAccessToken, persistAuthUser, readStoredUser } from '@/features/auth/utils/authStorage';
 import { hasModuleEnabled, normalizeEnabledModules } from '@/config/enabledModules';
 import { isAdminUser } from '@/config/accessPolicies';
 
@@ -149,6 +149,7 @@ export const register = createAsyncThunk(
 export const logout = createAsyncThunk(
   'auth/logout',
   async (_, { getState }) => {
+    markManualLogout();
     const state = getState();
     const currentUserId = state.auth.user?._id || '';
     try {

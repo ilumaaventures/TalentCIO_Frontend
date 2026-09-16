@@ -3,7 +3,7 @@ import { X, Upload, Trash2, FileText, Image, Loader, Plus, AlertCircle, CheckCir
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { submitClaim, getCategories } from '../api/reimbursementApi';
+import { submitClaim, updateClaim, getCategories } from '../api/reimbursementApi';
 import { formatINR } from '../utils/reimbursementConstants';
 
 const MAX_FILES = 10;
@@ -22,23 +22,49 @@ const formatBytes = (bytes) => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const SubmitClaimModal = ({ onClose, onSuccess }) => {
+const SubmitClaimModal = ({ onClose, onSuccess, claimToEdit = null }) => {
     const { user } = useAuth();
+    const isEditing = Boolean(claimToEdit);
     const [categories, setCategories] = useState([]);
 
     // Expense Line Items
-    const [items, setItems] = useState([
-        {
-            expenseDate: new Date().toISOString().split('T')[0],
-            description: '',
-            category: '',
-            otherCategoryName: '',
-            amount: '',
-            hasReceipt: true,
-            receiptAttached: 'Y'
+    const [items, setItems] = useState(() => {
+        if (claimToEdit?.items?.length > 0) {
+            return claimToEdit.items.map(it => ({
+                expenseDate: it.expenseDate ? new Date(it.expenseDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                description: it.description || '',
+                category: it.category || '',
+                otherCategoryName: it.otherCategoryName || '',
+                amount: it.amount !== undefined && it.amount !== null ? it.amount : '',
+                hasReceipt: it.hasReceipt !== false,
+                receiptAttached: 'Y'
+            }));
         }
-    ]);
+        if (claimToEdit) {
+            return [{
+                expenseDate: claimToEdit.expenseDate ? new Date(claimToEdit.expenseDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                description: claimToEdit.description || '',
+                category: claimToEdit.category || '',
+                otherCategoryName: claimToEdit.otherCategoryName || '',
+                amount: claimToEdit.amount !== undefined && claimToEdit.amount !== null ? claimToEdit.amount : '',
+                hasReceipt: true,
+                receiptAttached: 'Y'
+            }];
+        }
+        return [
+            {
+                expenseDate: new Date().toISOString().split('T')[0],
+                description: '',
+                category: '',
+                otherCategoryName: '',
+                amount: '',
+                hasReceipt: true,
+                receiptAttached: 'Y'
+            }
+        ];
+    });
 
+    const [existingReceipts, setExistingReceipts] = useState(() => claimToEdit?.receipts || []);
     const [files, setFiles] = useState([]);
     const [previews, setPreviews] = useState([]);
     const [dragging, setDragging] = useState(false);
@@ -51,12 +77,12 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
             .then(res => {
                 const cats = res.data?.categories || [];
                 setCategories(cats);
-                if (cats.length > 0) {
+                if (cats.length > 0 && !claimToEdit) {
                     setItems(prev => prev.map(item => item.category ? item : { ...item, category: cats[0].name }));
                 }
             })
             .catch(() => { });
-    }, []);
+    }, [claimToEdit]);
 
     // Generate preview URLs for image files
     useEffect(() => {
@@ -70,7 +96,7 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
     const addFiles = useCallback((newFiles) => {
         const valid = [];
         for (const f of newFiles) {
-            if (files.length + valid.length >= MAX_FILES) {
+            if (files.length + existingReceipts.length + valid.length >= MAX_FILES) {
                 toast.error(`Maximum ${MAX_FILES} receipts allowed.`);
                 break;
             }
@@ -85,10 +111,14 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
             valid.push(f);
         }
         setFiles(prev => [...prev, ...valid]);
-    }, [files.length]);
+    }, [files.length, existingReceipts.length]);
 
     const removeFile = (index) => {
         setFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const removeExistingReceipt = (index) => {
+        setExistingReceipts(prev => prev.filter((_, i) => i !== index));
     };
 
     const onDrop = (e) => {
@@ -157,8 +187,8 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                 return false;
             }
         }
-        if (files.length === 0) {
-            toast.error('Receipt attachment is mandatory. Please upload at least one receipt or invoice.');
+        if (files.length === 0 && existingReceipts.length === 0) {
+            toast.error('Receipt attachment is mandatory. Please upload or keep at least one receipt or invoice.');
             return false;
         }
         return true;
@@ -178,24 +208,46 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
         fd.append('amount', totalAmount);
         fd.append('expenseDate', items[0]?.expenseDate || new Date().toISOString().split('T')[0]);
         fd.append('description', items.map(i => i.category === 'Other' && i.otherCategoryName?.trim() ? `[${i.otherCategoryName.trim()}] ${i.description}` : i.description).join('; '));
-        fd.append('department', user?.department || '');
-        fd.append('employeeCode', user?.employeeCode || user?.employeeId || '');
+        fd.append('department', isEditing ? (claimToEdit?.department || user?.department || '') : (user?.department || ''));
+        fd.append('employeeCode', isEditing ? (claimToEdit?.employeeCode || user?.employeeCode || user?.employeeId || '') : (user?.employeeCode || user?.employeeId || ''));
         fd.append('items', JSON.stringify(items));
+
+        if (isEditing) {
+            fd.append('existingReceipts', JSON.stringify(existingReceipts));
+        }
 
         files.forEach(f => fd.append('receipts', f));
 
         setSubmitting(true);
         try {
-            await submitClaim(fd);
-            toast.success('Reimbursement claim submitted successfully.');
+            if (isEditing) {
+                await updateClaim(claimToEdit._id, fd);
+                toast.success('Reimbursement claim updated successfully.');
+            } else {
+                await submitClaim(fd);
+                toast.success('Reimbursement claim submitted successfully.');
+            }
             onSuccess?.();
             onClose();
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to submit claim.');
+            toast.error(err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'submit'} claim.`);
         } finally {
             setSubmitting(false);
         }
     };
+
+    const empName = isEditing && claimToEdit?.employee
+        ? `${claimToEdit.employee.firstName || ''} ${claimToEdit.employee.lastName || ''}`.trim()
+        : `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    const empCode = isEditing
+        ? (claimToEdit?.employeeCode || claimToEdit?.employee?.employeeCode || user?.employeeCode || user?.employeeId || '—')
+        : (user?.employeeCode || user?.employeeId || '—');
+    const empDept = isEditing
+        ? (claimToEdit?.department || claimToEdit?.employee?.department || user?.department || '—')
+        : (user?.department || '—');
+    const submitDate = isEditing && claimToEdit?.createdAt
+        ? format(new Date(claimToEdit.createdAt), 'dd/MM/yyyy')
+        : format(new Date(), 'dd/MM/yyyy');
 
     return (
         <div
@@ -208,8 +260,14 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                 {/* Modal Title Header */}
                 <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-800 to-slate-700 text-white">
                     <div>
-                        <h2 className="text-base font-bold tracking-tight">Employee Reimbursement / Expense Claim Form</h2>
-                        <p className="text-[11px] text-slate-300">Submit official business expense claim for approval & reimbursement</p>
+                        <h2 className="text-base font-bold tracking-tight">
+                            {isEditing ? 'Edit Expense Claim Form' : 'Employee Reimbursement / Expense Claim Form'}
+                        </h2>
+                        <p className="text-[11px] text-slate-300">
+                            {isEditing
+                                ? 'Update expense claim details before approval'
+                                : 'Submit official business expense claim for approval & reimbursement'}
+                        </p>
                     </div>
                     <button
                         onClick={onClose}
@@ -228,25 +286,25 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                             <div>
                                 <span className="text-slate-400 block text-[11px]">Employee Name:</span>
                                 <span className="font-bold text-slate-800 text-sm mt-0.5 block truncate">
-                                    {user?.firstName} {user?.lastName}
+                                    {empName}
                                 </span>
                             </div>
                             <div>
                                 <span className="text-slate-400 block text-[11px]">Employee ID:</span>
                                 <span className="font-semibold text-slate-800 mt-0.5 block">
-                                    {user?.employeeCode || user?.employeeId || '—'}
+                                    {empCode}
                                 </span>
                             </div>
                             <div>
                                 <span className="text-slate-400 block text-[11px]">Department:</span>
                                 <span className="font-semibold text-slate-800 mt-0.5 block truncate">
-                                    {user?.department || '—'}
+                                    {empDept}
                                 </span>
                             </div>
                             <div>
                                 <span className="text-slate-400 block text-[11px]">Date Submitted:</span>
                                 <span className="font-semibold text-slate-800 mt-0.5 block">
-                                    {format(new Date(), 'dd/MM/yyyy')}
+                                    {submitDate}
                                 </span>
                             </div>
                         </div>
@@ -383,6 +441,45 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                             Receipt Attachments* <span className="font-normal text-slate-400">— Bills, Invoices, Vouchers</span>
                         </label>
+
+                        {/* Existing Receipts (in edit mode) */}
+                        {existingReceipts.length > 0 && (
+                            <div className="mb-3 space-y-1.5">
+                                <p className="text-[11px] font-semibold text-slate-600">
+                                    Existing Attached Receipts ({existingReceipts.length})
+                                </p>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {existingReceipts.map((rc, i) => (
+                                        <div key={i} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2 text-xs relative group">
+                                            <div className="h-8 w-8 shrink-0 rounded-lg bg-white border border-slate-200 flex items-center justify-center overflow-hidden">
+                                                {rc.resourceType === 'image' || rc.mimeType?.startsWith('image/') ? (
+                                                    <img src={rc.url} alt="" className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <FileText size={14} className="text-slate-500" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate font-medium text-slate-800 text-[11px]" title={rc.name || `Receipt ${i + 1}`}>
+                                                    {rc.name || `Receipt ${i + 1}`}
+                                                </p>
+                                                <a href={rc.url} target="_blank" rel="noreferrer" className="text-[9px] text-blue-600 hover:underline">
+                                                    View Document
+                                                </a>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeExistingReceipt(i)}
+                                                className="text-slate-400 hover:text-red-500 p-1 transition-colors"
+                                                title="Remove existing receipt"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div
                             onDragOver={e => { e.preventDefault(); setDragging(true); }}
                             onDragLeave={() => setDragging(false)}
@@ -402,8 +499,10 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white shadow-xs text-slate-500 mb-2 border border-slate-200">
                                 <Upload size={16} />
                             </div>
-                            <p className="text-xs font-semibold text-slate-700">Click to upload receipts or drag & drop</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">PDF, PNG, JPG or DOC up to 5 MB each (Max {MAX_FILES} files)</p>
+                            <p className="text-xs font-semibold text-slate-700">
+                                {existingReceipts.length > 0 ? 'Upload additional receipts or drag & drop' : 'Click to upload receipts or drag & drop'}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">PDF, PNG, JPG or DOC up to 5 MB each (Max {MAX_FILES} total)</p>
                         </div>
 
                         {files.length > 0 && (
@@ -455,7 +554,7 @@ const SubmitClaimModal = ({ onClose, onSuccess }) => {
                             className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 transition-colors"
                         >
                             {submitting && <Loader size={13} className="animate-spin" />}
-                            Submit Claim
+                            {isEditing ? 'Update Claim' : 'Submit Claim'}
                         </button>
                     </div>
                 </div>

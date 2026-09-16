@@ -28,13 +28,13 @@ const getPageMetadata = (pathname) => {
         return { title: 'Approval Queue', subtitle: 'Reimbursement claims awaiting action', back: '/ess', backLabel: 'My Space' };
     }
     if (pathname === '/leaves') {
-        return { title: 'Leave Management', subtitle: 'Apply and track leave requests' };
+        return { title: 'Leave Management', subtitle: 'Apply and track leave requests', back: '/ess', backLabel: 'My Space' };
     }
     if (pathname === '/leave-config') {
         return { title: 'Leave Settings', subtitle: 'Configure leave types & balances', back: '/leaves', backLabel: 'Leaves' };
     }
     if (pathname === '/attendance') {
-        return { title: 'Attendance', subtitle: 'Daily check-in, logs & regularization' };
+        return { title: 'Attendance', subtitle: 'Daily check-in, logs & regularization', back: '/ess', backLabel: 'My Space' };
     }
     if (pathname === '/attendance/flexible-off' || pathname === '/flexible-off') {
         return { title: 'Flexible Off Selection', subtitle: 'Select your weekly off days', back: '/attendance', backLabel: 'Attendance' };
@@ -43,13 +43,13 @@ const getPageMetadata = (pathname) => {
         return { title: 'Attendance Settings', subtitle: 'Shifts & policies', back: '/attendance', backLabel: 'Attendance' };
     }
     if (pathname === '/timesheet') {
-        return { title: 'Timesheet', subtitle: 'Log & review working hours' };
+        return { title: 'Timesheet', subtitle: 'Log & review working hours', back: '/ess', backLabel: 'My Space' };
     }
     if (pathname === '/holidays') {
-        return { title: 'Holiday Calendar', subtitle: 'Company declared holidays' };
+        return { title: 'Holiday Calendar', subtitle: 'Company declared holidays', back: '/ess', backLabel: 'My Space' };
     }
     if (pathname === '/helpdesk') {
-        return { title: 'Help Desk', subtitle: 'Raise & manage support queries' };
+        return { title: 'Help Desk', subtitle: 'Raise & manage support queries', back: '/ess', backLabel: 'My Space' };
     }
     if (pathname.startsWith('/helpdesk/')) {
         return { title: 'Help Desk', subtitle: 'Support ticket details', back: '/helpdesk', backLabel: 'Help Desk' };
@@ -58,7 +58,7 @@ const getPageMetadata = (pathname) => {
         return { title: 'Discussions', subtitle: 'Team discussion channels' };
     }
     if (pathname === '/announcements') {
-        return { title: 'Announcements', subtitle: 'Company news & broadcast feed' };
+        return { title: 'Announcements', subtitle: 'Company news & broadcast feed', back: '/ess', backLabel: 'My Space' };
     }
     if (pathname === '/users') {
         return { title: 'Employee Directory', subtitle: 'View and manage team members' };
@@ -141,13 +141,13 @@ const Topbar = ({ toggleSidebar }) => {
     const location = useLocation();
     const userDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
     const hasTalentAcquisition = hasModule('talentAcquisition');
-    const hasDashboardAccess = user?.roles?.some((role) => role === 'Admin' || role?.name === 'Admin') || user?.hasAllPermissions;
     const isAdmin = user?.roles?.some((role) => ['Admin', 'Super Admin', 'System Admin'].includes(role?.name || role))
         || user?.hasAllPermissions
         || user?.permissions?.includes('*');
+    const hasDashboardAccess = isAdmin || user?.permissions?.includes('dashboard.view');
     const canUseCrmAi = isAdmin || user?.permissions?.includes('crm.ai.use') || user?.permissions?.includes('crm.admin');
     const canCreateCrm = isAdmin || ['crm.leads.create', 'crm.deals.create', 'crm.tasks.manage', 'crm.contacts.manage', 'crm.accounts.manage', 'crm.admin'].some(p => user?.permissions?.includes(p));
-    const homeRoute = hasDashboardAccess ? '/' : (hasModule('attendance') ? '/attendance' : '/');
+    const homeRoute = hasDashboardAccess ? '/' : (hasModule('mySpace') ? '/ess' : (hasModule('attendance') ? '/attendance' : '/'));
     const [notifications, setNotifications] = useState([]);
     const [interviews, setInterviews] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
@@ -270,7 +270,12 @@ const Topbar = ({ toggleSidebar }) => {
                 });
             }
 
-            if (newNotif?.preferenceKey === 'ess_document.published' || newNotif?.metadata?.preferenceKey === 'ess_document.published') {
+            if (
+                newNotif?.preferenceKey === 'ess_document_published' ||
+                newNotif?.preferenceKey === 'ess_document.published' ||
+                newNotif?.metadata?.preferenceKey === 'ess_document_published' ||
+                newNotif?.metadata?.preferenceKey === 'ess_document.published'
+            ) {
                 const toastId = toast.custom((toastInstance) => (
                     <div
                         className={`pointer-events-auto flex w-[380px] items-start gap-3 rounded-2xl border border-indigo-100 bg-white p-4 shadow-xl ring-1 ring-indigo-500/10 transition ${
