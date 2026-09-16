@@ -5,7 +5,7 @@ import {
     CalendarDays, CheckCircle2,
     ChevronRight, Loader, LogOut,
     Banknote, Eye, EyeOff, Plus, ArrowRight,
-    Briefcase, AlertCircle
+    Briefcase, AlertCircle, Megaphone, Pin
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -39,17 +39,29 @@ const PremiumCard = ({ children, className = '', to, onClick, hoverable = true }
     return <div className={baseClasses}>{children}</div>;
 };
 
-const CardHeader = ({ icon: Icon, title, iconGradient = 'from-blue-600 to-indigo-600', badge, action }) => (
+const CardHeader = ({ icon: Icon, title, iconGradient = 'from-blue-600 to-indigo-600', badge, action, to }) => (
     <div className="flex items-center justify-between gap-1.5 mb-3">
-        <div className="flex items-center gap-2">
-            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
-                <Icon size={14} />
+        {to ? (
+            <Link to={to} className="flex items-center gap-2 group/header hover:opacity-85 transition-opacity">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
+                    <Icon size={14} />
+                </div>
+                <div>
+                    <h3 className="text-xs font-bold text-slate-800 tracking-tight leading-none group-hover/header:text-indigo-600 transition-colors">{title}</h3>
+                    {badge && <div className="mt-0.5">{badge}</div>}
+                </div>
+            </Link>
+        ) : (
+            <div className="flex items-center gap-2">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${iconGradient} text-white shadow-2xs`}>
+                    <Icon size={14} />
+                </div>
+                <div>
+                    <h3 className="text-xs font-bold text-slate-800 tracking-tight leading-none">{title}</h3>
+                    {badge && <div className="mt-0.5">{badge}</div>}
+                </div>
             </div>
-            <div>
-                <h3 className="text-xs font-bold text-slate-800 tracking-tight leading-none">{title}</h3>
-                {badge && <div className="mt-0.5">{badge}</div>}
-            </div>
-        </div>
+        )}
         {action}
     </div>
 );
@@ -159,6 +171,7 @@ const AttendanceTile = () => {
             <CardHeader
                 icon={Clock}
                 title="Shift & Attendance"
+                to="/attendance"
                 iconGradient="from-amber-500 to-orange-600"
                 action={<CardActionLink to="/attendance" label="Details" />}
             />
@@ -236,10 +249,13 @@ const AttendanceTile = () => {
                         )}
 
                         {isClockedOut && (
-                            <div className="flex items-center justify-center gap-1.5 rounded-xl bg-purple-50 border border-purple-100 py-1.5 text-xs font-bold text-purple-700">
+                            <Link
+                                to="/attendance"
+                                className="flex items-center justify-center gap-1.5 rounded-xl bg-purple-50 hover:bg-purple-100/80 border border-purple-100 py-1.5 text-xs font-bold text-purple-700 transition-colors cursor-pointer"
+                            >
                                 <CheckCircle2 size={13} className="text-purple-600" />
-                                Shift Completed
-                            </div>
+                                Shift Completed • View Log →
+                            </Link>
                         )}
                     </div>
                 </div>
@@ -820,6 +836,79 @@ const HolidaysTile = () => {
     );
 };
 
+// ─── Company Announcements Tile ────────────────────────────────────────────────
+
+const AnnouncementsTile = () => {
+    const [announcements, setAnnouncements] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get('/announcements?limit=3')
+            .then(r => {
+                const list = Array.isArray(r.data?.announcements)
+                    ? r.data.announcements
+                    : (Array.isArray(r.data) ? r.data : []);
+                setAnnouncements(list);
+            })
+            .catch(() => {})
+            .finally(() => setLoading(false));
+    }, []);
+
+    const recentAnnouncements = announcements.slice(0, 2);
+
+    return (
+        <PremiumCard to="/announcements">
+            <CardHeader
+                icon={Megaphone}
+                title="Announcements"
+                to="/announcements"
+                iconGradient="from-indigo-600 to-violet-600"
+                action={<CardActionLink to="/announcements" label="View Feed" />}
+            />
+
+            {loading ? (
+                <LoadingSkeleton />
+            ) : recentAnnouncements.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+                    <Megaphone size={18} className="mx-auto text-slate-300 mb-1" />
+                    <p className="text-xs text-slate-500">No company announcements yet.</p>
+                    <span className="mt-1 inline-flex items-center gap-0.5 text-xs font-bold text-indigo-600 hover:underline">
+                        Open Feed →
+                    </span>
+                </div>
+            ) : (
+                <div className="space-y-1.5">
+                    {recentAnnouncements.map((item) => (
+                        <div
+                            key={item._id}
+                            className="rounded-xl bg-slate-50/70 p-2 border border-slate-100/90 hover:bg-slate-100/70 transition-colors"
+                        >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100/80 px-1.5 py-0.2 rounded-md">
+                                    {item.category || 'Broadcast'}
+                                </span>
+                                {item.pinned && (
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-600">
+                                        <Pin size={9} /> Pinned
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-xs font-bold text-slate-900 truncate leading-tight">
+                                {item.title}
+                            </p>
+                            {item.summary && (
+                                <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5 leading-tight">
+                                    {item.summary}
+                                </p>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </PremiumCard>
+    );
+};
+
 // ─── Main ESS Dashboard Component ─────────────────────────────────────────────
 
 const EssDashboard = () => {
@@ -830,6 +919,7 @@ const EssDashboard = () => {
     const showTimesheet     = hasModule('timesheet') || user?.company?.enabledModules?.includes('timesheet');
     const showLeave         = hasModule('leaves');
     const showReimburse     = hasModule('reimbursements');
+    const showAnnouncements = hasModule('announcements') || user?.company?.enabledModules?.includes('announcements');
     const showHelpdesk      = hasModule('helpdesk');
     const showHolidays      = hasModule('holidays');
 
@@ -838,13 +928,14 @@ const EssDashboard = () => {
             <div className="mx-auto max-w-6xl">
                 {/* Compact Responsive Grid */}
                 <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {showAttendance  && <AttendanceTile />}
-                    {showTimesheet   && <TimesheetTile />}
-                    {showLeave       && <LeaveTile />}
-                    {showReimburse   && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
+                    {showAttendance     && <AttendanceTile />}
+                    {showTimesheet      && <TimesheetTile />}
+                    {showLeave          && <LeaveTile />}
+                    {showReimburse      && <ReimbursementTile onSubmit={() => setShowSubmitClaim(true)} />}
                     <PayslipTile />
-                    {showHelpdesk    && <HelpdeskTile />}
-                    {showHolidays    && <HolidaysTile />}
+                    {showAnnouncements  && <AnnouncementsTile />}
+                    {showHelpdesk       && <HelpdeskTile />}
+                    {showHolidays       && <HolidaysTile />}
                 </div>
             </div>
 

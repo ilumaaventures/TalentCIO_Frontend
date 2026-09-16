@@ -1245,7 +1245,8 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 leave => `${leave._id || `${leave.startDate}-${leave.endDate}`}:${leave.leaveType}:${leave.startDate}:${leave.endDate}:${leave.isHalfDay ? '1' : '0'}`
             ).join('|');
             const weeklyOffPart = (payload.weeklyOff || []).join('|');
-            return `${tsPart}#${logPart}#${holidayPart}#${leavePart}#${weeklyOffPart}`;
+            const projectPart = (payload.projects || []).map(p => `${p._id}:${p.name}`).join('|');
+            return `${tsPart}#${logPart}#${holidayPart}#${leavePart}#${weeklyOffPart}#${projectPart}`;
         };
 
         const applyData = (data) => {
@@ -1302,6 +1303,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 applyData(payload);
                 writeCache(payload, freshFingerprint);
             } else {
+                if (payload?.projects) {
+                    setProjects(payload.projects);
+                    setAvailableProjects(payload.projects);
+                }
                 writeCache(payload, freshFingerprint);
             }
         } catch (error) {
