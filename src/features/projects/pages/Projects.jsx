@@ -1,7 +1,8 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import api from '@/lib/apiClient';
-import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle } from 'lucide-react';
+import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import Button from '@/components/ui/Button';
@@ -25,6 +26,94 @@ const Projects = () => {
     const cacheKey = `project_data_${user?._id}`;
     const [employees, setEmployees] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const rawTabParam = searchParams.get('tab') || searchParams.get('status');
+    const validTabs = ['all', 'active', 'inactive', 'on hold', 'completed'];
+    const normalizeTab = (t) => {
+        if (!t) return 'active';
+        const lower = String(t).trim().toLowerCase();
+        return lower === 'on-hold' ? 'on hold' : lower;
+    };
+
+    const resolvedInitialTab = validTabs.includes(normalizeTab(rawTabParam))
+        ? normalizeTab(rawTabParam)
+        : 'active';
+
+    const [activeTab, setActiveTab] = useState(resolvedInitialTab);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        const raw = searchParams.get('tab') || searchParams.get('status');
+        const normalized = normalizeTab(raw);
+        if (validTabs.includes(normalized) && normalized !== activeTab) {
+            setActiveTab(normalized);
+        }
+    }, [searchParams]);
+
+    const handleTabChange = (tabId) => {
+        setActiveTab(tabId);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('tab', tabId === 'on hold' ? 'on-hold' : tabId);
+        newParams.delete('status');
+        setSearchParams(newParams, { replace: true });
+    };
+
+    const getProjectDisplayStatus = useCallback((proj) => {
+        if (proj?.status) {
+            const s = String(proj.status).trim().toLowerCase();
+            if (s === 'active') return 'Active';
+            if (s === 'inactive') return 'Inactive';
+            if (s === 'on hold' || s === 'onhold' || s === 'hold') return 'On Hold';
+            if (s === 'completed' || s === 'complete' || s === 'closed') return 'Completed';
+            return proj.status;
+        }
+        return proj?.isActive ? 'Active' : 'Completed';
+    }, []);
+
+    const counts = useMemo(() => {
+        const res = { all: projects.length, active: 0, inactive: 0, onHold: 0, completed: 0 };
+        projects.forEach(p => {
+            const st = getProjectDisplayStatus(p);
+            if (st === 'Active') res.active++;
+            else if (st === 'Inactive') res.inactive++;
+            else if (st === 'On Hold') res.onHold++;
+            else if (st === 'Completed') res.completed++;
+        });
+        return res;
+    }, [projects, getProjectDisplayStatus]);
+
+    const tabs = [
+        { id: 'all', label: 'All', count: counts.all },
+        { id: 'active', label: 'Active', count: counts.active },
+        { id: 'inactive', label: 'Inactive', count: counts.inactive },
+        { id: 'on hold', label: 'On Hold', count: counts.onHold },
+        { id: 'completed', label: 'Completed', count: counts.completed }
+    ];
+
+    const filteredProjects = useMemo(() => {
+        return projects.filter(project => {
+            const st = getProjectDisplayStatus(project);
+            if (activeTab !== 'all') {
+                if (st.toLowerCase() !== activeTab.toLowerCase()) {
+                    return false;
+                }
+            }
+
+            if (searchTerm.trim()) {
+                const q = searchTerm.trim().toLowerCase();
+                const name = String(project.name || '').toLowerCase();
+                const clientName = String(project.client?.name || '').toLowerCase();
+                const buName = String(project.businessUnit?.name || '').toLowerCase();
+                const desc = String(project.description || '').toLowerCase();
+
+                const matches = name.includes(q) || clientName.includes(q) || buName.includes(q) || desc.includes(q);
+                if (!matches) return false;
+            }
+
+            return true;
+        });
+    }, [projects, activeTab, searchTerm, getProjectDisplayStatus]);
 
     const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
@@ -216,6 +305,60 @@ const Projects = () => {
                     )}
                 </div>
 
+                {/* Tabs & Search Toolbar */}
+                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+                    {/* Status Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                        {tabs.map((tab) => {
+                            const isSelected = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => handleTabChange(tab.id)}
+                                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
+                                        isSelected
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                                    }`}
+                                >
+                                    <span>{tab.label}</span>
+                                    <span
+                                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                                            isSelected
+                                                ? 'bg-white/20 text-white'
+                                                : 'bg-slate-100 text-slate-500'
+                                        }`}
+                                    >
+                                        {tab.count}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative w-full md:w-72 shrink-0">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search projects, clients..."
+                            className="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                        />
+                        {searchTerm && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                            >
+                                <X size={13} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
                 <div className="zoho-card overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -239,9 +382,9 @@ const Projects = () => {
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-24 ml-auto" /></td>
                                         </tr>
                                     ))
-                                ) : projects.length > 0 ? (
-                                    projects.map((project, index) => {
-                                        const displayStatus = project.status || (project.isActive ? 'Active' : 'Completed');
+                                ) : filteredProjects.length > 0 ? (
+                                    filteredProjects.map((project) => {
+                                        const displayStatus = getProjectDisplayStatus(project);
                                         return (
                                             <tr key={project._id} className="hover:bg-slate-50/50">
                                                 <td className="px-6 py-3 font-medium text-slate-800">
@@ -273,10 +416,11 @@ const Projects = () => {
                                                 </td>
 
                                                 <td className="px-6 py-3">
-                                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${displayStatus === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                        displayStatus === 'On Hold' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                                            displayStatus === 'Inactive' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                                                                'bg-slate-100 text-slate-500 border-slate-200'
+                                                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium border ${displayStatus === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                        displayStatus === 'On Hold' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                            displayStatus === 'Inactive' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                                                displayStatus === 'Completed' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                    'bg-slate-100 text-slate-600 border-slate-200'
                                                         }`}>
                                                         {displayStatus}
                                                     </span>
@@ -319,8 +463,43 @@ const Projects = () => {
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan="5" className="p-8 text-center text-slate-500">
-                                            No Projects found.
+                                        <td colSpan="5" className="p-12 text-center text-slate-500">
+                                            <div className="flex flex-col items-center justify-center space-y-2">
+                                                <div className="p-3 bg-slate-100 text-slate-400 rounded-full mb-1">
+                                                    <Briefcase size={24} />
+                                                </div>
+                                                <p className="font-medium text-slate-700 text-sm">
+                                                    {searchTerm.trim()
+                                                        ? `No projects matching "${searchTerm}"`
+                                                        : activeTab === 'all'
+                                                            ? 'No projects found'
+                                                            : `No ${activeTab} projects found`}
+                                                </p>
+                                                <p className="text-xs text-slate-400 max-w-sm">
+                                                    {searchTerm.trim()
+                                                        ? 'Try adjusting your search terms or clearing the filter.'
+                                                        : activeTab === 'all'
+                                                            ? 'Get started by creating your first project.'
+                                                            : `There are currently no projects marked as ${activeTab}.`}
+                                                </p>
+                                                {searchTerm.trim() ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSearchTerm('')}
+                                                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                                                    >
+                                                        Clear search
+                                                    </button>
+                                                ) : activeTab !== 'all' && counts.all > 0 ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleTabChange('all')}
+                                                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                                                    >
+                                                        View all projects ({counts.all})
+                                                    </button>
+                                                ) : null}
+                                            </div>
                                         </td>
                                     </tr>
                                 )}
