@@ -23,7 +23,8 @@ const ENTITY_OPTIONS = [
     { key: 'querytype', label: 'Helpdesk Types' },
     { key: 'emailtemplate', label: 'Email Templates' },
     { key: 'onboardingtemplate', label: 'Onboarding Templates' },
-    { key: 'onboardingpolicy', label: 'Onboarding Policies' }
+    { key: 'onboardingpolicy', label: 'Onboarding Policies' },
+    { key: 'crmlead', label: 'CRM Leads' }
 ];
 
 const formatPerson = (person) => {
@@ -67,6 +68,8 @@ const getItemTitle = (entity, item) => {
             return item.description?.trim() || `Work log for ${formatDateTime(item.date)}`;
         case 'leaveconfig':
             return item.name || item.leaveType || 'Leave Policy';
+        case 'crmlead':
+            return item.companyName || [item.firstName, item.lastName].filter(Boolean).join(' ').trim() || 'Lead';
         default:
             return item.name || item.title || item.requestId || 'Record';
     }
@@ -74,6 +77,8 @@ const getItemTitle = (entity, item) => {
 
 const getItemSubtitle = (entity, item) => {
     switch (entity) {
+        case 'crmlead':
+            return item.email || item.phone || item.industry || item.companyName || '-';
         case 'candidate':
         case 'user':
             return item.email || '-';

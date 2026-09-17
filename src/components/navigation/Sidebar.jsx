@@ -17,6 +17,7 @@ import {
   CheckSquare,
   ClipboardList,
   Clock,
+  FileSpreadsheet,
   FileText,
   FolderKanban,
   GitBranch,
@@ -54,6 +55,7 @@ const CRM_NAV_SECTIONS = [
     title: 'Sales Hub',
     items: [
       { id: 'leads', label: 'Leads', icon: Users, permissions: ['crm.leads.read', 'crm.leads.create', 'crm.admin'] },
+      { id: 'import-data', label: 'Import Data', icon: FileSpreadsheet, permissions: ['crm.data.import', 'crm.leads.create', 'crm.leads.read', 'crm.admin'] },
       { id: 'deals', label: 'Opportunities', icon: Briefcase, permissions: ['crm.deals.read', 'crm.deals.create', 'crm.admin'] },
       { id: 'pipelines', label: 'Pipelines', icon: GitBranch, permissions: ['crm.pipelines.read', 'crm.pipelines.manage', 'crm.admin'] },
       { id: 'contacts', label: 'Contacts', icon: UserPlus, permissions: ['crm.contacts.read', 'crm.contacts.manage', 'crm.admin'] },

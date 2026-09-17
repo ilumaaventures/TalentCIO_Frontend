@@ -25,8 +25,16 @@ export const crmLeadsService = {
     const res = await api.post('/crm/leads/check-duplicates', data);
     return res.data;
   },
+  checkDuplicatesBatch: async (items) => {
+    const res = await api.post('/crm/leads/check-duplicates-batch', { items });
+    return res.data;
+  },
   bulkUpdate: async (data) => {
     const res = await api.post('/crm/leads/bulk-update', data);
+    return res.data;
+  },
+  moveToRecycleBin: async (items) => {
+    const res = await api.post('/crm/leads/move-to-bin', { items });
     return res.data;
   },
   convertLead: async (id, data) => {
