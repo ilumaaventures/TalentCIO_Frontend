@@ -234,7 +234,10 @@ const HiringRequestDetails = () => {
         || user?.permissions?.includes('ta.requisition.manage.assigned')
         || user?.permissions?.includes('ta.requisition.manage.all')
         || user?.permissions?.includes('ta.edit');
-    const resourceGatewayEnabledForCompany = Boolean(user?.company?.settings?.careers?.enableResourceGatewayPublishing);
+    const resourceGatewayEnabledForCompany = Boolean(
+        user?.company?.settings?.careers?.enableResourceGatewayPublishing ||
+        request?.isResourceGatewayEnabledForCompany
+    );
     const positionSummary = getHiringPositionSummary(request);
     const canPartialClose = positionSummary.open > 1;
 
