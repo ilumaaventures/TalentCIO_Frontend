@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { Plus, Filter, Settings, TrendingUp, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Plus, Filter, Settings, TrendingUp, ChevronRight, ArrowLeft, Share2 } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '@/components/ui/Skeleton';
 import { createNoCacheRequestConfig } from '@/features/talent-acquisition/utils/taCache';
@@ -265,7 +265,14 @@ const HiringRequestList = () => {
                                             </td>
                                         )}
                                         <td className="px-3.5 py-2.5">
-                                            <div className="font-semibold text-slate-800 text-xs">{req.roleDetails.title}</div>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="font-semibold text-slate-800 text-xs">{req.roleDetails.title}</span>
+                                                {req.isShared && (
+                                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title={`Shared by ${req.originCompanyName || 'another workspace'}`}>
+                                                        <Share2 size={9} /> Shared
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="text-[10px] text-slate-500">{req.roleDetails.department} • {req.roleDetails.employmentType}</div>
                                         </td>
                                         <td className="px-3.5 py-2.5 text-slate-600">

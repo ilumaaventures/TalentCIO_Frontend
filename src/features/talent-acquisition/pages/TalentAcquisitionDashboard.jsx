@@ -28,7 +28,9 @@ import {
     TrendingUp,
     UserCheck,
     Send,
-    X
+    X,
+    Share2,
+    FolderKanban
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
@@ -332,12 +334,48 @@ const TalentAcquisitionDashboard = () => {
     // Requisitions tab state
     const [reqSearchInput, setReqSearchInput] = useState('');
     const [reqStatusFilter, setReqStatusFilter] = useState('All');
+    const [reqTypeFilter, setReqTypeFilter] = useState(() => {
+        const t = searchParams.get('type') || searchParams.get('subtab');
+        return t === 'shared' ? 'shared' : t === 'internal' ? 'internal' : 'all';
+    });
     const [reqPage, setReqPage] = useState(1);
     const [reqLimit, setReqLimit] = useState(30);
     const [reqList, setReqList] = useState([]);
     const [reqTotalPages, setReqTotalPages] = useState(1);
     const [reqTotalRequests, setReqTotalRequests] = useState(0);
     const [isReqLoading, setIsReqLoading] = useState(false);
+
+    const sharedRequestsCount = useMemo(() => {
+        return requests.filter(r => r.isShared).length;
+    }, [requests]);
+
+    const internalRequestsCount = useMemo(() => {
+        return requests.filter(r => !r.isShared).length;
+    }, [requests]);
+
+    useEffect(() => {
+        const t = searchParams.get('type') || searchParams.get('subtab');
+        if (t === 'shared') {
+            setReqTypeFilter('shared');
+        } else if (t === 'internal') {
+            setReqTypeFilter('internal');
+        } else if (t === 'all') {
+            setReqTypeFilter('all');
+        }
+    }, [searchParams]);
+
+    const handleSelectReqType = (type) => {
+        setReqTypeFilter(type);
+        setReqPage(1);
+        const newParams = new URLSearchParams(searchParams);
+        if (type === 'all') {
+            newParams.delete('type');
+            newParams.delete('subtab');
+        } else {
+            newParams.set('type', type);
+        }
+        navigate(`/ta?${newParams.toString()}`, { replace: true });
+    };
 
     // Applied states used for search execution
     const defaultAppliedFilters = useMemo(() => ({
@@ -655,6 +693,9 @@ const canShowApplicationsTab = (user) => {
             if (reqStatusFilter && reqStatusFilter !== 'All') {
                 params.status = reqStatusFilter;
             }
+            if (reqTypeFilter && reqTypeFilter !== 'all') {
+                params.type = reqTypeFilter;
+            }
 
             const response = await api.get('/ta/hiring-request', createNoCacheRequestConfig(params));
             if (response.data) {
@@ -667,13 +708,13 @@ const canShowApplicationsTab = (user) => {
         } finally {
             setIsReqLoading(false);
         }
-    }, [reqPage, reqLimit, reqSearchInput, reqStatusFilter]);
+    }, [reqPage, reqLimit, reqSearchInput, reqStatusFilter, reqTypeFilter]);
 
     useEffect(() => {
         if (activeTab === 'requisitions') {
             void fetchRequisitionsTab();
         }
-    }, [activeTab, reqPage, reqLimit, reqSearchInput, reqStatusFilter, fetchRequisitionsTab]);
+    }, [activeTab, reqPage, reqLimit, reqSearchInput, reqStatusFilter, reqTypeFilter, fetchRequisitionsTab]);
 
     const loadDashboard = useCallback(async ({ silent = false } = {}) => {
         if (silent) {
@@ -1668,6 +1709,11 @@ const canShowApplicationsTab = (user) => {
                                                         >
                                                             {request.roleDetails?.title || 'Untitled Requisition'}
                                                         </span>
+                                                        {request.isShared && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0" title={`Shared by ${request.originCompanyName || 'another workspace'}`}>
+                                                                <Share2 size={9} /> Shared
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-3.5 py-3 text-slate-700 font-medium whitespace-nowrap">{request.client || '-'}</td>
@@ -1836,6 +1882,11 @@ const canShowApplicationsTab = (user) => {
                                                                 <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-[220px]" title={request.roleDetails?.title}>
                                                                     {request.roleDetails?.title || 'Untitled Requisition'}
                                                                 </span>
+                                                                {request.isShared && (
+                                                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0" title={`Shared by ${request.originCompanyName || 'another workspace'}`}>
+                                                                        <Share2 size={9} /> Shared
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </td>
                                                         <td className="px-3.5 py-3 text-slate-700 font-medium whitespace-nowrap">{request.client || '-'}</td>
@@ -1927,24 +1978,133 @@ const canShowApplicationsTab = (user) => {
             title="Requisition Command View"
             action={<Link to="/ta/create-request" className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">+ Create new requisition</Link>}
         >
-            <div className="mb-6 grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl bg-slate-50 p-3.5">
+            {/* Top Metric Cards (Includes Shared Requisitions card only when shared requisitions exist) */}
+            <div className={`mb-6 grid gap-4 ${sharedRequestsCount > 0 ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
+                <div 
+                    onClick={() => handleSelectReqType('all')}
+                    className={`rounded-xl p-3.5 cursor-pointer transition-all border ${
+                        reqTypeFilter === 'all' 
+                            ? 'bg-white border-blue-300 ring-2 ring-blue-500/20 shadow-xs' 
+                            : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80'
+                    }`}
+                >
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Total Requisitions</p>
                     <p className="font-ta-head mt-2 text-xl font-bold text-slate-950">{reqTotalRequests || requests.length}</p>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-3.5">
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3.5">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Approved</p>
                     <p className="font-ta-head mt-2 text-xl font-bold text-emerald-600">{approvedRequestsCount}</p>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-3.5">
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3.5">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Pending Review</p>
                     <p className="font-ta-head mt-2 text-xl font-bold text-amber-600">{pendingRequestsCount}</p>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-3.5">
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3.5">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Closed</p>
                     <p className="font-ta-head mt-2 text-xl font-bold text-slate-600">{requests.filter((item) => item.status === 'Closed').length}</p>
                 </div>
+
+                {/* Shared Requisitions Card — ONLY rendered when there are shared requisitions */}
+                {sharedRequestsCount > 0 && (
+                    <div 
+                        onClick={() => handleSelectReqType(reqTypeFilter === 'shared' ? 'all' : 'shared')}
+                        className={`group relative overflow-hidden rounded-xl p-3.5 cursor-pointer transition-all border ${
+                            reqTypeFilter === 'shared'
+                                ? 'bg-indigo-50/90 border-indigo-300 ring-2 ring-indigo-500/25 shadow-xs'
+                                : 'bg-gradient-to-br from-indigo-50/60 to-purple-50/40 border-indigo-200/80 hover:border-indigo-300 hover:bg-indigo-50'
+                        }`}
+                        title="Click to view shared requisitions"
+                    >
+                        <div className="flex items-center justify-between">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-indigo-700 flex items-center gap-1.5">
+                                <Share2 size={12} className="text-indigo-600" />
+                                Shared Requisitions
+                            </p>
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-100 text-indigo-700">
+                                {reqTypeFilter === 'shared' ? 'Active' : 'Shared'}
+                            </span>
+                        </div>
+                        <div className="mt-2 flex items-baseline justify-between">
+                            <p className="font-ta-head text-xl font-bold text-indigo-950">{sharedRequestsCount}</p>
+                            <span className="text-[10px] font-medium text-indigo-600 group-hover:underline">
+                                {reqTypeFilter === 'shared' ? 'Filtered ✓' : 'View shared →'}
+                            </span>
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {/* Scope Filter Tabs (All / Internal / Shared) */}
+            <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200/80 pb-2.5">
+                <button
+                    type="button"
+                    onClick={() => handleSelectReqType('all')}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                        reqTypeFilter === 'all'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                >
+                    <FolderKanban size={13} />
+                    All Requisitions
+                    <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${reqTypeFilter === 'all' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        {requests.length}
+                    </span>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => handleSelectReqType('internal')}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                        reqTypeFilter === 'internal'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                >
+                    <BriefcaseBusiness size={13} />
+                    Internal Requisitions
+                    <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${reqTypeFilter === 'internal' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        {internalRequestsCount}
+                    </span>
+                </button>
+
+                {sharedRequestsCount > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => handleSelectReqType('shared')}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                            reqTypeFilter === 'shared'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                        }`}
+                    >
+                        <Share2 size={13} />
+                        Shared Requisitions
+                        <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${reqTypeFilter === 'shared' ? 'bg-indigo-700 text-white' : 'bg-indigo-200/80 text-indigo-900'}`}>
+                            {sharedRequestsCount}
+                        </span>
+                    </button>
+                )}
+            </div>
+
+            {/* Banner when viewing Shared Requisitions */}
+            {reqTypeFilter === 'shared' && (
+                <div className="mb-4 flex items-center justify-between rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-purple-50/50 to-white px-3.5 py-2.5 text-xs text-indigo-900">
+                    <div className="flex items-center gap-2">
+                        <Share2 size={15} className="text-indigo-600 shrink-0" />
+                        <span>
+                            Showing requisitions shared from other workspaces. Candidate actions update live according to the granted scope.
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => handleSelectReqType('all')}
+                        className="text-[11px] font-semibold text-indigo-600 hover:underline shrink-0"
+                    >
+                        Show all requisitions
+                    </button>
+                </div>
+            )}
 
             {/* Search & Filter Controls */}
             <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-50/70 p-3 rounded-xl border border-slate-200/80">
@@ -2034,7 +2194,11 @@ const canShowApplicationsTab = (user) => {
                             {reqList.length === 0 ? (
                                 <tr>
                                     <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                                        No requisitions found matching your search.
+                                        {reqTypeFilter === 'shared'
+                                            ? 'No shared requisitions found.'
+                                            : reqTypeFilter === 'internal'
+                                                ? 'No internal requisitions found.'
+                                                : 'No requisitions found matching your search.'}
                                     </td>
                                 </tr>
                             ) : (
@@ -2045,7 +2209,14 @@ const canShowApplicationsTab = (user) => {
                                         onClick={() => navigate(`/ta/view/${request._id}${request.status === 'Approved' || request.status === 'Closed' ? '?tab=applications' : ''}`)}
                                     >
                                         <td className="px-4 py-3.5">
-                                            <p className="font-semibold text-slate-900">{request.roleDetails?.title || 'No Title'}</p>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <p className="font-semibold text-slate-900">{request.roleDetails?.title || 'No Title'}</p>
+                                                {request.isShared && (
+                                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0" title={request.sharedAt ? `Shared by ${request.originCompanyName || 'another workspace'} on ${formatShortDateTime(request.sharedAt)}` : `Shared by ${request.originCompanyName || 'another workspace'}`}>
+                                                        <Share2 size={9} /> Shared
+                                                    </span>
+                                                )}
+                                            </div>
                                             <p className="text-[11px] text-slate-500">{request.requestId}</p>
                                         </td>
                                         <td className="px-4 py-3.5 text-xs text-slate-600">{request.client || 'General'}</td>
