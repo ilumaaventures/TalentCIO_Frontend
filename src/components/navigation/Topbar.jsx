@@ -176,6 +176,8 @@ const Topbar = ({ toggleSidebar }) => {
     const canViewLeavePolicies = user?.company?.enabledModules?.includes('leaves') && (hasAdminRole || user?.permissions?.includes('leave.config.manage') || user?.hasAllPermissions);
     const canViewProfileSettings = canViewRolesSettings || canViewAttendanceSettings || canViewLeavePolicies;
     const isRolesPage = location.pathname === '/roles';
+    const isProjectsPage = location.pathname === '/projects';
+    const canCreateProject = hasAdminRole || user?.permissions?.includes('project.create') || user?.hasAllPermissions;
     const isAnnouncementsPage = location.pathname === '/announcements';
     const isEssPage = location.pathname === '/ess' || location.pathname.startsWith('/ess');
     const isCrmPage = location.pathname === '/crm' || location.pathname.startsWith('/crm');
@@ -444,6 +446,10 @@ const Topbar = ({ toggleSidebar }) => {
         window.dispatchEvent(new CustomEvent('roles:open-create-modal'));
     };
 
+    const handleOpenCreateProject = () => {
+        window.dispatchEvent(new CustomEvent('projects:open-create-modal'));
+    };
+
     return (
         <>
             <style>{`
@@ -470,22 +476,22 @@ const Topbar = ({ toggleSidebar }) => {
                 }
             `}</style>
             <div className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-4 fixed top-0 right-0 left-0 md:left-64 z-30 shadow-xs transition-all duration-300">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                     <button
                         onClick={toggleSidebar}
-                        className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+                        className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-md transition-colors shrink-0"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></svg>
                     </button>
                     <button
                         type="button"
                         onClick={() => navigate(homeRoute)}
-                        className="md:hidden font-bold text-indigo-700 text-lg tracking-tight flex items-center gap-2"
+                        className="md:hidden font-bold text-indigo-700 text-lg tracking-tight flex items-center gap-1.5 sm:gap-2 shrink-0"
                     >
-                        <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                        <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shrink-0">
                             <span className="text-white font-black text-sm">T</span>
                         </div>
-                        TalentCio
+                        <span className="hidden min-[380px]:inline">TalentCio</span>
                     </button>
                     {(() => {
                         if (location.pathname === '/ess') {
@@ -538,7 +544,7 @@ const Topbar = ({ toggleSidebar }) => {
                     })()}
                 </div>
 
-                <div className="flex items-center gap-3 ml-auto">
+                <div className="flex items-center gap-1.5 sm:gap-3 ml-auto shrink-0">
                     {/* Live Clock Ticker - Visible Everywhere on Navbar */}
                     <div className="hidden md:flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-1 text-slate-700 shadow-2xs">
                         <Timer size={13} className="text-indigo-600" />
@@ -637,6 +643,18 @@ const Topbar = ({ toggleSidebar }) => {
                         >
                             <Shield size={14} />
                             <span className="hidden sm:inline">Create Role</span>
+                        </button>
+                    )}
+                    {isProjectsPage && canCreateProject && (
+                        <button
+                            type="button"
+                            onClick={handleOpenCreateProject}
+                            className="inline-flex items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl bg-blue-600 px-2 sm:px-3.5 py-1 sm:py-1.5 text-[11px] sm:text-xs font-semibold text-white shadow-xs transition hover:bg-blue-700 cursor-pointer shrink-0 whitespace-nowrap"
+                            title="Create New Project"
+                        >
+                            <Plus size={13} className="shrink-0" strokeWidth={2.5} />
+                            <span className="hidden sm:inline">New Project</span>
+                            <span className="sm:hidden">Project</span>
                         </button>
                     )}
                     <div className="relative" ref={dropdownRef}>

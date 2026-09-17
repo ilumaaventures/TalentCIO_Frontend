@@ -913,6 +913,15 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         setEditFilteredTasks([]);
         setEditFilteredDiscussions([]);
         if (projectId) {
+            const selectedProj = availableProjects.find(p => String(p._id) === String(projectId));
+            if (selectedProj && selectedProj.hasModules === false) {
+                try {
+                    const discussionsRes = await api.get('/discussions', { params: { project: projectId, limit: 100, userId: effectiveUserId, excludeCompleted: true } });
+                    const list = discussionsRes.data?.discussions || discussionsRes.data || [];
+                    setEditFilteredDiscussions(list.filter(d => !isDiscussionCompleted(d)));
+                } catch (error) { console.error(error); }
+                return;
+            }
             try {
                 const [modulesRes, discussionsRes] = await Promise.all([
                     api.get(`/projects/${projectId}/modules`, { params: { userId: effectiveUserId } }),
@@ -1329,6 +1338,19 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         if (!projectId) {
             setFilteredModules([]);
             setFilteredDiscussions([]);
+            return;
+        }
+        const selectedProj = availableProjects.find(p => String(p._id) === String(projectId));
+        if (selectedProj && selectedProj.hasModules === false) {
+            setFilteredModules([]);
+            setFilteredTasks([]);
+            try {
+                const discussionsRes = await api.get('/discussions', { params: { project: projectId, limit: 100, userId: effectiveUserId, excludeCompleted: true } });
+                const list = discussionsRes.data?.discussions || discussionsRes.data || [];
+                setFilteredDiscussions(list.filter(d => !isDiscussionCompleted(d)));
+            } catch (error) {
+                console.error("Failed to fetch discussions", error);
+            }
             return;
         }
         try {
@@ -2759,6 +2781,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         &times;
                                                     </button>
                                                     <h4 className="text-xs font-bold text-blue-600 uppercase mb-3">New Work Log</h4>
+                                                    {Boolean(newEntry.projectId && availableProjects.some(p => String(p._id) === String(newEntry.projectId) && p.hasModules === false)) && (
+                                                        <div className="mb-3 text-xs text-blue-700 bg-blue-50 border border-blue-200/80 rounded-lg p-2.5 flex items-center gap-2">
+                                                            <span className="text-sm">⚡</span>
+                                                            <span><strong>Direct Project Log:</strong> Time will be logged directly to this project without modules or tasks.</span>
+                                                        </div>
+                                                    )}
                                                     <div className="space-y-3">
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                             <div>
@@ -2771,7 +2799,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 >
                                                                     <option value="">Select Project</option>
                                                                     {availableProjects.map(p => (
-                                                                        <option key={p._id} value={p._id}>{p.name}</option>
+                                                                        <option key={p._id} value={p._id}>{p.name}{p.hasModules === false ? ' (Direct)' : ''}</option>
                                                                     ))}
                                                                 </select>
                                                             </div>
@@ -2780,11 +2808,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={newEntry.moduleId}
                                                                     onChange={(e) => handleModuleChange(e.target.value)}
-                                                                    disabled={isSaving || isDeleting || !newEntry.projectId}
+                                                                    disabled={isSaving || isDeleting || !newEntry.projectId || Boolean(newEntry.projectId && availableProjects.some(p => String(p._id) === String(newEntry.projectId) && p.hasModules === false))}
                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
-                                                                    <option value="">Select Module</option>
-                                                                    {filteredModules.map(m => (
+                                                                    <option value="">{Boolean(newEntry.projectId && availableProjects.some(p => String(p._id) === String(newEntry.projectId) && p.hasModules === false)) ? 'Direct Project (No Modules)' : 'Select Module'}</option>
+                                                                    {!Boolean(newEntry.projectId && availableProjects.some(p => String(p._id) === String(newEntry.projectId) && p.hasModules === false)) && filteredModules.map(m => (
                                                                         <option key={m._id} value={m._id}>{m.name}</option>
                                                                     ))}
                                                                 </select>
@@ -2797,11 +2825,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 <select
                                                                     value={newEntry.taskId}
                                                                     onChange={(e) => setNewEntry(prev => ({ ...prev, taskId: e.target.value }))}
-                                                                    disabled={isSaving || isDeleting || !newEntry.moduleId}
+                                                                    disabled={isSaving || isDeleting || !newEntry.moduleId || Boolean(newEntry.projectId && availableProjects.some(p => String(p._id) === String(newEntry.projectId) && p.hasModules === false))}
                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                 >
-                                                                    <option value="">Select Task</option>
-                                                                    {filteredTasks.map(t => (
+                                                                    <option value="">{Boolean(newEntry.projectId && availableProjects.some(p => String(p._id) === String(newEntry.projectId) && p.hasModules === false)) ? 'Direct Project (No Tasks)' : 'Select Task'}</option>
+                                                                    {!Boolean(newEntry.projectId && availableProjects.some(p => String(p._id) === String(newEntry.projectId) && p.hasModules === false)) && filteredTasks.map(t => (
                                                                         <option key={t._id} value={t._id}>{t.name}</option>
                                                                     ))}
                                                                 </select>
@@ -2890,6 +2918,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             {/* Header Always Visible */}
                                             <div className="flex flex-wrap items-center text-xs text-slate-500 mb-2">
                                                 <span className="font-bold text-slate-700">{log.project?.name || 'Unknown Project'}</span>
+                                                {!log.module && !log.task && !log.taskName && (
+                                                    <span className="ml-2 text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                                        Direct Project
+                                                    </span>
+                                                )}
                                                 {log.module && (
                                                     <>
                                                         <span className="mx-1 text-slate-300">/</span>
@@ -2937,52 +2970,58 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                     <div className="flex flex-col gap-3 mb-3">
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                                                             <div>
-                                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project</label>
-                                                                <select
-                                                                    value={editProjectId}
-                                                                    onChange={(e) => handleEditProjectChange(e.target.value)}
-                                                                    disabled={isSaving || isDeleting}
-                                                                    className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                                                                >
-                                                                    <option value="">Select Project</option>
-                                                                    {editProjectId && !availableProjects.some(p => String(p._id) === String(editProjectId)) && (
-                                                                        <option key={editProjectId} value={editProjectId}>
-                                                                            {entryToEdit?.project?.name || 'Current Project'}
-                                                                        </option>
-                                                                    )}
-                                                                    {availableProjects.map(p => (
-                                                                        <option key={p._id} value={p._id}>{p.name}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                            <div>
-                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module</label>
+                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project</label>
                                                                  <select
-                                                                     value={editModuleId}
-                                                                     onChange={(e) => handleEditModuleChange(e.target.value)}
-                                                                     disabled={isSaving || isDeleting || !editProjectId}
+                                                                     value={editProjectId}
+                                                                     onChange={(e) => handleEditProjectChange(e.target.value)}
+                                                                     disabled={isSaving || isDeleting}
                                                                      className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                                                  >
-                                                                     <option value="">{editProjectId && editFilteredModules.length === 0 ? 'No Modules (Direct Project Log)' : 'Select Module (Optional)'}</option>
-                                                                     {editFilteredModules.map(m => (
-                                                                         <option key={m._id} value={m._id}>{m.name}</option>
+                                                                     <option value="">Select Project</option>
+                                                                     {editProjectId && !availableProjects.some(p => String(p._id) === String(editProjectId)) && (
+                                                                         <option key={editProjectId} value={editProjectId}>
+                                                                             {entryToEdit?.project?.name || 'Current Project'}
+                                                                         </option>
+                                                                     )}
+                                                                     {availableProjects.map(p => (
+                                                                         <option key={p._id} value={p._id}>{p.name}{p.hasModules === false ? ' (Direct)' : ''}</option>
                                                                      ))}
                                                                  </select>
                                                              </div>
+                                                             {Boolean(editProjectId && availableProjects.some(p => String(p._id) === String(editProjectId) && p.hasModules === false)) && (
+                                                                 <div className="col-span-1 sm:col-span-2 lg:col-span-4 text-xs text-blue-700 bg-blue-50 border border-blue-200/80 rounded-lg p-2.5 flex items-center gap-2">
+                                                                     <span className="text-sm">⚡</span>
+                                                                     <span><strong>Direct Project:</strong> This project logs hours directly without modules or tasks.</span>
+                                                                 </div>
+                                                             )}
                                                              <div>
-                                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task</label>
-                                                                 <select
-                                                                     value={editTaskId}
-                                                                     onChange={(e) => setEditTaskId(e.target.value)}
-                                                                     disabled={isSaving || isDeleting || !editProjectId || (editFilteredTasks.length === 0 && !editModuleId)}
-                                                                     className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                                                                 >
-                                                                     <option value="">{editFilteredTasks.length === 0 ? 'No Tasks (Direct Project Log)' : 'Select Task (Optional)'}</option>
-                                                                     {editFilteredTasks.map(t => (
-                                                                         <option key={t._id} value={t._id}>{t.name}</option>
-                                                                     ))}
-                                                                 </select>
-                                                             </div>
+                                                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module</label>
+                                                                  <select
+                                                                      value={editModuleId}
+                                                                      onChange={(e) => handleEditModuleChange(e.target.value)}
+                                                                      disabled={isSaving || isDeleting || !editProjectId || Boolean(editProjectId && availableProjects.some(p => String(p._id) === String(editProjectId) && p.hasModules === false))}
+                                                                      className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                                  >
+                                                                      <option value="">{Boolean(editProjectId && availableProjects.some(p => String(p._id) === String(editProjectId) && p.hasModules === false)) ? 'Direct Project (No Modules)' : (editProjectId && editFilteredModules.length === 0 ? 'No Modules (Direct Project Log)' : 'Select Module (Optional)')}</option>
+                                                                      {!Boolean(editProjectId && availableProjects.some(p => String(p._id) === String(editProjectId) && p.hasModules === false)) && editFilteredModules.map(m => (
+                                                                          <option key={m._id} value={m._id}>{m.name}</option>
+                                                                      ))}
+                                                                  </select>
+                                                              </div>
+                                                              <div>
+                                                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task</label>
+                                                                  <select
+                                                                      value={editTaskId}
+                                                                      onChange={(e) => setEditTaskId(e.target.value)}
+                                                                      disabled={isSaving || isDeleting || !editProjectId || Boolean(editProjectId && availableProjects.some(p => String(p._id) === String(editProjectId) && p.hasModules === false)) || (editFilteredTasks.length === 0 && !editModuleId)}
+                                                                      className="w-full p-2 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                                  >
+                                                                      <option value="">{Boolean(editProjectId && availableProjects.some(p => String(p._id) === String(editProjectId) && p.hasModules === false)) ? 'Direct Project (No Tasks)' : (editFilteredTasks.length === 0 ? 'No Tasks (Direct Project Log)' : 'Select Task (Optional)')}</option>
+                                                                      {!Boolean(editProjectId && availableProjects.some(p => String(p._id) === String(editProjectId) && p.hasModules === false)) && editFilteredTasks.map(t => (
+                                                                          <option key={t._id} value={t._id}>{t.name}</option>
+                                                                      ))}
+                                                                  </select>
+                                                              </div>
                                                              <div>
                                                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Discussion</label>
                                                                  <select

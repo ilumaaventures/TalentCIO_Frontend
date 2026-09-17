@@ -1,7 +1,8 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import api from '@/lib/apiClient';
-import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle } from 'lucide-react';
+import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X, Eye, ArrowUp, ArrowDown, ArrowUpDown, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import Button from '@/components/ui/Button';
@@ -9,8 +10,26 @@ import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache'
 
 import { useAuth } from '@/features/auth/context/AuthContext';
 
+const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    try {
+        const d = new Date(dateString);
+        if (isNaN(d.getTime())) return '-';
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+        return '-';
+    }
+};
+
+const getInitials = (first, last) => {
+    const f = (first || '').charAt(0).toUpperCase();
+    const l = (last || '').charAt(0).toUpperCase();
+    return `${f}${l}` || 'U';
+};
+
 const Projects = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const canCreate = user?.roles?.includes('Admin') || user?.permissions?.includes('project.create');
     const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('project.update');
     const [projects, setProjects] = useState([]);
@@ -19,12 +38,193 @@ const Projects = () => {
     const [submitLoading, setSubmitLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState(null); // stores the id of the project being acted on
     const [showModal, setShowModal] = useState(false);
-    const [formData, setFormData] = useState({ name: '', client: '', businessUnit: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
+    const [formData, setFormData] = useState({
+        name: '',
+        client: '',
+        businessUnit: '',
+        category: '',
+        estimatedHours: '',
+        description: '',
+        status: 'Active',
+        hasModules: true,
+        startDate: '',
+        dueDate: '',
+        members: []
+    });
     const initialFetchDoneRef = useRef(false);
     const PROJECT_CACHE_TTL_MS = 30 * 1000;
     const cacheKey = `project_data_${user?._id}`;
     const [employees, setEmployees] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
+    const [memberSearchTerm, setMemberSearchTerm] = useState('');
+    const [selectedClient, setSelectedClient] = useState('all');
+    const [selectedBusinessUnit, setSelectedBusinessUnit] = useState('all');
+    const [sortConfig, setSortConfig] = useState({ field: null, direction: 'asc' });
+
+    const handleSort = (field) => {
+        setSortConfig(prev => {
+            if (prev.field === field) {
+                if (prev.direction === 'asc') return { field, direction: 'desc' };
+                if (prev.direction === 'desc') return { field: null, direction: 'asc' };
+            }
+            return { field, direction: 'asc' };
+        });
+    };
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const rawTabParam = searchParams.get('tab') || searchParams.get('status');
+    const validTabs = ['all', 'active', 'inactive', 'on hold', 'completed'];
+    const normalizeTab = (t) => {
+        if (!t) return 'active';
+        const lower = String(t).trim().toLowerCase();
+        return lower === 'on-hold' ? 'on hold' : lower;
+    };
+
+    const resolvedInitialTab = validTabs.includes(normalizeTab(rawTabParam))
+        ? normalizeTab(rawTabParam)
+        : 'active';
+
+    const [activeTab, setActiveTab] = useState(resolvedInitialTab);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        const raw = searchParams.get('tab') || searchParams.get('status');
+        const normalized = normalizeTab(raw);
+        if (validTabs.includes(normalized) && normalized !== activeTab) {
+            setActiveTab(normalized);
+        }
+    }, [searchParams]);
+
+    const handleTabChange = (tabId) => {
+        setActiveTab(tabId);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('tab', tabId === 'on hold' ? 'on-hold' : tabId);
+        newParams.delete('status');
+        setSearchParams(newParams, { replace: true });
+    };
+
+    const getProjectDisplayStatus = useCallback((proj) => {
+        if (proj?.status) {
+            const s = String(proj.status).trim().toLowerCase();
+            if (s === 'active') return 'Active';
+            if (s === 'inactive') return 'Inactive';
+            if (s === 'on hold' || s === 'onhold' || s === 'hold') return 'On Hold';
+            if (s === 'completed' || s === 'complete' || s === 'closed') return 'Completed';
+            return proj.status;
+        }
+        return proj?.isActive ? 'Active' : 'Completed';
+    }, []);
+
+    const counts = useMemo(() => {
+        const res = { all: 0, active: 0, inactive: 0, onHold: 0, completed: 0 };
+        projects.forEach(p => {
+            if (selectedClient !== 'all') {
+                const cId = p.client?._id || p.client;
+                if (cId !== selectedClient) return;
+            }
+            if (selectedBusinessUnit !== 'all') {
+                const buId = p.businessUnit?._id || p.businessUnit;
+                if (buId !== selectedBusinessUnit) return;
+            }
+            res.all++;
+            const st = getProjectDisplayStatus(p);
+            if (st === 'Active') res.active++;
+            else if (st === 'Inactive') res.inactive++;
+            else if (st === 'On Hold') res.onHold++;
+            else if (st === 'Completed') res.completed++;
+        });
+        return res;
+    }, [projects, selectedClient, selectedBusinessUnit, getProjectDisplayStatus]);
+
+    const tabs = [
+        { id: 'all', label: 'All', count: counts.all },
+        { id: 'active', label: 'Active', count: counts.active },
+        { id: 'inactive', label: 'Inactive', count: counts.inactive },
+        { id: 'on hold', label: 'On Hold', count: counts.onHold },
+        { id: 'completed', label: 'Completed', count: counts.completed }
+    ];
+
+    const filteredProjects = useMemo(() => {
+        const result = projects.filter(project => {
+            const st = getProjectDisplayStatus(project);
+            if (activeTab !== 'all') {
+                if (st.toLowerCase() !== activeTab.toLowerCase()) {
+                    return false;
+                }
+            }
+
+            if (selectedClient !== 'all') {
+                const cId = project.client?._id || project.client;
+                if (cId !== selectedClient) return false;
+            }
+
+            if (selectedBusinessUnit !== 'all') {
+                const buId = project.businessUnit?._id || project.businessUnit;
+                if (buId !== selectedBusinessUnit) return false;
+            }
+
+            if (searchTerm.trim()) {
+                const q = searchTerm.trim().toLowerCase();
+                const name = String(project.name || '').toLowerCase();
+                const category = String(project.category || '').toLowerCase();
+                const clientName = String(project.client?.name || '').toLowerCase();
+                const buName = String(project.businessUnit?.name || '').toLowerCase();
+                const desc = String(project.description || '').toLowerCase();
+
+                const matches = name.includes(q) || category.includes(q) || clientName.includes(q) || buName.includes(q) || desc.includes(q);
+                if (!matches) return false;
+            }
+
+            return true;
+        });
+
+        if (sortConfig.field) {
+            result.sort((a, b) => {
+                let timeA = null;
+                let timeB = null;
+
+                if (sortConfig.field === 'startDate') {
+                    if (a.startDate) {
+                        const t = new Date(a.startDate).getTime();
+                        if (!isNaN(t)) timeA = t;
+                    }
+                    if (b.startDate) {
+                        const t = new Date(b.startDate).getTime();
+                        if (!isNaN(t)) timeB = t;
+                    }
+                } else if (sortConfig.field === 'endDate') {
+                    const rawA = a.dueDate || a.endDate;
+                    const rawB = b.dueDate || b.endDate;
+                    if (rawA) {
+                        const t = new Date(rawA).getTime();
+                        if (!isNaN(t)) timeA = t;
+                    }
+                    if (rawB) {
+                        const t = new Date(rawB).getTime();
+                        if (!isNaN(t)) timeB = t;
+                    }
+                }
+
+                if (timeA === null && timeB === null) return 0;
+                if (timeA === null) return 1;
+                if (timeB === null) return -1;
+
+                return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
+            });
+        }
+
+        return result;
+    }, [projects, activeTab, searchTerm, selectedClient, selectedBusinessUnit, sortConfig, getProjectDisplayStatus]);
+
+    const filteredEmployees = useMemo(() => {
+        if (!memberSearchTerm.trim()) return employees;
+        const q = memberSearchTerm.trim().toLowerCase();
+        return employees.filter(emp => {
+            const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
+            const email = String(emp.email || '').toLowerCase();
+            return fullName.includes(q) || email.includes(q);
+        });
+    }, [employees, memberSearchTerm]);
 
     const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
@@ -137,6 +337,10 @@ const Projects = () => {
             if (!payload.businessUnit) payload.businessUnit = null;
             if (!payload.startDate) payload.startDate = null;
             if (!payload.dueDate) payload.dueDate = null;
+            payload.category = payload.category ? String(payload.category).trim() : '';
+            payload.estimatedHours = (payload.estimatedHours !== '' && payload.estimatedHours !== null && !isNaN(payload.estimatedHours))
+                ? Number(payload.estimatedHours)
+                : 0;
 
             if (editingId) {
                 await api.put(`/projects/${editingId}`, payload);
@@ -147,7 +351,7 @@ const Projects = () => {
             }
             sessionStorage.removeItem(`project_data_${user?._id}`);
             setShowModal(false);
-            setFormData({ name: '', client: '', businessUnit: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
+            setFormData({ name: '', client: '', businessUnit: '', category: '', estimatedHours: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
             setEditingId(null);
             fetchData({ force: true });
         } catch {
@@ -159,25 +363,38 @@ const Projects = () => {
 
     const handleEdit = (proj) => {
         setFormData({
-            name: proj.name,
+            name: proj.name || '',
             client: proj.client?._id || '',
             businessUnit: proj.businessUnit?._id || '',
+            category: proj.category || '',
+            estimatedHours: (proj.estimatedHours !== undefined && proj.estimatedHours !== null && proj.estimatedHours !== '') ? proj.estimatedHours : '',
             description: proj.description || '',
             status: proj.status || (proj.isActive ? 'Active' : 'Completed'),
             hasModules: proj.hasModules !== false,
             startDate: proj.startDate ? new Date(proj.startDate).toISOString().split('T')[0] : '',
-            dueDate: proj.dueDate ? new Date(proj.dueDate).toISOString().split('T')[0] : '',
+            dueDate: (proj.dueDate || proj.endDate) ? new Date(proj.dueDate || proj.endDate).toISOString().split('T')[0] : '',
             members: proj.members?.map(m => m._id) || []
         });
         setEditingId(proj._id);
+        setMemberSearchTerm('');
         setShowModal(true);
     };
 
     const openCreateModal = () => {
-        setFormData({ name: '', client: '', businessUnit: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
+        setFormData({ name: '', client: '', businessUnit: '', category: '', estimatedHours: '', description: '', status: 'Active', hasModules: true, startDate: '', dueDate: '', members: [] });
         setEditingId(null);
+        setMemberSearchTerm('');
         setShowModal(true);
     };
+
+    useEffect(() => {
+        const handleOpenCreateProject = () => {
+            openCreateModal();
+        };
+
+        window.addEventListener('projects:open-create-modal', handleOpenCreateProject);
+        return () => window.removeEventListener('projects:open-create-modal', handleOpenCreateProject);
+    }, []);
 
     // if (loading) return <div className="p-8 text-center">Loading...</div>;
 
@@ -197,23 +414,121 @@ const Projects = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-6xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 lg:p-8">
+            <div className="w-full space-y-5">
 
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">Projects</h1>
-                        <p className="text-sm text-slate-500">Track initiatives and jobs</p>
+                {/* Tabs, Filters, Search & Action Toolbar (Navbar) */}
+                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
+                    {/* Status Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 xl:pb-0 scrollbar-none">
+                        {tabs.map((tab) => {
+                            const isSelected = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => handleTabChange(tab.id)}
+                                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
+                                        isSelected
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                                    }`}
+                                >
+                                    <span>{tab.label}</span>
+                                    <span
+                                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                                            isSelected
+                                                ? 'bg-white/20 text-white'
+                                                : 'bg-slate-100 text-slate-500'
+                                        }`}
+                                    >
+                                        {tab.count}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
-                    {canCreate && (
-                        <Button
-                            onClick={openCreateModal}
-                            className="flex items-center space-x-2"
-                        >
-                            <Plus size={18} />
-                            <span>New Project</span>
-                        </Button>
-                    )}
+
+                    {/* Filters, Search Bar & New Project Action */}
+                    <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto shrink-0">
+                        {/* Client Filter */}
+                        <div className="relative">
+                            <select
+                                value={selectedClient}
+                                onChange={(e) => setSelectedClient(e.target.value)}
+                                className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                    selectedClient !== 'all'
+                                        ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                        : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                }`}
+                                title="Filter by Client"
+                            >
+                                <option value="all">All Clients</option>
+                                {clients.map(c => (
+                                    <option key={c._id} value={c._id}>{c.name}</option>
+                                ))}
+                            </select>
+                            <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {/* Business Unit Filter */}
+                        <div className="relative">
+                            <select
+                                value={selectedBusinessUnit}
+                                onChange={(e) => setSelectedBusinessUnit(e.target.value)}
+                                className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                    selectedBusinessUnit !== 'all'
+                                        ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                        : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                }`}
+                                title="Filter by Business Unit"
+                            >
+                                <option value="all">All Business Units</option>
+                                {businessUnits.map(bu => (
+                                    <option key={bu._id} value={bu._id}>{bu.name}</option>
+                                ))}
+                            </select>
+                            <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="relative flex-1 sm:w-52 md:w-60">
+                            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Search projects..."
+                                className="w-full h-9 pl-9 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                            />
+                            {searchTerm && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Reset Filters shortcut if active */}
+                        {(selectedClient !== 'all' || selectedBusinessUnit !== 'all' || searchTerm || sortConfig.field) && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelectedClient('all');
+                                    setSelectedBusinessUnit('all');
+                                    setSearchTerm('');
+                                    setSortConfig({ field: null, direction: 'asc' });
+                                }}
+                                className="text-xs font-semibold text-slate-400 hover:text-red-500 px-2 py-1 transition-colors whitespace-nowrap"
+                                title="Reset all filters and sorting"
+                            >
+                                Clear filters
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="zoho-card overflow-hidden">
@@ -222,9 +537,50 @@ const Projects = () => {
                             <thead className="bg-slate-50 text-slate-500 font-medium">
                                 <tr>
                                     <th className="px-6 py-3">Project Name</th>
+                                    <th className="px-6 py-3">Category</th>
                                     <th className="px-6 py-3">Client</th>
                                     <th className="px-6 py-3">Business Unit</th>
-                                    <th className="px-6 py-3">Status</th>
+                                    <th
+                                        className="px-6 py-3 cursor-pointer select-none hover:text-slate-800 transition-colors"
+                                        onClick={() => handleSort('startDate')}
+                                        title="Click to sort by Start Date"
+                                    >
+                                        <div className="flex items-center gap-1.5 group">
+                                            <span>Start Date</span>
+                                            <span className="inline-flex items-center">
+                                                {sortConfig.field === 'startDate' ? (
+                                                    sortConfig.direction === 'asc' ? (
+                                                        <ArrowUp size={14} className="text-blue-600 font-bold" />
+                                                    ) : (
+                                                        <ArrowDown size={14} className="text-blue-600 font-bold" />
+                                                    )
+                                                ) : (
+                                                    <ArrowUpDown size={13} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
+                                                )}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-6 py-3 cursor-pointer select-none hover:text-slate-800 transition-colors"
+                                        onClick={() => handleSort('endDate')}
+                                        title="Click to sort by End Date"
+                                    >
+                                        <div className="flex items-center gap-1.5 group">
+                                            <span>End Date</span>
+                                            <span className="inline-flex items-center">
+                                                {sortConfig.field === 'endDate' ? (
+                                                    sortConfig.direction === 'asc' ? (
+                                                        <ArrowUp size={14} className="text-blue-600 font-bold" />
+                                                    ) : (
+                                                        <ArrowDown size={14} className="text-blue-600 font-bold" />
+                                                    )
+                                                ) : (
+                                                    <ArrowUpDown size={13} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
+                                                )}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th className="px-6 py-3">Estimate Hours</th>
                                     <th className="px-6 py-3 text-right">Action</th>
                                 </tr>
                             </thead>
@@ -232,30 +588,46 @@ const Projects = () => {
                                 {loading ? (
                                     Array.from({ length: 5 }).map((_, i) => (
                                         <tr key={i}>
-                                            <td className="px-6 py-3"><Skeleton className="h-8 w-48" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-8 w-44" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-20" /></td>
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-24" /></td>
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-24" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-20" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-20" /></td>
                                             <td className="px-6 py-3"><Skeleton className="h-6 w-16" /></td>
-                                            <td className="px-6 py-3"><Skeleton className="h-6 w-24 ml-auto" /></td>
+                                            <td className="px-6 py-3"><Skeleton className="h-6 w-10 ml-auto" /></td>
                                         </tr>
                                     ))
-                                ) : projects.length > 0 ? (
-                                    projects.map((project, index) => {
-                                        const displayStatus = project.status || (project.isActive ? 'Active' : 'Completed');
+                                ) : filteredProjects.length > 0 ? (
+                                    filteredProjects.map((project) => {
                                         return (
-                                            <tr key={project._id} className="hover:bg-slate-50/50">
+                                            <tr
+                                                key={project._id}
+                                                onClick={() => navigate(`/projects/${project._id}`)}
+                                                className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
+                                            >
                                                 <td className="px-6 py-3 font-medium text-slate-800">
                                                     <div className="flex items-center space-x-2">
-                                                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded">
+                                                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded group-hover:bg-blue-600 group-hover:text-white transition-colors">
                                                             <Briefcase size={16} />
                                                         </div>
-                                                        <span>{project.name}</span>
+                                                        <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">{project.name}</span>
                                                         {project.hasModules === false && (
                                                             <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
                                                                 No Modules
                                                             </span>
                                                         )}
                                                     </div>
+                                                </td>
+
+                                                <td className="px-6 py-3 text-slate-600">
+                                                    {project.category ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                                                            {project.category}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 italic">-</span>
+                                                    )}
                                                 </td>
 
                                                 <td className="px-6 py-3 text-slate-600">
@@ -268,50 +640,61 @@ const Projects = () => {
                                                             {project.businessUnit.name}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-slate-400 italic">N/A</span>
+                                                        <span className="text-slate-400 italic">-</span>
                                                     )}
                                                 </td>
 
-                                                <td className="px-6 py-3">
-                                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${displayStatus === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                        displayStatus === 'On Hold' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                                            displayStatus === 'Inactive' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                                                                'bg-slate-100 text-slate-500 border-slate-200'
-                                                        }`}>
-                                                        {displayStatus}
-                                                    </span>
+                                                <td className="px-6 py-3 text-slate-600 whitespace-nowrap text-xs">
+                                                    {project.startDate ? (
+                                                        formatDate(project.startDate)
+                                                    ) : (
+                                                        <span className="text-slate-400 italic">-</span>
+                                                    )}
                                                 </td>
-                                                <td className="px-6 py-3">
-                                                    <div className="flex items-center justify-end gap-3 action-menu-container relative">
-                                                        <a href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium whitespace-nowrap">View Modules</a>
 
-                                                        {canUpdate && (
-                                                            <button
-                                                                className="action-menu-trigger p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50"
-                                                                disabled={actionLoading === project._id}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    if (openMenuId === project._id) {
-                                                                        setOpenMenuId(null);
-                                                                    } else {
-                                                                        const rect = e.currentTarget.getBoundingClientRect();
-                                                                        const spaceBelow = window.innerHeight - rect.bottom;
-                                                                        const menuHeight = 220;
-                                                                        const top = spaceBelow >= menuHeight
-                                                                            ? rect.bottom + window.scrollY + 4
-                                                                            : rect.top + window.scrollY - menuHeight - 4;
-                                                                        setMenuPosition({ top, left: rect.right + window.scrollX - 160 });
-                                                                        setOpenMenuId(project._id);
-                                                                    }
-                                                                }}
-                                                            >
-                                                                {actionLoading === project._id ? (
-                                                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
-                                                                ) : (
-                                                                    <MoreVertical size={16} />
-                                                                )}
-                                                            </button>
-                                                        )}
+                                                <td className="px-6 py-3 text-slate-600 whitespace-nowrap text-xs">
+                                                    {project.dueDate || project.endDate ? (
+                                                        formatDate(project.dueDate || project.endDate)
+                                                    ) : (
+                                                        <span className="text-slate-400 italic">-</span>
+                                                    )}
+                                                </td>
+
+                                                <td className="px-6 py-3 text-slate-600 whitespace-nowrap text-xs">
+                                                    {(project.estimatedHours !== undefined && project.estimatedHours !== null && project.estimatedHours !== '' && Number(project.estimatedHours) > 0) ? (
+                                                        <span className="font-semibold text-slate-700">{project.estimatedHours} hrs</span>
+                                                    ) : (
+                                                        <span className="text-slate-400 italic">-</span>
+                                                    )}
+                                                </td>
+
+                                                <td className="px-6 py-3" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center justify-end action-menu-container relative">
+                                                        <button
+                                                            className="action-menu-trigger p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors disabled:opacity-50"
+                                                            disabled={actionLoading === project._id}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (openMenuId === project._id) {
+                                                                    setOpenMenuId(null);
+                                                                } else {
+                                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                                    const spaceBelow = window.innerHeight - rect.bottom;
+                                                                    const menuHeight = 240;
+                                                                    const top = spaceBelow >= menuHeight
+                                                                        ? rect.bottom + window.scrollY + 4
+                                                                        : rect.top + window.scrollY - menuHeight - 4;
+                                                                    setMenuPosition({ top, left: rect.right + window.scrollX - 160 });
+                                                                    setOpenMenuId(project._id);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {actionLoading === project._id ? (
+                                                                <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                                                            ) : (
+                                                                <MoreVertical size={16} />
+                                                            )}
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -319,8 +702,50 @@ const Projects = () => {
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan="5" className="p-8 text-center text-slate-500">
-                                            No Projects found.
+                                        <td colSpan="8" className="p-12 text-center text-slate-500">
+                                            <div className="flex flex-col items-center justify-center space-y-2">
+                                                <div className="p-3 bg-slate-100 text-slate-400 rounded-full mb-1">
+                                                    <Briefcase size={24} />
+                                                </div>
+                                                <p className="font-medium text-slate-700 text-sm">
+                                                    {searchTerm.trim()
+                                                        ? `No projects matching "${searchTerm}"`
+                                                        : (selectedClient !== 'all' || selectedBusinessUnit !== 'all')
+                                                            ? 'No projects matching the selected filters'
+                                                            : activeTab === 'all'
+                                                                ? 'No projects found'
+                                                                : `No ${activeTab} projects found`}
+                                                </p>
+                                                <p className="text-xs text-slate-400 max-w-sm">
+                                                    {(searchTerm.trim() || selectedClient !== 'all' || selectedBusinessUnit !== 'all')
+                                                        ? 'Try adjusting your search terms or clearing the active filters.'
+                                                        : activeTab === 'all'
+                                                            ? 'Get started by creating your first project.'
+                                                            : `There are currently no projects marked as ${activeTab}.`}
+                                                </p>
+                                                {(searchTerm.trim() || selectedClient !== 'all' || selectedBusinessUnit !== 'all' || sortConfig.field) ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSearchTerm('');
+                                                            setSelectedClient('all');
+                                                            setSelectedBusinessUnit('all');
+                                                            setSortConfig({ field: null, direction: 'asc' });
+                                                        }}
+                                                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                                                    >
+                                                        Clear all filters
+                                                    </button>
+                                                ) : activeTab !== 'all' && counts.all > 0 ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleTabChange('all')}
+                                                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                                                    >
+                                                        View all projects ({counts.all})
+                                                    </button>
+                                                ) : null}
+                                            </div>
                                         </td>
                                     </tr>
                                 )}
@@ -344,11 +769,23 @@ const Projects = () => {
                             className="w-40 bg-white rounded-lg shadow-xl border border-slate-100 py-1"
                         >
                             <button
-                                onClick={() => { handleEdit(project); setOpenMenuId(null); }}
-                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                                onClick={() => {
+                                    setOpenMenuId(null);
+                                    navigate(`/projects/${project._id}`);
+                                }}
+                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
                             >
-                                <Edit2 size={13} /> Edit
+                                <Eye size={13} /> View Details
                             </button>
+
+                            {canUpdate && (
+                                <button
+                                    onClick={() => { handleEdit(project); setOpenMenuId(null); }}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                                >
+                                    <Edit2 size={13} /> Edit
+                                </button>
+                            )}
 
                             {displayStatus !== 'Completed' && (
                                 <button
@@ -473,6 +910,16 @@ const Projects = () => {
                                         </div>
 
                                         <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Category</label>
+                                            <input
+                                                placeholder="e.g. Development, Design, Marketing"
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                value={formData.category}
+                                                onChange={e => setFormData({ ...formData, category: e.target.value })}
+                                            />
+                                        </div>
+
+                                        <div>
                                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Client</label>
                                             <select
                                                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
@@ -556,9 +1003,9 @@ const Projects = () => {
                                 <div>
                                     <div className="flex items-center gap-2 mb-4">
                                         <span className="w-1 h-4 bg-blue-600 rounded-full"></span>
-                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Timeline</h4>
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Timeline & Estimates</h4>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-5">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                                         <div>
                                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Start Date</label>
                                             <input
@@ -569,12 +1016,24 @@ const Projects = () => {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Due Date</label>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">End Date</label>
                                             <input
                                                 type="date"
                                                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
                                                 value={formData.dueDate}
                                                 onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Estimate Hours</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                placeholder="e.g. 100"
+                                                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all bg-slate-50 focus:bg-white"
+                                                value={formData.estimatedHours}
+                                                onChange={e => setFormData({ ...formData, estimatedHours: e.target.value })}
                                             />
                                         </div>
                                     </div>
@@ -585,58 +1044,122 @@ const Projects = () => {
 
                                 {/* Section: Team Members */}
                                 <div>
-                                    <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center justify-between mb-3">
                                         <div className="flex items-center gap-2">
                                             <span className="w-1 h-4 bg-blue-600 rounded-full"></span>
                                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Team Members</h4>
                                         </div>
-                                        {formData.members?.length > 0 && (
+                                        <div className="flex items-center gap-2.5">
+                                            {formData.members?.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData(prev => ({ ...prev, members: [] }))}
+                                                    className="text-xs font-medium text-slate-400 hover:text-red-500 transition-colors"
+                                                >
+                                                    Deselect all
+                                                </button>
+                                            )}
                                             <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
-                                                {formData.members.length} selected
+                                                {formData.members?.length || 0} selected
                                             </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Team Members Search */}
+                                    <div className="relative mb-3">
+                                        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            value={memberSearchTerm}
+                                            onChange={(e) => setMemberSearchTerm(e.target.value)}
+                                            placeholder="Search team members by name or email..."
+                                            className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                                        />
+                                        {memberSearchTerm && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setMemberSearchTerm('')}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                                            >
+                                                <X size={13} />
+                                            </button>
                                         )}
                                     </div>
-                                    <div className="h-44 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 grid grid-cols-2 gap-2">
-                                        {employees.map(emp => {
+
+                                    {/* Row-wise Team Members List */}
+                                    <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-xs">
+                                        {filteredEmployees.map(emp => {
                                             const isChecked = formData.members?.includes(emp._id);
                                             return (
-                                                <label
+                                                <div
                                                     key={emp._id}
-                                                    className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${isChecked
-                                                        ? 'bg-blue-50 border-blue-300 shadow-sm'
-                                                        : 'bg-white border-slate-200 hover:border-blue-200 hover:bg-blue-50/40'
-                                                        }`}
+                                                    onClick={() => {
+                                                        setFormData(prev => {
+                                                            const current = prev.members || [];
+                                                            const checked = current.includes(emp._id);
+                                                            return {
+                                                                ...prev,
+                                                                members: checked
+                                                                    ? current.filter(x => x !== emp._id)
+                                                                    : [...current, emp._id]
+                                                            };
+                                                        });
+                                                    }}
+                                                    className={`flex items-center justify-between px-3.5 py-2.5 cursor-pointer transition-colors ${
+                                                        isChecked ? 'bg-blue-50/70 hover:bg-blue-50' : 'hover:bg-slate-50'
+                                                    }`}
                                                 >
-                                                    <input
-                                                        type="checkbox"
-                                                        value={emp._id}
-                                                        checked={isChecked}
-                                                        onChange={(e) => {
-                                                            const checked = e.target.checked;
-                                                            const id = emp._id;
-                                                            setFormData(prev => {
-                                                                const current = prev.members || [];
-                                                                if (checked) return { ...prev, members: [...current, id] };
-                                                                return { ...prev, members: current.filter(x => x !== id) };
-                                                            });
-                                                        }}
-                                                        className="rounded text-blue-600 focus:ring-blue-500 flex-shrink-0"
-                                                    />
-                                                    <div className="min-w-0">
-                                                        <p className="text-sm font-semibold text-slate-700 truncate">{emp.firstName} {emp.lastName}</p>
-                                                        <p className="text-[10px] text-slate-400 truncate">{emp.email}</p>
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={() => {}}
+                                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0 pointer-events-none"
+                                                        />
+                                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0 border border-blue-200/70">
+                                                            {getInitials(emp.firstName, emp.lastName)}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-slate-800 truncate">
+                                                                {emp.firstName} {emp.lastName}
+                                                            </p>
+                                                            <p className="text-xs text-slate-400 truncate">
+                                                                {emp.email}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                </label>
+                                                    {isChecked && (
+                                                        <span className="text-[11px] font-semibold text-blue-600 bg-blue-100/70 px-2 py-0.5 rounded-full shrink-0">
+                                                            Selected
+                                                        </span>
+                                                    )}
+                                                </div>
                                             );
                                         })}
-                                        {employees.length === 0 && (
-                                            <div className="col-span-2 flex flex-col items-center justify-center py-8 text-slate-400">
-                                                <Briefcase size={28} className="mb-2 opacity-30" />
-                                                <p className="text-xs italic">No employees found</p>
+
+                                        {filteredEmployees.length === 0 && (
+                                            <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+                                                <Briefcase size={24} className="mb-1.5 opacity-30" />
+                                                <p className="text-xs">
+                                                    {memberSearchTerm
+                                                        ? `No team members matching "${memberSearchTerm}"`
+                                                        : 'No employees found'}
+                                                </p>
+                                                {memberSearchTerm && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setMemberSearchTerm('')}
+                                                        className="text-xs text-blue-600 hover:underline mt-1 font-semibold"
+                                                    >
+                                                        Clear search
+                                                    </button>
+                                                )}
                                             </div>
                                         )}
                                     </div>
-                                    <p className="text-[11px] text-slate-400 mt-1.5 pl-1">Selected members will have visibility access to this project.</p>
+                                    <p className="text-[11px] text-slate-400 mt-2 pl-1">
+                                        Selected members will have visibility access to this project.
+                                    </p>
                                 </div>
                             </div>
 
