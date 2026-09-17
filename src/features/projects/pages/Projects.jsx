@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import api from '@/lib/apiClient';
-import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X, Eye } from 'lucide-react';
+import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X, Eye, ArrowUp, ArrowDown, ArrowUpDown, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import Button from '@/components/ui/Button';
@@ -57,6 +57,19 @@ const Projects = () => {
     const [employees, setEmployees] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
     const [memberSearchTerm, setMemberSearchTerm] = useState('');
+    const [selectedClient, setSelectedClient] = useState('all');
+    const [selectedBusinessUnit, setSelectedBusinessUnit] = useState('all');
+    const [sortConfig, setSortConfig] = useState({ field: null, direction: 'asc' });
+
+    const handleSort = (field) => {
+        setSortConfig(prev => {
+            if (prev.field === field) {
+                if (prev.direction === 'asc') return { field, direction: 'desc' };
+                if (prev.direction === 'desc') return { field: null, direction: 'asc' };
+            }
+            return { field, direction: 'asc' };
+        });
+    };
 
     const [searchParams, setSearchParams] = useSearchParams();
     const rawTabParam = searchParams.get('tab') || searchParams.get('status');
@@ -103,8 +116,17 @@ const Projects = () => {
     }, []);
 
     const counts = useMemo(() => {
-        const res = { all: projects.length, active: 0, inactive: 0, onHold: 0, completed: 0 };
+        const res = { all: 0, active: 0, inactive: 0, onHold: 0, completed: 0 };
         projects.forEach(p => {
+            if (selectedClient !== 'all') {
+                const cId = p.client?._id || p.client;
+                if (cId !== selectedClient) return;
+            }
+            if (selectedBusinessUnit !== 'all') {
+                const buId = p.businessUnit?._id || p.businessUnit;
+                if (buId !== selectedBusinessUnit) return;
+            }
+            res.all++;
             const st = getProjectDisplayStatus(p);
             if (st === 'Active') res.active++;
             else if (st === 'Inactive') res.inactive++;
@@ -112,7 +134,7 @@ const Projects = () => {
             else if (st === 'Completed') res.completed++;
         });
         return res;
-    }, [projects, getProjectDisplayStatus]);
+    }, [projects, selectedClient, selectedBusinessUnit, getProjectDisplayStatus]);
 
     const tabs = [
         { id: 'all', label: 'All', count: counts.all },
@@ -123,7 +145,7 @@ const Projects = () => {
     ];
 
     const filteredProjects = useMemo(() => {
-        return projects.filter(project => {
+        const result = projects.filter(project => {
             const st = getProjectDisplayStatus(project);
             if (activeTab !== 'all') {
                 if (st.toLowerCase() !== activeTab.toLowerCase()) {
@@ -131,10 +153,20 @@ const Projects = () => {
                 }
             }
 
+            if (selectedClient !== 'all') {
+                const cId = project.client?._id || project.client;
+                if (cId !== selectedClient) return false;
+            }
+
+            if (selectedBusinessUnit !== 'all') {
+                const buId = project.businessUnit?._id || project.businessUnit;
+                if (buId !== selectedBusinessUnit) return false;
+            }
+
             if (searchTerm.trim()) {
                 const q = searchTerm.trim().toLowerCase();
                 const name = String(project.name || '').toLowerCase();
-                const category = String(project.category || project.businessUnit?.name || '').toLowerCase();
+                const category = String(project.category || '').toLowerCase();
                 const clientName = String(project.client?.name || '').toLowerCase();
                 const buName = String(project.businessUnit?.name || '').toLowerCase();
                 const desc = String(project.description || '').toLowerCase();
@@ -145,7 +177,44 @@ const Projects = () => {
 
             return true;
         });
-    }, [projects, activeTab, searchTerm, getProjectDisplayStatus]);
+
+        if (sortConfig.field) {
+            result.sort((a, b) => {
+                let timeA = null;
+                let timeB = null;
+
+                if (sortConfig.field === 'startDate') {
+                    if (a.startDate) {
+                        const t = new Date(a.startDate).getTime();
+                        if (!isNaN(t)) timeA = t;
+                    }
+                    if (b.startDate) {
+                        const t = new Date(b.startDate).getTime();
+                        if (!isNaN(t)) timeB = t;
+                    }
+                } else if (sortConfig.field === 'endDate') {
+                    const rawA = a.dueDate || a.endDate;
+                    const rawB = b.dueDate || b.endDate;
+                    if (rawA) {
+                        const t = new Date(rawA).getTime();
+                        if (!isNaN(t)) timeA = t;
+                    }
+                    if (rawB) {
+                        const t = new Date(rawB).getTime();
+                        if (!isNaN(t)) timeB = t;
+                    }
+                }
+
+                if (timeA === null && timeB === null) return 0;
+                if (timeA === null) return 1;
+                if (timeB === null) return -1;
+
+                return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
+            });
+        }
+
+        return result;
+    }, [projects, activeTab, searchTerm, selectedClient, selectedBusinessUnit, sortConfig, getProjectDisplayStatus]);
 
     const filteredEmployees = useMemo(() => {
         if (!memberSearchTerm.trim()) return employees;
@@ -318,6 +387,15 @@ const Projects = () => {
         setShowModal(true);
     };
 
+    useEffect(() => {
+        const handleOpenCreateProject = () => {
+            openCreateModal();
+        };
+
+        window.addEventListener('projects:open-create-modal', handleOpenCreateProject);
+        return () => window.removeEventListener('projects:open-create-modal', handleOpenCreateProject);
+    }, []);
+
     // if (loading) return <div className="p-8 text-center">Loading...</div>;
 
     const handleStatusChange = async (project, newStatus) => {
@@ -336,29 +414,13 @@ const Projects = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-6xl mx-auto space-y-6">
+        <div className="min-h-screen bg-slate-100 font-sans p-4 sm:p-6 lg:p-8">
+            <div className="w-full space-y-5">
 
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">Projects</h1>
-                        <p className="text-sm text-slate-500">Track initiatives and jobs</p>
-                    </div>
-                    {canCreate && (
-                        <Button
-                            onClick={openCreateModal}
-                            className="flex items-center space-x-2"
-                        >
-                            <Plus size={18} />
-                            <span>New Project</span>
-                        </Button>
-                    )}
-                </div>
-
-                {/* Tabs & Search Toolbar */}
-                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+                {/* Tabs, Filters, Search & Action Toolbar (Navbar) */}
+                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
                     {/* Status Tabs */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 xl:pb-0 scrollbar-none">
                         {tabs.map((tab) => {
                             const isSelected = activeTab === tab.id;
                             return (
@@ -387,23 +449,83 @@ const Projects = () => {
                         })}
                     </div>
 
-                    {/* Search Bar */}
-                    <div className="relative w-full md:w-72 shrink-0">
-                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search projects, clients..."
-                            className="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                        />
-                        {searchTerm && (
+                    {/* Filters, Search Bar & New Project Action */}
+                    <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto shrink-0">
+                        {/* Client Filter */}
+                        <div className="relative">
+                            <select
+                                value={selectedClient}
+                                onChange={(e) => setSelectedClient(e.target.value)}
+                                className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                    selectedClient !== 'all'
+                                        ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                        : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                }`}
+                                title="Filter by Client"
+                            >
+                                <option value="all">All Clients</option>
+                                {clients.map(c => (
+                                    <option key={c._id} value={c._id}>{c.name}</option>
+                                ))}
+                            </select>
+                            <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {/* Business Unit Filter */}
+                        <div className="relative">
+                            <select
+                                value={selectedBusinessUnit}
+                                onChange={(e) => setSelectedBusinessUnit(e.target.value)}
+                                className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                    selectedBusinessUnit !== 'all'
+                                        ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                        : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                }`}
+                                title="Filter by Business Unit"
+                            >
+                                <option value="all">All Business Units</option>
+                                {businessUnits.map(bu => (
+                                    <option key={bu._id} value={bu._id}>{bu.name}</option>
+                                ))}
+                            </select>
+                            <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="relative flex-1 sm:w-52 md:w-60">
+                            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Search projects..."
+                                className="w-full h-9 pl-9 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                            />
+                            {searchTerm && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Reset Filters shortcut if active */}
+                        {(selectedClient !== 'all' || selectedBusinessUnit !== 'all' || searchTerm || sortConfig.field) && (
                             <button
                                 type="button"
-                                onClick={() => setSearchTerm('')}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                                onClick={() => {
+                                    setSelectedClient('all');
+                                    setSelectedBusinessUnit('all');
+                                    setSearchTerm('');
+                                    setSortConfig({ field: null, direction: 'asc' });
+                                }}
+                                className="text-xs font-semibold text-slate-400 hover:text-red-500 px-2 py-1 transition-colors whitespace-nowrap"
+                                title="Reset all filters and sorting"
                             >
-                                <X size={13} />
+                                Clear filters
                             </button>
                         )}
                     </div>
@@ -418,8 +540,46 @@ const Projects = () => {
                                     <th className="px-6 py-3">Category</th>
                                     <th className="px-6 py-3">Client</th>
                                     <th className="px-6 py-3">Business Unit</th>
-                                    <th className="px-6 py-3">Start Date</th>
-                                    <th className="px-6 py-3">End Date</th>
+                                    <th
+                                        className="px-6 py-3 cursor-pointer select-none hover:text-slate-800 transition-colors"
+                                        onClick={() => handleSort('startDate')}
+                                        title="Click to sort by Start Date"
+                                    >
+                                        <div className="flex items-center gap-1.5 group">
+                                            <span>Start Date</span>
+                                            <span className="inline-flex items-center">
+                                                {sortConfig.field === 'startDate' ? (
+                                                    sortConfig.direction === 'asc' ? (
+                                                        <ArrowUp size={14} className="text-blue-600 font-bold" />
+                                                    ) : (
+                                                        <ArrowDown size={14} className="text-blue-600 font-bold" />
+                                                    )
+                                                ) : (
+                                                    <ArrowUpDown size={13} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
+                                                )}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-6 py-3 cursor-pointer select-none hover:text-slate-800 transition-colors"
+                                        onClick={() => handleSort('endDate')}
+                                        title="Click to sort by End Date"
+                                    >
+                                        <div className="flex items-center gap-1.5 group">
+                                            <span>End Date</span>
+                                            <span className="inline-flex items-center">
+                                                {sortConfig.field === 'endDate' ? (
+                                                    sortConfig.direction === 'asc' ? (
+                                                        <ArrowUp size={14} className="text-blue-600 font-bold" />
+                                                    ) : (
+                                                        <ArrowDown size={14} className="text-blue-600 font-bold" />
+                                                    )
+                                                ) : (
+                                                    <ArrowUpDown size={13} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
+                                                )}
+                                            </span>
+                                        </div>
+                                    </th>
                                     <th className="px-6 py-3">Estimate Hours</th>
                                     <th className="px-6 py-3 text-right">Action</th>
                                 </tr>
@@ -550,24 +710,31 @@ const Projects = () => {
                                                 <p className="font-medium text-slate-700 text-sm">
                                                     {searchTerm.trim()
                                                         ? `No projects matching "${searchTerm}"`
-                                                        : activeTab === 'all'
-                                                            ? 'No projects found'
-                                                            : `No ${activeTab} projects found`}
+                                                        : (selectedClient !== 'all' || selectedBusinessUnit !== 'all')
+                                                            ? 'No projects matching the selected filters'
+                                                            : activeTab === 'all'
+                                                                ? 'No projects found'
+                                                                : `No ${activeTab} projects found`}
                                                 </p>
                                                 <p className="text-xs text-slate-400 max-w-sm">
-                                                    {searchTerm.trim()
-                                                        ? 'Try adjusting your search terms or clearing the filter.'
+                                                    {(searchTerm.trim() || selectedClient !== 'all' || selectedBusinessUnit !== 'all')
+                                                        ? 'Try adjusting your search terms or clearing the active filters.'
                                                         : activeTab === 'all'
                                                             ? 'Get started by creating your first project.'
                                                             : `There are currently no projects marked as ${activeTab}.`}
                                                 </p>
-                                                {searchTerm.trim() ? (
+                                                {(searchTerm.trim() || selectedClient !== 'all' || selectedBusinessUnit !== 'all' || sortConfig.field) ? (
                                                     <button
                                                         type="button"
-                                                        onClick={() => setSearchTerm('')}
+                                                        onClick={() => {
+                                                            setSearchTerm('');
+                                                            setSelectedClient('all');
+                                                            setSelectedBusinessUnit('all');
+                                                            setSortConfig({ field: null, direction: 'asc' });
+                                                        }}
                                                         className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
                                                     >
-                                                        Clear search
+                                                        Clear all filters
                                                     </button>
                                                 ) : activeTab !== 'all' && counts.all > 0 ? (
                                                     <button

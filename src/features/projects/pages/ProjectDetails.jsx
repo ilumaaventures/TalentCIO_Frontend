@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import api from '@/lib/apiClient';
-import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock, LayoutList, ListTree, GanttChart, ChevronDown, ChevronRight, ListChecks, Trash2 } from 'lucide-react';
+import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock, LayoutList, ListTree, GanttChart, ChevronDown, ChevronRight, ListChecks, Trash2, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -29,6 +29,7 @@ const ProjectDetails = () => {
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState('overview'); // 'overview', 'hierarchy', 'timeline'
+    const hasModules = project?.hasModules !== false;
 
     // Modals
     const [showModuleModal, setShowModuleModal] = useState(false);
@@ -79,7 +80,9 @@ const ProjectDetails = () => {
             const newFingerprint = JSON.stringify({ 
                 m: moduleData.length, 
                 t: taskData.length, 
-                updates: moduleData.map(m => m.tasks?.length).join(',') 
+                updates: moduleData.map(m => m.tasks?.length).join(','),
+                dw: (projData.directWorkLogs || []).length,
+                th: projData.totalLoggedHours || 0
             });
             const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
 
@@ -98,7 +101,13 @@ const ProjectDetails = () => {
                     description: projData.description,
                     startDate: projData.startDate,
                     dueDate: projData.dueDate,
-                    manager: projData.manager ? { firstName: projData.manager.firstName } : null
+                    manager: projData.manager ? { firstName: projData.manager.firstName, lastName: projData.manager.lastName } : null,
+                    client: projData.client,
+                    members: projData.members,
+                    hasModules: projData.hasModules !== false,
+                    directWorkLogs: projData.directWorkLogs || [],
+                    totalLoggedHours: projData.totalLoggedHours || 0,
+                    estimatedHours: projData.estimatedHours || 0
                 };
 
                 const minimalModules = moduleData.map(m => ({
@@ -207,17 +216,44 @@ const ProjectDetails = () => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
+            if (loggingTaskId) {
+                await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
+            } else {
+                await api.post('/timesheet/entry', {
+                    projectId: id,
+                    date: logForm.date,
+                    hours: Number(logForm.hours),
+                    description: logForm.description
+                });
+            }
             toast.success('Work Logged Successfully');
             sessionStorage.removeItem(`project_details_${id}`);
             sessionStorage.removeItem(`project_data_${user?._id}`);
             setShowLogModal(false);
             setLoggingTaskId(null);
             fetchData();
-        } catch {
-            toast.error('Failed to log work');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to log work');
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const openProjectLogModal = () => {
+        setLogForm({ date: getLocalDateInputValue(), hours: '', description: '' });
+        setLoggingTaskId(null);
+        setShowLogModal(true);
+    };
+
+    const handleDeleteWorkLog = async (logId) => {
+        if (!window.confirm('Are you sure you want to delete this work log?')) return;
+        try {
+            await api.delete(`/projects/worklogs/${logId}`);
+            toast.success('Work log deleted');
+            sessionStorage.removeItem(`project_details_${id}`);
+            fetchData();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete work log');
         }
     };
 
@@ -268,6 +304,240 @@ const ProjectDetails = () => {
     };
 
     // --- Views ---
+
+    const DirectProjectView = () => {
+        const directLogs = project?.directWorkLogs || [];
+        const totalLogged = project?.totalLoggedHours || directLogs.reduce((sum, l) => sum + (Number(l.hours) || 0), 0);
+        const estimated = Number(project?.estimatedHours) || 0;
+        const progressPercent = estimated > 0 ? Math.min(100, Math.round((totalLogged / estimated) * 100)) : 0;
+        const membersList = project?.members || [];
+        const currentUserId = user?._id?.toString();
+        const isAdmin = user?.roles?.includes('Admin') || user?.permissions?.includes('*') || user?.permissions?.includes('admin');
+
+        return (
+            <div className="space-y-6">
+                {/* Stats / KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Hours Logged */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Logged Hours</span>
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                                <Clock size={18} />
+                            </div>
+                        </div>
+                        <div className="mt-3">
+                            <div className="text-2xl font-bold text-slate-800">
+                                {totalLogged.toFixed(1)} <span className="text-sm font-normal text-slate-500">hrs</span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                                <span>Est: {estimated > 0 ? `${estimated} hrs` : 'Not set'}</span>
+                                {estimated > 0 && <span className="font-semibold text-blue-600">{progressPercent}%</span>}
+                            </div>
+                            {estimated > 0 && (
+                                <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-300 ${totalLogged > estimated ? 'bg-amber-500' : 'bg-blue-600'}`}
+                                        style={{ width: `${progressPercent}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Timeline */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Timeline</span>
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                                <Calendar size={18} />
+                            </div>
+                        </div>
+                        <div className="mt-3 space-y-1">
+                            <div className="text-xs text-slate-500 flex justify-between">
+                                <span>Start Date:</span>
+                                <span className="font-semibold text-slate-700">
+                                    {project?.startDate ? format(new Date(project.startDate), 'MMM d, yyyy') : 'Not set'}
+                                </span>
+                            </div>
+                            <div className="text-xs text-slate-500 flex justify-between">
+                                <span>Due Date:</span>
+                                <span className="font-semibold text-slate-700">
+                                    {project?.dueDate ? format(new Date(project.dueDate), 'MMM d, yyyy') : 'Not set'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Team Members */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Team Members</span>
+                            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                                <Users size={18} />
+                            </div>
+                        </div>
+                        <div className="mt-3">
+                            <div className="text-2xl font-bold text-slate-800">
+                                {membersList.length + (project?.manager ? 1 : 0)}
+                            </div>
+                            <div className="mt-2 flex -space-x-1.5 overflow-hidden">
+                                {project?.manager && (
+                                    <div
+                                        key="manager"
+                                        title={`Manager: ${project.manager.firstName || ''} ${project.manager.lastName || ''}`.trim()}
+                                        className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold border-2 border-white"
+                                    >
+                                        {project.manager.firstName?.[0] || 'M'}
+                                    </div>
+                                )}
+                                {membersList.slice(0, 5).map(m => (
+                                    <div
+                                        key={m._id}
+                                        title={`${m.firstName || ''} ${m.lastName || ''}`.trim()}
+                                        className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-bold border-2 border-white"
+                                    >
+                                        {m.firstName?.[0] || 'U'}
+                                    </div>
+                                ))}
+                                {membersList.length > 5 && (
+                                    <div className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-medium border-2 border-white">
+                                        +{membersList.length - 5}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Direct Mode Status */}
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50/60 p-5 rounded-xl border border-blue-100 shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Tracking Mode</span>
+                            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-blue-100 text-blue-800">
+                                Direct
+                            </span>
+                        </div>
+                        <div className="mt-3">
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                No modules or tasks required. All time logs are recorded directly to this project.
+                            </p>
+                            <button
+                                onClick={openProjectLogModal}
+                                className="mt-3 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                            >
+                                <Plus size={14} /> Log Work
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Work Logs List / Table */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
+                        <div>
+                            <h3 className="font-bold text-slate-800 text-base">Direct Project Work Logs</h3>
+                            <p className="text-xs text-slate-500">History of time logged directly to {project?.name}</p>
+                        </div>
+                        <button
+                            onClick={openProjectLogModal}
+                            className="zoho-btn-primary flex items-center space-x-1.5 text-xs py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white self-start sm:self-auto"
+                        >
+                            <Plus size={15} /> <span>Log Time</span>
+                        </button>
+                    </div>
+
+                    {directLogs.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 text-slate-500 font-semibold text-xs uppercase border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-6 py-3">Date</th>
+                                        <th className="px-6 py-3">Team Member</th>
+                                        <th className="px-6 py-3">Hours</th>
+                                        <th className="px-6 py-3">Description</th>
+                                        <th className="px-6 py-3">Status</th>
+                                        <th className="px-6 py-3 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {directLogs.map(log => {
+                                        const isLogOwner = String(log.user?._id || log.user) === currentUserId;
+                                        const canDelete = isLogOwner || isAdmin;
+                                        return (
+                                            <tr key={log._id} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="px-6 py-3.5 text-slate-600 font-mono text-xs whitespace-nowrap">
+                                                    {log.date ? format(new Date(log.date), 'MMM d, yyyy') : '-'}
+                                                </td>
+                                                <td className="px-6 py-3.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center border border-slate-200">
+                                                            {log.user?.firstName?.[0] || 'U'}
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-medium text-slate-800 text-xs">
+                                                                {log.user ? `${log.user.firstName || ''} ${log.user.lastName || ''}`.trim() : 'Unknown'}
+                                                            </div>
+                                                            {log.user?.email && (
+                                                                <div className="text-[11px] text-slate-400">{log.user.email}</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-3.5 whitespace-nowrap">
+                                                    <span className="font-semibold text-slate-800">{Number(log.hours).toFixed(1)}</span>
+                                                    <span className="text-xs text-slate-500 ml-1">hrs</span>
+                                                </td>
+                                                <td className="px-6 py-3.5 text-xs text-slate-600 max-w-md">
+                                                    {log.description || <span className="text-slate-400 italic">No description</span>}
+                                                </td>
+                                                <td className="px-6 py-3.5 whitespace-nowrap">
+                                                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
+                                                        log.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                        log.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                        'bg-amber-50 text-amber-700 border-amber-200'
+                                                    }`}>
+                                                        {log.status || 'PENDING'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-3.5 text-right whitespace-nowrap">
+                                                    {canDelete && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            onClick={() => handleDeleteWorkLog(log._id)}
+                                                            className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
+                                                            title="Delete Work Log"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </Button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-center py-16 px-4">
+                            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
+                                <Clock size={24} />
+                            </div>
+                            <h4 className="text-sm font-semibold text-slate-700">No time logged yet</h4>
+                            <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
+                                This project is configured to log time directly without modules or tasks. Start tracking time right away.
+                            </p>
+                            <button
+                                onClick={openProjectLogModal}
+                                className="zoho-btn-primary inline-flex items-center gap-1.5 text-xs py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                                <Plus size={15} /> Log First Entry
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     const OverviewView = () => (
         <div className="space-y-6">
@@ -1032,6 +1302,11 @@ const ProjectDetails = () => {
                             <span className={`text-sm px-2 py-0.5 rounded-full border ${project.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                 {project.isActive ? 'Active' : 'Inactive'}
                             </span>
+                            {!hasModules && (
+                                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700">
+                                    Direct Project (No Modules)
+                                </span>
+                            )}
                         </h1>
                         <p className="text-slate-500 mt-1">{project.description || 'No description provided.'}</p>
                         <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
@@ -1046,21 +1321,34 @@ const ProjectDetails = () => {
                                 <ListChecks size={18} /> <span>Export Excel</span>
                             </button>
                         )}
-                        <div className="flex bg-white rounded-lg shadow-sm p-1 border border-slate-200">
-                            <button onClick={() => setViewMode('overview')} className={`p-2 rounded ${viewMode === 'overview' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Overview"><LayoutList size={20} /></button>
-                            <button onClick={() => setViewMode('hierarchy')} className={`p-2 rounded ${viewMode === 'hierarchy' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Hierarchy"><ListTree size={20} /></button>
-                        </div>
-                        {canUpdateProject && (
+                        {hasModules && (
+                            <div className="flex bg-white rounded-lg shadow-sm p-1 border border-slate-200">
+                                <button onClick={() => setViewMode('overview')} className={`p-2 rounded ${viewMode === 'overview' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Overview"><LayoutList size={20} /></button>
+                                <button onClick={() => setViewMode('hierarchy')} className={`p-2 rounded ${viewMode === 'hierarchy' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Hierarchy"><ListTree size={20} /></button>
+                            </div>
+                        )}
+                        {hasModules && canUpdateProject && (
                             <button onClick={openCreateModuleModal} className="zoho-btn-primary flex items-center space-x-2">
                                 <Plus size={18} /> <span>Add Module</span>
+                            </button>
+                        )}
+                        {!hasModules && (
+                            <button onClick={openProjectLogModal} className="zoho-btn-primary flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                                <Clock size={18} /> <span>Log Time</span>
                             </button>
                         )}
                     </div>
                 </div>
 
                 {/* Content */}
-                {viewMode === 'overview' && <OverviewView />}
-                {viewMode === 'hierarchy' && <HierarchyView />}
+                {!hasModules ? (
+                    <DirectProjectView />
+                ) : (
+                    <>
+                        {viewMode === 'overview' && <OverviewView />}
+                        {viewMode === 'hierarchy' && <HierarchyView />}
+                    </>
+                )}
 
             </div>
 
@@ -1127,7 +1415,7 @@ const ProjectDetails = () => {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-green-600" /> Log Time</h3>
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-green-600" /> Log Time {loggingTaskId ? '' : `- ${project?.name || ''}`}</h3>
                             <button onClick={() => setShowLogModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
                         </div>
                         <form onSubmit={handleLogWork} className="p-6 space-y-4">
