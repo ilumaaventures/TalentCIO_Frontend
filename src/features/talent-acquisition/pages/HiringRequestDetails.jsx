@@ -812,11 +812,23 @@ const HiringRequestDetails = () => {
                                                             <p className="text-xs text-slate-500 mt-1">
                                                                 {step.status === 'Pending' ? 'Waiting for:' : 'Assigned to:'} <span className="font-medium text-slate-700">{step.approvers?.map(a => `${a.firstName} ${a.lastName}`).join(', ')}</span>
                                                             </p>
-                                                            {step.status !== 'Pending' && (
-                                                                <p className="text-xs text-slate-500 mt-0.5">
-                                                                    {step.status} by <span className="font-medium text-slate-700">{step.approvedBy?.firstName} {step.approvedBy?.lastName}</span>
-                                                                </p>
-                                                            )}
+                                                            {step.status !== 'Pending' && (() => {
+                                                                const approverObj = (typeof step.approvedBy === 'object' && step.approvedBy !== null ? step.approvedBy : null)
+                                                                    || (typeof step.actionBy === 'object' && step.actionBy !== null ? step.actionBy : null)
+                                                                    || usersMap[String(step.approvedBy?._id || step.approvedBy || step.actionBy?._id || step.actionBy || '')];
+
+                                                                const approverName = approverObj
+                                                                    ? `${approverObj.firstName || ''} ${approverObj.lastName || ''}`.trim() || approverObj.name || approverObj.email
+                                                                    : (Array.isArray(step.approvers) && step.approvers.length === 1
+                                                                        ? `${step.approvers[0]?.firstName || ''} ${step.approvers[0]?.lastName || ''}`.trim()
+                                                                        : null);
+
+                                                                return (
+                                                                    <p className="text-xs text-slate-500 mt-0.5">
+                                                                        {step.status} by <span className="font-medium text-slate-700">{approverName || 'Approver'}</span>
+                                                                    </p>
+                                                                );
+                                                            })()}
                                                         </div>
                                                         <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${step.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' :
                                                             step.status === 'Rejected' ? 'bg-red-50 text-red-600' :
@@ -826,16 +838,16 @@ const HiringRequestDetails = () => {
                                                         </span>
                                                     </div>
 
-                                                    {step.date && (
+                                                    {(step.date || step.actionDate) && (
                                                         <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                                                            <Clock size={12} /> {format(new Date(step.date), 'MMM dd, yyyy • hh:mm a')}
+                                                            <Clock size={12} /> {format(new Date(step.date || step.actionDate), 'MMM dd, yyyy • hh:mm a')}
                                                         </p>
                                                     )}
 
-                                                    {step.comments && (
+                                                    {(step.comments || step.remarks) && (
                                                         <div className="mt-3 bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm text-slate-600 italic relative">
                                                             <span className="absolute top-2 left-2 text-slate-300 text-xl font-serif">"</span>
-                                                            <span className="pl-4">{step.comments}</span>
+                                                            <span className="pl-4">{step.comments || step.remarks}</span>
                                                         </div>
                                                     )}
                                                 </div>
