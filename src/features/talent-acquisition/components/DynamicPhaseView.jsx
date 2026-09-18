@@ -327,25 +327,29 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
 
     const isAdmin = user?.roles?.includes('Admin');
     const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
-        || user?.permissions?.includes('ta.analytics.global');
-    const canEdit = isAdmin
+    const isSharedViewOnly = Boolean(
+        (hiringRequest?.isShared || hiringRequest?.sharedWithCurrentTenant) &&
+        (hiringRequest?.isViewOnly || hiringRequest?.accessLevel === 'view_only')
+    );
+
+    const canEdit = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit')
-        || hasAnalyticsCandidateAccess;
-    const canMakeDecisions = isAdmin
+        || hasAnalyticsCandidateAccess);
+    const canMakeDecisions = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit')
-        || user?.permissions?.includes('ta.candidate.make_decision');
-    const canManualAdvance = isAdmin || canEdit;
-    const canCreate = isAdmin
+        || user?.permissions?.includes('ta.candidate.make_decision'));
+    const canManualAdvance = !isSharedViewOnly && (isAdmin || canEdit);
+    const canCreate = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.create')
-        || hasAnalyticsCandidateAccess;
+        || hasAnalyticsCandidateAccess);
     const isInterviewerForAnyCandidate = useMemo(() => {
         const userId = String(user?._id || '');
         return candidates.some((c) =>
@@ -354,18 +358,18 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
             )
         );
     }, [candidates, user]);
-    const canImport = canCreate || isInterviewerForAnyCandidate;
-    const canMassMail = isAdmin
+    const canImport = !isSharedViewOnly && (canCreate || isInterviewerForAnyCandidate);
+    const canMassMail = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.mass_mail')
-        || user?.permissions?.includes('ta.edit');
-    const canBulkTransfer = isAdmin
+        || user?.permissions?.includes('ta.edit'));
+    const canBulkTransfer = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.bulk_transfer')
-        || user?.permissions?.includes('ta.candidate.transfer');
+        || user?.permissions?.includes('ta.candidate.transfer'));
     const canManageTemplates = isAdmin
         || user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.config.edit')

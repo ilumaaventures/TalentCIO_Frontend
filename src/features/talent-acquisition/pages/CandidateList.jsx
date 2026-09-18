@@ -187,18 +187,23 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
     const usesBackendPagination = !isLegacyView;
     const hasAnalyticsCandidateAccess = user?.permissions?.includes('ta.analytics.assigned')
         || user?.permissions?.includes('ta.analytics.global');
-    const canEditCandidates = isAdmin
+    const isSharedViewOnly = Boolean(
+        (requestMeta?.isShared || requestMeta?.sharedWithCurrentTenant) &&
+        (requestMeta?.isViewOnly || requestMeta?.accessLevel === 'view_only')
+    );
+
+    const canEditCandidates = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit')
-        || hasAnalyticsCandidateAccess;
-    const canCreateCandidates = isAdmin
+        || hasAnalyticsCandidateAccess);
+    const canCreateCandidates = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('*')
         || user?.permissions?.includes('ta.create')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
-        || hasAnalyticsCandidateAccess;
+        || hasAnalyticsCandidateAccess);
     const isInterviewerForAnyCandidate = useMemo(() => {
         const userId = String(user?._id || '');
         return candidates.some((c) =>
@@ -207,20 +212,20 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
             )
         );
     }, [candidates, user]);
-    const canImportCandidates = canCreateCandidates || isInterviewerForAnyCandidate;
-    const canDeleteCandidates = isAdmin
+    const canImportCandidates = !isSharedViewOnly && (canCreateCandidates || isInterviewerForAnyCandidate);
+    const canDeleteCandidates = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('*')
         || user?.permissions?.includes('ta.delete')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
-        || user?.permissions?.includes('ta.candidate.edit');
-    const canMakeDecisions = isAdmin
+        || user?.permissions?.includes('ta.candidate.edit'));
+    const canMakeDecisions = !isSharedViewOnly && (isAdmin
         || user?.permissions?.includes('ta.edit')
         || user?.permissions?.includes('ta.candidate.manage.assigned')
         || user?.permissions?.includes('ta.candidate.manage.all')
         || user?.permissions?.includes('ta.candidate.edit')
         || user?.permissions?.includes('ta.candidate.make_decision')
-        || user?.permissions?.includes('ta.interview.evaluate');
+        || user?.permissions?.includes('ta.interview.evaluate'));
     const canManagePhase3Decisions = canMakeDecisions;
     const decisionOptions = useMemo(() => {
         if (activePhase === 2) {

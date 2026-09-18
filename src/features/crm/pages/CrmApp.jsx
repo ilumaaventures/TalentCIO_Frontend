@@ -35,10 +35,12 @@ import { AiInsightsPage } from './ai/AiInsightsPage';
 import { AuditLogsPage } from './settings/AuditLogsPage';
 import { DataToolsPage } from './tools/DataToolsPage';
 import { SettingsPage } from './settings/SettingsPage';
+import { ImportDataPage } from './import/ImportDataPage';
 
 const TAB_PERMISSIONS = {
   dashboard: ['crm.view', 'crm.leads.read', 'crm.deals.read', 'crm.analytics.read', 'crm.admin'],
   leads: ['crm.leads.read', 'crm.leads.create', 'crm.admin'],
+  'import-data': ['crm.data.import', 'crm.leads.create', 'crm.leads.read', 'crm.admin'],
   deals: ['crm.deals.read', 'crm.deals.create', 'crm.admin'],
   pipelines: ['crm.pipelines.read', 'crm.pipelines.manage', 'crm.admin'],
   contacts: ['crm.contacts.read', 'crm.contacts.manage', 'crm.admin'],
@@ -117,6 +119,8 @@ function CrmWorkspaceContent() {
         return selectedLeadId
           ? { title: 'Lead Workspace & Qualification', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Leads', 'Detail'] }
           : { title: 'Lead Directory & Capture', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Leads'] };
+      case 'import-data':
+        return { title: 'Import Company Data', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Import Data'] };
       case 'deals':
         return selectedDealId
           ? { title: 'Opportunity Workspace', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Opportunities', 'Detail'] }
@@ -221,6 +225,8 @@ function CrmWorkspaceContent() {
               />
             )
           )}
+
+          {activePage === 'import-data' && <ImportDataPage onNavigate={handleNavigate} />}
 
           {activePage === 'deals' && (
             selectedDealId ? (

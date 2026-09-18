@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/lib/apiClient';
-import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip, Globe, Shield, ExternalLink, Settings } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, User, Building, MapPin, DollarSign, Send, ThumbsUp, ThumbsDown, Briefcase, Edit, Loader, FileText, Paperclip, Globe, Shield, ExternalLink, Settings, Share2 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import CandidateList from '@/features/talent-acquisition/pages/CandidateList';
 import LegacyApplicationsView from '@/features/talent-acquisition/components/LegacyApplicationsView';
 import PublicApplicationsView from '@/features/talent-acquisition/components/PublicApplicationsView';
+import ShareRequisitionModal from '@/features/talent-acquisition/components/ShareRequisitionModal';
 import Skeleton from '@/components/ui/Skeleton';
 import { createNoCacheRequestConfig, invalidateTACaches, refreshTAClientsCache } from '@/features/talent-acquisition/utils/taCache';
 import { sanitizeTemplateHtml, hasHtmlMarkup } from '@/features/email/utils/templatePlaceholders';
@@ -37,6 +38,36 @@ const formatBudgetLabel = (budgetRange = {}) => {
         : '-';
 
     return `${currency} ${min} to ${max}`;
+};
+
+const formatSafeDateTime = (val) => {
+    if (!val) return '';
+    try {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? '' : format(d, 'dd MMM yyyy, hh:mm a');
+    } catch {
+        return '';
+    }
+};
+
+const formatSafeDate = (val) => {
+    if (!val) return '';
+    try {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? '' : format(d, 'dd MMM yyyy');
+    } catch {
+        return '';
+    }
+};
+
+const formatSafeTime = (val) => {
+    if (!val) return '';
+    try {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? '' : format(d, 'hh:mm a');
+    } catch {
+        return '';
+    }
 };
 
 const getHiringPositionSummary = (request) => {
@@ -97,6 +128,7 @@ const HiringRequestDetails = () => {
     });
     const [savingClientVisibility, setSavingClientVisibility] = useState(false);
     const [showClientSettingsModal, setShowClientSettingsModal] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
 
     useEffect(() => {
         if (request?.clientVisibility) {
@@ -221,22 +253,36 @@ const HiringRequestDetails = () => {
         ? request.approvalChain[request.currentApprovalLevel - 1]
         : null;
 
+    const isSharedRequisition = Boolean(request?.isShared || request?.sharedWithCurrentTenant);
+    const shareType = request?.shareType || 'all';
+    const originCompanyName = request?.originCompanyName || request?.companyId?.name || '';
+    const sharedAt = request?.sharedAt || request?.updatedAt || request?.createdAt;
+    const isOwner = request?.isOwner !== false && !isSharedRequisition;
+
     const hasSuperApprove = user?.permissions?.includes('ta.super_approve') || user?.permissions?.includes('*');
     const hasApprovalOverride = hasSuperApprove
         || user?.roles?.includes('Admin')
         || user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.hiring_request.manage');
-    const canUpdateRequisition = user?.roles?.includes('Admin')
+    const canUpdateRequisition = isOwner && (user?.roles?.includes('Admin')
         || user?.permissions?.includes('*')
         || user?.permissions?.includes('ta.manage')
         || user?.permissions?.includes('ta.hiring_request.manage')
         || user?.permissions?.includes('ta.requisition.update')
         || user?.permissions?.includes('ta.requisition.manage.assigned')
         || user?.permissions?.includes('ta.requisition.manage.all')
-        || user?.permissions?.includes('ta.edit');
+        || user?.permissions?.includes('ta.edit'));
     const resourceGatewayEnabledForCompany = Boolean(
         user?.company?.settings?.careers?.enableResourceGatewayPublishing ||
         request?.isResourceGatewayEnabledForCompany
+    );
+    const crossTenantSharingEnabledForCompany = Boolean(
+        user?.company?.settings?.careers?.enableCrossTenantSharing ||
+        request?.isCrossTenantSharingEnabled
+    );
+    const clientPortalAccessEnabledForCompany = Boolean(
+        user?.company?.settings?.careers?.enableClientPortalAccess ||
+        request?.isClientPortalAccessEnabled
     );
     const positionSummary = getHiringPositionSummary(request);
     const canPartialClose = positionSummary.open > 1;
@@ -255,7 +301,7 @@ const HiringRequestDetails = () => {
         reopenedReq?.isResourceGatewayPublic
     );
 
-    const canApprove = request && isDynamic
+    const canApprove = isOwner && (request && isDynamic
         ? (
             (request.status === 'Pending_Approval' || request.status === 'Pending Approval' || request.status === 'Submitted') &&
             currentStep &&
@@ -266,7 +312,7 @@ const HiringRequestDetails = () => {
                 (currentStep.specificApprover && ((currentStep.specificApprover._id || currentStep.specificApprover) === user?._id || (currentStep.specificApprover._id || currentStep.specificApprover) === user?.id))
             )
         )
-        : request && (request.status === 'Pending_L1' || request.status === 'Pending_Final' || request.status === 'Pending_Approval' || request.status === 'Pending Approval');
+        : request && (request.status === 'Pending_L1' || request.status === 'Pending_Final' || request.status === 'Pending_Approval' || request.status === 'Pending Approval'));
 
     const handleApproval = async (action) => {
         if (action === 'REJECT' && !approvalComment.trim()) {
@@ -543,7 +589,14 @@ const HiringRequestDetails = () => {
                                 <ArrowLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
                             </button>
                             <div className="flex flex-col">
-                                <h1 className="text-lg font-bold text-slate-900 leading-tight">{request?.roleDetails?.title || request?.roleDetails?.jobTitle || 'Requisition Details'}</h1>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h1 className="text-lg font-bold text-slate-900 leading-tight">{request?.roleDetails?.title || request?.roleDetails?.jobTitle || 'Requisition Details'}</h1>
+                                    {isSharedRequisition && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                            <Share2 size={11} /> Shared
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
                                     <span className="flex items-center gap-1"><Building size={10} /> {request?.roleDetails?.department || '-'}</span>
                                     <span className="w-1 h-1 rounded-full bg-slate-300"></span>
@@ -554,22 +607,57 @@ const HiringRequestDetails = () => {
 
                         {/* Center: Tabs with Pill Design */}
                         <div className="hidden md:flex bg-slate-100/50 p-1 rounded-xl">
-                            {['overview', ...((request?.status === 'Approved' || request?.status === 'Closed' || activeTab === 'applications') ? ['applications'] : []), ...(activeTab === 'public applications' || ((request?.status === 'Approved' || request?.status === 'Closed') && (request?.wasEverPublished || request?.isPublic || request?.isResourceGatewayPublic || (request?.publicApplicationsCount > 0) || isJobBoardLive || isResourceGatewayLive)) ? ['public applications'] : []), ...(request?.previousRequestId ? ['legacy applications'] : [])].map((tab) => (
-                                <button
-                                    key={tab}
-                                    onClick={() => handleTabChange(tab)}
-                                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 capitalize ${activeTab === tab
-                                        ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                                        }`}
-                                >
-                                    {tab}
-                                </button>
-                            ))}
+                            {(() => {
+                                let availableTabs = ['overview'];
+                                if (isSharedRequisition) {
+                                    if (shareType === 'phase1' || shareType === 'phase2') {
+                                        availableTabs.push('applications');
+                                    } else if (shareType === 'public_applications') {
+                                        availableTabs.push('public applications');
+                                    } else {
+                                        availableTabs.push('applications');
+                                        availableTabs.push('public applications');
+                                    }
+                                } else {
+                                    if (request?.status === 'Approved' || request?.status === 'Closed' || activeTab === 'applications') {
+                                        availableTabs.push('applications');
+                                    }
+                                    if (activeTab === 'public applications' || ((request?.status === 'Approved' || request?.status === 'Closed') && (request?.wasEverPublished || request?.isPublic || request?.isResourceGatewayPublic || (request?.publicApplicationsCount > 0) || isJobBoardLive || isResourceGatewayLive))) {
+                                        availableTabs.push('public applications');
+                                    }
+                                    if (request?.previousRequestId) {
+                                        availableTabs.push('legacy applications');
+                                    }
+                                }
+
+                                return availableTabs.map((tab) => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => handleTabChange(tab)}
+                                        className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 capitalize ${activeTab === tab
+                                            ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                            }`}
+                                    >
+                                        {tab}
+                                    </button>
+                                ));
+                            })()}
                         </div>
 
-                        {/* Right: placeholder to keep flex layout balanced */}
-                        <div className="w-24" />
+                        {/* Right: Actions */}
+                        <div className="flex items-center justify-end gap-2 min-w-24">
+                            {isOwner && (
+                                <button
+                                    onClick={() => setShowShareModal(true)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors shadow-2xs"
+                                    title="Share with another tenant"
+                                >
+                                    <Share2 size={14} />
+                                    <span className="hidden sm:inline">Share</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -580,6 +668,40 @@ const HiringRequestDetails = () => {
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                         {/* Main Content Column */}
                         <div className="xl:col-span-2 space-y-8">
+
+                            {/* Shared Requisition Banner */}
+                            {isSharedRequisition && (
+                                <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200 shadow-xs flex items-start gap-3">
+                                    <div className="p-2 rounded-xl bg-indigo-600 text-white shrink-0 mt-0.5">
+                                        <Share2 size={18} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h4 className="text-sm font-bold text-indigo-950">Shared Requisition</h4>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 uppercase tracking-wider">
+                                                Scope: {shareType === 'phase1' ? 'Phase 1 Only' : shareType === 'phase2' ? 'Phase 2 Only' : shareType === 'public_applications' ? 'Public Applications Only' : 'All Data'}
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                request?.isViewOnly || request?.accessLevel === 'view_only'
+                                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                            }`}>
+                                                {request?.isViewOnly || request?.accessLevel === 'view_only' ? 'View Only' : 'Full Access'}
+                                            </span>
+                                            {sharedAt && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/90 text-indigo-700 border border-indigo-200/80 shadow-2xs">
+                                                    <Clock size={11} className="text-indigo-500" />
+                                                    Shared: {formatSafeDateTime(sharedAt)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-indigo-800/80 mt-1 leading-relaxed">
+                                            This requisition is shared by <strong className="text-indigo-950">{originCompanyName || 'the primary organization'}</strong>.
+                                            Live candidate updates for the assigned scope reflect here automatically.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Role Information Card */}
                             <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
@@ -812,11 +934,23 @@ const HiringRequestDetails = () => {
                                                             <p className="text-xs text-slate-500 mt-1">
                                                                 {step.status === 'Pending' ? 'Waiting for:' : 'Assigned to:'} <span className="font-medium text-slate-700">{step.approvers?.map(a => `${a.firstName} ${a.lastName}`).join(', ')}</span>
                                                             </p>
-                                                            {step.status !== 'Pending' && (
-                                                                <p className="text-xs text-slate-500 mt-0.5">
-                                                                    {step.status} by <span className="font-medium text-slate-700">{step.approvedBy?.firstName} {step.approvedBy?.lastName}</span>
-                                                                </p>
-                                                            )}
+                                                            {step.status !== 'Pending' && (() => {
+                                                                const approverObj = (typeof step.approvedBy === 'object' && step.approvedBy !== null ? step.approvedBy : null)
+                                                                    || (typeof step.actionBy === 'object' && step.actionBy !== null ? step.actionBy : null)
+                                                                    || usersMap[String(step.approvedBy?._id || step.approvedBy || step.actionBy?._id || step.actionBy || '')];
+
+                                                                const approverName = approverObj
+                                                                    ? `${approverObj.firstName || ''} ${approverObj.lastName || ''}`.trim() || approverObj.name || approverObj.email
+                                                                    : (Array.isArray(step.approvers) && step.approvers.length === 1
+                                                                        ? `${step.approvers[0]?.firstName || ''} ${step.approvers[0]?.lastName || ''}`.trim()
+                                                                        : null);
+
+                                                                return (
+                                                                    <p className="text-xs text-slate-500 mt-0.5">
+                                                                        {step.status} by <span className="font-medium text-slate-700">{approverName || 'Approver'}</span>
+                                                                    </p>
+                                                                );
+                                                            })()}
                                                         </div>
                                                         <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${step.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' :
                                                             step.status === 'Rejected' ? 'bg-red-50 text-red-600' :
@@ -826,16 +960,16 @@ const HiringRequestDetails = () => {
                                                         </span>
                                                     </div>
 
-                                                    {step.date && (
+                                                    {(step.date || step.actionDate) && (
                                                         <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                                                            <Clock size={12} /> {format(new Date(step.date), 'MMM dd, yyyy • hh:mm a')}
+                                                            <Clock size={12} /> {format(new Date(step.date || step.actionDate), 'MMM dd, yyyy • hh:mm a')}
                                                         </p>
                                                     )}
 
-                                                    {step.comments && (
+                                                    {(step.comments || step.remarks) && (
                                                         <div className="mt-3 bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm text-slate-600 italic relative">
                                                             <span className="absolute top-2 left-2 text-slate-300 text-xl font-serif">"</span>
-                                                            <span className="pl-4">{step.comments}</span>
+                                                            <span className="pl-4">{step.comments || step.remarks}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1066,7 +1200,7 @@ const HiringRequestDetails = () => {
                             )}
 
                             {/* Client Portal Access Card */}
-                            {canUpdateRequisition && (
+                            {canUpdateRequisition && clientPortalAccessEnabledForCompany && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
                                     <div className="flex items-center justify-between pb-3 border-b border-slate-50 mb-3">
                                         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -1142,50 +1276,92 @@ const HiringRequestDetails = () => {
                                 </div>
                             )}
 
-                            {/* Actions Card */}
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
-                                <h3 className="text-sm font-bold text-slate-800 mb-3">Actions</h3>
-                                <div className="space-y-3">
+                            {/* Cross-Tenant Sharing Card */}
+                            {isOwner && crossTenantSharingEnabledForCompany && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                    <div className="flex items-center justify-between pb-3 border-b border-slate-50 mb-3">
+                                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                            <div className="p-1.5 rounded-md bg-indigo-100 text-indigo-600">
+                                                <Share2 size={14} />
+                                            </div>
+                                            Cross-Tenant Sharing
+                                        </h3>
+                                        {Array.isArray(request?.sharedTenants) && request.sharedTenants.length > 0 && (
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                {request.sharedTenants.length} Shared
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-3">
+                                        Share live requisition candidate data with other company workspaces (e.g. rg.talentcio.in).
+                                    </p>
                                     <button
-                                        onClick={handleEdit}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium text-sm transition-all shadow-sm hover:shadow"
+                                        type="button"
+                                        onClick={() => setShowShareModal(true)}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow cursor-pointer"
                                     >
-                                        <Edit size={16} /> Edit Request
+                                        <Share2 size={16} /> Share Requisition
                                     </button>
-
-                                    {request.status !== 'Closed' && (
-                                        <button
-                                            onClick={openCloseModal}
-                                            disabled={actionLoading || positionSummary.open <= 0}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-xl font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {actionLoading ? <Loader className="animate-spin" size={16} /> : <XCircle size={16} />} Close Request
-                                        </button>
-                                    )}
-
-                                    {request.status === 'Closed' && !request.reopenedToId && (
-                                        <button
-                                            onClick={() => navigate(`/ta/create-request?reopenFrom=${id}`)}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-xl font-medium text-sm transition-all shadow-sm"
-                                        >
-                                            <Briefcase size={16} /> Reopen Requisition
-                                        </button>
-                                    )}
-
-                                    {request.reopenedToId && (
-                                        <div className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center shadow-inner">
-                                            <p className="text-xs font-semibold text-slate-600 mb-2">Superseded By</p>
-                                            <button
-                                                onClick={() => navigate(`/ta/view/${request.reopenedToId?._id || request.reopenedToId}`)}
-                                                className="text-blue-600 hover:text-blue-800 font-bold text-sm underline transition-colors"
-                                            >
-                                                View Active Requisition {typeof request.reopenedToId === 'object' && request.reopenedToId.requestId ? `(${request.reopenedToId.requestId})` : ''}
-                                            </button>
+                                    {Array.isArray(request?.sharedTenants) && request.sharedTenants.length > 0 && (
+                                        <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Currently shared with:</p>
+                                            {request.sharedTenants.map((st, idx) => (
+                                                <div key={idx} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                                                    <span className="font-semibold text-slate-700 truncate max-w-[140px]">{st.companyName || st.subdomain || 'Tenant'}</span>
+                                                    <span className="text-[10px] font-medium text-slate-500 capitalize">{st.shareType?.replace('_', ' ')}</span>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
-
                                 </div>
-                            </div>
+                            )}
+
+                            {/* Actions Card */}
+                            {isOwner && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                    <h3 className="text-sm font-bold text-slate-800 mb-3">Actions</h3>
+                                    <div className="space-y-3">
+                                        <button
+                                            onClick={handleEdit}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium text-sm transition-all shadow-sm hover:shadow"
+                                        >
+                                            <Edit size={16} /> Edit Request
+                                        </button>
+
+                                        {request.status !== 'Closed' && (
+                                            <button
+                                                onClick={openCloseModal}
+                                                disabled={actionLoading || positionSummary.open <= 0}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-xl font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {actionLoading ? <Loader className="animate-spin" size={16} /> : <XCircle size={16} />} Close Request
+                                            </button>
+                                        )}
+
+                                        {request.status === 'Closed' && !request.reopenedToId && (
+                                            <button
+                                                onClick={() => navigate(`/ta/create-request?reopenFrom=${id}`)}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-xl font-medium text-sm transition-all shadow-sm"
+                                            >
+                                                <Briefcase size={16} /> Reopen Requisition
+                                            </button>
+                                        )}
+
+                                        {request.reopenedToId && (
+                                            <div className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center shadow-inner">
+                                                <p className="text-xs font-semibold text-slate-600 mb-2">Superseded By</p>
+                                                <button
+                                                    onClick={() => navigate(`/ta/view/${request.reopenedToId?._id || request.reopenedToId}`)}
+                                                    className="text-blue-600 hover:text-blue-800 font-bold text-sm underline transition-colors"
+                                                >
+                                                    View Active Requisition {typeof request.reopenedToId === 'object' && request.reopenedToId.requestId ? `(${request.reopenedToId.requestId})` : ''}
+                                                </button>
+                                            </div>
+                                        )}
+
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Approval Action */}
                             {canApprove && (
@@ -1515,6 +1691,15 @@ const HiringRequestDetails = () => {
                     </div>
                 </div>
             )}
+            {/* Cross-Tenant Share Requisition Modal */}
+            <ShareRequisitionModal
+                isOpen={showShareModal}
+                onClose={() => setShowShareModal(false)}
+                hiringRequestId={id}
+                onShareUpdated={(updatedShares) => {
+                    setRequest(prev => ({ ...prev, sharedTenants: updatedShares }));
+                }}
+            />
         </div>
     );
 };
