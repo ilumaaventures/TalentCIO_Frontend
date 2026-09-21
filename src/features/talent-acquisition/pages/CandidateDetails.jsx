@@ -9,6 +9,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import DocPreviewer from '@/components/common/DocPreviewer';
 import { ProfileReviewModal } from '@/features/talent-acquisition/components/PublicApplicationsView';
 import { canViewTACandidateDetails } from '@/config/accessPolicies';
+import { toLocalDatetimeInput, toIsoFromLocalDatetime, formatInterviewDate } from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -224,7 +225,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 levelName: roundName,
                 assignAfterStage: newRound.assignAfterStage || 'Shortlisted',
                 assignedTo: selectedInterviewer && selectedInterviewer.trim() !== '' ? [selectedInterviewer] : [],
-                scheduledDate: newRound.scheduledDate || undefined,
+                scheduledDate: newRound.scheduledDate ? toIsoFromLocalDatetime(newRound.scheduledDate) : undefined,
                 phase: currentPhase,
                 customFields: customFields.filter(f => f.key && f.key.trim())
             };
@@ -259,7 +260,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 levelName: editingRoundForm.levelName,
                 assignAfterStage: editingRoundForm.assignAfterStage,
                 assignedTo: editingRoundForm.assignedTo && editingRoundForm.assignedTo.trim() !== '' ? [editingRoundForm.assignedTo] : [],
-                scheduledDate: editingRoundForm.scheduledDate || undefined,
+                scheduledDate: editingRoundForm.scheduledDate ? toIsoFromLocalDatetime(editingRoundForm.scheduledDate) : undefined,
                 status: editingRoundForm.status || 'Scheduled',
                 rating: editingRoundForm.rating !== '' && editingRoundForm.rating !== null && editingRoundForm.rating !== undefined ? Number(editingRoundForm.rating) : undefined,
                 feedback: editingRoundForm.feedback || '',
@@ -295,7 +296,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                 const payload = {
                     levelName: r.levelName,
                     assignedTo: mapping.assignedTo && mapping.assignedTo.trim() !== '' ? [mapping.assignedTo] : [],
-                    scheduledDate: mapping.scheduledDate || undefined,
+                    scheduledDate: mapping.scheduledDate ? toIsoFromLocalDatetime(mapping.scheduledDate) : undefined,
                     phase: currentPhase,
                     emailTemplateId: mapping.emailTemplateId || undefined,
                     emailAccountId: mapping.emailAccountId || selectedEmailAccountId || undefined,
@@ -1564,7 +1565,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                             </h4>
                                                             {round.scheduledDate && (
                                                                 <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                                                                    <Calendar size={11} /> Scheduled: {format(new Date(round.scheduledDate), 'PPp')}
+                                                                    <Calendar size={11} /> Scheduled: {formatInterviewDate(round.scheduledDate)}
                                                                 </p>
                                                             )}
                                                         </div>
@@ -1623,7 +1624,7 @@ const CandidateDetails = ({ candidateId: propCandidateId, hiringRequestId: propH
                                                                             } else {
                                                                                 setEditingRoundId(round._id);
                                                                                 setEvaluatingRoundId(null);
-                                                                                const formattedDate = round.scheduledDate ? new Date(round.scheduledDate).toISOString().slice(0, 16) : '';
+                                                                                const formattedDate = round.scheduledDate ? toLocalDatetimeInput(round.scheduledDate) : '';
                                                                                 setEditingRoundForm({
                                                                                     levelName: round.levelName || 'Round 1',
                                                                                     assignAfterStage: round.assignAfterStage || (currentPhase === 2 ? 'Shortlisted' : 'Interested'),

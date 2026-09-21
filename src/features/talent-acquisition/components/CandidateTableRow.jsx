@@ -11,7 +11,8 @@ import {
     hasCandidateCtcDetails,
     getDisplayInterviewRoundsForPhase,
     getInterviewStatusSummary,
-    getDecisionColor
+    getDecisionColor,
+    formatInterviewDate
 } from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const InterviewRoundCellCard = ({ round, roundName, onClick }) => {
@@ -47,7 +48,7 @@ const InterviewRoundCellCard = ({ round, roundName, onClick }) => {
         const d = round.scheduledDate || round.evaluatedAt || round.createdAt;
         if (!d) return null;
         try {
-            return format(new Date(d), 'dd MMM, hh:mm a');
+            return formatInterviewDate(d);
         } catch (e) {
             return null;
         }

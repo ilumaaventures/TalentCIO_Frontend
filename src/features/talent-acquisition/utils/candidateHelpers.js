@@ -1,4 +1,4 @@
-import { createdDatePresetOptions } from '@/features/talent-acquisition/utils/CandidateListConstants';
+import { createdDatePresetOptions } from './CandidateListConstants.js';
 
 export const hasReviewableApplicantProfile = (item) => Boolean(
     item &&
@@ -374,4 +374,100 @@ export const getInterviewStatusSummary = (rounds = []) => {
     }
 
     return { label: '', color: 'text-slate-400 bg-slate-50 border-slate-200' };
+};
+
+/**
+ * Safely converts an ISO date or Date object to local HTML datetime-local format (YYYY-MM-DDTHH:mm)
+ * preserving the user's local timezone (preventing UTC shift).
+ */
+export const toLocalDatetimeInput = (dateVal, timeZone = 'Asia/Kolkata') => {
+    if (!dateVal) return '';
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return '';
+    try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: timeZone || 'Asia/Kolkata',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23'
+        }).formatToParts(d);
+
+        const getPart = (type) => parts.find((p) => p.type === type)?.value || '';
+        const y = getPart('year');
+        const m = getPart('month');
+        const day = getPart('day');
+        let h = getPart('hour');
+        if (h === '24') h = '00';
+        const min = getPart('minute');
+        return `${y}-${m}-${day}T${h}:${min}`;
+    } catch {
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+};
+
+/**
+ * Converts a datetime-local value (e.g. "2026-09-22T14:30") into a full ISO string with timezone.
+ * Defaults to IST (+05:30) so local client machine timezones (e.g. UTC/EDT) do not cause drift.
+ */
+export const toIsoFromLocalDatetime = (localString, timeZoneOffset = '+05:30') => {
+    if (!localString) return undefined;
+    const str = String(localString).trim();
+    if (!str) return undefined;
+    if (/Z$/i.test(str) || /[+-]\d{2}(:?\d{2})?$/.test(str)) {
+        return str;
+    }
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (match) {
+        const [_, y, m, d, h, min, s = '00'] = match;
+        const isoWithOffset = `${y}-${m}-${d}T${h}:${min}:${s}${timeZoneOffset}`;
+        const parsed = new Date(isoWithOffset);
+        if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    }
+    const fallback = new Date(str);
+    return isNaN(fallback.getTime()) ? undefined : fallback.toISOString();
+};
+
+/**
+ * Format interview date & time with timezone abbreviation (e.g. "22 Sep, 02:30 PM IST").
+ * Always renders in IST (Asia/Kolkata) as requested.
+ */
+export const formatInterviewDate = (dateVal, includeTime = true, timeZone = 'Asia/Kolkata') => {
+    if (!dateVal) return '';
+    try {
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return '';
+
+        const tz = timeZone || 'Asia/Kolkata';
+
+        // Extract day and month in target timezone
+        const dateParts = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            day: '2-digit',
+            month: 'short'
+        }).formatToParts(d);
+
+        const getPart = (parts, type) => parts.find((p) => p.type === type)?.value || '';
+        const day = getPart(dateParts, 'day');
+        let month = getPart(dateParts, 'month');
+        if (month.length > 3) month = month.slice(0, 3);
+        const datePart = `${day} ${month}`;
+
+        if (!includeTime) return datePart;
+
+        const timePart = d.toLocaleTimeString('en-US', {
+            timeZone: tz,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+
+        const tzSuffix = (tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta') ? 'IST' : tz;
+        return `${datePart}, ${timePart} ${tzSuffix}`.trim();
+    } catch {
+        return '';
+    }
 };
