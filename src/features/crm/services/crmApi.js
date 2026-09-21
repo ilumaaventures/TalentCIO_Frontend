@@ -355,6 +355,14 @@ export const crmAdminService = {
     const res = await api.post('/crm/data/import', data);
     return res.data;
   },
+  getImportData: async (params = {}) => {
+    const res = await api.get('/crm/data/import-data', { params });
+    return res.data;
+  },
+  syncImportData: async (rows) => {
+    const res = await api.post('/crm/data/import-data/sync', { rows });
+    return res.data;
+  },
   exportData: async (entityType) => {
     const res = await api.get(`/crm/data/export/${entityType}`);
     return res.data;
