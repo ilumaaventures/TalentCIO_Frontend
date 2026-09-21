@@ -26,6 +26,7 @@ import {
     X,
     XCircle
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -127,6 +128,35 @@ export const resolveApplicationPosition = (application, fallbackRequisition = nu
     return 'General Application';
 };
 
+const getTransferredRequisition = (application, activeRequests = []) => {
+    const hr = application?.transferredHiringRequest || application?.transferredHiringRequestId;
+    if (hr && typeof hr === 'object' && (hr.roleDetails || hr.requestId || hr.title)) {
+        return hr;
+    }
+    const candHr = application?.transferredCandidateId?.hiringRequestId;
+    if (candHr && typeof candHr === 'object' && (candHr.roleDetails || candHr.requestId || candHr.title)) {
+        return candHr;
+    }
+    const hrId = (typeof hr === 'string' ? hr : hr?._id) || (typeof candHr === 'string' ? candHr : candHr?._id);
+    if (hrId && Array.isArray(activeRequests)) {
+        const found = activeRequests.find((r) => String(r._id) === String(hrId));
+        if (found) return found;
+    }
+    return null;
+};
+
+const getRequisitionTitle = (req) => {
+    if (!req) return '';
+    return (
+        req.roleDetails?.title ||
+        req.roleDetails?.jobTitle ||
+        req.positionName ||
+        req.title ||
+        req.requestId ||
+        'Requisition'
+    );
+};
+
 const getApplicantProfile = (application, fallbackRequisition = null) => {
     const rawProfile = (application?.profileSnapshot && typeof application.profileSnapshot === 'object' && Object.keys(application.profileSnapshot).length > 0)
         ? application.profileSnapshot
@@ -224,8 +254,15 @@ const ProfileSection = ({ title, icon: Icon, children }) => (
     </section>
 );
 
-export const ProfileReviewModal = ({ application, onClose, hiringRequest = null }) => {
+export const ProfileReviewModal = ({ application, onClose, hiringRequest = null, activeRequests = [] }) => {
     if (!application) return null;
+    const navigate = useNavigate();
+
+    const targetReq = (application.reviewStatus === 'Transferred' || application.publicApplicationReviewStatus === 'Transferred' || application.status === 'Transferred')
+        ? getTransferredRequisition(application, activeRequests)
+        : null;
+    const targetReqTitle = getRequisitionTitle(targetReq);
+    const targetReqId = targetReq?._id || targetReq;
 
     const profile = getApplicantProfile(application, hiringRequest);
     const fullName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || application.candidateName;
@@ -489,6 +526,35 @@ export const ProfileReviewModal = ({ application, onClose, hiringRequest = null 
                                     <InfoItem label="Position Requested" value={resolveApplicationPosition(application, hiringRequest)} icon={Briefcase} />
                                     <InfoItem label="Applied On" value={submittedAt ? format(new Date(submittedAt), 'MMM dd, yyyy') : undefined} />
                                     <InfoItem label="Review Status" value={reviewStatus} />
+                                    {targetReq && (
+                                        <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 shadow-xs">
+                                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-blue-600">
+                                                <ArrowRight size={13} />
+                                                Transferred Requisition
+                                            </div>
+                                            <div className="mt-1.5">
+                                                <p className="text-sm font-bold text-slate-900">{targetReqTitle}</p>
+                                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                                                    {targetReq.requestId && (
+                                                        <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-800 border border-blue-200 text-[11px]">
+                                                            {targetReq.requestId}
+                                                        </span>
+                                                    )}
+                                                    {targetReq.client && <span>Client: {targetReq.client}</span>}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onClose();
+                                                    navigate(`/ta/view/${targetReqId}?tab=applications`);
+                                                }}
+                                                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-700 shadow-xs"
+                                            >
+                                                Go to Requisition <ArrowRight size={12} />
+                                            </button>
+                                        </div>
+                                    )}
                                     <InfoItem label="Current Company" value={application.currentCompany || profile.currentCompany || undefined} />
                                     <InfoItem label="Total Experience" value={application.totalExperienceYears !== undefined ? `${application.totalExperienceYears} Years` : profile.totalExperienceYears !== undefined ? `${profile.totalExperienceYears} Years` : undefined} />
                                     <InfoItem label="Current CTC" value={application.currentCTC ? `${application.currentCTC} LPA` : profile.currentCTC ? `${profile.currentCTC} LPA` : undefined} />
@@ -597,6 +663,7 @@ export const ProfileReviewModal = ({ application, onClose, hiringRequest = null 
 };
 
 const PublicApplicationsView = ({ hiringRequestId, hiringRequest = null }) => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -906,70 +973,110 @@ const PublicApplicationsView = ({ hiringRequestId, hiringRequest = null }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filtered.map((application) => (
-                                    <tr key={application._id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <div>
-                                                <div className="flex flex-wrap items-center gap-1.5">
-                                                    <span className="text-[13px] font-bold text-slate-800">{application.candidateName}</span>
-                                                    {application.reviewStatus === 'Transferred' && (
-                                                        <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">TRANSFERRED</span>
-                                                    )}
-                                                    {application.lastApplicationData && (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200" title={`Previous application submitted on ${format(new Date(application.lastApplicationData.submittedAt), 'MMM dd, yyyy')}`}>
-                                                            <History size={10} /> RE-APPLIED
-                                                        </span>
+                                {filtered.map((application) => {
+                                    const targetReq = application.reviewStatus === 'Transferred'
+                                        ? getTransferredRequisition(application, activeRequests)
+                                        : null;
+                                    const targetReqTitle = getRequisitionTitle(targetReq);
+                                    const targetReqId = targetReq?._id || targetReq;
+
+                                    return (
+                                        <tr key={application._id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-3">
+                                                <div>
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        <span className="text-[13px] font-bold text-slate-800">{application.candidateName}</span>
+                                                        {application.reviewStatus === 'Transferred' && (
+                                                            <span
+                                                                className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200"
+                                                                title={targetReqTitle ? `Transferred to ${targetReqTitle}` : 'Transferred to requisition'}
+                                                            >
+                                                                TRANSFERRED
+                                                            </span>
+                                                        )}
+                                                        {application.lastApplicationData && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200" title={`Previous application submitted on ${format(new Date(application.lastApplicationData.submittedAt), 'MMM dd, yyyy')}`}>
+                                                                <History size={10} /> RE-APPLIED
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProfileTarget(application)}
+                                                        className="mt-1 flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                                                    >
+                                                        <Eye size={12} />
+                                                        Review Complete Profile
+                                                    </button>
+                                                    {application.coverNote && (
+                                                        <p className="mt-0.5 text-[11px] text-slate-400 truncate max-w-[200px]" title={application.coverNote}>
+                                                            "{application.coverNote}"
+                                                        </p>
                                                     )}
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setProfileTarget(application)}
-                                                    className="mt-1 flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
-                                                >
-                                                    <Eye size={12} />
-                                                    Review Complete Profile
-                                                </button>
-                                                {application.coverNote && (
-                                                    <p className="mt-0.5 text-[11px] text-slate-400 truncate max-w-[200px]" title={application.coverNote}>
-                                                        "{application.coverNote}"
-                                                    </p>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-[12px] font-bold text-slate-800">
+                                                    {resolveApplicationPosition(application, hiringRequest)}
+                                                </div>
+                                                {(application.hiringRequestId?.client || hiringRequest?.client) && (
+                                                    <div className="text-[10px] text-slate-400">Client: {application.hiringRequestId?.client || hiringRequest?.client}</div>
                                                 )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="text-[12px] font-bold text-slate-800">
-                                                {resolveApplicationPosition(application, hiringRequest)}
-                                            </div>
-                                            {(application.hiringRequestId?.client || hiringRequest?.client) && (
-                                                <div className="text-[10px] text-slate-400">Client: {application.hiringRequestId?.client || hiringRequest?.client}</div>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="text-[12px] text-slate-500">
-                                                <div>{application.email}</div>
-                                                <div>{application.mobile}</div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="text-[12px] text-slate-600 space-y-0.5">
-                                                {application.currentCompany && <div className="font-bold text-slate-800 truncate max-w-[140px]">{application.currentCompany}</div>}
-                                                {application.totalExperienceYears !== undefined && <div className="text-slate-500">{application.totalExperienceYears} Yrs Exp</div>}
-                                                {application.currentCTC && <div>Current: <span className="font-semibold">{application.currentCTC} LPA</span></div>}
-                                                {application.expectedCTC && <div>Expected: <span className="font-semibold">{application.expectedCTC} LPA</span></div>}
-                                                {application.noticePeriod !== undefined && <div>Notice: <span className="font-semibold">{application.noticePeriod}</span></div>}
-                                                {!application.currentCompany && !application.currentCTC && !application.expectedCTC && <span className="text-slate-400">-</span>}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-[12px] text-slate-500">
-                                                {format(new Date(application.createdAt), 'MMM dd, yyyy')}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${statusColor(application.reviewStatus)}`}>
-                                                {application.reviewStatus}
-                                            </span>
-                                        </td>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-[12px] text-slate-500">
+                                                    <div>{application.email}</div>
+                                                    <div>{application.mobile}</div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-[12px] text-slate-600 space-y-0.5">
+                                                    {application.currentCompany && <div className="font-bold text-slate-800 truncate max-w-[140px]">{application.currentCompany}</div>}
+                                                    {application.totalExperienceYears !== undefined && <div className="text-slate-500">{application.totalExperienceYears} Yrs Exp</div>}
+                                                    {application.currentCTC && <div>Current: <span className="font-semibold">{application.currentCTC} LPA</span></div>}
+                                                    {application.expectedCTC && <div>Expected: <span className="font-semibold">{application.expectedCTC} LPA</span></div>}
+                                                    {application.noticePeriod !== undefined && <div>Notice: <span className="font-semibold">{application.noticePeriod}</span></div>}
+                                                    {!application.currentCompany && !application.currentCTC && !application.expectedCTC && <span className="text-slate-400">-</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-[12px] text-slate-500">
+                                                    {format(new Date(application.createdAt), 'MMM dd, yyyy')}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="space-y-1.5">
+                                                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border ${statusColor(application.reviewStatus)}`}>
+                                                        {application.reviewStatus}
+                                                    </span>
+                                                    {targetReq && (
+                                                        <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-2 text-left max-w-[210px] shadow-xs">
+                                                            <div className="text-[9px] font-black uppercase tracking-wider text-blue-600 flex items-center gap-1">
+                                                                <ArrowRight size={10} /> Transferred To:
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => navigate(`/ta/view/${targetReqId}?tab=applications`)}
+                                                                className="mt-0.5 text-left text-[12px] font-bold text-slate-900 hover:text-blue-700 hover:underline line-clamp-1 block leading-snug"
+                                                                title={targetReqTitle}
+                                                            >
+                                                                {targetReqTitle}
+                                                            </button>
+                                                            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-slate-500 font-medium">
+                                                                {targetReq.requestId && (
+                                                                    <span className="font-semibold text-blue-700">{targetReq.requestId}</span>
+                                                                )}
+                                                                {targetReq.client && (
+                                                                    <>
+                                                                        {targetReq.requestId && <span>•</span>}
+                                                                        <span className="truncate max-w-[130px]">{targetReq.client}</span>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
                                         <td className="px-4 py-3 text-center">
                                             {actionLoading === application._id ? (
                                                 <Loader size={16} className="animate-spin text-blue-500 mx-auto" />
@@ -1010,6 +1117,19 @@ const PublicApplicationsView = ({ hiringRequestId, hiringRequest = null }) => {
                                                             <FileText size={15} className="text-slate-500" />
                                                             View Resume
                                                         </a>
+                                                    )}
+
+                                                    {targetReq && (
+                                                        <button
+                                                            onClick={() => {
+                                                                navigate(`/ta/view/${targetReqId}?tab=applications`);
+                                                                setActiveMenu(null);
+                                                            }}
+                                                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 transition-colors text-left font-semibold"
+                                                        >
+                                                            <ArrowRight size={15} className="text-blue-500" />
+                                                            View Requisition
+                                                        </button>
                                                     )}
 
                                                     {(canReview || canTransfer) && application.reviewStatus !== 'Transferred' && (
@@ -1066,7 +1186,8 @@ const PublicApplicationsView = ({ hiringRequestId, hiringRequest = null }) => {
                                             )}
                                         </td>
                                     </tr>
-                                ))}
+                                );
+                            })}
                             </tbody>
                         </table>
                     </div>
@@ -1194,6 +1315,7 @@ const PublicApplicationsView = ({ hiringRequestId, hiringRequest = null }) => {
                 <ProfileReviewModal
                     application={profileTarget}
                     hiringRequest={hiringRequest}
+                    activeRequests={activeRequests}
                     onClose={() => setProfileTarget(null)}
                 />
             )}
