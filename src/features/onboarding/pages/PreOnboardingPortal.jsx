@@ -62,6 +62,13 @@ const PreOnboardingPortal = () => {
   const [gpsLoading, setGpsLoading] = useState(false);
   const videoRef = useRef(null);
   const captureCanvasRef = useRef(null);
+  const [, setDeadlineTicker] = useState(0);
+
+  // Periodic ticker for live countdown update
+  useEffect(() => {
+    const timer = setInterval(() => setDeadlineTicker((t) => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Filtered Steps based on HR selection
   const [visibleSteps, setVisibleSteps] = useState(ALL_STEPS);
@@ -625,12 +632,23 @@ const PreOnboardingPortal = () => {
     const deadline = new Date(profile.documentDeadline);
     const now = new Date();
     const diff = deadline - now;
-    if (diff <= 0) return { text: 'Deadline passed!', color: '#ef4444', urgent: true };
+    if (diff <= 0) return { text: 'Deadline passed!', color: '#ef4444', urgent: true, passed: true };
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    let timeText = '';
+    if (days > 0) {
+      timeText = `${days}d ${hours}h remaining`;
+    } else if (hours > 0) {
+      timeText = `${hours}h ${minutes}m remaining`;
+    } else {
+      timeText = `${Math.max(1, minutes)}m remaining`;
+    }
+
     return {
-      text: `${days}d ${hours}h remaining`,
-      color: days <= 2 ? '#f59e0b' : '#10b981',
+      text: timeText,
+      color: days <= 1 ? '#ef4444' : (days <= 2 ? '#f59e0b' : '#10b981'),
       urgent: days <= 2,
       passed: false
     };

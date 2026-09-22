@@ -96,6 +96,7 @@ const PreOnboardingLogin = () => {
     try {
       const res = await axios.post(`${API_URL}/request-regeneration`, {
         tempEmployeeId: credentials.tempEmployeeId,
+        email: credentials.tempEmployeeId.includes('@') ? credentials.tempEmployeeId : undefined,
         reason: regenReason
       }, { headers: getHeaders(resolvedWorkspace) });
       toast.success(res.data.message || 'Request sent!');

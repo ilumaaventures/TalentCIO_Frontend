@@ -356,12 +356,18 @@ const Onboarding = () => {
   const previewSharedFiles = detailDocuments
     .filter((item) => item.isCustomSentFile && checkedDocuments.has(item.label))
     .map((item) => item.label);
+  const previewDeadlineDisplay = emailDeadline
+    ? new Date(emailDeadline.includes('T') ? emailDeadline : `${emailDeadline}T18:29:59.999Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
+    : 'Not specified';
+  const previewExpiryDisplay = emailDeadline
+    ? new Date(emailDeadline.includes('T') ? emailDeadline : `${emailDeadline}T18:29:59.999Z`).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+    : 'Not specified';
   const previewCredentialsSection = `
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
       <h3 style="color: #1e293b; font-size: 15px; margin: 0 0 12px; font-weight: 700;">Your Login Credentials</h3>
       <p style="margin: 4px 0; font-size: 14px;"><strong>Employee ID:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">${selectedEmployee?.tempEmployeeId || 'EMP-2026-0001'}</code></p>
       <p style="margin: 4px 0; font-size: 14px;"><strong>Temporary Password:</strong> <code style="background: #e0e7ff; padding: 2px 8px; border-radius: 4px; font-size: 16px;">TempPass01</code></p>
-      <p style="margin: 12px 0 0; font-size: 13px; color: #dc2626;"><strong>Credentials Expire On:</strong> ${emailDeadline || '10 Jun 2026'}</p>
+      ${emailDeadline ? `<p style="margin: 12px 0 0; font-size: 13px; color: #dc2626;"><strong>⏳ Credentials Expire On:</strong> ${previewExpiryDisplay}</p>` : ''}
       <p style="color: #64748b; font-size: 12px; margin-top: 8px;">You will be asked to change your password on first login. Please keep these credentials secure.</p>
     </div>
   `;
@@ -392,7 +398,7 @@ const Onboarding = () => {
   ` : '';
   const previewDeadlineBlock = `
     <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 13px; color: #92400e;">
-      <strong>Submission Deadline:</strong> ${emailDeadline || '10 Jun 2026'}
+      <strong>Submission Deadline:</strong> ${previewDeadlineDisplay}
     </div>
   `;
   const previewPortalButton = `
@@ -434,7 +440,7 @@ const Onboarding = () => {
     employeeFullName: `${selectedEmployee?.firstName || ''} ${selectedEmployee?.lastName || ''}`.trim() || 'Sarthak Sharma',
     employeeId: selectedEmployee?.tempEmployeeId || 'EMP-2026-0001',
     joiningDate: selectedEmployee?.joiningDate ? new Date(selectedEmployee.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '15 Jun 2026',
-    submissionDeadline: emailDeadline || '2026-06-10',
+    submissionDeadline: previewDeadlineDisplay,
     portalLink: `${window.location.origin}/pre-onboarding/login`,
     credentialsSection: previewCredentialsSection,
     requestedSectionsBlock: previewSectionsBlock,
@@ -1368,7 +1374,7 @@ const Onboarding = () => {
     }
     setFormData({
       ...INITIAL_FORM_DATA,
-      offerDate: new Date().toISOString().split('T')[0], // Default to today
+      offerDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), // Default to today in IST
       salary: salaryData
     });
     setShowAddModal(true);
@@ -2495,7 +2501,7 @@ const Onboarding = () => {
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={async () => {
                           try {
-                            const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Rejected' });
+                            const res = await api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { action: 'Reject', status: 'Rejected' });
                             toast.success('Extension rejected');
                             if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
                             else fetchEmployees();
@@ -2503,17 +2509,31 @@ const Onboarding = () => {
                           } catch { toast.error('Failed to reject extension'); }
                         }} style={{ padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#1d4ed8', background: 'none', border: '1px solid #1d4ed8', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
                         <button onClick={() => {
-                          const currentDeadline = selectedEmployee.documentDeadline ? new Date(selectedEmployee.documentDeadline) : new Date();
-                          currentDeadline.setDate(currentDeadline.getDate() + ext.requestedDays);
-                          api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, { status: 'Approved', newDeadline: currentDeadline.toISOString() })
+                          const baseTime = selectedEmployee.documentDeadline && new Date(selectedEmployee.documentDeadline) > new Date()
+                            ? new Date(selectedEmployee.documentDeadline).getTime()
+                            : Date.now();
+                          const targetDate = new Date(baseTime);
+                          targetDate.setDate(targetDate.getDate() + (Number(ext.requestedDays) || 3));
+                          // End of day in IST (23:59:59.999 IST = 18:29:59.999 UTC)
+                          const y = targetDate.getFullYear();
+                          const m = targetDate.getMonth();
+                          const d = targetDate.getDate();
+                          const newDeadlineDate = new Date(Date.UTC(y, m, d, 18, 29, 59, 999));
+
+                          api.post(`/onboarding/employees/${selectedEmployee._id}/extension/${ext._id}/resolve`, {
+                            action: 'Approve',
+                            status: 'Approved',
+                            newDeadline: newDeadlineDate.toISOString()
+                          })
                             .then((res) => {
-                              toast.success(`Extension approved. New deadline: ${currentDeadline.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+                              toast.success(`Extension approved. New deadline: ${newDeadlineDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}`);
                               if (res.data?.employee) syncEmployeeState(res.data.employee, 'update');
                               else fetchEmployees();
                               const updatedExt = { ...ext, status: 'Approved' };
                               setSelectedEmployee(prev => ({
                                 ...prev,
-                                documentDeadline: currentDeadline.toISOString(),
+                                documentDeadline: newDeadlineDate.toISOString(),
+                                credentialsExpireAt: newDeadlineDate.toISOString(),
                                 extensionRequests: prev.extensionRequests.map(r => r._id === ext._id ? updatedExt : r)
                               }));
                             })
