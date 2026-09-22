@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, CheckCircle, XCircle, Clock, Calendar, MessageSquare, User } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatInterviewDate } from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
     const getStatusBadgeColor = (status) => {
@@ -245,7 +246,7 @@ const CandidateDetailsModal = ({ candidate, phase, onClose }) => {
                                                             </h4>
                                                             {round.scheduledDate && (
                                                                 <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                                                                    <Calendar size={12} /> Scheduled: {format(new Date(round.scheduledDate), 'PPp')}
+                                                                    <Calendar size={12} /> Scheduled: {formatInterviewDate(round.scheduledDate)}
                                                                 </p>
                                                             )}
                                                         </div>

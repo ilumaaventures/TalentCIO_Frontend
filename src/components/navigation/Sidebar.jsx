@@ -110,6 +110,10 @@ const ALLOWED_APPLICATIONS_COMPANY_IDS = [
 ];
 
 const canShowApplicationsTab = (user) => {
+  if (user?.company?.settings?.careers?.enableUnlistedApplications) {
+    return true;
+  }
+
   const companyId = user?.company?._id || user?.companyId || user?.company;
   const companyIdStr = typeof companyId === 'object' ? String(companyId?._id || companyId) : String(companyId || '');
 

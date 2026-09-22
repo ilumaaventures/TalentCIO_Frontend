@@ -24,7 +24,8 @@ const ENTITY_OPTIONS = [
     { key: 'emailtemplate', label: 'Email Templates' },
     { key: 'onboardingtemplate', label: 'Onboarding Templates' },
     { key: 'onboardingpolicy', label: 'Onboarding Policies' },
-    { key: 'crmlead', label: 'CRM Leads' }
+    { key: 'crmlead', label: 'CRM Leads' },
+    { key: 'crmimportdata', label: 'Import Data' }
 ];
 
 const formatPerson = (person) => {
@@ -70,6 +71,8 @@ const getItemTitle = (entity, item) => {
             return item.name || item.leaveType || 'Leave Policy';
         case 'crmlead':
             return item.companyName || [item.firstName, item.lastName].filter(Boolean).join(' ').trim() || 'Lead';
+        case 'crmimportdata':
+            return item.companyName || item.contactPerson || 'Imported Record';
         default:
             return item.name || item.title || item.requestId || 'Record';
     }
@@ -79,6 +82,8 @@ const getItemSubtitle = (entity, item) => {
     switch (entity) {
         case 'crmlead':
             return item.email || item.phone || item.industry || item.companyName || '-';
+        case 'crmimportdata':
+            return [item.contactPerson, item.emailId || item.email, item.mobileNo || item.phone, item.industry].filter(Boolean).join(' • ') || '-';
         case 'candidate':
         case 'user':
             return item.email || '-';

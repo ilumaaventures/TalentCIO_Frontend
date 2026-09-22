@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { toIsoFromLocalDatetime } from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const normalizeSkillLabel = (value) => String(value || '').trim();
 const normalizeSkillKey = (value) => normalizeSkillLabel(value).toLowerCase();
@@ -948,7 +949,7 @@ const BulkCandidateImport = ({ hiringRequestId, isOpen, onClose, onImportSuccess
                         levelName: round.levelName,
                         phase: round.phase,
                         status: round.status,
-                        scheduledDate: round.scheduledDate,
+                        scheduledDate: round.scheduledDate ? (round.scheduledDate instanceof Date ? round.scheduledDate.toISOString() : (toIsoFromLocalDatetime(round.scheduledDate) || round.scheduledDate)) : undefined,
                         feedback: round.feedback,
                         rating: round.rating,
                         skillRatings: round.skillRatings

@@ -4,6 +4,7 @@ import { Calendar, Check, ChevronRight, Clock, Edit3, Eye, Loader, Mail, Search,
 import api from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import { renderTemplateBody, resolveTemplate } from '@/features/email/utils/templatePlaceholders';
+import { toIsoFromLocalDatetime, formatInterviewDate } from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const QUICK_PLACEHOLDERS = [
     { label: 'Candidate Name', token: 'candidateName' },
@@ -240,7 +241,7 @@ const MassInterviewScheduleModal = ({
 
         const scheduledDateVal = activeRound?.scheduledDate;
         const formattedDate = scheduledDateVal
-            ? new Date(scheduledDateVal).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })
+            ? formatInterviewDate(toIsoFromLocalDatetime(scheduledDateVal) || scheduledDateVal)
             : 'To Be Confirmed';
 
         const roundAssignedTo = activeRound?.assignedTo || [];
@@ -371,7 +372,7 @@ const MassInterviewScheduleModal = ({
                         levelName: (r.levelName || `Round ${idx + 1}`).trim() || `Round ${idx + 1}`,
                         assignAfterStage: r.assignAfterStage || (Number(activePhase) === 2 ? 'Shortlisted' : 'Interested'),
                         assignedTo: r.assignedTo || [],
-                        scheduledDate: r.scheduledDate || undefined,
+                        scheduledDate: r.scheduledDate ? toIsoFromLocalDatetime(r.scheduledDate) : undefined,
                         phase: r.phase || 1,
                         sendEmail: anyEmail,
                         sendCandidateEmail: sendCandidate,

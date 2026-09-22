@@ -53,6 +53,8 @@ export const adminService = {
 };
 export const dataService = {
   importData: (data) => crmAdminService.importData(data),
+  getImportData: (params) => crmAdminService.getImportData(params),
+  syncImportData: (rows) => crmAdminService.syncImportData(rows),
   exportData: (entityType) => crmAdminService.exportData(entityType),
   mergeDuplicates: (data) => crmAdminService.mergeDuplicates(data),
 };

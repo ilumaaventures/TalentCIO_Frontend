@@ -52,6 +52,7 @@ import {
     refreshTAClientsCache
 } from '@/features/talent-acquisition/utils/taCache';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { formatInterviewDate } from '@/features/talent-acquisition/utils/candidateHelpers';
 
 const requestStatusClasses = {
     Draft: 'bg-slate-100 text-slate-600 border-slate-200',
@@ -89,7 +90,7 @@ const formatShortDate = (value) => {
 
 const formatShortDateTime = (value) => {
     if (!value) return 'Schedule pending';
-    return format(new Date(value), 'dd MMM, hh:mm a');
+    return formatInterviewDate(value) || format(new Date(value), 'dd MMM, hh:mm a');
 };
 
 const formatRelativeTimestamp = (value) => {
@@ -487,6 +488,10 @@ const ALLOWED_APPLICATIONS_COMPANY_IDS = [
 ];
 
 const canShowApplicationsTab = (user) => {
+    if (user?.company?.settings?.careers?.enableUnlistedApplications) {
+        return true;
+    }
+
     const companyId = user?.company?._id || user?.companyId || user?.company;
     const companyIdStr = typeof companyId === 'object' ? String(companyId?._id || companyId) : String(companyId || '');
 

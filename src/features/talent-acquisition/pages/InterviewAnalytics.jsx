@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
+import { formatInterviewDate } from '@/features/talent-acquisition/utils/candidateHelpers';
 import {
     ArrowLeft, RefreshCw, Users, CheckCircle2, XCircle, Clock,
     Calendar, Award, BarChart3, Search, UserCheck, Briefcase, ChevronLeft, ChevronRight
@@ -569,7 +570,7 @@ const InterviewAnalytics = () => {
                                     const renderRoundDetailsCell = (r) => {
                                         if (!r) return <span className="text-slate-300 text-xs">—</span>;
 
-                                        const formattedDate = r.scheduledDate ? format(new Date(r.scheduledDate), 'dd MMM, hh:mm a') : null;
+                                        const formattedDate = r.scheduledDate ? formatInterviewDate(r.scheduledDate) : null;
 
                                         return (
                                             <div className="space-y-0.5 text-[10px]">
