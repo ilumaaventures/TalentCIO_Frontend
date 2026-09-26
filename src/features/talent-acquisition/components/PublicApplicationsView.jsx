@@ -581,6 +581,23 @@ export const ProfileReviewModal = ({ application, onClose, hiringRequest = null,
                             </ProfileSection>
 
                             <ProfileSection title="Skills" icon={CheckCircle}>
+                                {Array.isArray(application.mustHaveSkills) && application.mustHaveSkills.length > 0 && (
+                                    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-3.5">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 mb-2.5">
+                                            Must-Have Skills Experience (Candidate Input)
+                                        </p>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            {application.mustHaveSkills.map((mSkill, idx) => (
+                                                <div key={idx} className="flex items-center justify-between rounded-xl bg-white border border-amber-200/80 px-3 py-2 text-xs shadow-2xs">
+                                                    <span className="font-bold text-slate-800">{mSkill.skill}</span>
+                                                    <span className="font-extrabold text-[#ea7c00] bg-[#fff6ee] border border-[#ea7c00]/30 px-2 py-0.5 rounded-md">
+                                                        {mSkill.experience !== undefined && mSkill.experience !== null ? `${mSkill.experience} Yrs` : '0 Yrs'}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 <ChipList items={skills} renderItem={(skill) => `${skill.name}${skill.level ? ` (${skill.level})` : ''}`} />
                             </ProfileSection>
 
