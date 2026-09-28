@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Mail, Briefcase, Shield, Hash, Users, MapPin, Calendar, ZoomIn, Move, X, Lock, Eye, EyeOff, CheckCircle, AlertCircle, KeyRound, Camera, RotateCcw, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EmployeeDossier from './EmployeeDossier';
+import EmployeePerformance from '@/features/projects/components/EmployeePerformance';
 
 const PROFILE_IMAGE_MAX_DIMENSION = 512;
 const PROFILE_IMAGE_TARGET_BYTES = 900 * 1024;
@@ -1127,6 +1128,11 @@ const Profile = () => {
                     initialTab={requestedTab}
                     onTabChange={handleTabChange}
                 />
+
+                {/* My Project Performance & Delivery Analytics */}
+                <div className="pt-2">
+                    <EmployeePerformance userId={profile._id} employee={profile} />
+                </div>
             </div>
 
             {cropUpload && (

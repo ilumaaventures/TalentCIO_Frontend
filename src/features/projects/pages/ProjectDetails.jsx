@@ -1,1434 +1,1386 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import api from '@/lib/apiClient';
-import { Briefcase, Plus, Folder, CheckSquare, User, Calendar, ArrowLeft, Clock, LayoutList, ListTree, GanttChart, ChevronDown, ChevronRight, ListChecks, Trash2, Users } from 'lucide-react';
+import {
+  Clock,
+  Calendar,
+  Users,
+  Plus,
+  Trash2,
+  CheckSquare,
+  Folder,
+  Search,
+  X
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import Button from '@/components/ui/Button';
 import { createCachePayload } from '@/lib/cache';
-import { format, differenceInDays, addDays, isValid } from 'date-fns';
+import { format } from 'date-fns';
+
+import ProjectHeader from '../components/ProjectHeader';
+import ProjectOverview from '../components/ProjectOverview';
+import TaskBoard from '../components/TaskBoard';
+import ProjectHierarchy from '../components/ProjectHierarchy';
+import TaskDrawer from '../components/TaskDrawer';
+import ProjectPerformance from '../components/ProjectPerformance';
+import UserPerformanceTrace from '../components/UserPerformanceTrace';
+import ProjectDiscussions from '../components/ProjectDiscussions';
+import EditProjectModal from '../components/EditProjectModal';
+import projectService from '../services/projectService';
 
 const getLocalDateInputValue = (dateValue = new Date()) => format(new Date(dateValue), 'yyyy-MM-dd');
 
 const ProjectDetails = () => {
-    const { id } = useParams();
-    const navigate = useNavigate();
-    const { user } = useAuth();
-    const canUpdateProject = user?.roles?.includes('Admin') || user?.permissions?.includes('project.update');
-    const canCreateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.create');
-    const canUpdateTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.update');
-    const canDeleteModule = user?.roles?.includes('Admin') || user?.permissions?.includes('module.delete');
-    const canDeleteTask = user?.roles?.includes('Admin') || user?.permissions?.includes('task.delete');
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
-    const [project, setProject] = useState(null);
-    const [modules, setModules] = useState([]);
-    const [tasks, setTasks] = useState([]);
-    const [employees, setEmployees] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [viewMode, setViewMode] = useState('overview'); // 'overview', 'hierarchy', 'timeline'
-    const hasModules = project?.hasModules !== false;
+  const [project, setProject] = useState(null);
+  const [modules, setModules] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('overview'); // 'overview', 'board', 'hierarchy', 'performance', 'user-trace', 'discussions'
+  const [traceUserId, setTraceUserId] = useState('ALL');
+  const [discussionsCount, setDiscussionsCount] = useState(0);
+  const hasModules = project?.hasModules !== false;
 
-    // Modals
-    const [showModuleModal, setShowModuleModal] = useState(false);
-    const [showTaskModal, setShowTaskModal] = useState(false);
-    const [showLogModal, setShowLogModal] = useState(false);
+  const handleSelectMemberTrace = useCallback((memberId) => {
+    setTraceUserId(memberId || 'ALL');
+    setViewMode('user-trace');
+  }, []);
 
-    // Forms
-    const [moduleForm, setModuleForm] = useState({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
-    const [taskForm, setTaskForm] = useState({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
-    const [logForm, setLogForm] = useState({ date: getLocalDateInputValue(), hours: '', description: '' });
+  const isManager = Boolean(
+    project?.manager && (
+      (project.manager?._id || project.manager)?.toString() === (user?._id || user?.id)?.toString()
+    )
+  );
+  const isMember = Boolean(
+    Array.isArray(project?.members) && project.members.some(m =>
+      (m?._id || m)?.toString() === (user?._id || user?.id)?.toString()
+    )
+  );
 
-    // Editing State
-    const [editingModuleId, setEditingModuleId] = useState(null);
-    const [editingTaskId, setEditingTaskId] = useState(null);
-    const [activeModuleId, setActiveModuleId] = useState(null);
-    const [loggingTaskId, setLoggingTaskId] = useState(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
+  const isAdmin = (user?.roles || []).some(r => {
+    const roleName = typeof r === 'string' ? r : r?.name;
+    const lower = String(roleName || '').toLowerCase().trim();
+    return lower === 'admin' || lower === 'system admin' || lower === 'super admin' || r?.isSystem === true;
+  }) || (user?.permissions || []).includes('*') || (user?.permissions || []).includes('admin');
 
-    const fetchData = useCallback(async () => {
-        try {
-            const cacheKey = `project_details_${id}`;
-            const cachedData = sessionStorage.getItem(cacheKey);
-            const shouldLoadEmployees = canUpdateProject || canCreateTask || canUpdateTask;
-            
-            if (cachedData) {
-                const parsed = JSON.parse(cachedData);
-                const data = parsed.data || parsed;
-                setProject(data.project);
-                setModules(data.modules || []);
-                setTasks(data.tasks || []);
-                setEmployees(data.employees || []);
-                setLoading(false);
-            }
+  const canUpdateProject = isAdmin || user?.permissions?.includes('project.update') || isManager;
+  const canCreateTask = isAdmin || user?.permissions?.includes('task.create') || isManager || isMember;
+  const canUpdateTask = isAdmin || user?.permissions?.includes('task.update') || isManager || isMember;
+  const canDeleteModule = isAdmin || user?.permissions?.includes('module.delete') || isManager;
+  const canDeleteTask = isAdmin || user?.permissions?.includes('task.delete') || isManager;
+  const canExportReport = isAdmin || user?.permissions?.includes('project.export_report') || isManager;
 
-            const [projRes, empRes] = await Promise.all([
-                api.get(`/projects/${id}/hierarchy`),
-                shouldLoadEmployees
-                    ? api.get('/projects/employees')
-                    : Promise.resolve({ data: [] })
-            ]);
+  // Drawer state
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
 
-            const projData = projRes.data;
-            const empData = empRes.data;
-            const moduleData = projData.modules || [];
-            const taskData = moduleData.flatMap(m => m.tasks) || [];
+  // Modals
+  const [showModuleModal, setShowModuleModal] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
 
-            // Fingerprint check
-            const newFingerprint = JSON.stringify({ 
-                m: moduleData.length, 
-                t: taskData.length, 
-                updates: moduleData.map(m => m.tasks?.length).join(','),
-                dw: (projData.directWorkLogs || []).length,
-                th: projData.totalLoggedHours || 0
-            });
-            const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
 
-            if (newFingerprint !== oldFingerprint) {
-                setProject(projData);
-                setModules(moduleData);
-                setTasks(taskData);
-                setEmployees(empData);
+  // Forms
+  const [moduleForm, setModuleForm] = useState({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
+  const [taskForm, setTaskForm] = useState({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '', storyPoints: '' });
+  const [taskAssigneeSearch, setTaskAssigneeSearch] = useState('');
 
-                // Minimal data for caching
-                const minimalProject = {
-                    _id: projData._id,
-                    name: projData.name,
-                    status: projData.status,
-                    isActive: projData.isActive,
-                    description: projData.description,
-                    startDate: projData.startDate,
-                    dueDate: projData.dueDate,
-                    manager: projData.manager ? { firstName: projData.manager.firstName, lastName: projData.manager.lastName } : null,
-                    client: projData.client,
-                    members: projData.members,
-                    hasModules: projData.hasModules !== false,
-                    directWorkLogs: projData.directWorkLogs || [],
-                    totalLoggedHours: projData.totalLoggedHours || 0,
-                    estimatedHours: projData.estimatedHours || 0
-                };
+  const projectMemberIdSet = useMemo(() => {
+    const set = new Set();
+    if (Array.isArray(project?.members)) {
+      project.members.forEach(m => set.add(String(m?._id || m)));
+    }
+    if (project?.manager) {
+      set.add(String(project.manager?._id || project.manager));
+    }
+    return set;
+  }, [project]);
 
-                const minimalModules = moduleData.map(m => ({
-                    _id: m._id,
-                    name: m.name,
-                    status: m.status,
-                    description: m.description,
-                    startDate: m.startDate,
-                    dueDate: m.dueDate,
-                    tasks: m.tasks?.map(t => ({
-                        _id: t._id,
-                        name: t.name,
-                        description: t.description,
-                        status: t.status,
-                        priority: t.priority,
-                        startDate: t.startDate,
-                        dueDate: t.dueDate,
-                        estimatedHours: t.estimatedHours,
-                        loggedHours: t.loggedHours,
-                        assignees: t.assignees?.map(a => ({ _id: a._id, firstName: a.firstName, lastName: a.lastName, email: a.email })),
-                        workLogs: t.workLogs?.map(l => ({
-                            _id: l._id,
-                            date: l.date,
-                            hours: l.hours,
-                            description: l.description,
-                            user: l.user ? { _id: l.user._id, firstName: l.user.firstName, lastName: l.user.lastName } : null
-                        }))
-                    }))
-                }));
+  // Combine employees and project members, prioritizing project members at top
+  const allSelectableAssignees = useMemo(() => {
+    const map = new Map();
+    if (Array.isArray(project?.members)) {
+      project.members.forEach((m, idx) => {
+        const mId = String(m?._id || m);
+        map.set(mId, {
+          _id: mId,
+          firstName: m.firstName || 'Member',
+          lastName: m.lastName || '',
+          email: m.email || '',
+          profilePicture: m.profilePicture || m.profilePhoto || null,
+          isProjectMember: true
+        });
+      });
+    }
+    if (project?.manager) {
+      const mgrId = String(project.manager?._id || project.manager);
+      if (!map.has(mgrId)) {
+        map.set(mgrId, {
+          _id: mgrId,
+          firstName: project.manager.firstName || 'Manager',
+          lastName: project.manager.lastName || '',
+          email: project.manager.email || '',
+          profilePicture: project.manager.profilePicture || project.manager.profilePhoto || null,
+          isProjectMember: true,
+          isManager: true
+        });
+      }
+    }
+    (employees || []).forEach(emp => {
+      const eId = String(emp._id);
+      const isProjMem = projectMemberIdSet.has(eId);
+      const existing = map.get(eId);
+      map.set(eId, {
+        _id: eId,
+        firstName: emp.firstName || existing?.firstName || '',
+        lastName: emp.lastName || existing?.lastName || '',
+        email: emp.email || existing?.email || '',
+        profilePicture: emp.profilePicture || emp.profilePhoto || existing?.profilePicture || null,
+        isProjectMember: isProjMem || Boolean(existing?.isProjectMember)
+      });
+    });
 
-                const minimalTasks = minimalModules.flatMap(m => m.tasks) || [];
-                const minimalEmployees = empData.map(e => ({ _id: e._id, firstName: e.firstName, lastName: e.lastName, email: e.email }));
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.isProjectMember && !b.isProjectMember) return -1;
+      if (!a.isProjectMember && b.isProjectMember) return 1;
+      return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+    });
+  }, [employees, project, projectMemberIdSet]);
 
-                const payload = createCachePayload({
-                    project: minimalProject,
-                    modules: minimalModules,
-                    tasks: minimalTasks,
-                    employees: minimalEmployees
-                }, newFingerprint);
+  const filteredAssignees = useMemo(() => {
+    if (!taskAssigneeSearch.trim()) return allSelectableAssignees;
+    const q = taskAssigneeSearch.toLowerCase().trim();
+    return allSelectableAssignees.filter(a =>
+      `${a.firstName} ${a.lastName}`.toLowerCase().includes(q) ||
+      (a.email || '').toLowerCase().includes(q)
+    );
+  }, [allSelectableAssignees, taskAssigneeSearch]);
 
-                sessionStorage.setItem(cacheKey, JSON.stringify(payload));
-            }
+  // Editing State
+  const [editingModuleId, setEditingModuleId] = useState(null);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [activeModuleId, setActiveModuleId] = useState(null);
+  const [loggingTaskId, setLoggingTaskId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-        } catch (error) {
-            console.error(error);
-            toast.error('Failed to load project details');
-        } finally {
-            setLoading(false);
-        }
-    }, [canCreateTask, canUpdateProject, canUpdateTask, id]);
+  const invalidateProjectCache = useCallback(() => {
+    sessionStorage.removeItem(`project_details_${id}`);
+    sessionStorage.removeItem(`project_details_${id}_${user?._id || user?.id || 'anon'}`);
+    if (user?._id) sessionStorage.removeItem(`project_data_${user._id}`);
+    if (user?.id) sessionStorage.removeItem(`project_data_${user.id}`);
+  }, [id, user?._id, user?.id]);
 
-    useEffect(() => {
+  const openEditProjectModal = () => setShowEditProjectModal(true);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const cacheKey = `project_details_${id}_${user?._id || user?.id || 'anon'}`;
+      const cachedData = sessionStorage.getItem(cacheKey);
+      const shouldLoadEmployees = canUpdateProject || canCreateTask || canUpdateTask;
+
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        const data = parsed.data || parsed;
+        setProject(data.project);
+        setModules(data.modules || []);
+        setTasks(data.tasks || []);
+        setEmployees(data.employees || []);
+        setLoading(false);
+      }
+
+      const [projRes, empRes] = await Promise.all([
+        api.get(`/projects/${id}/hierarchy`),
+        api.get('/projects/employees').catch(() => ({ data: [] }))
+      ]);
+
+      const projData = projRes.data;
+      const empData = empRes.data || [];
+      const moduleData = (projData.modules || []).map(m => ({
+        ...m,
+        tasks: (m.tasks || []).map(t => ({
+          ...t,
+          module: t.module || m._id
+        }))
+      }));
+      const taskData = moduleData.flatMap(m => m.tasks || []) || [];
+
+      // Always update active state with authoritative server data
+      setProject(projData);
+      setModules(moduleData);
+      setTasks(taskData);
+      setEmployees(empData);
+
+      // Fetch discussions count for project
+      api.get(`/discussions?project=${id}&limit=1`)
+        .then(res => {
+          const total = res.data?.total ?? (res.data?.discussions?.length || 0);
+          setDiscussionsCount(total);
+        })
+        .catch(() => {});
+
+      // Fingerprint check for sessionStorage caching
+      const newFingerprint = JSON.stringify({
+        m: moduleData.length,
+        t: taskData.length,
+        taskStates: taskData.map(t => `${t._id}:${t.status}:${t.order ?? 0}`).join(','),
+        updates: moduleData.map(m => `${m._id}:${m.status}:${m.tasks?.length}`).join(','),
+        dw: (projData.directWorkLogs || []).length,
+        th: projData.totalLoggedHours || 0
+      });
+      const oldFingerprint = cachedData ? JSON.parse(cachedData).fingerprint : null;
+
+      if (newFingerprint !== oldFingerprint || !cachedData) {
+
+        const minimalProject = {
+          _id: projData._id,
+          name: projData.name,
+          status: projData.status,
+          isActive: projData.isActive,
+          description: projData.description,
+          startDate: projData.startDate,
+          dueDate: projData.dueDate,
+          manager: projData.manager ? { firstName: projData.manager.firstName, lastName: projData.manager.lastName } : null,
+          client: projData.client,
+          members: projData.members,
+          hasModules: projData.hasModules !== false,
+          directWorkLogs: projData.directWorkLogs || [],
+          totalLoggedHours: projData.totalLoggedHours || 0,
+          estimatedHours: projData.estimatedHours || 0
+        };
+
+        const minimalModules = moduleData.map(m => ({
+          _id: m._id,
+          name: m.name,
+          status: m.status,
+          description: m.description,
+          startDate: m.startDate,
+          dueDate: m.dueDate,
+          tasks: m.tasks?.map(t => ({
+            _id: t._id,
+            name: t.name,
+            key: t.key,
+            taskKey: t.taskKey,
+            description: t.description,
+            status: t.status,
+            priority: t.priority,
+            storyPoints: t.storyPoints,
+            labels: t.labels,
+            startDate: t.startDate,
+            dueDate: t.dueDate,
+            estimatedHours: t.estimatedHours,
+            loggedHours: t.loggedHours,
+            blockedBy: t.blockedBy,
+            parentTask: t.parentTask,
+            module: t.module || m._id,
+            assignees: t.assignees?.map(a => ({ _id: a._id, firstName: a.firstName, lastName: a.lastName, email: a.email, profilePicture: a.profilePicture || a.profilePhoto })),
+            workLogs: t.workLogs?.map(l => ({
+              _id: l._id,
+              date: l.date,
+              hours: l.hours,
+              description: l.description,
+              user: l.user ? { _id: l.user._id, firstName: l.user.firstName, lastName: l.user.lastName } : null
+            }))
+          }))
+        }));
+
+        const minimalTasks = minimalModules.flatMap(m => m.tasks || []) || [];
+        const minimalEmployees = empData.map(e => ({ _id: e._id, firstName: e.firstName, lastName: e.lastName, email: e.email, profilePicture: e.profilePicture || e.profilePhoto }));
+
+        const payload = createCachePayload({
+          project: minimalProject,
+          modules: minimalModules,
+          tasks: minimalTasks,
+          employees: minimalEmployees
+        }, newFingerprint);
+
+        sessionStorage.setItem(cacheKey, JSON.stringify(payload));
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to load project details');
+    } finally {
+      setLoading(false);
+    }
+  }, [canCreateTask, canUpdateProject, canUpdateTask, id, user?._id, user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Handlers
+  const handleCreateModule = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      if (editingModuleId) {
+        await api.put(`/projects/modules/${editingModuleId}`, moduleForm);
+        toast.success('Module Updated');
+      } else {
+        await api.post('/projects/modules', { ...moduleForm, project: id });
+        toast.success('Module Created');
+      }
+      invalidateProjectCache();
+      setShowModuleModal(false);
+      setEditingModuleId(null);
+      setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
+      fetchData();
+    } catch {
+      toast.error('Failed to save module');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCreateTask = async (e) => {
+    e.preventDefault();
+    if (!activeModuleId) {
+      toast.error('Please select a target module');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      if (editingTaskId) {
+        await api.put(`/projects/tasks/${editingTaskId}`, { ...taskForm, module: activeModuleId });
+        toast.success('Task Updated');
+      } else {
+        await api.post('/projects/tasks', { ...taskForm, module: activeModuleId });
+        toast.success('Task Created');
+      }
+      invalidateProjectCache();
+      setShowTaskModal(false);
+      setEditingTaskId(null);
+      setTaskForm({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '', storyPoints: '' });
+      fetchData();
+    } catch {
+      toast.error('Failed to save task');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLogWork = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      if (loggingTaskId) {
+        await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
+      } else {
+        await projectService.logDirectProjectWork({
+          projectId: id,
+          date: logForm.date,
+          hours: Number(logForm.hours),
+          description: logForm.description
+        });
+      }
+      toast.success('Work Logged Successfully');
+      invalidateProjectCache();
+      setShowLogModal(false);
+      setLoggingTaskId(null);
+      fetchData();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Failed to log work';
+      toast.error(errorMsg, { duration: 4000 });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openProjectLogModal = () => {
+    setLogForm({ date: getLocalDateInputValue(), hours: '', description: '' });
+    setLoggingTaskId(null);
+    setShowLogModal(true);
+  };
+
+  const handleDeleteWorkLog = async (logId) => {
+    if (!window.confirm('Are you sure you want to delete this work log?')) return;
+    try {
+      await api.delete(`/projects/worklogs/${logId}`);
+      toast.success('Work log deleted');
+      invalidateProjectCache();
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete work log');
+    }
+  };
+
+  const openCreateModuleModal = () => {
+    setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
+    setEditingModuleId(null);
+    setShowModuleModal(true);
+  };
+
+  const openCreateTaskModal = (arg1, arg2) => {
+    const validStatuses = ['TODO', 'IN_PROGRESS', 'REVIEW', 'BLOCKED', 'DONE'];
+    let targetModule = null;
+    let initialStatus = 'TODO';
+
+    if (arg2) {
+      targetModule = arg2;
+      if (typeof arg1 === 'string' && validStatuses.includes(arg1)) {
+        initialStatus = arg1;
+      }
+    } else if (arg1) {
+      if (typeof arg1 === 'string' && validStatuses.includes(arg1)) {
+        initialStatus = arg1;
+        targetModule = modules[0]?._id;
+      } else if (typeof arg1 === 'string') {
+        targetModule = arg1;
+      } else if (typeof arg1 === 'object' && arg1?._id) {
+        targetModule = arg1._id;
+      }
+    }
+
+    if (!targetModule) {
+      targetModule = modules[0]?._id;
+    }
+
+    if (!targetModule && modules.length === 0) {
+      toast.error('Please create a module first before adding tasks');
+      openCreateModuleModal();
+      return;
+    }
+
+    // Default auto-assign all users assigned to the project (can be unchecked)
+    const defaultProjectAssignees = Array.from(projectMemberIdSet);
+
+    setTaskForm({
+      name: '',
+      description: '',
+      assignees: defaultProjectAssignees,
+      priority: 'MEDIUM',
+      status: initialStatus,
+      startDate: '',
+      dueDate: '',
+      estimatedHours: '',
+      storyPoints: ''
+    });
+    setEditingTaskId(null);
+    setActiveModuleId(targetModule);
+    setTaskAssigneeSearch('');
+    setShowTaskModal(true);
+  };
+
+  const handleEditModule = (module) => {
+    setModuleForm({
+      name: module.name,
+      description: module.description || '',
+      status: module.status,
+      startDate: module.startDate ? new Date(module.startDate).toISOString().split('T')[0] : '',
+      dueDate: module.dueDate ? new Date(module.dueDate).toISOString().split('T')[0] : ''
+    });
+    setEditingModuleId(module._id);
+    setShowModuleModal(true);
+  };
+
+  const handleDeleteModule = async (moduleId) => {
+    if (window.confirm('Are you sure you want to delete this module? All tasks within it will be deleted.')) {
+      try {
+        await api.delete(`/projects/modules/${moduleId}`);
+        toast.success('Module Deleted');
+        invalidateProjectCache();
         fetchData();
-    }, [fetchData]);
+      } catch {
+        toast.error('Failed to delete module');
+      }
+    }
+  };
 
-    // --- Handlers (Keep existing logic mostly) ---
-    const handleCreateModule = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            if (editingModuleId) {
-                await api.put(`/projects/modules/${editingModuleId}`, moduleForm);
-                toast.success('Module Updated');
-            } else {
-                await api.post('/projects/modules', { ...moduleForm, project: id });
-                toast.success('Module Created');
-            }
-            sessionStorage.removeItem(`project_details_${id}`);
-            sessionStorage.removeItem(`project_data_${user?._id}`);
-            setShowModuleModal(false);
-            setEditingModuleId(null);
-            setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
-            fetchData();
-        } catch {
-            toast.error('Failed to save module');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+  const handleEditTask = (task, moduleId) => {
+    const existingAssignees = Array.isArray(task.assignees) && task.assignees.length > 0
+      ? task.assignees.map(a => String(a?._id || a))
+      : Array.from(projectMemberIdSet);
 
-    const handleCreateTask = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            if (editingTaskId) {
-                await api.put(`/projects/tasks/${editingTaskId}`, taskForm);
-                toast.success('Task Updated');
-            } else {
-                await api.post('/projects/tasks', { ...taskForm, module: activeModuleId });
-                toast.success('Task Created');
-            }
-            sessionStorage.removeItem(`project_details_${id}`);
-            sessionStorage.removeItem(`project_data_${user?._id}`);
-            setShowTaskModal(false);
-            setEditingTaskId(null);
-            setTaskForm({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
-            fetchData();
-        } catch {
-            toast.error('Failed to save task');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+    setTaskForm({
+      name: task.name,
+      description: task.description || '',
+      assignees: existingAssignees,
+      priority: (task.priority === 'CRITICAL' ? 'URGENT' : task.priority) || 'MEDIUM',
+      status: task.status || 'TODO',
+      startDate: task.startDate ? new Date(task.startDate).toISOString().split('T')[0] : '',
+      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
+      estimatedHours: task.estimatedHours || '',
+      storyPoints: task.storyPoints || ''
+    });
+    setEditingTaskId(task._id);
+    setActiveModuleId(moduleId || task.module?._id || task.module || modules[0]?._id);
+    setTaskAssigneeSearch('');
+    setShowTaskModal(true);
+  };
 
-    const handleLogWork = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            if (loggingTaskId) {
-                await api.post(`/projects/tasks/${loggingTaskId}/log`, logForm);
-            } else {
-                await api.post('/timesheet/entry', {
-                    projectId: id,
-                    date: logForm.date,
-                    hours: Number(logForm.hours),
-                    description: logForm.description
-                });
-            }
-            toast.success('Work Logged Successfully');
-            sessionStorage.removeItem(`project_details_${id}`);
-            sessionStorage.removeItem(`project_data_${user?._id}`);
-            setShowLogModal(false);
-            setLoggingTaskId(null);
-            fetchData();
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to log work');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+  const handleDeleteTask = async (taskId) => {
+    if (window.confirm('Delete this task?')) {
+      try {
+        await api.delete(`/projects/tasks/${taskId}`);
+        toast.success('Task Deleted');
+        invalidateProjectCache();
+        fetchData();
+      } catch {
+        toast.error('Failed to delete task');
+      }
+    }
+  };
 
-    const openProjectLogModal = () => {
-        setLogForm({ date: getLocalDateInputValue(), hours: '', description: '' });
-        setLoggingTaskId(null);
-        setShowLogModal(true);
-    };
+  const openLogModal = (taskId) => {
+    setLoggingTaskId(taskId);
+    setLogForm({ date: getLocalDateInputValue(), hours: '', description: '' });
+    setShowLogModal(true);
+  };
 
-    const handleDeleteWorkLog = async (logId) => {
-        if (!window.confirm('Are you sure you want to delete this work log?')) return;
-        try {
-            await api.delete(`/projects/worklogs/${logId}`);
-            toast.success('Work log deleted');
-            sessionStorage.removeItem(`project_details_${id}`);
-            fetchData();
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to delete work log');
-        }
-    };
-
-    const openCreateModuleModal = () => {
-        setModuleForm({ name: '', description: '', status: 'PLANNED', startDate: '', dueDate: '' });
-        setEditingModuleId(null);
-        setShowModuleModal(true);
-    };
-
-    const openCreateTaskModal = (moduleId) => {
-        setTaskForm({ name: '', description: '', assignees: [], priority: 'MEDIUM', startDate: '', dueDate: '', estimatedHours: '' });
-        setEditingTaskId(null);
-        setActiveModuleId(moduleId);
-        setShowTaskModal(true);
-    };
-
-    const handleEditModule = (module) => {
-        setModuleForm({
-            name: module.name,
-            description: module.description || '',
-            status: module.status,
-            startDate: module.startDate ? new Date(module.startDate).toISOString().split('T')[0] : '',
-            dueDate: module.dueDate ? new Date(module.dueDate).toISOString().split('T')[0] : ''
-        });
-        setEditingModuleId(module._id);
-        setShowModuleModal(true);
-    };
-
-    const handleEditTask = (task, moduleId) => {
-        setTaskForm({
-            name: task.name,
-            description: task.description || '',
-            assignees: task.assignees ? task.assignees.map(a => a._id) : [],
-            priority: task.priority || 'MEDIUM',
-            startDate: task.startDate ? new Date(task.startDate).toISOString().split('T')[0] : '',
-            dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
-            estimatedHours: task.estimatedHours || ''
-        });
-        setEditingTaskId(task._id);
-        setActiveModuleId(moduleId);
-        setShowTaskModal(true);
-    };
-
-    const openLogModal = (taskId) => {
-        setLoggingTaskId(taskId);
-        setLogForm({ date: getLocalDateInputValue(), hours: '', description: '' });
-        setShowLogModal(true);
-    };
-
-    // --- Views ---
-
-    const DirectProjectView = () => {
-        const directLogs = project?.directWorkLogs || [];
-        const totalLogged = project?.totalLoggedHours || directLogs.reduce((sum, l) => sum + (Number(l.hours) || 0), 0);
-        const estimated = Number(project?.estimatedHours) || 0;
-        const progressPercent = estimated > 0 ? Math.min(100, Math.round((totalLogged / estimated) * 100)) : 0;
-        const membersList = project?.members || [];
-        const currentUserId = user?._id?.toString();
-        const isAdmin = user?.roles?.includes('Admin') || user?.permissions?.includes('*') || user?.permissions?.includes('admin');
-
-        return (
-            <div className="space-y-6">
-                {/* Stats / KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Hours Logged */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Logged Hours</span>
-                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                                <Clock size={18} />
-                            </div>
-                        </div>
-                        <div className="mt-3">
-                            <div className="text-2xl font-bold text-slate-800">
-                                {totalLogged.toFixed(1)} <span className="text-sm font-normal text-slate-500">hrs</span>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                                <span>Est: {estimated > 0 ? `${estimated} hrs` : 'Not set'}</span>
-                                {estimated > 0 && <span className="font-semibold text-blue-600">{progressPercent}%</span>}
-                            </div>
-                            {estimated > 0 && (
-                                <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                        className={`h-full rounded-full transition-all duration-300 ${totalLogged > estimated ? 'bg-amber-500' : 'bg-blue-600'}`}
-                                        style={{ width: `${progressPercent}%` }}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Timeline */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Timeline</span>
-                            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                                <Calendar size={18} />
-                            </div>
-                        </div>
-                        <div className="mt-3 space-y-1">
-                            <div className="text-xs text-slate-500 flex justify-between">
-                                <span>Start Date:</span>
-                                <span className="font-semibold text-slate-700">
-                                    {project?.startDate ? format(new Date(project.startDate), 'MMM d, yyyy') : 'Not set'}
-                                </span>
-                            </div>
-                            <div className="text-xs text-slate-500 flex justify-between">
-                                <span>Due Date:</span>
-                                <span className="font-semibold text-slate-700">
-                                    {project?.dueDate ? format(new Date(project.dueDate), 'MMM d, yyyy') : 'Not set'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Team Members */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Team Members</span>
-                            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                                <Users size={18} />
-                            </div>
-                        </div>
-                        <div className="mt-3">
-                            <div className="text-2xl font-bold text-slate-800">
-                                {membersList.length + (project?.manager ? 1 : 0)}
-                            </div>
-                            <div className="mt-2 flex -space-x-1.5 overflow-hidden">
-                                {project?.manager && (
-                                    <div
-                                        key="manager"
-                                        title={`Manager: ${project.manager.firstName || ''} ${project.manager.lastName || ''}`.trim()}
-                                        className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold border-2 border-white"
-                                    >
-                                        {project.manager.firstName?.[0] || 'M'}
-                                    </div>
-                                )}
-                                {membersList.slice(0, 5).map(m => (
-                                    <div
-                                        key={m._id}
-                                        title={`${m.firstName || ''} ${m.lastName || ''}`.trim()}
-                                        className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-bold border-2 border-white"
-                                    >
-                                        {m.firstName?.[0] || 'U'}
-                                    </div>
-                                ))}
-                                {membersList.length > 5 && (
-                                    <div className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-medium border-2 border-white">
-                                        +{membersList.length - 5}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Direct Mode Status */}
-                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50/60 p-5 rounded-xl border border-blue-100 shadow-sm flex flex-col justify-between">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Tracking Mode</span>
-                            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-blue-100 text-blue-800">
-                                Direct
-                            </span>
-                        </div>
-                        <div className="mt-3">
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                                No modules or tasks required. All time logs are recorded directly to this project.
-                            </p>
-                            <button
-                                onClick={openProjectLogModal}
-                                className="mt-3 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                            >
-                                <Plus size={14} /> Log Work
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Work Logs List / Table */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
-                        <div>
-                            <h3 className="font-bold text-slate-800 text-base">Direct Project Work Logs</h3>
-                            <p className="text-xs text-slate-500">History of time logged directly to {project?.name}</p>
-                        </div>
-                        <button
-                            onClick={openProjectLogModal}
-                            className="zoho-btn-primary flex items-center space-x-1.5 text-xs py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white self-start sm:self-auto"
-                        >
-                            <Plus size={15} /> <span>Log Time</span>
-                        </button>
-                    </div>
-
-                    {directLogs.length > 0 ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-50 text-slate-500 font-semibold text-xs uppercase border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-6 py-3">Date</th>
-                                        <th className="px-6 py-3">Team Member</th>
-                                        <th className="px-6 py-3">Hours</th>
-                                        <th className="px-6 py-3">Description</th>
-                                        <th className="px-6 py-3">Status</th>
-                                        <th className="px-6 py-3 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {directLogs.map(log => {
-                                        const isLogOwner = String(log.user?._id || log.user) === currentUserId;
-                                        const canDelete = isLogOwner || isAdmin;
-                                        return (
-                                            <tr key={log._id} className="hover:bg-slate-50/80 transition-colors">
-                                                <td className="px-6 py-3.5 text-slate-600 font-mono text-xs whitespace-nowrap">
-                                                    {log.date ? format(new Date(log.date), 'MMM d, yyyy') : '-'}
-                                                </td>
-                                                <td className="px-6 py-3.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center border border-slate-200">
-                                                            {log.user?.firstName?.[0] || 'U'}
-                                                        </div>
-                                                        <div>
-                                                            <div className="font-medium text-slate-800 text-xs">
-                                                                {log.user ? `${log.user.firstName || ''} ${log.user.lastName || ''}`.trim() : 'Unknown'}
-                                                            </div>
-                                                            {log.user?.email && (
-                                                                <div className="text-[11px] text-slate-400">{log.user.email}</div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-3.5 whitespace-nowrap">
-                                                    <span className="font-semibold text-slate-800">{Number(log.hours).toFixed(1)}</span>
-                                                    <span className="text-xs text-slate-500 ml-1">hrs</span>
-                                                </td>
-                                                <td className="px-6 py-3.5 text-xs text-slate-600 max-w-md">
-                                                    {log.description || <span className="text-slate-400 italic">No description</span>}
-                                                </td>
-                                                <td className="px-6 py-3.5 whitespace-nowrap">
-                                                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
-                                                        log.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                        log.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                        'bg-amber-50 text-amber-700 border-amber-200'
-                                                    }`}>
-                                                        {log.status || 'PENDING'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-3.5 text-right whitespace-nowrap">
-                                                    {canDelete && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            onClick={() => handleDeleteWorkLog(log._id)}
-                                                            className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
-                                                            title="Delete Work Log"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </Button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="text-center py-16 px-4">
-                            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
-                                <Clock size={24} />
-                            </div>
-                            <h4 className="text-sm font-semibold text-slate-700">No time logged yet</h4>
-                            <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
-                                This project is configured to log time directly without modules or tasks. Start tracking time right away.
-                            </p>
-                            <button
-                                onClick={openProjectLogModal}
-                                className="zoho-btn-primary inline-flex items-center gap-1.5 text-xs py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white"
-                            >
-                                <Plus size={15} /> Log First Entry
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
-    const OverviewView = () => (
-        <div className="space-y-6">
-            {modules.map(module => (
-                <div key={module._id} className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => handleEditModule(module)}>
-                            <Folder size={20} className="text-blue-500" />
-                            <h3 className="font-bold text-slate-800 text-lg">{module.name}</h3>
-                            <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">{module.status}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {canDeleteModule && (
-                                <Button
-                                    variant="ghost"
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (window.confirm('Are you sure you want to delete this module? All tasks within it will be deleted.')) {
-                                            try {
-                                                await api.delete(`/projects/modules/${module._id}`);
-                                                toast.success('Module Deleted');
-                                                sessionStorage.removeItem(`project_details_${id}`);
-                                                sessionStorage.removeItem(`project_data_${user?._id}`);
-                                                fetchData();
-                                            } catch {
-                                                toast.error('Failed to delete module');
-                                            }
-                                        }
-                                    }}
-                                    className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
-                                    title="Delete Module"
-                                >
-                                    <Trash2 size={16} />
-                                </Button>
-                            )}
-                            {canCreateTask && (
-                                <button onClick={() => openCreateTaskModal(module._id)} className="text-sm text-blue-600 hover:text-blue-800 flex items-center space-x-1 font-medium bg-transparent border-0 cursor-pointer">
-                                    <Plus size={16} /> <span>Add Task</span>
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    <div className="p-4">
-                        {module.tasks && module.tasks.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {module.tasks.map(task => (
-                                    <div key={task._id} className="border border-slate-100 rounded p-4 hover:shadow-md transition-shadow bg-white flex flex-col justify-between group relative">
-                                        <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {canUpdateTask && <button onClick={() => handleEditTask(task, module._id)} className="text-slate-400 hover:text-blue-500 p-1"><CheckSquare size={16} /></button>}
-                                            {canDeleteTask && (
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        if (window.confirm('Delete this task?')) {
-                                                            try {
-                                                                await api.delete(`/projects/tasks/${task._id}`);
-                                                                toast.success('Task Deleted');
-                                                                fetchData();
-                                                            } catch {
-                                                                toast.error('Failed to delete task');
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="text-slate-400 hover:text-red-500 p-1 h-auto w-auto"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </Button>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className="font-semibold text-slate-800">{task.name}</h4>
-                                                <div className={`h-2 w-2 rounded-full mt-1.5 ${task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-orange-500' : 'bg-blue-500'}`} />
-                                            </div>
-                                            <p className="text-sm text-slate-500 line-clamp-2 mb-3">{task.description}</p>
-                                        </div>
-                                        <div className="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-50">
-                                            <div className="flex items-center space-x-1">
-                                                <User size={14} />
-                                                <span>{task.assignees?.length || 0} Assignees</span>
-                                            </div>
-                                            <div className="flex items-center space-x-1">
-                                                <Calendar size={14} />
-                                                <span>{task.dueDate ? format(new Date(task.dueDate), 'MMM d') : '-'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-6 text-slate-400 text-sm italic">No tasks yet.</div>
-                        )}
-                    </div>
-                </div>
-            ))}
-            {modules.length === 0 && <div className="text-center py-12 text-slate-400">No modules found. Create one to get started.</div>}
-        </div>
-    );
-
-    const HierarchyView = () => {
-        const [expandedTaskIds, setExpandedTaskIds] = useState(new Set());
-
-        const toggleTask = (taskId) => {
-            const newExpanded = new Set(expandedTaskIds);
-            if (newExpanded.has(taskId)) {
-                newExpanded.delete(taskId);
-            } else {
-                newExpanded.add(taskId);
-            }
-            setExpandedTaskIds(newExpanded);
-        };
-
-        return (
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
-                        <tr>
-                            <th className="px-6 py-4 pl-8">Name</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4">Assignees</th>
-                            <th className="px-6 py-4">Timeline</th>
-                            <th className="px-6 py-4">Progress</th>
-                            <th className="px-6 py-4 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {modules.map(module => (
-                            <React.Fragment key={module._id}>
-                                <tr className="bg-slate-50/50">
-                                    <td className="px-6 py-3 font-semibold text-slate-800 flex items-center gap-2">
-                                        <Folder size={18} className="text-blue-600" /> {module.name}
-                                    </td>
-                                    <td className="px-6 py-3"><span className={`text-xs px-2 py-0.5 rounded border ${module.status === 'COMPLETED' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>{module.status}</span></td>
-                                    <td className="px-6 py-3 text-slate-400">-</td>
-                                    <td className="px-6 py-3 text-xs text-slate-500 font-mono">
-                                        {module.startDate ? format(new Date(module.startDate), 'MMM d') : '...'} - {module.dueDate ? format(new Date(module.dueDate), 'MMM d') : '...'}
-                                    </td>
-                                    <td className="px-6 py-3">-</td>
-                                    <td className="px-6 py-3 text-right">
-                                        <div className="flex items-center justify-end gap-2">
-                                            {canDeleteModule && (
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={async () => {
-                                                        if (window.confirm('Are you sure you want to delete this module?')) {
-                                                            try {
-                                                                await api.delete(`/projects/modules/${module._id}`);
-                                                                toast.success('Module Deleted');
-                                                                fetchData();
-                                                            } catch {
-                                                                toast.error('Failed');
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
-                                                    title="Delete Module"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </Button>
-                                            )}
-                                            {canCreateTask && (
-                                                <button onClick={() => openCreateTaskModal(module._id)} className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-end gap-1">
-                                                    <Plus size={14} /> Add Task
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                                {module.tasks?.map(task => {
-                                    const isExpanded = expandedTaskIds.has(task._id);
-                                    const progress = task.estimatedHours ? Math.min((task.loggedHours / task.estimatedHours) * 100, 100) : 0;
-
-                                    return (
-                                        <React.Fragment key={task._id}>
-                                            <tr className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-3 pl-12 text-slate-700">
-                                                    <div className="flex items-center gap-3">
-                                                        <div onClick={() => toggleTask(task._id)} className="cursor-pointer text-slate-400 hover:text-slate-600">
-                                                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                        </div>
-                                                        <div className={`w-2 h-2 rounded-full ${task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-orange-500' : 'bg-blue-400'}`}></div>
-                                                        <span className="font-medium">{task.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-3">
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${task.status === 'DONE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                        {task.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-3">
-                                                    <div className="flex -space-x-2">
-                                                        {task.assignees?.map((a) => (
-                                                            <div key={a._id} className="w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] text-blue-600 font-bold" title={`${a.firstName} ${a.lastName}`}>
-                                                                {a.firstName[0]}{a.lastName[0]}
-                                                            </div>
-                                                        ))}
-                                                        {(!task.assignees || task.assignees.length === 0) && <span className="text-xs text-slate-400 italic">Unassigned</span>}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-3 text-xs text-slate-600 font-mono">
-                                                    {task.startDate ? format(new Date(task.startDate), 'MMM d') : ''} - {task.dueDate ? format(new Date(task.dueDate), 'MMM d') : ''}
-                                                </td>
-                                                <td className="px-6 py-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden w-24">
-                                                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progress}%` }}></div>
-                                                        </div>
-                                                        <span className="text-[10px] text-slate-500 whitespace-nowrap">{task.loggedHours || 0} / {task.estimatedHours || '-'}h</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-3 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {canUpdateTask && (
-                                                            <>
-                                                                <button onClick={() => openLogModal(task._id)} title="Log Work" className="text-slate-400 hover:text-green-600"><Clock size={16} /></button>
-                                                                <button onClick={() => handleEditTask(task, module._id)} title="Edit" className="text-slate-400 hover:text-blue-600"><CheckSquare size={16} /></button>
-                                                            </>
-                                                        )}
-                                                        {canDeleteTask && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                onClick={async () => {
-                                                                    if (window.confirm('Delete this task?')) {
-                                                                        try {
-                                                                            await api.delete(`/projects/tasks/${task._id}`);
-                                                                            toast.success('Task Deleted');
-                                                                            sessionStorage.removeItem(`project_details_${id}`);
-                                                                            sessionStorage.removeItem(`project_data_${user?._id}`);
-                                                                            fetchData();
-                                                                        } catch {
-                                                                            toast.error('Failed');
-                                                                        }
-                                                                    }
-                                                                }}
-                                                                title="Delete"
-                                                                className="text-slate-400 hover:text-red-600 p-1 h-auto w-auto"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            {isExpanded && (
-                                                <tr className="bg-slate-50/50">
-                                                    <td colSpan="6" className="px-6 py-4 pl-20">
-                                                        <div className="text-sm">
-                                                            <h5 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><ListChecks size={16} className="text-slate-400" /> Work Logs</h5>
-                                                            {task.workLogs && task.workLogs.length > 0 ? (
-                                                                <div className="space-y-2 max-w-2xl">
-                                                                    {task.workLogs.map(log => (
-                                                                        <div key={log._id} className="flex items-start justify-between bg-white p-2 rounded border border-slate-200">
-                                                                            <div className="flex items-center gap-3">
-                                                                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-                                                                                    {log.user?.firstName?.[0]}
-                                                                                </div>
-                                                                                <div>
-                                                                                    <div className="flex items-baseline gap-2">
-                                                                                        <span className="font-medium text-slate-700">{log.user?.firstName} {log.user?.lastName}</span>
-                                                                                        <span className="text-xs text-slate-400">{format(new Date(log.date), 'MMM d, yyyy')}</span>
-                                                                                    </div>
-                                                                                    <p className="text-slate-600 text-xs mt-0.5">{log.description}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                            <span className="font-mono font-bold text-slate-700 text-xs">{log.hours}h</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : (
-                                                                <p className="text-slate-400 italic text-xs">No work logged yet.</p>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </React.Fragment>
-                                    )
-                                })}
-                            </React.Fragment>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        );
-    };
-
-    const TimelineView = () => {
-        const [timelineScale, setTimelineScale] = useState('MONTH'); // WEEK, MONTH, QUARTER
-        const [expandedModules, setExpandedModules] = useState(new Set(modules.map(m => m._id)));
-        const [expandedTasks, setExpandedTasks] = useState(new Set());
-
-        const toggleModule = (modId) => {
-            const newSet = new Set(expandedModules);
-            if (newSet.has(modId)) newSet.delete(modId);
-            else newSet.add(modId);
-            setExpandedModules(newSet);
-        };
-
-        const toggleTask = (taskId) => {
-            const newSet = new Set(expandedTasks);
-            if (newSet.has(taskId)) newSet.delete(taskId);
-            else newSet.add(taskId);
-            setExpandedTasks(newSet);
-        };
-
-        // Calculate timeline range
-        const allDates = [
-            project.startDate, project.dueDate,
-            ...modules.flatMap(m => [m.startDate, m.dueDate]),
-            ...tasks.flatMap(t => [t.startDate, t.dueDate, ...(t.workLogs?.map(l => l.date) || [])])
-        ].filter(d => d && isValid(new Date(d))).map(d => new Date(d));
-
-        if (allDates.length === 0) return (
-            <div className="bg-white rounded border border-slate-300 p-12 flex flex-col items-center justify-center text-slate-500">
-                <Calendar size={48} className="text-slate-400 mb-4" />
-                <p className="text-lg font-medium text-slate-700">No schedule data available</p>
-                <p className="text-sm">Set dates to see the roadmap.</p>
-            </div>
-        );
-
-        const projectStart = new Date(Math.min(...allDates));
-        const projectEnd = new Date(Math.max(...allDates));
-
-        // Adjust buffer based on scale
-        let start, end;
-        if (timelineScale === 'WEEK') {
-            start = addDays(projectStart, -7);
-            end = addDays(projectEnd, 7);
-        } else if (timelineScale === 'QUARTER') {
-            start = addDays(projectStart, -30);
-            end = addDays(projectEnd, 30);
-        } else {
-            // MONTH default
-            start = addDays(projectStart, -15);
-            end = addDays(projectEnd, 15);
-        }
-
-        const totalDays = Math.max(differenceInDays(end, start) + 1, 1);
-
-        const getPosition = (date) => {
-            if (!date || !isValid(new Date(date))) return -100;
-            return (differenceInDays(new Date(date), start) / totalDays) * 100;
-        };
-
-        const getWidth = (s, e) => {
-            const sDate = s ? new Date(s) : start;
-            const eDate = e ? new Date(e) : sDate;
-            const validS = isValid(sDate) ? sDate : start;
-            const validE = isValid(eDate) ? eDate : validS;
-            return Math.max((differenceInDays(validE, validS) / totalDays) * 100, 0.5);
-        };
-
-        // Generate date ticks
-        const ticks = [];
-        const tickCount = timelineScale === 'WEEK' ? 7 : timelineScale === 'QUARTER' ? 6 : 10;
-
-        for (let i = 0; i <= tickCount; i++) {
-            const date = addDays(start, Math.round((totalDays / tickCount) * i));
-            ticks.push({ left: (i / tickCount) * 100, label: format(date, 'MMM d') });
-        }
-
-        const todayPos = getPosition(new Date());
-
-        return (
-            <div className="bg-white rounded-md shadow-sm border border-slate-300 overflow-hidden flex flex-col h-[calc(100vh-200px)] min-h-[600px]">
-                {/* Controls & Legend */}
-                <div className="p-3 border-b border-slate-300 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4 z-40 sticky top-0">
-                    <div className="flex items-center gap-3">
-                        <span className="text-xs font-bold text-slate-600 uppercase">View:</span>
-                        <div className="flex bg-white rounded border border-slate-300 p-0.5">
-                            {['WEEK', 'MONTH', 'QUARTER'].map(scale => (
-                                <button
-                                    key={scale}
-                                    onClick={() => setTimelineScale(scale)}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-sm transition-colors ${timelineScale === scale ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-                                >
-                                    {scale.charAt(0) + scale.slice(1).toLowerCase()}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-6 text-xs font-medium text-slate-600">
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-700 rounded-sm"></div> Project</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 bg-cyan-600 rounded-sm"></div> Module</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-600 rounded-sm"></div> Done</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-500 rounded-sm"></div> Work Log</div>
-                        <div className="flex items-center gap-2"><div className="w-0.5 h-3 bg-red-500"></div> Today</div>
-                    </div>
-                </div>
-
-                {/* Timeline Header */}
-                <div className="flex border-b border-slate-300 bg-white shadow-sm h-10">
-                    {/* Grid Columns Header */}
-                    <div className="flex w-[500px] flex-shrink-0 border-r border-slate-300 bg-slate-100">
-                        <div className="flex-1 p-2 pl-4 font-bold text-slate-700 text-xs uppercase flex items-center">Item Name</div>
-                        <div className="w-24 p-2 font-bold text-slate-700 text-xs uppercase flex items-center justify-center border-l border-slate-300">Status</div>
-                        <div className="w-20 p-2 font-bold text-slate-700 text-xs uppercase flex items-center justify-center border-l border-slate-300">Owner</div>
-                        <div className="w-28 p-2 font-bold text-slate-700 text-xs uppercase flex items-center border-l border-slate-300 pl-4">Progress</div>
-                    </div>
-
-                    <div className="flex-1 relative overflow-hidden h-full bg-slate-50">
-                        {ticks.map((tick, i) => (
-                            <div key={i} className="absolute bottom-0 flex flex-col items-center transform -translate-x-1/2" style={{ left: `${tick.left}%` }}>
-                                <span className="text-[10px] text-slate-600 font-semibold mb-1 whitespace-nowrap">{tick.label}</span>
-                                <div className="h-1.5 w-px bg-slate-400"></div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Timeline Body */}
-                <div className="overflow-y-auto flex-1 relative bg-white custom-scrollbar">
-                    {/* Vertical Grid Lines Layer */}
-                    <div className="absolute top-0 bottom-0 right-0 left-[500px] pointer-events-none z-0">
-                        {ticks.map((tick, i) => (
-                            <div key={i} className="absolute top-0 bottom-0 border-r border-slate-200" style={{ left: `${tick.left}%` }}></div>
-                        ))}
-                        {todayPos >= 0 && todayPos <= 100 && (
-                            <div className="absolute top-0 bottom-0 border-l-2 border-red-500 z-0" style={{ left: `${todayPos}%` }}>
-                                <div className="absolute top-0 -translate-x-1/2 bg-red-100 text-red-700 text-[9px] font-bold px-1 py-0.5 border border-red-300">Today</div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Project Row */}
-                    <div className="flex border-b border-slate-300 bg-slate-50 group z-10 relative">
-                        {/* Grid Columns */}
-                        <div className="w-[500px] flex-shrink-0 flex bg-slate-50 z-20 sticky left-0 border-r border-slate-300 shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                            <div className="flex-1 p-2 flex items-center gap-2 truncate pr-4">
-                                <div className="flex items-center justify-center text-blue-700">
-                                    <Briefcase size={14} />
-                                </div>
-                                <span className="font-bold text-slate-800 text-sm truncate" title={project.name}>{project.name}</span>
-                            </div>
-                            <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-sm border ${project.isActive ? 'bg-green-100 border-green-300 text-green-800' : 'bg-slate-100 border-slate-300 text-slate-600'}`}>{project.isActive ? 'Active' : 'Inactive'}</span></div>
-                            <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300"><div className="w-6 h-6 rounded bg-slate-200 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-700">{project.manager?.firstName?.[0] || 'N'}</div></div>
-                            <div className="w-28 p-2 flex items-center border-l border-slate-300">
-                                <span className="text-xs text-slate-400">-</span>
-                            </div>
-                        </div>
-
-                        {/* Gantt Bar */}
-                        <div className="flex-1 relative h-10 my-auto">
-                            <div
-                                className="absolute top-1/2 -translate-y-1/2 h-6 bg-blue-700 rounded-sm shadow-sm flex items-center px-2 text-white text-xs font-bold z-10 cursor-default"
-                                style={{
-                                    left: `${getPosition(project.startDate)}%`,
-                                    width: `${getWidth(project.startDate, project.dueDate)}%`
-                                }}
-                            >
-                                <span className="sticky left-2 truncate">{project.name}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {modules.map(module => (
-                        <React.Fragment key={module._id}>
-                            {/* Module Row */}
-                            <div className="flex border-b border-slate-200 hover:bg-slate-50 transition-colors z-10 relative">
-                                {/* Grid Columns */}
-                                <div className="w-[500px] flex-shrink-0 flex bg-white group-hover:bg-slate-50 z-20 sticky left-0 border-r border-slate-300">
-                                    <div className="flex-1 p-2 pl-6 flex items-center gap-2 truncate pr-4">
-                                        <button onClick={() => toggleModule(module._id)} className="w-4 h-4 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors focus:outline-none">
-                                            {expandedModules.has(module._id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                        </button>
-                                        <Folder size={14} className="text-cyan-600 flex-shrink-0" />
-                                        <span className="font-semibold text-slate-700 text-xs truncate cursor-pointer hover:underline" onClick={() => toggleModule(module._id)} title={module.name}>{module.name}</span>
-                                    </div>
-                                    <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300"><span className="text-[10px] font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 uppercase">{module.status}</span></div>
-                                    <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300 text-slate-300">-</div>
-                                    <div className="w-28 p-2 flex items-center justify-center border-l border-slate-300 text-slate-300">-</div>
-                                </div>
-
-                                <div className="flex-1 relative h-9 my-auto">
-                                    {module.startDate && module.dueDate && (
-                                        <div
-                                            className="absolute top-1/2 -translate-y-1/2 h-4 bg-cyan-600 rounded-sm flex items-center px-2 text-white text-[10px] font-semibold z-10 cursor-default"
-                                            style={{
-                                                left: `${getPosition(module.startDate)}%`,
-                                                width: `${getWidth(module.startDate, module.dueDate)}%`
-                                            }}
-                                            title={`Module: ${module.name}`}
-                                        >
-                                            <span className="truncate">{module.name}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Task Rows */}
-                            {expandedModules.has(module._id) && module.tasks?.map(task => {
-                                const progress = task.estimatedHours ? Math.min((task.loggedHours / task.estimatedHours) * 100, 100) : 0;
-                                const hasLogs = task.workLogs && task.workLogs.length > 0;
-
-                                return (
-                                    <React.Fragment key={task._id}>
-                                        <div className="flex border-b border-slate-200 hover:bg-slate-50 transition-colors group z-10 relative">
-                                            {/* Grid Columns */}
-                                            <div className="w-[500px] flex-shrink-0 flex bg-white group-hover:bg-slate-50 z-20 sticky left-0 border-r border-slate-300">
-                                                <div className="flex-1 p-2 pl-12 flex items-center gap-2 truncate pr-4">
-                                                    {hasLogs ? (
-                                                        <button onClick={() => toggleTask(task._id)} className="w-4 h-4 flex items-center justify-center rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors focus:outline-none -ml-5 mr-1">
-                                                            {expandedTasks.has(task._id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                                        </button>
-                                                    ) : <div className="w-4 -ml-5 mr-1"></div>}
-                                                    <div className={`w-2 h-2 rounded-sm flex-shrink-0 border border-black/10 ${task.priority === 'HIGH' ? 'bg-red-500' : task.priority === 'MEDIUM' ? 'bg-orange-400' : 'bg-blue-400'}`} title={`Priority: ${task.priority}`}></div>
-                                                    <span className="text-slate-700 text-xs truncate" title={task.name}>{task.name}</span>
-                                                </div>
-                                                <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300">
-                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm border ${task.status === 'DONE' ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>{task.status}</span>
-                                                </div>
-                                                <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300">
-                                                    <div className="flex -space-x-1">
-                                                        {task.assignees?.length > 0 ? task.assignees.slice(0, 3).map(a => (
-                                                            <div key={a._id} className="w-5 h-5 rounded bg-white border border-slate-300 flex items-center justify-center text-[9px] font-bold text-slate-700" title={`${a.firstName} ${a.lastName}`}>
-                                                                {a.firstName[0]}
-                                                            </div>
-                                                        )) : <span className="text-[10px] text-slate-400">-</span>}
-                                                    </div>
-                                                </div>
-                                                <div className="w-28 p-2 flex items-center gap-2 border-l border-slate-300 pl-3">
-                                                    <div className="flex-1 h-2 bg-slate-200 rounded-sm overflow-hidden border border-slate-300">
-                                                        <div className={`h-full rounded-sm ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress}%` }}></div>
-                                                    </div>
-                                                    <span className="text-[10px] font-mono text-slate-600 w-8 text-right">{Math.round(progress)}%</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex-1 relative h-8 my-auto">
-                                                {task.startDate && task.dueDate && (
-                                                    <div
-                                                        className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-sm flex items-center px-1 truncate transition-all hover:bg-opacity-90 cursor-pointer border ${task.status === 'DONE' ? 'bg-emerald-600 border-emerald-700 text-white' :
-                                                            task.priority === 'HIGH' ? 'bg-red-100 border-red-300 text-red-700' :
-                                                                'bg-slate-200 border-slate-300 text-slate-700'
-                                                            }`}
-                                                        style={{
-                                                            left: `${getPosition(task.startDate)}%`,
-                                                            width: `${getWidth(task.startDate, task.dueDate)}%`
-                                                        }}
-                                                        title={`Task: ${task.name}`}
-                                                    >
-                                                        <div className={`absolute top-0 bottom-0 left-0 bg-black/10`} style={{ width: `${progress}%` }}></div>
-                                                        <span className="relative z-10 text-[9px] font-semibold truncate px-1">{task.name}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        {/* Work Logs Expansion */}
-                                        {expandedTasks.has(task._id) && task.workLogs?.map(log => (
-                                            <div key={log._id} className="flex border-b border-slate-200 bg-amber-50/30 hover:bg-amber-50 relative">
-                                                {/* Grid Columns */}
-                                                <div className="w-[500px] flex-shrink-0 flex bg-amber-50/10 z-20 sticky left-0 border-r border-slate-300">
-                                                    <div className="flex-1 p-2 pl-20 flex items-center gap-2 truncate pr-4">
-                                                        <div className="w-px h-full bg-slate-300 absolute left-[3.25rem] top-0"></div>
-                                                        <span className="text-slate-500 text-[10px] truncate flex items-center gap-1">
-                                                            <Clock size={10} className="text-amber-600" />
-                                                            <span className="font-medium text-slate-700">{log.hours}h</span> by {log.user?.firstName}
-                                                        </span>
-                                                    </div>
-                                                    <div className="w-24 p-2 flex items-center justify-center border-l border-slate-300">
-                                                        <span className="text-[9px] text-slate-400 italic">Logged</span>
-                                                    </div>
-                                                    <div className="w-20 p-2 flex items-center justify-center border-l border-slate-300">
-                                                        <div className="w-4 h-4 rounded-sm bg-slate-100 border border-slate-300 flex items-center justify-center text-[8px] font-bold text-slate-500">
-                                                            {log.user?.firstName?.[0]}
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-28 p-2 flex items-center gap-2 border-l border-slate-300">
-                                                        <span className="text-[10px] font-mono text-slate-600">{format(new Date(log.date), 'MM/dd')}</span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex-1 relative h-7 my-auto">
-                                                    <div
-                                                        className="absolute top-1/2 -translate-y-1/2 h-3 bg-amber-500 rounded-sm flex items-center justify-center border border-amber-600 hover:bg-amber-600 cursor-help"
-                                                        style={{
-                                                            left: `${getPosition(log.date)}%`,
-                                                            width: `max(1.5%, 20px)`
-                                                        }}
-                                                        title={`Work Logged: ${log.hours}h\n${log.description}\nBy: ${log.user?.firstName}`}
-                                                    >
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </React.Fragment>
-                                )
-                            })}
-                        </React.Fragment>
-                    ))}
-                </div>
-            </div>
-        );
-    };
-
-    if (loading) return (
-        <div className="min-h-screen bg-slate-100 font-sans flex flex-col">
-            <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
-                <div className="flex items-center space-x-4">
-                    <Skeleton className="w-8 h-8 rounded-full" />
-                    <div>
-                        <Skeleton className="h-6 w-48 mb-1" />
-                        <Skeleton className="h-4 w-32" />
-                    </div>
-                </div>
-            </header>
-            <div className="flex-1 p-6 md:p-8 overflow-hidden flex flex-col">
-                <div className="max-w-7xl mx-auto w-full h-full flex flex-col space-y-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 space-y-4">
-                            <Skeleton className="h-40 w-full" />
-                            <Skeleton className="h-40 w-full" />
-                        </div>
-                        <div className="space-y-4">
-                            <Skeleton className="h-64 w-full" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-    if (!project) return <div className="p-8 text-center">Project not found</div>;
-
-    const handleExport = async () => {
-        if (!modules || modules.length === 0) {
-            toast.error('No data to export');
-            return;
-        }
-
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Project Details');
-
-        // Define Columns
-        worksheet.columns = [
-            { header: 'Item Name', key: 'name', width: 40 },
-            { header: 'Status', key: 'status', width: 15 },
-            { header: 'Assignee / User', key: 'assignee', width: 25 },
-            { header: 'Start Date / Log Date', key: 'startDate', width: 15 },
-            { header: 'Due Date', key: 'dueDate', width: 15 },
-            { header: 'Est. Hours', key: 'estHours', width: 12 },
-            { header: 'Logged / Hours', key: 'loggedHours', width: 15 },
-            { header: 'Description', key: 'description', width: 40 }
-        ];
-
-        // Header Style
-        const headerRow = worksheet.getRow(1);
-        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        headerRow.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FF4F81BD' } // Blue
-        };
-        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-
-        // Iterate and Populate
-        // Level 0: Project Root
-        const projectRow = worksheet.addRow({
-            name: `PROJECT: ${project.name}`,
-            status: project.isActive ? 'Active' : 'Inactive',
-            assignee: project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : '-',
-            startDate: project.startDate ? format(new Date(project.startDate), 'yyyy-MM-dd') : '',
-            dueDate: project.dueDate ? format(new Date(project.dueDate), 'yyyy-MM-dd') : '',
-            estHours: '-',
-            loggedHours: '-',
-            description: project.description || ''
-        });
-        projectRow.outlineLevel = 0;
-        projectRow.font = { bold: true, size: 14, color: { argb: 'FF000000' } };
-        projectRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC5D9F1' } }; // Lighter Blue
-
-        modules.forEach(module => {
-            // Level 1: Module
-            const modRow = worksheet.addRow({
-                name: `  ${module.name}`,
-                status: module.status,
-                assignee: '-',
-                startDate: module.startDate ? format(new Date(module.startDate), 'yyyy-MM-dd') : '',
-                dueDate: module.dueDate ? format(new Date(module.dueDate), 'yyyy-MM-dd') : '',
-                estHours: '-',
-                loggedHours: '-',
-                description: module.description || ''
-            });
-
-            modRow.outlineLevel = 1;
-            modRow.font = { bold: true, size: 11 };
-            modRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } }; // Light Green
-            modRow.getCell('name').alignment = { indent: 1 };
-
-            if (module.tasks && module.tasks.length > 0) {
-                module.tasks.forEach(task => {
-                    // Level 2: Task
-                    const taskRow = worksheet.addRow({
-                        name: `    ${task.name}`, // Visual indent
-                        status: task.status,
-                        assignee: task.assignees?.map(a => `${a.firstName} ${a.lastName}`).join(', ') || 'Unassigned',
-                        startDate: task.startDate ? format(new Date(task.startDate), 'yyyy-MM-dd') : '',
-                        dueDate: task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : '',
-                        estHours: task.estimatedHours || 0,
-                        loggedHours: task.loggedHours || 0,
-                        description: task.description || ''
-                    });
-
-                    taskRow.outlineLevel = 2;
-                    taskRow.font = { bold: false };
-                    taskRow.getCell('name').alignment = { indent: 2 };
-
-                    // Task Logged Hours formatting
-                    const loggedCell = taskRow.getCell('loggedHours');
-                    if (task.loggedHours > (task.estimatedHours || 0) && task.estimatedHours > 0) {
-                        loggedCell.font = { color: { argb: 'FFFF0000' } }; // Red if over budget
-                    }
-
-                    if (task.workLogs && task.workLogs.length > 0) {
-                        task.workLogs.forEach(log => {
-                            // Level 3: Work Log
-                            const logRow = worksheet.addRow({
-                                name: `        Log: ${format(new Date(log.date), 'MM/dd')}`, // Visual indent
-                                status: '-',
-                                assignee: log.user ? `${log.user.firstName} ${log.user.lastName}` : 'Unknown',
-                                startDate: log.date ? format(new Date(log.date), 'yyyy-MM-dd') : '',
-                                dueDate: '-',
-                                estHours: '-',
-                                loggedHours: log.hours,
-                                description: log.description
-                            });
-
-                            logRow.outlineLevel = 3;
-                            logRow.font = { italic: true, color: { argb: 'FF666666' } }; // Gray
-                            logRow.getCell('name').alignment = { indent: 3 };
-                        });
-                    }
-                });
-            }
-        });
-
-        // Auto filter for top row just in case, though grouping is main feature
-        worksheet.autoFilter = {
-            from: 'A1',
-            to: {
-                row: 1,
-                column: 8
-            }
-        };
-
-        const buffer = await workbook.xlsx.writeBuffer();
-        const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.xlsx`;
-        saveAs(new Blob([buffer]), fileName);
-    };
+  // Direct Project Tracking View (Direct without modules)
+  const DirectProjectView = () => {
+    const directLogs = project?.directWorkLogs || [];
+    const totalLogged = project?.totalLoggedHours || directLogs.reduce((sum, l) => sum + (Number(l.hours) || 0), 0);
+    const estimated = Number(project?.estimatedHours) || 0;
+    const progressPercent = estimated > 0 ? Math.min(100, Math.round((totalLogged / estimated) * 100)) : 0;
+    const membersList = project?.members || [];
+    const currentUserId = user?._id?.toString();
+    const isAdmin = user?.roles?.includes('Admin') || user?.permissions?.includes('*') || user?.permissions?.includes('admin');
 
     return (
-        <div className="min-h-screen bg-slate-100 font-sans p-6 md:p-10">
-            <div className="max-w-7xl mx-auto space-y-6">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <button onClick={() => navigate('/projects')} className="text-slate-500 hover:text-slate-800 flex items-center space-x-1 mb-2">
-                            <ArrowLeft size={16} /> <span>Back to Projects</span>
-                        </button>
-                        <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
-                            {project.name}
-                            <span className={`text-sm px-2 py-0.5 rounded-full border ${project.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                {project.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                            {!hasModules && (
-                                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700">
-                                    Direct Project (No Modules)
-                                </span>
-                            )}
-                        </h1>
-                        <p className="text-slate-500 mt-1">{project.description || 'No description provided.'}</p>
-                        <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
-                            <div className="flex items-center gap-1"><User size={14} /> Manager: {project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : 'N/A'}</div>
-                            <div className="flex items-center gap-1"><Briefcase size={14} /> Client: {project.client?.name || 'Internal'}</div>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        {(user?.roles?.includes('Admin') || user?.permissions?.includes('project.export_report')) && (
-                            <button onClick={handleExport} className="zoho-btn-secondary flex items-center space-x-2 bg-white text-green-700 border-green-200 hover:bg-green-50 hover:border-green-300">
-                                <ListChecks size={18} /> <span>Export Excel</span>
-                            </button>
-                        )}
-                        {hasModules && (
-                            <div className="flex bg-white rounded-lg shadow-sm p-1 border border-slate-200">
-                                <button onClick={() => setViewMode('overview')} className={`p-2 rounded ${viewMode === 'overview' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Overview"><LayoutList size={20} /></button>
-                                <button onClick={() => setViewMode('hierarchy')} className={`p-2 rounded ${viewMode === 'hierarchy' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`} title="Hierarchy"><ListTree size={20} /></button>
-                            </div>
-                        )}
-                        {hasModules && canUpdateProject && (
-                            <button onClick={openCreateModuleModal} className="zoho-btn-primary flex items-center space-x-2">
-                                <Plus size={18} /> <span>Add Module</span>
-                            </button>
-                        )}
-                        {!hasModules && (
-                            <button onClick={openProjectLogModal} className="zoho-btn-primary flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-                                <Clock size={18} /> <span>Log Time</span>
-                            </button>
-                        )}
-                    </div>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Logged Hours</span>
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Clock size={18} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold text-slate-800">
+                {totalLogged.toFixed(1)} <span className="text-sm font-normal text-slate-500">hrs</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                <span>Est: {estimated > 0 ? `${estimated} hrs` : 'Not set'}</span>
+                {estimated > 0 && <span className="font-semibold text-blue-600">{progressPercent}%</span>}
+              </div>
+              {estimated > 0 && (
+                <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${totalLogged > estimated ? 'bg-amber-500' : 'bg-blue-600'}`}
+                    style={{ width: `${progressPercent}%` }}
+                  />
                 </div>
+              )}
+            </div>
+          </div>
 
-                {/* Content */}
-                {!hasModules ? (
-                    <DirectProjectView />
-                ) : (
-                    <>
-                        {viewMode === 'overview' && <OverviewView />}
-                        {viewMode === 'hierarchy' && <HierarchyView />}
-                    </>
+          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Timeline</span>
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <Calendar size={18} />
+              </div>
+            </div>
+            <div className="mt-3 space-y-1">
+              <div className="text-xs text-slate-500 flex justify-between">
+                <span>Start Date:</span>
+                <span className="font-semibold text-slate-700">
+                  {project?.startDate ? format(new Date(project.startDate), 'MMM d, yyyy') : 'Not set'}
+                </span>
+              </div>
+              <div className="text-xs text-slate-500 flex justify-between">
+                <span>Due Date:</span>
+                <span className="font-semibold text-slate-700">
+                  {project?.dueDate ? format(new Date(project.dueDate), 'MMM d, yyyy') : 'Not set'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Team Members</span>
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Users size={18} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold text-slate-800">
+                {membersList.length + (project?.manager ? 1 : 0)}
+              </div>
+              <div className="mt-2 flex -space-x-1.5 overflow-hidden">
+                {project?.manager && (
+                  <div
+                    key="manager"
+                    title={`Manager: ${project.manager.firstName || ''} ${project.manager.lastName || ''}`.trim()}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold border-2 border-white"
+                  >
+                    {project.manager.firstName?.[0] || 'M'}
+                  </div>
                 )}
+                {membersList.slice(0, 5).map(m => (
+                  <div
+                    key={m._id}
+                    title={`${m.firstName || ''} ${m.lastName || ''}`.trim()}
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-bold border-2 border-white"
+                  >
+                    {m.firstName?.[0] || 'U'}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
 
+          <div className="bg-linear-to-br from-blue-50 to-indigo-50/60 p-5 rounded-xl border border-blue-100 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Tracking Mode</span>
+              <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-blue-100 text-blue-800">
+                Direct
+              </span>
+            </div>
+            <div className="mt-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                No modules or tasks required. All time logs are recorded directly to this project.
+              </p>
+              <button
+                onClick={openProjectLogModal}
+                className="mt-3 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              >
+                <Plus size={14} /> Log Work
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Work Logs Table */}
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
+            <div>
+              <h3 className="font-bold text-slate-800 text-base">Direct Project Work Logs</h3>
+              <p className="text-xs text-slate-500">History of time logged directly to {project?.name}</p>
+            </div>
+            <button
+              onClick={openProjectLogModal}
+              className="zoho-btn-primary flex items-center space-x-1.5 text-xs py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white self-start sm:self-auto"
+            >
+              <Plus size={15} /> <span>Log Time</span>
+            </button>
+          </div>
+
+          {directLogs.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 font-semibold text-xs uppercase border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-3">Date</th>
+                    <th className="px-6 py-3">Team Member</th>
+                    <th className="px-6 py-3">Hours</th>
+                    <th className="px-6 py-3">Description</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {directLogs.map(log => {
+                    const isLogOwner = String(log.user?._id || log.user) === currentUserId;
+                    const canDelete = isLogOwner || isAdmin;
+                    return (
+                      <tr key={log._id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-6 py-3.5 text-slate-600 font-mono text-xs whitespace-nowrap">
+                          {log.date ? format(new Date(log.date), 'MMM d, yyyy') : '-'}
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center border border-slate-200">
+                              {log.user?.firstName?.[0] || 'U'}
+                            </div>
+                            <div>
+                              <div className="font-medium text-slate-800 text-xs">
+                                {log.user ? `${log.user.firstName || ''} ${log.user.lastName || ''}`.trim() : 'Unknown'}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3.5 whitespace-nowrap">
+                          <span className="font-semibold text-slate-800">{Number(log.hours).toFixed(1)}</span>
+                          <span className="text-xs text-slate-500 ml-1">hrs</span>
+                        </td>
+                        <td className="px-6 py-3.5 text-xs text-slate-600 max-w-md">
+                          {log.description || <span className="text-slate-400 italic">No description</span>}
+                        </td>
+                        <td className="px-6 py-3.5 whitespace-nowrap">
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
+                            log.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            log.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            {log.status || 'PENDING'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5 text-right whitespace-nowrap">
+                          {canDelete && (
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleDeleteWorkLog(log._id)}
+                              className="text-slate-400 hover:text-rose-600 p-1 h-auto w-auto"
+                              title="Delete Work Log"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-16 px-4">
+              <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
+                <Clock size={24} />
+              </div>
+              <h4 className="text-sm font-semibold text-slate-700">No time logged yet</h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
+                This project is configured to log time directly without modules or tasks. Start tracking time right away.
+              </p>
+              <button
+                onClick={openProjectLogModal}
+                className="zoho-btn-primary inline-flex items-center gap-1.5 text-xs py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Plus size={15} /> Log First Entry
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const handleExport = async () => {
+    if (!modules || modules.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Project Details');
+
+    worksheet.columns = [
+      { header: 'Item Name', key: 'name', width: 40 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Assignee / User', key: 'assignee', width: 25 },
+      { header: 'Start Date / Log Date', key: 'startDate', width: 15 },
+      { header: 'Due Date', key: 'dueDate', width: 15 },
+      { header: 'Est. Hours', key: 'estHours', width: 12 },
+      { header: 'Logged / Hours', key: 'loggedHours', width: 15 },
+      { header: 'Description', key: 'description', width: 40 }
+    ];
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4F81BD' }
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    const projectRow = worksheet.addRow({
+      name: `PROJECT: ${project.name}`,
+      status: project.isActive ? 'Active' : 'Inactive',
+      assignee: project.manager ? `${project.manager.firstName} ${project.manager.lastName}` : '-',
+      startDate: project.startDate ? format(new Date(project.startDate), 'yyyy-MM-dd') : '',
+      dueDate: project.dueDate ? format(new Date(project.dueDate), 'yyyy-MM-dd') : '',
+      estHours: '-',
+      loggedHours: '-',
+      description: project.description || ''
+    });
+    projectRow.outlineLevel = 0;
+    projectRow.font = { bold: true, size: 14, color: { argb: 'FF000000' } };
+    projectRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC5D9F1' } };
+
+    modules.forEach(module => {
+      const modRow = worksheet.addRow({
+        name: `  ${module.name}`,
+        status: module.status,
+        assignee: '-',
+        startDate: module.startDate ? format(new Date(module.startDate), 'yyyy-MM-dd') : '',
+        dueDate: module.dueDate ? format(new Date(module.dueDate), 'yyyy-MM-dd') : '',
+        estHours: '-',
+        loggedHours: '-',
+        description: module.description || ''
+      });
+      modRow.outlineLevel = 1;
+      modRow.font = { bold: true, size: 11 };
+      modRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF1DE' } };
+
+      if (module.tasks && module.tasks.length > 0) {
+        module.tasks.forEach(task => {
+          const taskRow = worksheet.addRow({
+            name: `    ${task.name}`,
+            status: task.status,
+            assignee: task.assignees?.map(a => `${a.firstName} ${a.lastName}`).join(', ') || 'Unassigned',
+            startDate: task.startDate ? format(new Date(task.startDate), 'yyyy-MM-dd') : '',
+            dueDate: task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : '',
+            estHours: task.estimatedHours || 0,
+            loggedHours: task.loggedHours || 0,
+            description: task.description || ''
+          });
+          taskRow.outlineLevel = 2;
+
+          if (task.workLogs && task.workLogs.length > 0) {
+            task.workLogs.forEach(log => {
+              const logRow = worksheet.addRow({
+                name: `        Log: ${format(new Date(log.date), 'MM/dd')}`,
+                status: '-',
+                assignee: log.user ? `${log.user.firstName} ${log.user.lastName}` : 'Unknown',
+                startDate: log.date ? format(new Date(log.date), 'yyyy-MM-dd') : '',
+                dueDate: '-',
+                estHours: '-',
+                loggedHours: log.hours,
+                description: log.description
+              });
+              logRow.outlineLevel = 3;
+              logRow.font = { italic: true, color: { argb: 'FF666666' } };
+            });
+          }
+        });
+      }
+    });
+
+    worksheet.autoFilter = {
+      from: 'A1',
+      to: { row: 1, column: 8 }
+    };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.xlsx`;
+    saveAs(new Blob([buffer]), fileName);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 font-sans p-6 md:p-10 space-y-6">
+        <Skeleton className="h-44 w-full rounded-2xl" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+        </div>
+        <Skeleton className="h-96 w-full rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (!project) return <div className="p-8 text-center text-slate-500">Project not found</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans p-4 md:p-8 space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Project Header Component */}
+        <ProjectHeader
+          project={project}
+          employees={employees}
+          viewMode={viewMode}
+          onChangeViewMode={setViewMode}
+          onOpenCreateModule={openCreateModuleModal}
+          onOpenCreateTask={openCreateTaskModal}
+          onOpenLogModal={openProjectLogModal}
+          onExportExcel={handleExport}
+          onEditProject={canUpdateProject ? openEditProjectModal : null}
+          canUpdateProject={canUpdateProject}
+          canCreateTask={canCreateTask}
+          canExportReport={canExportReport}
+          onSelectMember={handleSelectMemberTrace}
+          discussionsCount={discussionsCount}
+        />
+
+        {/* Dynamic View Content */}
+        {!hasModules && viewMode !== 'user-trace' && viewMode !== 'discussions' ? (
+          <DirectProjectView />
+        ) : (
+          <div>
+            {viewMode === 'overview' && (
+              <ProjectOverview
+                project={project}
+                projectId={project?._id || id}
+                modules={modules}
+                tasks={tasks}
+                onOpenCreateModule={openCreateModuleModal}
+                onOpenCreateTask={openCreateTaskModal}
+                onEditModule={handleEditModule}
+                onDeleteModule={handleDeleteModule}
+                onSelectTask={setSelectedTaskId}
+                canUpdateProject={canUpdateProject}
+                onViewDiscussions={() => setViewMode('discussions')}
+              />
+            )}
+
+            {viewMode === 'board' && (
+              <TaskBoard
+                tasks={tasks}
+                modules={modules}
+                employees={employees}
+                onSelectTask={setSelectedTaskId}
+                onOpenCreateTask={openCreateTaskModal}
+                onTasksChanged={fetchData}
+              />
+            )}
+
+            {viewMode === 'hierarchy' && (
+              <ProjectHierarchy
+                modules={modules}
+                project={project}
+                canUpdateProject={canUpdateProject}
+                canCreateTask={canCreateTask}
+                canUpdateTask={canUpdateTask}
+                canDeleteModule={canDeleteModule}
+                canDeleteTask={canDeleteTask}
+                onOpenCreateTask={openCreateTaskModal}
+                onEditModule={handleEditModule}
+                onDeleteModule={handleDeleteModule}
+                onEditTask={handleEditTask}
+                onDeleteTask={handleDeleteTask}
+                onOpenLogModal={openLogModal}
+                onSelectTask={setSelectedTaskId}
+              />
+            )}
+
+            {viewMode === 'performance' && (
+              <ProjectPerformance
+                projectId={id}
+                project={project}
+                members={project?.members || []}
+                onSelectTask={setSelectedTaskId}
+              />
+            )}
+
+            {viewMode === 'user-trace' && (
+              <UserPerformanceTrace
+                projectId={id}
+                project={project}
+                members={project?.members || []}
+                employees={employees}
+                tasks={tasks}
+                modules={modules}
+                onSelectTask={setSelectedTaskId}
+                onOpenLogModal={openProjectLogModal}
+                selectedUserId={traceUserId}
+                onSelectUserId={setTraceUserId}
+              />
+            )}
+
+            {viewMode === 'discussions' && (
+              <ProjectDiscussions
+                projectId={project?._id || id}
+                project={project}
+                workLogs={project?.workLogs || []}
+                onRefreshProject={fetchData}
+                onSelectTask={setSelectedTaskId}
+                allTasks={tasks}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Task Drawer */}
+      <TaskDrawer
+        taskId={selectedTaskId}
+        isOpen={Boolean(selectedTaskId)}
+        onClose={() => setSelectedTaskId(null)}
+        allTasks={tasks}
+        employees={employees}
+        modules={modules}
+        project={project}
+        onTaskUpdated={fetchData}
+      />
+
+      {/* Edit Project Modal — full form */}
+      <EditProjectModal
+        project={project}
+        isOpen={showEditProjectModal}
+        onClose={() => setShowEditProjectModal(false)}
+        onSuccess={fetchData}
+      />
+
+      {/* Module Modal */}
+      {showModuleModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800">{editingModuleId ? 'Edit Module' : 'New Module'}</h3>
+              <button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-slate-600 text-lg cursor-pointer">&times;</button>
+            </div>
+            <form onSubmit={handleCreateModule} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module Name</label>
+                <input required className="zoho-input" value={moduleForm.name} onChange={e => setModuleForm({ ...moduleForm, name: e.target.value })} placeholder="e.g. Authentication" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
+                <select className="zoho-input" value={moduleForm.status} onChange={e => setModuleForm({ ...moduleForm, status: e.target.value })}>
+                  <option value="PLANNED">Planned</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="COMPLETED">Completed</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label>
+                  <input type="date" className="zoho-input" value={moduleForm.startDate} onChange={e => setModuleForm({ ...moduleForm, startDate: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
+                  <input type="date" className="zoho-input" value={moduleForm.dueDate} onChange={e => setModuleForm({ ...moduleForm, dueDate: e.target.value })} />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button type="button" onClick={() => setShowModuleModal(false)} className="zoho-btn-secondary cursor-pointer">Cancel</button>
+                <Button type="submit" isLoading={isSubmitting}>{editingModuleId ? 'Update' : 'Create'}</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}      {/* Task Modal (New Task & Edit Task - Redesigned Wider) */}
+      {showTaskModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden border border-slate-200/90 my-6 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4.5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 via-white to-blue-50/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm shadow-blue-500/20 shrink-0">
+                  <CheckSquare size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-800">
+                      {editingTaskId ? 'Edit Task' : 'New Task'}
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      {project?.name || 'Project'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {editingTaskId
+                      ? 'Update task specifications, team assignment, and schedule'
+                      : 'Define task goals, assign team members (auto-assigned by default), and set schedule'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTaskModal(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            {/* Modals Reuse (Simplified for brevity in diff, but must include full modal code) */}
-            {showModuleModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800">{editingModuleId ? 'Edit Module' : 'New Module'}</h3>
-                            <button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
-                        </div>
-                        <form onSubmit={handleCreateModule} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Module Name</label><input required className="zoho-input" value={moduleForm.name} onChange={e => setModuleForm({ ...moduleForm, name: e.target.value })} /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label><select className="zoho-input" value={moduleForm.status} onChange={e => setModuleForm({ ...moduleForm, status: e.target.value })}><option value="PLANNED">Planned</option><option value="IN_PROGRESS">In Progress</option><option value="COMPLETED">Completed</option></select></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label><input type="date" className="zoho-input" value={moduleForm.startDate} onChange={e => setModuleForm({ ...moduleForm, startDate: e.target.value })} /></div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={moduleForm.dueDate} onChange={e => setModuleForm({ ...moduleForm, dueDate: e.target.value })} /></div>
-                            </div>
-                            <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowModuleModal(false)} className="zoho-btn-secondary">Cancel</button><Button type="submit" isLoading={isSubmitting}>{editingModuleId ? 'Update' : 'Create'}</Button></div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <form onSubmit={handleCreateTask} className="p-6 md:p-7 space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left Column: Core Info & Schedule (7 cols) */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Target Module */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                      <Folder size={13} className="text-blue-600" /> Target Module <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      required
+                      className="w-full px-3.5 py-2.5 text-xs font-semibold border border-slate-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white shadow-2xs transition-all cursor-pointer"
+                      value={activeModuleId || ''}
+                      onChange={e => setActiveModuleId(e.target.value)}
+                    >
+                      <option value="" disabled>Select Target Module</option>
+                      {modules.map(mod => (
+                        <option key={mod._id} value={mod._id}>{mod.name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-            {showTaskModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800">{editingTaskId ? 'Edit Task' : 'New Task'}</h3>
-                            <button onClick={() => setShowTaskModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
-                        </div>
-                        <form onSubmit={handleCreateTask} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task Name</label><input required className="zoho-input" value={taskForm.name} onChange={e => setTaskForm({ ...taskForm, name: e.target.value })} /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label><textarea className="zoho-input" value={taskForm.description} onChange={e => setTaskForm({ ...taskForm, description: e.target.value })} rows="2" /></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assignees</label>
-                                    <div className="zoho-input max-h-32 overflow-y-auto p-2 space-y-2">
-                                        {employees.map(emp => (
-                                            <div key={emp._id} className="flex items-center space-x-2">
-                                                <input type="checkbox" checked={taskForm.assignees.includes(emp._id)} onChange={(e) => {
-                                                    const id = emp._id;
-                                                    setTaskForm(prev => ({ ...prev, assignees: e.target.checked ? [...prev.assignees, id] : prev.assignees.filter(a => a !== id) }));
-                                                }} className="rounded text-blue-600" />
-                                                <span className="text-sm">{emp.firstName} {emp.lastName}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                  {/* Task Name */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Task Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      required
+                      className="w-full px-3.5 py-2.5 text-sm font-semibold border border-slate-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white shadow-2xs transition-all placeholder:font-normal placeholder:text-slate-400"
+                      value={taskForm.name}
+                      onChange={e => setTaskForm({ ...taskForm, name: e.target.value })}
+                      placeholder="e.g. Implement OAuth Flow & Token Refresh"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Description / Acceptance Criteria
+                    </label>
+                    <textarea
+                      className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white shadow-2xs transition-all resize-y min-h-[95px] placeholder:text-slate-400"
+                      value={taskForm.description}
+                      onChange={e => setTaskForm({ ...taskForm, description: e.target.value })}
+                      rows="3"
+                      placeholder="Detail technical requirements, expected outcomes, or acceptance criteria..."
+                    />
+                  </div>
+
+                  {/* Schedule & Estimation Card */}
+                  <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Calendar size={13} className="text-blue-600" /> Schedule & Estimation
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Start Date</label>
+                        <input
+                          type="date"
+                          className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                          value={taskForm.startDate}
+                          onChange={e => setTaskForm({ ...taskForm, startDate: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Due Date</label>
+                        <input
+                          type="date"
+                          className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                          value={taskForm.dueDate}
+                          onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                          <Clock size={11} className="text-slate-400" /> Est. Hours
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          className="w-full px-2.5 py-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                          value={taskForm.estimatedHours}
+                          onChange={e => setTaskForm({ ...taskForm, estimatedHours: e.target.value })}
+                          placeholder="8"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Workflow & Assignees (5 cols) */}
+                <div className="lg:col-span-5 space-y-4 flex flex-col">
+                  {/* Status & Priority */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Status
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 text-xs font-semibold border border-slate-300 rounded-xl outline-none focus:border-blue-500 bg-white cursor-pointer"
+                        value={taskForm.status || 'TODO'}
+                        onChange={e => setTaskForm({ ...taskForm, status: e.target.value })}
+                      >
+                        <option value="TODO">To Do</option>
+                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="REVIEW">In Review</option>
+                        <option value="BLOCKED">Blocked</option>
+                        <option value="DONE">Done</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Priority
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 text-xs font-semibold border border-slate-300 rounded-xl outline-none focus:border-blue-500 bg-white cursor-pointer"
+                        value={taskForm.priority === 'CRITICAL' ? 'URGENT' : taskForm.priority}
+                        onChange={e => setTaskForm({ ...taskForm, priority: e.target.value })}
+                      >
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                        <option value="URGENT">Urgent</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Assignees Selection */}
+                  <div className="flex-1 flex flex-col p-4 bg-slate-50/80 rounded-xl border border-slate-200/80">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Users size={13} className="text-blue-600" /> Assignees
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-700">
+                          {taskForm.assignees.length}
+                        </span>
+                      </label>
+
+                      {/* Quick Assign Buttons */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pIds = allSelectableAssignees.filter(a => a.isProjectMember).map(a => a._id);
+                            setTaskForm(prev => ({ ...prev, assignees: pIds }));
+                          }}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors cursor-pointer"
+                          title="Auto-assign all members of this project"
+                        >
+                          Project Team ({projectMemberIdSet.size})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaskForm(prev => ({ ...prev, assignees: [] }))}
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 mb-2">
+                      Assigned by default. Click to uncheck or select team members.
+                    </p>
+
+                    {/* Member Search */}
+                    <div className="relative mb-2">
+                      <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search team members..."
+                        value={taskAssigneeSearch}
+                        onChange={e => setTaskAssigneeSearch(e.target.value)}
+                        className="w-full pl-7 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-blue-500 bg-white"
+                      />
+                    </div>
+
+                    {/* Assignees Scroll List */}
+                    <div className="flex-1 max-h-56 overflow-y-auto space-y-1 pr-1">
+                      {filteredAssignees.map(emp => {
+                        const isChecked = taskForm.assignees.includes(emp._id);
+                        return (
+                          <div
+                            key={emp._id}
+                            onClick={() => {
+                              const id = emp._id;
+                              setTaskForm(prev => ({
+                                ...prev,
+                                assignees: isChecked ? prev.assignees.filter(a => a !== id) : [...prev.assignees, id]
+                              }));
+                            }}
+                            className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                              isChecked
+                                ? 'bg-blue-50/80 border-blue-300 ring-1 ring-blue-500/20'
+                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {}}
+                                className="rounded text-blue-600 pointer-events-none"
+                              />
+                              <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 overflow-hidden">
+                                {emp.profilePicture ? (
+                                  <img src={emp.profilePicture} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  `${(emp.firstName || 'U')[0]}${(emp.lastName || '')[0] || ''}`.toUpperCase()
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-slate-800 truncate">
+                                  {emp.firstName} {emp.lastName}
                                 </div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Priority</label><select className="zoho-input" value={taskForm.priority} onChange={e => setTaskForm({ ...taskForm, priority: e.target.value })}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="CRITICAL">Critical</option></select></div>
+                                {emp.email && (
+                                  <div className="text-[10px] text-slate-400 truncate">
+                                    {emp.email}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Date</label><input type="date" className="zoho-input" value={taskForm.startDate} onChange={e => setTaskForm({ ...taskForm, startDate: e.target.value })} /></div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label><input type="date" className="zoho-input" value={taskForm.dueDate} onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })} /></div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Est. Hours</label><input type="number" className="zoho-input" value={taskForm.estimatedHours} onChange={e => setTaskForm({ ...taskForm, estimatedHours: e.target.value })} /></div>
-                            </div>
-                            <div className="flex justify-end space-x-3 pt-4"><button type="button" onClick={() => setShowTaskModal(false)} className="zoho-btn-secondary">Cancel</button><Button type="submit" isLoading={isSubmitting}>{editingTaskId ? 'Update' : 'Save'}</Button></div>
-                        </form>
-                    </div>
-                </div>
-            )}
-            {/* Log Work Modal - Simplified for brevity but functionality preserved by not removing it hopefully? No i need to include it */}
-            {showLogModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-green-600" /> Log Time {loggingTaskId ? '' : `- ${project?.name || ''}`}</h3>
-                            <button onClick={() => setShowLogModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
+
+                            {emp.isProjectMember && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 shrink-0">
+                                Team
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {filteredAssignees.length === 0 && (
+                        <div className="py-6 text-center text-xs text-slate-400">
+                          No members match &ldquo;{taskAssigneeSearch}&rdquo;
                         </div>
-                        <form onSubmit={handleLogWork} className="p-6 space-y-4">
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label><input type="date" required className="zoho-input" value={logForm.date} onChange={e => setLogForm({ ...logForm, date: e.target.value })} /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours Spent</label><input type="number" step="0.1" required className="zoho-input" value={logForm.hours} onChange={e => setLogForm({ ...logForm, hours: e.target.value })} placeholder="e.g. 2.5" /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label><textarea className="zoho-input" value={logForm.description} onChange={e => setLogForm({ ...logForm, description: e.target.value })} rows="3" /></div>
-                            <div className="flex justify-end space-x-3 pt-2"><button type="button" onClick={() => setShowLogModal(false)} className="zoho-btn-secondary">Cancel</button><Button type="submit" isLoading={isSubmitting} className="zoho-btn-primary bg-green-600 hover:bg-green-700">Log Time</Button></div>
-                        </form>
+                      )}
                     </div>
+                  </div>
                 </div>
-            )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                <div className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">{taskForm.assignees.length}</span> assigned &bull; Module: <span className="font-semibold text-slate-700">{modules.find(m => m._id === activeModuleId)?.name || 'None'}</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowTaskModal(false)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <Button
+                    type="submit"
+                    isLoading={isSubmitting}
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 cursor-pointer"
+                  >
+                    {editingTaskId ? 'Update Task' : 'Save Task'}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
-    );
+      )}
+
+      {/* Log Work Modal */}
+      {showLogModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <Clock size={18} className="text-emerald-600" /> Log Time {loggingTaskId ? '' : `- ${project?.name || ''}`}
+              </h3>
+              <button onClick={() => setShowLogModal(false)} className="text-slate-400 hover:text-slate-600 text-lg cursor-pointer">&times;</button>
+            </div>
+            <form onSubmit={handleLogWork} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label>
+                <input type="date" required className="zoho-input" value={logForm.date} onChange={e => setLogForm({ ...logForm, date: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hours Spent</label>
+                <input type="number" step="0.1" required className="zoho-input" value={logForm.hours} onChange={e => setLogForm({ ...logForm, hours: e.target.value })} placeholder="e.g. 2.5" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+                <textarea className="zoho-input" value={logForm.description} onChange={e => setLogForm({ ...logForm, description: e.target.value })} rows="3" placeholder="Work summary..." />
+              </div>
+              <div className="flex justify-end space-x-3 pt-2">
+                <button type="button" onClick={() => setShowLogModal(false)} className="zoho-btn-secondary cursor-pointer">Cancel</button>
+                <Button type="submit" isLoading={isSubmitting} className="zoho-btn-primary bg-emerald-600 hover:bg-emerald-700">Log Time</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default ProjectDetails;
