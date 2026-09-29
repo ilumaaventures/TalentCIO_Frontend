@@ -40,16 +40,11 @@ export const aiService = {
 };
 export const adminService = {
   ...crmAdminService,
-  createUser: async (data) => {
-    // In TalentCIO, user creation is governed by organization user module
-    return crmAdminService.getUsers();
-  },
-  updateUser: async (id, data) => {
-    return crmAdminService.getUsers();
-  },
-  deleteUser: async (id) => {
-    return crmAdminService.getUsers();
-  },
+  // User mutations are governed by the organisation user module, not CRM.
+  // Throw a clear error so callers know these are not supported here.
+  createUser: async () => { throw new Error('User creation is managed via the Organisation module, not CRM admin.'); },
+  updateUser: async () => { throw new Error('User update is managed via the Organisation module, not CRM admin.'); },
+  deleteUser: async () => { throw new Error('User deletion is managed via the Organisation module, not CRM admin.'); },
 };
 export const dataService = {
   importData: (data) => crmAdminService.importData(data),
