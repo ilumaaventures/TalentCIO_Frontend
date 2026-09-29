@@ -2094,151 +2094,205 @@ export const ImportDataPage = ({ onNavigate }) => {
         <div className="space-y-4">
           {/* Summary Stat Cards: Total Data, Date Filter Imports, Converted to Leads */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Card 1: Total Data (Clickable: shows all records) */}
-            <div
-              onClick={() => setShowConvertedOnly(false)}
-              className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs hover:shadow-xs transition-all duration-150 cursor-pointer select-none ${
-                !showConvertedOnly
-                  ? 'bg-white border-slate-200/90 hover:border-slate-300'
-                  : 'bg-white/80 border-slate-200/70 hover:border-indigo-300 hover:bg-white'
-              }`}
-              title="Click to view all imported records"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Total Data
-                  </p>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                      {totalDataCount}
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400">
-                      records
-                    </span>
-                  </div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                  <Database className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span className="truncate">Total dataset in workspace</span>
-                {showConvertedOnly && (
-                  <span className="text-[10px] font-semibold text-indigo-600 hover:underline">
-                    Show All
-                  </span>
-                )}
-              </div>
-            </div>
+            {/* Card 1: Total Data (Clickable: resets filters and shows all records) */}
+            {(() => {
+              const isTotalActive = !showConvertedOnly && dateFilter === 'all' && !fromDate && !toDate;
+              const isTodayActive = !showConvertedOnly && dateFilter === 'today';
+              const isConvertedActive = showConvertedOnly;
 
-            {/* Card 2: Import Today (Dynamically adjusts based on date filter) */}
-            <div className="bg-white p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all duration-150">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                      {dateFilterInfo.title}
-                    </p>
-                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-                      {dateFilterInfo.badge}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                      {dateFilteredCount}
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400">
-                      {dateFilter === 'today' ? 'imported today' : 'matching filter'}
-                    </span>
-                  </div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-                  <Calendar className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span className="truncate">{dateFilterInfo.description}</span>
-                <span className="font-semibold text-blue-600 shrink-0">
-                  {totalDataCount > 0 ? `${Math.round((dateFilteredCount / totalDataCount) * 100)}% of total` : '0%'}
-                </span>
-              </div>
-            </div>
-
-            {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
-            <div
-              onClick={() => setShowConvertedOnly((prev) => !prev)}
-              className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
-                showConvertedOnly
-                  ? 'bg-emerald-50/50 border-emerald-400 ring-2 ring-emerald-500/30 shadow-xs'
-                  : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
-              }`}
-              title={showConvertedOnly ? 'Click to show all records' : 'Click to filter table by Converted to Lead'}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                      showConvertedOnly ? 'text-emerald-800 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
-                    }`}>
-                      Converted to Lead
-                    </p>
-                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                      {dateFilterInfo.badge}
-                    </span>
-                    {showConvertedOnly && (
-                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-600 text-white shrink-0 shadow-2xs">
-                        Active Filter
+              return (
+                <>
+                  <div
+                    onClick={() => {
+                      setShowConvertedOnly(false);
+                      setDateFilter('all');
+                      setFromDate('');
+                      setToDate('');
+                    }}
+                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
+                      isTotalActive
+                        ? 'bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/25 shadow-xs'
+                        : 'bg-white border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
+                    }`}
+                    title={isTotalActive ? 'Currently showing all records' : 'Click to view all records in workspace'}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                            isTotalActive ? 'text-indigo-900 font-bold' : 'text-slate-500 group-hover:text-indigo-700'
+                          }`}>
+                            Total Data
+                          </p>
+                          {isTotalActive && (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                              All Records
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                            {totalDataCount}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            records
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                        isTotalActive
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
+                          : 'bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                      }`}>
+                        <Database className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="truncate">
+                        {isTotalActive ? 'Showing all records in workspace' : 'Click to show all records'}
                       </span>
-                    )}
+                      <span className={`font-semibold shrink-0 ${isTotalActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-600'}`}>
+                        {totalDataCount > 0 ? '100%' : '0%'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-bold text-emerald-600 tracking-tight">
-                      {dateFilteredConvertedCount}
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400">
-                      {dateFilter === 'today' ? 'converted today' : 'leads converted'}
-                    </span>
+
+                  {/* Card 2: Import Today (Clickable: filters by today's date) */}
+                  <div
+                    onClick={() => {
+                      if (isTodayActive) {
+                        setDateFilter('all');
+                      } else {
+                        setShowConvertedOnly(false);
+                        setDateFilter('today');
+                        setFromDate('');
+                        setToDate('');
+                      }
+                    }}
+                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
+                      isTodayActive
+                        ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
+                        : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
+                    }`}
+                    title={isTodayActive ? 'Filtered by today (Click to reset to all)' : 'Click to filter records imported today'}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                            isTodayActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
+                          }`}>
+                            {dateFilterInfo.title}
+                          </p>
+                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${
+                            isTodayActive
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}>
+                            {isTodayActive ? 'Active Filter' : dateFilterInfo.badge}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                            {dateFilteredCount}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {dateFilter === 'today' ? 'imported today' : 'matching filter'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                        isTodayActive
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                          : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
+                      }`}>
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="truncate">
+                        {isTodayActive ? 'Filtered by today (Click to show all)' : 'Click to filter today’s records'}
+                      </span>
+                      <span className="font-semibold text-blue-600 shrink-0">
+                        {totalDataCount > 0 ? `${Math.round((dateFilteredCount / totalDataCount) * 100)}% of total` : '0%'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  {onNavigate && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNavigate('leads');
-                      }}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-100/50 transition"
-                      title="Open CRM Leads page"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                    showConvertedOnly
-                      ? 'bg-emerald-600 border-emerald-600 text-white'
-                      : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
-                  }`}>
-                    <CheckCircle2 className="w-4 h-4" />
+
+                  {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
+                  <div
+                    onClick={() => setShowConvertedOnly((prev) => !prev)}
+                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
+                      isConvertedActive
+                        ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-500/25 shadow-xs'
+                        : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
+                    }`}
+                    title={isConvertedActive ? 'Filtered: Showing converted leads (Click to show all)' : 'Click to filter table by Converted to Lead'}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                            isConvertedActive ? 'text-emerald-900 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
+                          }`}>
+                            Converted to Lead
+                          </p>
+                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${
+                            isConvertedActive
+                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {isConvertedActive ? 'Active Filter' : dateFilterInfo.badge}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-xl sm:text-2xl font-bold text-emerald-600 tracking-tight">
+                            {dateFilteredConvertedCount}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {dateFilter === 'today' ? 'converted today' : 'leads converted'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {onNavigate && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigate('leads');
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-100/50 transition cursor-pointer"
+                            title="Open CRM Leads page"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                          isConvertedActive
+                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
+                            : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
+                        }`}>
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="truncate">
+                        {isConvertedActive
+                          ? 'Filtered: Showing converted leads (Click to reset)'
+                          : 'Click to filter converted leads'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 shrink-0">
+                        {dateFilteredCount > 0
+                          ? `${Math.round((dateFilteredConvertedCount / dateFilteredCount) * 100)}% converted`
+                          : '0% converted'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span className="truncate">
-                  {showConvertedOnly
-                    ? 'Filtered: Showing converted leads (Click to reset)'
-                    : dateFilter !== 'all'
-                      ? `From ${dateFilteredCount} record${dateFilteredCount === 1 ? '' : 's'} (${totalConvertedCount} overall)`
-                      : 'Converted to Leads in CRM'}
-                </span>
-                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 shrink-0">
-                  {dateFilteredCount > 0
-                    ? `${Math.round((dateFilteredConvertedCount / dateFilteredCount) * 100)}% converted`
-                    : '0% converted'}
-                </span>
-              </div>
-            </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
