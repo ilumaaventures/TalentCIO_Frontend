@@ -120,7 +120,7 @@ function CrmWorkspaceContent() {
           ? { title: 'Lead Workspace & Qualification', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Leads', 'Detail'] }
           : { title: 'Lead Directory & Capture', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Leads'] };
       case 'import-data':
-        return { title: 'Import Company Data', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Import Data'] };
+        return { title: 'Database', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Database'] };
       case 'deals':
         return selectedDealId
           ? { title: 'Opportunity Workspace', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Opportunities', 'Detail'] }
