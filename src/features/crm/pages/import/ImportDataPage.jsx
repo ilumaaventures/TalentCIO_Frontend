@@ -30,6 +30,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -421,6 +423,9 @@ export const ImportDataPage = ({ onNavigate }) => {
           const mobileNo = normalized['mobileno'] || normalized['mobile'] || normalized['phone'] || '';
           const emailId = normalized['emailid'] || normalized['email'] || '';
           const remarks = normalized['remarks'] || normalized['remark'] || normalized['notes'] || '';
+          // New columns: status and source
+          const leadStatus = normalized['status'] || normalized['leadstatus'] || '';
+          const source = normalized['source'] || normalized['leadsource'] || normalized['origin'] || '';
 
           // Look for date in row
           let dateVal = normalized['date'] || normalized['createddate'] || normalized['entrydate'] || normalized['importdate'];
@@ -455,6 +460,8 @@ export const ImportDataPage = ({ onNavigate }) => {
             mobileNo: String(mobileNo).trim(),
             emailId: String(emailId).trim(),
             remarks: String(remarks).trim(),
+            status: String(leadStatus).trim(),
+            source: String(source).trim(),
             date: dateObj.toISOString(),
             importedBy: currentUserName,
           };
@@ -777,45 +784,164 @@ export const ImportDataPage = ({ onNavigate }) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Download Sample Template matching user's image headers
-  const handleDownloadTemplate = () => {
-    const templateData = [
-      {
-        'S No': 1,
-        'Company Name': 'Infosys Limited',
-        'Industry': 'Information Technology',
-        'Address': 'Electronics City, Hosur Road, Bangalore',
-        'Rating': '4.5',
-        'contact person': 'Rahul Sharma',
-        'Designation': 'VP Engineering',
-        'mobile no': '+91 98765 43210',
-        'Email ID': 'rahul.sharma@infosys.example',
-        'Remarks': 'Interested in enterprise talent pipeline',
-        'Date': new Date().toISOString().split('T')[0],
-      },
-      {
-        'S No': 2,
-        'Company Name': 'Tata Consultancy Services',
-        'Industry': 'Consulting & IT',
-        'Address': 'TCS House, Raveline Street, Fort, Mumbai',
-        'Rating': '4.8',
-        'contact person': 'Priya Nair',
-        'Designation': 'Head of Talent Acquisition',
-        'mobile no': '+91 98111 22334',
-        'Email ID': 'priya.nair@tcs.example',
-        'Remarks': 'Needs executive search services',
-        'Date': new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0],
-      },
-    ];
+  // Download Sample Template — includes Status dropdown, Source and Date columns
+  const handleDownloadTemplate = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    const worksheet = XLSX.utils.json_to_sheet(templateData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Companies');
-    XLSX.writeFile(workbook, 'CRM_Import_Companies_Template.xlsx');
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Talentcio CRM';
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet('CRM Import Template', {
+        views: [{ showGridLines: true }],
+      });
+
+      // ── Define Columns & Widths ──────────────────────────────────────────
+      worksheet.columns = [
+        { header: 'S No', key: 'sNo', width: 8 },
+        { header: 'Company Name', key: 'companyName', width: 32 },
+        { header: 'Industry', key: 'industry', width: 24 },
+        { header: 'Address', key: 'address', width: 36 },
+        { header: 'Rating', key: 'rating', width: 10 },
+        { header: 'Contact Person', key: 'contactPerson', width: 24 },
+        { header: 'Designation', key: 'designation', width: 24 },
+        { header: 'Mobile No', key: 'mobileNo', width: 20 },
+        { header: 'Email ID', key: 'emailId', width: 30 },
+        { header: 'Remarks', key: 'remarks', width: 36 },
+        { header: 'Date', key: 'date', width: 16 },
+        { header: 'Status', key: 'status', width: 22 },
+        { header: 'Source', key: 'source', width: 22 },
+      ];
+
+      // ── Header Styling (Yellow background for columns with headers) ───────
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 28;
+      headerRow.font = { bold: true, color: { argb: 'FF000000' }, size: 10 };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFEB3B' }, // Yellow header
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          bottom: { style: 'medium', color: { argb: 'FF9CA3AF' } },
+          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        };
+      });
+
+      // ── Sample Rows ──────────────────────────────────────────────────────
+      const sampleRows = [
+        {
+          sNo: 1,
+          companyName: 'Infosys Limited',
+          industry: 'Information Technology',
+          address: 'Electronics City, Hosur Road, Bangalore',
+          rating: '4.5',
+          contactPerson: 'Rahul Sharma',
+          designation: 'VP Engineering',
+          mobileNo: '+91 98765 43210',
+          emailId: 'rahul.sharma@infosys.example',
+          remarks: 'Interested in enterprise talent pipeline',
+          date: today,
+          status: 'Interested',
+          source: 'LinkedIn',
+        },
+        {
+          sNo: 2,
+          companyName: 'Tata Consultancy Services',
+          industry: 'Consulting & IT',
+          address: 'TCS House, Raveline Street, Fort, Mumbai',
+          rating: '4.8',
+          contactPerson: 'Priya Nair',
+          designation: 'Head of Talent Acquisition',
+          mobileNo: '+91 98111 22334',
+          emailId: 'priya.nair@tcs.example',
+          remarks: 'Needs executive search services',
+          date: yesterday,
+          status: 'Not picking',
+          source: 'Cold Call',
+        },
+        {
+          sNo: 3,
+          companyName: '',
+          industry: '',
+          address: '',
+          rating: '',
+          contactPerson: '',
+          designation: '',
+          mobileNo: '',
+          emailId: '',
+          remarks: '',
+          date: today,
+          status: '',
+          source: '',
+        },
+      ];
+
+      sampleRows.forEach((rowData) => {
+        const row = worksheet.addRow(rowData);
+        row.height = 22;
+        row.alignment = { vertical: 'middle' };
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          };
+        });
+      });
+
+      // ── Status Dropdown Data Validation on Column L (rows 2–1000) ─────────
+      // Options: Interested, Not Interested, Did not turn up, Not picking, Other
+      const statusOptions = ['Interested', 'Not Interested', 'Did not turn up', 'Not picking', 'Other'];
+      const statusFormula = `"${statusOptions.join(',')}"`;
+
+      // ── Source Dropdown Data Validation on Column M (rows 2–1000) ─────────
+      const sourceOptions = ['LinkedIn', 'Cold Call', 'Website', 'Referral', 'Email Campaign', 'WhatsApp', 'Direct', 'Other'];
+      const sourceFormula = `"${sourceOptions.join(',')}"`;
+
+      for (let r = 2; r <= 1000; r++) {
+        // Column L: Status dropdown
+        worksheet.getCell(`L${r}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          showErrorMessage: true,
+          errorStyle: 'stop',
+          errorTitle: 'Invalid Status',
+          error: `Please choose one of the options: ${statusOptions.join(', ')}`,
+          formulae: [statusFormula],
+        };
+
+        // Column M: Source dropdown
+        worksheet.getCell(`M${r}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          showErrorMessage: false,
+          formulae: [sourceFormula],
+        };
+      }
+
+      // ── Generate & Download ──────────────────────────────────────────────
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      saveAs(blob, 'CRM_Import_Template.xlsx');
+      toast.success('Template downloaded! Fill columns and re-upload.');
+    } catch (err) {
+      console.error('Error generating template:', err);
+      toast.error('Failed to download template. Please try again.');
+    }
   };
 
-  // Export Database records to Excel (.xlsx)
-  const handleExportData = () => {
+  // Export Database records to Excel (.xlsx) with styled yellow header
+  const handleExportData = async () => {
     let rowsToExport = [];
     if (selectedIds.length > 0) {
       rowsToExport = records.filter((r) => selectedIds.includes(r.id));
@@ -830,29 +956,95 @@ export const ImportDataPage = ({ onNavigate }) => {
       return;
     }
 
-    const exportRows = rowsToExport.map((row, index) => ({
-      'S No': index + 1,
-      'Company Name': row.companyName || '',
-      'Industry': row.industry || '',
-      'Address': row.address || '',
-      'Rating': row.rating || '',
-      'Contact Person': row.contactPerson || '',
-      'Designation': row.designation || '',
-      'Mobile No': row.mobileNo || '',
-      'Email ID': row.emailId || '',
-      'Remarks': row.remarks || '',
-      'Date': row.date ? new Date(row.date).toISOString().split('T')[0] : '',
-      'Imported By': row.importedBy || currentUserName || '',
-      'Status': row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'Active',
-    }));
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Talentcio CRM';
+      workbook.created = new Date();
 
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Database');
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `CRM_Database_Export_${timestamp}.xlsx`;
-    XLSX.writeFile(workbook, filename);
-    toast.success(`Successfully exported ${exportRows.length} record${exportRows.length === 1 ? '' : 's'}.`);
+      const worksheet = workbook.addWorksheet('CRM Database Export', {
+        views: [{ showGridLines: true }],
+      });
+
+      worksheet.columns = [
+        { header: 'S No', key: 'sNo', width: 8 },
+        { header: 'Company Name', key: 'companyName', width: 32 },
+        { header: 'Industry', key: 'industry', width: 24 },
+        { header: 'Address', key: 'address', width: 36 },
+        { header: 'Rating', key: 'rating', width: 10 },
+        { header: 'Contact Person', key: 'contactPerson', width: 24 },
+        { header: 'Designation', key: 'designation', width: 24 },
+        { header: 'Mobile No', key: 'mobileNo', width: 20 },
+        { header: 'Email ID', key: 'emailId', width: 30 },
+        { header: 'Remarks', key: 'remarks', width: 36 },
+        { header: 'Date', key: 'date', width: 16 },
+        { header: 'Status', key: 'status', width: 22 },
+        { header: 'Source', key: 'source', width: 20 },
+        { header: 'Imported By', key: 'importedBy', width: 22 },
+      ];
+
+      // ── Header Styling (Yellow background up to header columns) ─────────
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 28;
+      headerRow.font = { bold: true, color: { argb: 'FF000000' }, size: 10 };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFEB3B' }, // Yellow header
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          bottom: { style: 'medium', color: { argb: 'FF9CA3AF' } },
+          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        };
+      });
+
+      // ── Add Data Rows ──────────────────────────────────────────────────
+      rowsToExport.forEach((row, index) => {
+        const rowData = {
+          sNo: index + 1,
+          companyName: row.companyName || '',
+          industry: row.industry || '',
+          address: row.address || '',
+          rating: row.rating || '',
+          contactPerson: row.contactPerson || '',
+          designation: row.designation || '',
+          mobileNo: row.mobileNo || '',
+          emailId: row.emailId || '',
+          remarks: row.remarks || '',
+          date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
+          status: row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'Active'),
+          source: row.leadSource || row.source || '',
+          importedBy: row.importedBy || currentUserName || '',
+        };
+
+        const addedRow = worksheet.addRow(rowData);
+        addedRow.height = 22;
+        addedRow.alignment = { vertical: 'middle' };
+        addedRow.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          };
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `CRM_Database_Export_${timestamp}.xlsx`;
+      saveAs(blob, filename);
+      toast.success(`Successfully exported ${rowsToExport.length} record${rowsToExport.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      console.error('Export error:', err);
+      toast.error('Failed to export database records. Please try again.');
+    }
   };
 
   // Helper to check if a row is converted to lead in CRM
