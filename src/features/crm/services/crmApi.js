@@ -201,22 +201,18 @@ export const crmCommunicationService = {
     const res = await api.post('/crm/communication/emails', data);
     return res.data;
   },
-  getWhatsApp: async () => {
-    const res = await api.get('/crm/communication/whatsapp');
-    return res.data;
-  },
+  // getWhatsAppMessages is the canonical name; getWhatsApp is kept as an alias
+  // to avoid breaking any callers that already use the older name.
   getWhatsAppMessages: async () => {
     const res = await api.get('/crm/communication/whatsapp');
     return res.data;
   },
-  sendWhatsApp: async (data) => {
-    const res = await api.post('/crm/communication/whatsapp', data);
-    return res.data;
-  },
+  get getWhatsApp() { return this.getWhatsAppMessages; },
   sendWhatsAppMessage: async (data) => {
     const res = await api.post('/crm/communication/whatsapp', data);
     return res.data;
   },
+  get sendWhatsApp() { return this.sendWhatsAppMessage; },
   getCalls: async () => {
     const res = await api.get('/crm/communication/calls');
     return res.data;

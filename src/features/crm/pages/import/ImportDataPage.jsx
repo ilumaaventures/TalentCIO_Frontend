@@ -41,6 +41,14 @@ import { useAuth } from '../../context/AuthContext';
 
 const STORAGE_KEY = 'crm_imported_excel_records';
 
+// Module-level helper: extract last 10 digits of a phone number for normalised comparison.
+// Defined here (not inside a handler) so all functions in this file can use it.
+const normalizePhone = (p) => {
+  if (!p) return '';
+  const digits = String(p).replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+};
+
 export const ImportDataPage = ({ onNavigate }) => {
   const { user } = useAuth();
   const currentUserName = useMemo(() => {
@@ -418,8 +426,25 @@ export const ImportDataPage = ({ onNavigate }) => {
           let dateVal = normalized['date'] || normalized['createddate'] || normalized['entrydate'] || normalized['importdate'];
           const dateObj = parseRowDate(dateVal);
 
+          // FIX #3: Build a deterministic stable ID from content so the same company
+          // always gets the same rowId across separate imports. This allows
+          // syncImportData (server-side upsert) to find and update the existing DB
+          // document rather than always inserting a new one.
+          const stableKey = [
+            String(companyName).trim().toLowerCase(),
+            String(mobileNo).trim().replace(/\D/g, '').slice(-10),
+            String(emailId).trim().toLowerCase(),
+          ].join('|');
+          // btoa may not be available in all environments; use a simple hash fallback
+          let stableId;
+          try {
+            stableId = btoa(unescape(encodeURIComponent(stableKey))).replace(/[+/=]/g, '_');
+          } catch {
+            stableId = `${Date.now()}_${idx}`;
+          }
+
           return {
-            id: `row_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 6)}`,
+            id: `row_${stableId}`,
             sNo: String(sNo),
             companyName: String(companyName).trim(),
             industry: String(industry).trim(),
@@ -442,13 +467,6 @@ export const ImportDataPage = ({ onNavigate }) => {
           toast.error('No valid company or contact data found in the file.');
           return;
         }
-
-        // Helper to normalize phone number (extract digits, last 10 digits)
-        const normalizePhone = (p) => {
-          if (!p) return '';
-          const digits = String(p).replace(/\D/g, '');
-          return digits.length >= 10 ? digits.slice(-10) : digits;
-        };
 
         // 1. Intra-sheet duplicate detection by companyName, mobileNo, emailId
         const seenCompanies = new Set();
@@ -547,6 +565,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                 ...row,
                 rowType: 'update',
                 isDuplicate: false,
+                // FIX #5: explicitly carry isUpdate:true so the backend importData
+                // handler knows to run the update path instead of silently skipping.
                 isUpdate: true,
                 isNew: false,
                 duplicateReason: '',
@@ -1356,6 +1376,12 @@ export const ImportDataPage = ({ onNavigate }) => {
         toast.success(`Saved "${compName}" to Database successfully!`);
       }
 
+      // FIX #6: Only mark isConvertedToLead:true when the DB operation actually
+      // succeeded and we have a valid leadId. If createLead fails (network error,
+      // validation error) the row must keep its previous converted state, not
+      // silently appear as converted without a real lead in the CRM.
+      const didSucceed = Boolean(savedLeadId);
+
       // Update in active workspace records
       setRecords((prev) =>
         prev.map((r) =>
@@ -1372,30 +1398,33 @@ export const ImportDataPage = ({ onNavigate }) => {
               address: (editingRow.address || '').trim(),
               remarks: (editingRow.remarks || '').trim(),
               date: finalDate,
-              leadId: savedLeadId,
-              isConvertedToLead: true,
-              isDuplicate: false, // successfully edited and saved to DB
-              duplicateReason: '',
+              leadId: savedLeadId || r.leadId,
+              // Only flip to true when we have a confirmed leadId from the API
+              isConvertedToLead: didSucceed ? true : r.isConvertedToLead,
+              isDuplicate: didSucceed ? false : r.isDuplicate,
+              duplicateReason: didSucceed ? '' : r.duplicateReason,
             }
             : r
         )
       );
-      // Also sync updated row to CrmImportData
-      dataService.syncImportData([{
-        ...editingRow,
-        companyName: compName,
-        contactPerson: (editingRow.contactPerson || '').trim(),
-        designation: (editingRow.designation || '').trim(),
-        mobileNo: (editingRow.mobileNo || '').trim(),
-        emailId: (editingRow.emailId || '').trim(),
-        industry: (editingRow.industry || '').trim(),
-        rating: (editingRow.rating || '').trim(),
-        address: (editingRow.address || '').trim(),
-        remarks: (editingRow.remarks || '').trim(),
-        date: finalDate,
-        leadId: savedLeadId,
-        isConvertedToLead: true,
-      }]).catch(console.warn);
+      // Sync updated row to CrmImportData only if the save actually worked
+      if (didSucceed) {
+        dataService.syncImportData([{
+          ...editingRow,
+          companyName: compName,
+          contactPerson: (editingRow.contactPerson || '').trim(),
+          designation: (editingRow.designation || '').trim(),
+          mobileNo: (editingRow.mobileNo || '').trim(),
+          emailId: (editingRow.emailId || '').trim(),
+          industry: (editingRow.industry || '').trim(),
+          rating: (editingRow.rating || '').trim(),
+          address: (editingRow.address || '').trim(),
+          remarks: (editingRow.remarks || '').trim(),
+          date: finalDate,
+          leadId: savedLeadId,
+          isConvertedToLead: true,
+        }]).catch(console.warn);
+      }
 
       // Also update in stagedData if editing a staged preview row
       if (stagedData?.rows) {
