@@ -794,6 +794,47 @@ export const ImportDataPage = ({ onNavigate }) => {
     XLSX.writeFile(workbook, 'CRM_Import_Companies_Template.xlsx');
   };
 
+  // Export Database records to Excel (.xlsx)
+  const handleExportData = () => {
+    let rowsToExport = [];
+    if (selectedIds.length > 0) {
+      rowsToExport = records.filter((r) => selectedIds.includes(r.id));
+    } else if (filteredAndSortedRecords && filteredAndSortedRecords.length > 0) {
+      rowsToExport = filteredAndSortedRecords;
+    } else {
+      rowsToExport = records;
+    }
+
+    if (!rowsToExport || rowsToExport.length === 0) {
+      toast.error('No database records available to export.');
+      return;
+    }
+
+    const exportRows = rowsToExport.map((row, index) => ({
+      'S No': index + 1,
+      'Company Name': row.companyName || '',
+      'Industry': row.industry || '',
+      'Address': row.address || '',
+      'Rating': row.rating || '',
+      'Contact Person': row.contactPerson || '',
+      'Designation': row.designation || '',
+      'Mobile No': row.mobileNo || '',
+      'Email ID': row.emailId || '',
+      'Remarks': row.remarks || '',
+      'Date': row.date ? new Date(row.date).toISOString().split('T')[0] : '',
+      'Imported By': row.importedBy || currentUserName || '',
+      'Status': row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'Active',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Database');
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `CRM_Database_Export_${timestamp}.xlsx`;
+    XLSX.writeFile(workbook, filename);
+    toast.success(`Successfully exported ${exportRows.length} record${exportRows.length === 1 ? '' : 's'}.`);
+  };
+
   // Helper to check if a row is converted to lead in CRM
   const isConvertedLead = (row) => Boolean(row?.isConvertedToLead);
 
@@ -1413,8 +1454,8 @@ export const ImportDataPage = ({ onNavigate }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
-            <span>Import Data</span>
+            <Database className="w-6 h-6 text-emerald-600" />
+            <span>Database</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Select Excel file, preview extracted rows, import to workspace, sort/filter by date, and send to Leads.
@@ -1449,6 +1490,16 @@ export const ImportDataPage = ({ onNavigate }) => {
             size="sm"
             variant="outline"
             icon={Download}
+            onClick={handleExportData}
+            title={selectedIds.length > 0 ? `Export ${selectedIds.length} selected records to Excel` : "Export database records to Excel"}
+          >
+            Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            icon={FileSpreadsheet}
             onClick={handleDownloadTemplate}
             title="Download sample Excel file with exact header structure"
           >
@@ -2220,16 +2271,28 @@ export const ImportDataPage = ({ onNavigate }) => {
               )}
 
               {selectedIds.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="danger"
-                  icon={Trash2}
-                  onClick={handleOpenDeleteSelected}
-                  className="shadow-sm"
-                  title="Move selected companies to Recycle Bin"
-                >
-                  Delete Selected ({selectedIds.length})
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={Download}
+                    onClick={handleExportData}
+                    className="shadow-2xs text-slate-700 hover:bg-slate-50 border-slate-300"
+                    title="Export selected records to Excel"
+                  >
+                    Export Selected ({selectedIds.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon={Trash2}
+                    onClick={handleOpenDeleteSelected}
+                    className="shadow-sm"
+                    title="Move selected companies to Recycle Bin"
+                  >
+                    Delete Selected ({selectedIds.length})
+                  </Button>
+                </>
               )}
 
               <Button

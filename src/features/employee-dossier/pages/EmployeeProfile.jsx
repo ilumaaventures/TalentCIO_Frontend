@@ -23,6 +23,7 @@ import ImpersonateConfirmModal from '@/features/users-roles/components/Impersona
 import { isImpersonationTargetEligible } from '@/features/users-roles/utils/impersonationEligibility';
 import DepartmentFormModal from '@/features/organization/components/DepartmentFormModal';
 import DesignationFormModal from '@/features/organization/components/DesignationFormModal';
+import EmployeePerformance from '@/features/projects/components/EmployeePerformance';
 
 const parseBool = (val, defaultVal = true) => {
     if (val === false || val === 'false') return false;
@@ -779,6 +780,13 @@ const EmployeeProfile = () => {
                             <TrendingUp size={16} /> Sales Performance
                         </button>
                     )}
+
+                    <button
+                        onClick={() => setActiveTab('project-performance')}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === 'project-performance' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                    >
+                        <TrendingUp size={16} /> Project Performance
+                    </button>
                 </div>
 
                 {/* Main Content Area */}
@@ -1253,6 +1261,16 @@ const EmployeeProfile = () => {
                             <SalesPerformanceTab
                                 userId={profile._id || profile.user?._id || profile.user}
                                 userName={`${profile.firstName || ''} ${profile.lastName || ''}`.trim()}
+                            />
+                        </div>
+                    )}
+
+                    {/* PROJECT PERFORMANCE TAB */}
+                    {activeTab === 'project-performance' && (
+                        <div className="w-full">
+                            <EmployeePerformance
+                                userId={profile._id || profile.user?._id || profile.user}
+                                employee={profile}
                             />
                         </div>
                     )}

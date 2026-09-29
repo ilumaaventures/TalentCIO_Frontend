@@ -26,20 +26,20 @@ const LocationLink = ({ location }) => {
         if (locationCache[coordsKey]) return;
 
         let isMounted = true;
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=10`)
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location?.lat}&lon=${location?.lng}&zoom=10`)
             .then(res => res.json())
             .then(data => {
                 if (!isMounted) return;
-                const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || location.name || 'Location';
+                const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || location?.name || 'Location';
                 locationCache[coordsKey] = city;
                 setCityName(city);
             })
             .catch(() => {
-                if (isMounted) setCityName(location.name || 'Location');
+                if (isMounted) setCityName(location?.name || 'Location');
             });
 
         return () => { isMounted = false; };
-    }, [coordsKey, location.lat, location.lng, location.name]);
+    }, [coordsKey, location?.lat, location?.lng, location?.name]);
 
     if (!location) return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Unknown</span>;
 
