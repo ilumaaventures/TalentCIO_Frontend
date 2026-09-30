@@ -497,13 +497,6 @@ const Topbar = ({ toggleSidebar }) => {
                         if (location.pathname === '/ess') {
                             return (
                                 <div className="hidden md:flex items-center gap-2.5">
-                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xs shadow-2xs">
-                                        {user?.profilePicture ? (
-                                            <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
-                                        ) : (
-                                            user?.firstName?.charAt(0) || 'U'
-                                        )}
-                                    </div>
                                     <div>
                                         <div className="flex items-center gap-1.5 leading-none">
                                             <GreetingIcon size={12} className="text-amber-500" />

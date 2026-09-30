@@ -59,14 +59,75 @@ export const ImportDataPage = ({ onNavigate }) => {
     return fullName || user.name || user.email || 'Admin';
   }, [user]);
 
+  const canViewAll = useMemo(() => {
+    if (!user) return false;
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    const hasAdminRole = roles.some((r) => {
+      const name = typeof r === 'string' ? r : r?.name;
+      return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
+    });
+    if (hasAdminRole) return true;
+    const perms = Array.isArray(user.permissions) ? user.permissions : [];
+    return perms.includes('*') || perms.includes('crm.data.view_all');
+  }, [user]);
+
+  const userStorageKey = useMemo(() => {
+    return user?._id ? `${STORAGE_KEY}_${user._id}` : STORAGE_KEY;
+  }, [user?._id]);
+
   const [records, setRecords] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const roles = Array.isArray(user?.roles) ? user.roles : [];
+      const hasAdminRole = roles.some((r) => {
+        const name = typeof r === 'string' ? r : r?.name;
+        return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
+      });
+      const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+      const canSeeAll = hasAdminRole || perms.includes('*') || perms.includes('crm.data.view_all');
+      if (!canSeeAll) {
+        // Restricted users must start with empty local state until server returns their records
+        return [];
+      }
+      const key = user?._id ? `${STORAGE_KEY}_${user._id}` : STORAGE_KEY;
+      const saved = localStorage.getItem(key);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
   });
+
+  // Purge any leaked un-namespaced or admin records from restricted user's localStorage
+  useEffect(() => {
+    if (!canViewAll) {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        if (user?._id) {
+          const userKey = `${STORAGE_KEY}_${user._id}`;
+          const saved = localStorage.getItem(userKey);
+          if (saved) {
+            const list = JSON.parse(saved);
+            const myName = (user.name || `${user.firstName || ''} ${user.lastName || ''}`).trim().toLowerCase();
+            const myId = String(user._id);
+            const filtered = list.filter((r) => {
+              const recUser = (r.importedBy || '').trim().toLowerCase();
+              const recUserId = r.importedByUserId ? String(r.importedByUserId) : '';
+              return (myId && recUserId === myId) || (myName && recUser === myName);
+            });
+            if (filtered.length !== list.length) {
+              if (filtered.length > 0) {
+                localStorage.setItem(userKey, JSON.stringify(filtered));
+              } else {
+                localStorage.removeItem(userKey);
+              }
+              setRecords(filtered);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  }, [canViewAll, user?._id, user?.name, user?.firstName, user?.lastName]);
 
   const [fileName, setFileName] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -115,18 +176,18 @@ export const ImportDataPage = ({ onNavigate }) => {
     return stagedData.rows;
   }, [stagedData, previewTab]);
 
-  // Persist records to localStorage
+  // Persist records to localStorage (scoped per user)
   useEffect(() => {
     try {
       if (records.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        localStorage.setItem(userStorageKey, JSON.stringify(records));
       } else {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(userStorageKey);
       }
     } catch (e) {
       console.error('Failed to save imported records in localStorage', e);
     }
-  }, [records]);
+  }, [records, userStorageKey]);
 
   // Load active company users for "Imported By" filter (strictly exclude inactive users)
   useEffect(() => {
@@ -229,7 +290,16 @@ export const ImportDataPage = ({ onNavigate }) => {
       if (res?.success && Array.isArray(res.data)) {
         const serverRows = res.data;
         setRecords((prevRecords) => {
-          // If server has 0 records but local has records, sync local records up to server
+          // For restricted users, serverRows returned by backend is strictly the source of truth.
+          // Never auto-push old localStorage records to the server!
+          if (!canViewAll) {
+            return serverRows.map((s) => ({
+              ...s,
+              importedBy: s.importedBy || currentUserName,
+            }));
+          }
+
+          // If server has 0 records but local has records, sync local records up to server (admin only)
           if (serverRows.length === 0 && prevRecords.length > 0) {
             dataService.syncImportData(prevRecords).catch(console.warn);
             return prevRecords;
@@ -316,7 +386,7 @@ export const ImportDataPage = ({ onNavigate }) => {
     } catch (err) {
       console.warn('Failed to sync import data from server:', err);
     }
-  }, []);
+  }, [canViewAll, currentUserName, user?._id]);
 
   // Verify lead status against CRM database
   const verifyLeadsStatus = useCallback(async (currentRecords) => {
@@ -1137,19 +1207,35 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
   }, [dateFilter, fromDate, toDate]);
 
+  // Scoped records: when user does not have view_all permission, strictly restrict to their own records
+  const scopedRecords = useMemo(() => {
+    if (canViewAll) return records;
+    const currUser = (currentUserName || '').trim().toLowerCase();
+    const myId = user?._id ? String(user._id) : '';
+    return records.filter((r) => {
+      const recUser = (r.importedBy || '').trim().toLowerCase();
+      const recUserId = r.importedByUserId ? String(r.importedByUserId) : '';
+      const assignedId = r.assignedTo ? String(r.assignedTo) : '';
+      return (
+        (myId && (recUserId === myId || assignedId === myId)) ||
+        (currUser && recUser === currUser)
+      );
+    });
+  }, [records, canViewAll, currentUserName, user?._id]);
+
   // Records filtered strictly by the date filter (used for both Card 2 and Table)
   const dateFilteredRecords = useMemo(() => {
-    return records.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
-  }, [records, dateFilter, fromDate, toDate]);
+    return scopedRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
+  }, [scopedRecords, dateFilter, fromDate, toDate]);
 
   // Card metric values
-  const totalDataCount = records.length;
-  const uniqueDataCount = useMemo(() => records.filter((r) => !r.isDuplicate).length, [records]);
+  const totalDataCount = scopedRecords.length;
+  const uniqueDataCount = useMemo(() => scopedRecords.filter((r) => !r.isDuplicate).length, [scopedRecords]);
   const dateFilteredCount = dateFilteredRecords.length;
 
   const totalConvertedCount = useMemo(() => {
-    return records.filter(isConvertedLead).length;
-  }, [records]);
+    return scopedRecords.filter(isConvertedLead).length;
+  }, [scopedRecords]);
 
   const dateFilteredConvertedCount = useMemo(() => {
     return dateFilteredRecords.filter(isConvertedLead).length;
@@ -1674,9 +1760,21 @@ export const ImportDataPage = ({ onNavigate }) => {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Database className="w-6 h-6 text-emerald-600" />
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+            <Database className="w-6 h-6 text-emerald-600 shrink-0" />
             <span>Database</span>
+            {canViewAll ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                All Organization Records
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                title="You have personal data visibility: you can only view records you uploaded or are assigned to."
+              >
+                Personal View (My Data Only)
+              </span>
+            )}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Select Excel file, preview extracted rows, import to workspace, sort/filter by date, and send to Leads.
@@ -2359,8 +2457,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                 </div>
               )}
 
-              {/* Imported By User Filter Dropdown */}
-              <div className="relative" ref={userDropdownRef}>
+              {/* Imported By User Filter Dropdown — only for users with full org view */}
+              {canViewAll && (
+                <div className="relative" ref={userDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsUserDropdownOpen((prev) => !prev)}
@@ -2515,7 +2614,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </div>
                   </div>
                 )}
-              </div>
+                </div>
+              )}
 
               {/* Search Bar */}
               <div className="relative min-w-[200px]">
@@ -2600,8 +2700,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <strong className="text-slate-800 font-bold">{endEntry}</strong>
                   </>
                 )}{' '}
-                of <strong className="text-slate-800 font-bold">{records.length}</strong>
-                {totalMatchingRecords !== records.length && totalMatchingRecords > 0 && (
+                of <strong className="text-slate-800 font-bold">{scopedRecords.length}</strong>
+                {totalMatchingRecords !== scopedRecords.length && totalMatchingRecords > 0 && (
                   <span className="text-slate-400 font-normal ml-1">
                     ({totalMatchingRecords} matching filter)
                   </span>

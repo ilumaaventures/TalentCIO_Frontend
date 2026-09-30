@@ -29,8 +29,16 @@ import { Modal } from '../../components/ui/Modal';
 import { leadsService } from '../../services/api';
 import { AddNewLeadModal } from './AddNewLeadModal';
 import { exportDataToCsv } from '../../utils/export';
+import { useAuth } from '../../context/AuthContext';
 
 export const LeadsListPage = ({ onNavigate, onOpenLeadDetail }) => {
+  const { user } = useAuth();
+  const canViewAll = Boolean(
+    user?.roles?.some(r => ['Admin', 'Super Admin', 'System Admin'].includes(r?.name || r))
+    || user?.permissions?.includes('*')
+    || user?.permissions?.includes('crm.leads.read_all')
+  );
+
   const [leads, setLeads] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -334,7 +342,21 @@ export const LeadsListPage = ({ onNavigate, onOpenLeadDetail }) => {
       {/* Top Action Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Leads</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Leads</h1>
+            {canViewAll ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                All Organization Leads
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                title="Personal View: You can only see leads assigned to or created by you."
+              >
+                Personal View (My Leads Only)
+              </span>
+            )}
+          </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Capture, qualify, score, and convert prospect inquiries.
           </p>
