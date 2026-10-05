@@ -220,120 +220,135 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }) => {
     <div className="space-y-6">
       {/* Top Navigation & Action Header */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={onBack}
-              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 cursor-pointer mt-0.5"
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 cursor-pointer shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-slate-900">{lead.fullName}</h1>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-snug">
+                  {lead.fullName}
+                </h1>
                 <Badge variant={lead.isConverted ? 'emerald' : 'purple'} size="sm">
                   {lead.status}
                 </Badge>
                 {lead.isConverted && (
-                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">
                     Converted
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                {lead.jobTitle ? `${lead.jobTitle} • ` : ''}{lead.companyName || 'No Company'}
-                {lead.address?.city ? ` • ${lead.address.city}${lead.address.state ? `, ${lead.address.state}` : ''}` : ''}
-                {` • Source: ${lead.source}`}
-              </p>
             </div>
           </div>
 
-          {/* Quick Communication Actions */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              icon={Phone}
-              onClick={() => {
-                setActivityForm({ type: 'call', subject: `Call with ${lead.fullName}`, description: '', outcome: 'Connected' });
-                setIsLogActivityOpen(true);
-              }}
-            >
-              Call
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              icon={MessageSquare}
-              onClick={() => {
-                setActivityForm({ type: 'whatsapp', subject: `WhatsApp message to ${lead.fullName}`, description: '', outcome: 'Sent' });
-                setIsLogActivityOpen(true);
-              }}
-            >
-              WhatsApp
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              icon={Mail}
-              onClick={() => {
-                setActivityForm({ type: 'email', subject: `Follow-up email to ${lead.fullName}`, description: '', outcome: 'Sent' });
-                setIsLogActivityOpen(true);
-              }}
-            >
-              Email
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={Clock}
-              onClick={() => setIsFollowUpOpen(true)}
-            >
-              Follow-up
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={CheckSquare}
-              onClick={() => setIsTaskOpen(true)}
-            >
-              + Task
-            </Button>
-
-            <Button
-              size="sm"
-              variant="outline"
-              icon={Edit3}
-              onClick={() => setIsEditModalOpen(true)}
-            >
-              Edit Lead
-            </Button>
-
-            <Button
-              size="sm"
-              variant="outline"
-              icon={Trash2}
-              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
-              onClick={() => setIsDeleteModalOpen(true)}
-            >
-              Delete Lead
-            </Button>
-
+          {/* Quick Actions Toolbar - Single Row */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap shrink-0 overflow-x-auto pb-0.5">
             {!lead.isConverted && (
               <Button
                 size="sm"
                 icon={CheckCircle2}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs whitespace-nowrap shrink-0"
                 onClick={() => setIsConvertModalOpen(true)}
               >
                 Convert Lead
               </Button>
             )}
+
+            {/* Communication Group */}
+            <div className="inline-flex items-center rounded-lg border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityForm({ type: 'call', subject: `Call with ${lead.fullName}`, description: '', outcome: 'Connected' });
+                  setIsLogActivityOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap"
+                title="Log Call"
+              >
+                <Phone className="w-3.5 h-3.5 text-slate-500" />
+                <span>Call</span>
+              </button>
+              <div className="h-3.5 w-px bg-slate-200" />
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityForm({ type: 'whatsapp', subject: `WhatsApp message to ${lead.fullName}`, description: '', outcome: 'Sent' });
+                  setIsLogActivityOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors whitespace-nowrap"
+                title="WhatsApp Message"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                <span>WhatsApp</span>
+              </button>
+              <div className="h-3.5 w-px bg-slate-200" />
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityForm({ type: 'email', subject: `Follow-up email to ${lead.fullName}`, description: '', outcome: 'Sent' });
+                  setIsLogActivityOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors whitespace-nowrap"
+                title="Send Email"
+              >
+                <Mail className="w-3.5 h-3.5 text-blue-600" />
+                <span>Email</span>
+              </button>
+            </div>
+
+            {/* Activity Group */}
+            <div className="inline-flex items-center rounded-lg border border-slate-200/90 bg-white p-0.5 shadow-2xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsFollowUpOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap"
+                title="Schedule Follow-up"
+              >
+                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                <span>Follow-up</span>
+              </button>
+              <div className="h-3.5 w-px bg-slate-200" />
+              <button
+                type="button"
+                onClick={() => setIsTaskOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap"
+                title="Add Task"
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-indigo-500" />
+                <span>+ Task</span>
+              </button>
+            </div>
+
+            {/* Manage Group */}
+            <button
+              type="button"
+              onClick={() => setIsEditModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-lg shadow-2xs transition-colors whitespace-nowrap shrink-0"
+              title="Edit Lead Details"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Edit Lead</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg shadow-2xs transition-colors whitespace-nowrap shrink-0"
+              title="Delete Lead"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Lead</span>
+            </button>
           </div>
         </div>
 
         {/* Lead Score & Conversion Highlights */}
-        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-6">
+        <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-5 sm:gap-6">
             <div>
               <span className="text-slate-400 font-medium">Lead Score:</span>{' '}
               <span className="font-bold text-slate-900">{lead.score || 50}/100</span>
@@ -352,6 +367,12 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }) => {
                 ₹{(lead.estimatedValue || 0).toLocaleString('en-IN')}
               </span>
             </div>
+            {lead.source && (
+              <div>
+                <span className="text-slate-400 font-medium">Source:</span>{' '}
+                <span className="font-semibold text-slate-700">{lead.source}</span>
+              </div>
+            )}
           </div>
 
           {lead.isConverted && (

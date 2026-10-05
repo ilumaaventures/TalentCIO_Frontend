@@ -248,7 +248,7 @@ function CrmWorkspaceContent() {
           {activePage === 'companies' && <CompaniesListPage onOpenCompanyDetail={(id) => handleNavigate('companies', id)} />}
           {activePage === 'follow-ups' && <FollowUpsPage />}
           {activePage === 'tasks' && <TasksPage />}
-          {activePage === 'calendar' && <CalendarPage />}
+          {activePage === 'calendar' && <CalendarPage onNavigate={handleNavigate} />}
           {activePage === 'activities' && <ActivitiesPage />}
 
           {activePage === 'email' && <EmailHubPage />}

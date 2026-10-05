@@ -52,6 +52,13 @@ export const dataService = {
   syncImportData: (rows) => crmAdminService.syncImportData(rows),
   exportData: (entityType) => crmAdminService.exportData(entityType),
   mergeDuplicates: (data) => crmAdminService.mergeDuplicates(data),
+  logActivity: (id, data) => crmAdminService.logImportDataActivity(id, data),
+  getActivities: (id, params) => crmAdminService.getImportDataActivities(id, params),
+  scheduleFollowUp: (id, data) => crmAdminService.scheduleImportDataFollowUp(id, data),
+  updateImportDataStatus: (id, status) => crmAdminService.updateImportDataStatus(id, status),
+  getImportDataById: (id, params) => crmAdminService.getImportDataById(id, params),
+  getRepPerformance: (params) => crmAdminService.getRepPerformance(params),
+  getRepActivities: (params) => crmAdminService.getRepActivities(params),
 };
 
 export const authService = {

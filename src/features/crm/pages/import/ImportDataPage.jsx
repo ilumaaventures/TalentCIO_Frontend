@@ -28,6 +28,15 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Phone,
+  Mail,
+  MessageSquare,
+  Clock,
+  Trophy,
+  History,
+  PhoneCall,
+  MoreVertical,
+  Menu,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -40,6 +49,12 @@ import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { dataService, leadsService, adminService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { LogOutreachModal } from './LogOutreachModal';
+import { ActivityHistoryModal } from './ActivityHistoryModal';
+import { RepLeaderboardModal } from './RepLeaderboardModal';
+import { RepPerformanceCockpit } from './RepPerformanceCockpit';
+import { ImportDataDetailPage } from './ImportDataDetailPage';
+import { RepOutreachHistoryModal } from './RepOutreachHistoryModal';
 
 const STORAGE_KEY = 'crm_imported_excel_records';
 
@@ -49,6 +64,29 @@ const normalizePhone = (p) => {
   if (!p) return '';
   const digits = String(p).replace(/\D/g, '');
   return digits.length >= 10 ? digits.slice(-10) : digits;
+};
+
+const STATUS_OPTIONS = [
+  'New',
+  'Interested',
+  'Not Interested',
+  'Callback Requested',
+  'Not picking',
+  'Did not turn up',
+  'Meeting Scheduled',
+  'Lost',
+  'Other',
+];
+
+const getStatusBadgeStyle = (val) => {
+  const s = String(val || '').toLowerCase().trim();
+  if (s === 'interested') return 'bg-emerald-50 text-emerald-700 border-emerald-300 focus:ring-emerald-400';
+  if (s === 'not interested' || s === 'notinterested' || s === 'lost') return 'bg-rose-50 text-rose-700 border-rose-300 focus:ring-rose-400';
+  if (s.includes('converted')) return 'bg-teal-50 text-teal-700 border-teal-300 focus:ring-teal-400';
+  if (s.includes('turn up') || s.includes('not picking') || s.includes('callback') || s.includes('rnr')) return 'bg-amber-50 text-amber-700 border-amber-300 focus:ring-amber-400';
+  if (s === 'meeting scheduled') return 'bg-purple-50 text-purple-700 border-purple-300 focus:ring-purple-400';
+  if (s === 'new') return 'bg-blue-50 text-blue-700 border-blue-300 focus:ring-blue-400';
+  return 'bg-slate-50 text-slate-700 border-slate-300 focus:ring-slate-400';
 };
 
 export const ImportDataPage = ({ onNavigate }) => {
@@ -151,6 +189,151 @@ export const ImportDataPage = ({ onNavigate }) => {
       ...prev,
       [rowId]: !prev[rowId],
     }));
+  };
+
+  // Outreach & Performance Tracking State
+  const [outreachRow, setOutreachRow] = useState(null);
+  const [outreachInitialType, setOutreachInitialType] = useState('call');
+  const [historyRow, setHistoryRow] = useState(null);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [leaderboardInitialTab, setLeaderboardInitialTab] = useState('leaderboard');
+  const [selectedDetailRecord, setSelectedDetailRecord] = useState(null);
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const actionMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target)) {
+        setOpenActionMenuId(null);
+      }
+    };
+    if (openActionMenuId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openActionMenuId]);
+  const [historyUserModal, setHistoryUserModal] = useState({
+    isOpen: false,
+    rep: null,
+    fromLeaderboard: false,
+    initialChannelType: 'all',
+    initialOutcome: 'all',
+    initialDateRange: 'today',
+  });
+
+  const handleOpenUserHistory = (repInfo, fromLeaderboard = false, initialFilters = {}) => {
+    if (!repInfo) return;
+    const rep = typeof repInfo === 'string'
+      ? { userName: repInfo }
+      : {
+          userName: repInfo.userName || repInfo.name || 'Representative',
+          userId: repInfo.userId || repInfo._id || null,
+          email: repInfo.email || '',
+          avatar: repInfo.avatar || repInfo.profilePicture || '',
+          isAll: Boolean(repInfo.isAll),
+        };
+    setHistoryUserModal({
+      isOpen: true,
+      rep,
+      fromLeaderboard,
+      initialChannelType: initialFilters.channelType || 'all',
+      initialOutcome: initialFilters.outcome || 'all',
+      initialDateRange: initialFilters.dateRange || 'today',
+      initialCustomFrom: initialFilters.customFrom || '',
+      initialCustomTo: initialFilters.customTo || '',
+    });
+    if (fromLeaderboard) {
+      setIsLeaderboardOpen(false);
+    }
+  };
+
+  const handleOpenMetricHistory = ({ channelType = 'all', outcome = 'all', dateRange = 'today', rep }) => {
+    const targetRep = rep || (canViewAll
+      ? { userName: 'All Team Telemetry', isAll: true }
+      : { userName: currentUserName || 'My History', userId: user?._id });
+
+    setHistoryUserModal({
+      isOpen: true,
+      rep: targetRep,
+      fromLeaderboard: false,
+      initialChannelType: channelType,
+      initialOutcome: outcome,
+      initialDateRange: dateRange,
+    });
+  };
+
+  const handleToggleConvertedFilter = () => {
+    setShowConvertedOnly((prev) => {
+      const next = !prev;
+      if (next) {
+        toast.success('Filtering table by Converted Leads');
+      } else {
+        toast('Showing all imported records');
+      }
+      return next;
+    });
+    const tableEl = document.querySelector('table');
+    if (tableEl) {
+      tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleBackToLeaderboard = () => {
+    setHistoryUserModal({ isOpen: false, rep: null, fromLeaderboard: false });
+    setIsLeaderboardOpen(true);
+  };
+
+  const handleOpenOutreach = async (row, type = 'call') => {
+    let targetRow = row;
+    const targetId = row?._id || row?.id;
+    if (targetId && !row?.mobileNo && !row?.emailId) {
+      try {
+        const res = await dataService.getImportDataById(targetId, {
+          companyName: row.companyName,
+        });
+        if (res?.success && res.data) {
+          targetRow = { ...row, ...res.data };
+        }
+      } catch {
+        // fallback
+      }
+    }
+    setOutreachRow(targetRow);
+    setOutreachInitialType(type);
+  };
+
+  const handleOpenHistory = (row) => {
+    setHistoryRow(row);
+  };
+
+  const handleOutreachSuccess = (updatedRecord) => {
+    if (!updatedRecord) return;
+    setRecords((prev) =>
+      prev.map((r) => {
+        const isMatch =
+          (updatedRecord.id && r.id === updatedRecord.id) ||
+          (updatedRecord._id && (r._id === updatedRecord._id || r.id === String(updatedRecord._id)));
+        if (isMatch) {
+          return {
+            ...r,
+            ...updatedRecord,
+            callCount: updatedRecord.callCount || r.callCount || 0,
+            whatsappCount: updatedRecord.whatsappCount || r.whatsappCount || 0,
+            emailCount: updatedRecord.emailCount || r.emailCount || 0,
+            lastOutcome: updatedRecord.lastOutcome || r.lastOutcome,
+            lastContactedAt: updatedRecord.lastContactedAt || new Date().toISOString(),
+            nextFollowUpAt: updatedRecord.nextFollowUpAt || r.nextFollowUpAt,
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleSelectRepFromLeaderboard = (repName) => {
+    if (!repName) return;
+    setSelectedUsers([repName]);
+    toast.success(`Filtering table by representative: ${repName}`);
   };
 
   // Imported By User Filter state (Active users only, multi-select with search)
@@ -365,6 +548,10 @@ export const ImportDataPage = ({ onNavigate }) => {
               const isConverted = Boolean(sMatch.isConvertedToLead);
               return {
                 ...r,
+                status: sMatch.status || r.status || 'New',
+                leadStatus: sMatch.status || r.leadStatus || 'New',
+                source: sMatch.source || sMatch.leadSource || r.source || r.leadSource || '',
+                leadSource: sMatch.source || sMatch.leadSource || r.source || r.leadSource || '',
                 isConvertedToLead: isConverted,
                 leadId: isConverted ? (sMatch.leadId || r.leadId) : null,
                 duplicateReason: isConverted ? r.duplicateReason : '',
@@ -429,7 +616,11 @@ export const ImportDataPage = ({ onNavigate }) => {
       }
     };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    window.addEventListener('crm:import-data-updated', syncWithServer);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('crm:import-data-updated', syncWithServer);
+    };
   }, [syncWithServer, verifyLeadsStatus]);
 
   useEffect(() => {
@@ -493,9 +684,23 @@ export const ImportDataPage = ({ onNavigate }) => {
           const mobileNo = normalized['mobileno'] || normalized['mobile'] || normalized['phone'] || '';
           const emailId = normalized['emailid'] || normalized['email'] || '';
           const remarks = normalized['remarks'] || normalized['remark'] || normalized['notes'] || '';
-          // New columns: status and source
-          const leadStatus = normalized['status'] || normalized['leadstatus'] || '';
-          const source = normalized['source'] || normalized['leadsource'] || normalized['origin'] || '';
+          // Comprehensive status header detection from Excel (e.g. status, lead status, call status, prospect status, disposition)
+          const rawStatus =
+            normalized['status'] ||
+            normalized['leadstatus'] ||
+            normalized['callstatus'] ||
+            normalized['prospectstatus'] ||
+            normalized['currentstatus'] ||
+            normalized['disposition'] ||
+            '';
+          const leadStatus = rawStatus ? String(rawStatus).trim() : 'New';
+          const source =
+            normalized['source'] ||
+            normalized['leadsource'] ||
+            normalized['origin'] ||
+            normalized['datasource'] ||
+            normalized['channel'] ||
+            '';
 
           // Look for date in row
           let dateVal = normalized['date'] || normalized['createddate'] || normalized['entrydate'] || normalized['importdate'];
@@ -530,8 +735,10 @@ export const ImportDataPage = ({ onNavigate }) => {
             mobileNo: String(mobileNo).trim(),
             emailId: String(emailId).trim(),
             remarks: String(remarks).trim(),
-            status: String(leadStatus).trim(),
+            status: String(leadStatus).trim() || 'New',
+            leadStatus: String(leadStatus).trim() || 'New',
             source: String(source).trim(),
+            leadSource: String(source).trim(),
             date: dateObj.toISOString(),
             importedBy: currentUserName,
           };
@@ -796,6 +1003,10 @@ export const ImportDataPage = ({ onNavigate }) => {
 
         if (matchIdx !== -1) {
           const ex = updatedList[matchIdx];
+          const newStatus = uRow.status || uRow.leadStatus || ex.status || ex.leadStatus || 'New';
+          const newSource = uRow.source || uRow.leadSource || ex.source || ex.leadSource || '';
+          const isConverted = newStatus.toLowerCase().includes('converted') || Boolean(uRow.isConvertedToLead || ex.isConvertedToLead);
+
           updatedList[matchIdx] = {
             ...ex,
             companyName: uRow.companyName || ex.companyName,
@@ -807,14 +1018,22 @@ export const ImportDataPage = ({ onNavigate }) => {
             mobileNo: uRow.mobileNo || ex.mobileNo,
             emailId: uRow.emailId || ex.emailId,
             remarks: uRow.remarks || ex.remarks,
+            status: newStatus,
+            leadStatus: newStatus,
+            source: newSource,
+            leadSource: newSource,
             date: uRow.date || ex.date,
-            isConvertedToLead: Boolean(uRow.isConvertedToLead || ex.isConvertedToLead),
-            leadId: uRow.leadId || ex.leadId || null,
+            isConvertedToLead: isConverted,
+            leadId: isConverted ? (uRow.leadId || ex.leadId || null) : (ex.leadId || null),
             importedBy: uRow.importedBy || ex.importedBy || currentUserName,
           };
         } else {
           unshiftedUpdates.push({
             ...uRow,
+            status: uRow.status || uRow.leadStatus || 'New',
+            leadStatus: uRow.status || uRow.leadStatus || 'New',
+            source: uRow.source || uRow.leadSource || '',
+            leadSource: uRow.source || uRow.leadSource || '',
             importedBy: uRow.importedBy || currentUserName,
           });
         }
@@ -822,6 +1041,10 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       const newRowsWithUser = newRows.map((r) => ({
         ...r,
+        status: r.status || r.leadStatus || 'New',
+        leadStatus: r.status || r.leadStatus || 'New',
+        source: r.source || r.leadSource || '',
+        leadSource: r.source || r.leadSource || '',
         importedBy: r.importedBy || currentUserName,
       }));
 
@@ -968,8 +1191,8 @@ export const ImportDataPage = ({ onNavigate }) => {
       });
 
       // ── Status Dropdown Data Validation on Column L (rows 2–1000) ─────────
-      // Options: Interested, Not Interested, Did not turn up, Not picking, Other
-      const statusOptions = ['Interested', 'Not Interested', 'Did not turn up', 'Not picking', 'Other'];
+      // Options: New, Interested, Not Interested, Did not turn up, Not picking, Other
+      const statusOptions = ['New', 'Interested', 'Not Interested', 'Callback Requested', 'Did not turn up', 'Not picking', 'Meeting Scheduled', 'Other'];
       const statusFormula = `"${statusOptions.join(',')}"`;
 
       // ── Source Dropdown Data Validation on Column M (rows 2–1000) ─────────
@@ -1012,19 +1235,34 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   // Export Database records to Excel (.xlsx) with styled yellow header
   const handleExportData = async () => {
+    // Always start from the date-filtered + search-filtered set so the
+    // active date filter (All / Today / Last 2 Days / Last 5 Days / Custom)
+    // is always respected.
+    const dateFiltered = filteredAndSortedRecords;
+
     let rowsToExport = [];
     if (selectedIds.length > 0) {
-      rowsToExport = records.filter((r) => selectedIds.includes(r.id));
-    } else if (filteredAndSortedRecords && filteredAndSortedRecords.length > 0) {
-      rowsToExport = filteredAndSortedRecords;
+      // Intersect selection with the currently visible (date-filtered) rows
+      rowsToExport = dateFiltered.filter((r) => selectedIds.includes(r.id));
+      if (rowsToExport.length === 0) {
+        toast.error('None of the selected records match the active date filter.');
+        return;
+      }
     } else {
-      rowsToExport = records;
+      rowsToExport = dateFiltered;
     }
 
     if (!rowsToExport || rowsToExport.length === 0) {
-      toast.error('No database records available to export.');
+      const filterLabel =
+        dateFilter === 'today' ? 'Today' :
+        dateFilter === '2days' ? 'Last 2 Days' :
+        dateFilter === '5days' ? 'Last 5 Days' :
+        dateFilter === 'custom' ? 'Custom date range' :
+        'the selected filters';
+      toast.error(`No records found for ${filterLabel}.`);
       return;
     }
+
 
     try {
       const workbook = new ExcelJS.Workbook();
@@ -1085,7 +1323,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           emailId: row.emailId || '',
           remarks: row.remarks || '',
           date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
-          status: row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'Active'),
+          status: row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New'),
           source: row.leadSource || row.source || '',
           importedBy: row.importedBy || currentUserName || '',
         };
@@ -1103,14 +1341,46 @@ export const ImportDataPage = ({ onNavigate }) => {
         });
       });
 
+      // ── Status dropdown on every data row (column L = col 12) ──────────
+      const exportStatusOptions = [
+        'New', 'Interested', 'Not Interested', 'Callback Requested',
+        'Did not turn up', 'Not picking', 'Meeting Scheduled',
+        'Converted to Lead', 'Lost', 'Other',
+      ];
+      const exportStatusFormula = `"${exportStatusOptions.join(',')}"`;
+      for (let r = 2; r <= rowsToExport.length + 1; r++) {
+        worksheet.getCell(`L${r}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          showDropDown: false, // false = always show the arrow in Excel
+          showErrorMessage: true,
+          errorStyle: 'warning',
+          errorTitle: 'Invalid Status',
+          error: `Choose: ${exportStatusOptions.join(', ')}`,
+          formulae: [exportStatusFormula],
+        };
+      }
+
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const timestamp = new Date().toISOString().slice(0, 10);
-      const filename = `CRM_Database_Export_${timestamp}.xlsx`;
+      const filterSuffix =
+        dateFilter === 'today' ? '_Today' :
+        dateFilter === '2days' ? '_Last2Days' :
+        dateFilter === '5days' ? '_Last5Days' :
+        dateFilter === 'custom' ? '_Custom' :
+        '_All';
+      const filename = `CRM_Export${filterSuffix}_${timestamp}.xlsx`;
       saveAs(blob, filename);
-      toast.success(`Successfully exported ${rowsToExport.length} record${rowsToExport.length === 1 ? '' : 's'}.`);
+      const filterLabel =
+        dateFilter === 'today' ? 'Today' :
+        dateFilter === '2days' ? 'Last 2 Days' :
+        dateFilter === '5days' ? 'Last 5 Days' :
+        dateFilter === 'custom' ? 'Custom range' :
+        'All';
+      toast.success(`Exported ${rowsToExport.length} record${rowsToExport.length === 1 ? '' : 's'} (Filter: ${filterLabel}).`);
     } catch (err) {
       console.error('Export error:', err);
       toast.error('Failed to export database records. Please try again.');
@@ -1271,6 +1541,11 @@ export const ImportDataPage = ({ onNavigate }) => {
         return matchCompany || matchPerson || matchEmail || matchMobile || matchIndustry || matchAddress || matchUser;
       })
       .sort((a, b) => {
+        // Converted-to-lead rows always go to the bottom
+        const aConverted = Boolean(a.isConvertedToLead) ? 1 : 0;
+        const bConverted = Boolean(b.isConvertedToLead) ? 1 : 0;
+        if (aConverted !== bConverted) return aConverted - bConverted;
+        // Within each group keep the user's chosen date sort
         const dateA = new Date(a.date).getTime();
         const dateB = new Date(b.date).getTime();
         return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
@@ -1308,6 +1583,50 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
   };
 
+  // Change status of a record directly from table dropdown
+  const handleStatusChange = async (row, newStatus) => {
+    if (!row || !newStatus) return;
+    if (newStatus === 'Converted to Lead') {
+      handleOpenConvertSingle(row);
+      return;
+    }
+    const oldStatus = row.status || row.leadStatus || 'New';
+    if (oldStatus === newStatus) return;
+
+    const rowId = row._id || row.id;
+
+    // Optimistically update local state & localStorage
+    setRecords((prev) => {
+      const next = prev.map((r) =>
+        r.id === row.id ? { ...r, status: newStatus, leadStatus: newStatus } : r
+      );
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch (err) {
+        console.warn('Failed to persist status to localStorage:', err);
+      }
+      return next;
+    });
+
+    try {
+      await dataService.updateImportDataStatus(rowId, newStatus);
+      toast.success(`Status updated to "${newStatus}"`);
+    } catch (err) {
+      console.error('Failed to update status on server:', err);
+      toast.error('Failed to update status on server');
+      // Revert optimistic update
+      setRecords((prev) => {
+        const reverted = prev.map((r) =>
+          r.id === row.id ? { ...r, status: oldStatus, leadStatus: oldStatus } : r
+        );
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted));
+        } catch (_) {}
+        return reverted;
+      });
+    }
+  };
+
   // Checkbox handlers
   const handleToggleRow = (id) => {
     setSelectedIds((prev) =>
@@ -1340,13 +1659,92 @@ export const ImportDataPage = ({ onNavigate }) => {
     paginatedRecords.length > 0 &&
     paginatedRecords.every((r) => selectedIds.includes(r.id));
 
+  // Bulk status change & actions menu
+  const [bulkStatusValue, setBulkStatusValue] = useState('');
+  const [isBulkStatusLoading, setIsBulkStatusLoading] = useState(false);
+  const [isBulkMenuOpen, setIsBulkMenuOpen] = useState(false);
+  const bulkMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target)) {
+        setIsBulkMenuOpen(false);
+      }
+    };
+    if (isBulkMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isBulkMenuOpen]);
+
+  const handleBulkStatusChange = async (targetStatus) => {
+    const statusToApply = targetStatus || bulkStatusValue;
+    if (!statusToApply || selectedIds.length === 0) return;
+    const targets = records.filter(
+      (r) => selectedIds.includes(r.id) && !r.isDuplicate
+    );
+    if (targets.length === 0) {
+      toast.error('No eligible rows selected (duplicates are skipped).');
+      return;
+    }
+    setIsBulkStatusLoading(true);
+    const oldStatuses = Object.fromEntries(targets.map((r) => [r.id, r.status || r.leadStatus || 'New']));
+    // Optimistic update
+    setRecords((prev) => {
+      const next = prev.map((r) =>
+        selectedIds.includes(r.id) && !r.isDuplicate
+          ? { ...r, status: statusToApply, leadStatus: statusToApply }
+          : r
+      );
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    try {
+      await Promise.all(
+        targets.map((r) =>
+          dataService.updateImportDataStatus(r._id || r.id, statusToApply)
+        )
+      );
+      toast.success(`Status set to "${statusToApply}" for ${targets.length} record${targets.length === 1 ? '' : 's'}.`);
+      setBulkStatusValue('');
+    } catch (err) {
+      console.error('Bulk status update failed:', err);
+      toast.error('Failed to update status on server — changes reverted.');
+      setRecords((prev) => {
+        const reverted = prev.map((r) =>
+          oldStatuses[r.id] !== undefined
+            ? { ...r, status: oldStatuses[r.id], leadStatus: oldStatuses[r.id] }
+            : r
+        );
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted)); } catch (_) {}
+        return reverted;
+      });
+    } finally {
+      setIsBulkStatusLoading(false);
+    }
+  };
+
   // Move to Lead confirmation modal state
   const [convertTarget, setConvertTarget] = useState(null); // null | { type: 'single', row } | { type: 'bulk', count, rows }
 
   // Open convert confirmation modal for single row
-  const handleOpenConvertSingle = (row) => {
+  const handleOpenConvertSingle = async (row) => {
     if (!row || row.isConvertedToLead) return;
-    setConvertTarget({ type: 'single', row });
+    let targetRow = row;
+    const targetId = row._id || row.id;
+    if (targetId && !row.contactPerson && !row.mobileNo) {
+      try {
+        const res = await dataService.getImportDataById(targetId, {
+          companyName: row.companyName,
+        });
+        if (res?.success && res.data) {
+          targetRow = { ...row, ...res.data };
+        }
+      } catch {
+        // fallback
+      }
+    }
+    setConvertTarget({ type: 'single', row: targetRow });
   };
 
   // Open convert confirmation modal for bulk selected
@@ -1417,6 +1815,8 @@ export const ImportDataPage = ({ onNavigate }) => {
         const updatedRow = {
           ...row,
           isConvertedToLead: true,
+          status: 'Converted to Lead',
+          leadStatus: 'Converted to Lead',
           leadId: newLeadId,
           isDuplicate: false,
           duplicateReason: '',
@@ -1424,6 +1824,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         setRecords((prev) =>
           prev.map((r) => (r.id === row.id ? updatedRow : r))
         );
+        dataService.updateImportDataStatus(row._id || row.id, 'Converted to Lead').catch(console.warn);
         dataService.syncImportData([updatedRow]).catch(console.warn);
         toast.success(`"${row.companyName}" converted to Lead successfully!`);
         setConvertTarget(null);
@@ -1473,9 +1874,21 @@ export const ImportDataPage = ({ onNavigate }) => {
         if (res.success) {
           const sentIds = new Set(selectedRows.map((r) => r.id));
           const updated = records.map((r) =>
-            sentIds.has(r.id) ? { ...r, isConvertedToLead: true } : r
+            sentIds.has(r.id)
+              ? {
+                  ...r,
+                  isConvertedToLead: true,
+                  status: 'Converted to Lead',
+                  leadStatus: 'Converted to Lead',
+                }
+              : r
           );
           setRecords(updated);
+          Promise.all(
+            selectedRows.map((r) =>
+              dataService.updateImportDataStatus(r._id || r.id, 'Converted to Lead')
+            )
+          ).catch(console.warn);
           dataService.syncImportData(updated).catch(console.warn);
 
           toast.success(
@@ -1572,18 +1985,32 @@ export const ImportDataPage = ({ onNavigate }) => {
   const [editingRow, setEditingRow] = useState(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  const handleOpenEdit = (row) => {
+  const handleOpenEdit = async (row) => {
     if (!row || row.isConvertedToLead) return;
-    let dateInput = '';
-    if (row.date) {
+    let targetRow = row;
+    const targetId = row._id || row.id;
+    if (targetId && !row.contactPerson && !row.mobileNo) {
       try {
-        dateInput = new Date(row.date).toISOString().split('T')[0];
+        const res = await dataService.getImportDataById(targetId, {
+          companyName: row.companyName,
+        });
+        if (res?.success && res.data) {
+          targetRow = { ...row, ...res.data };
+        }
+      } catch {
+        // fallback
+      }
+    }
+    let dateInput = '';
+    if (targetRow.date) {
+      try {
+        dateInput = new Date(targetRow.date).toISOString().split('T')[0];
       } catch {
         dateInput = '';
       }
     }
     setEditingRow({
-      ...row,
+      ...targetRow,
       dateInput,
     });
   };
@@ -1639,70 +2066,45 @@ export const ImportDataPage = ({ onNavigate }) => {
         date: finalDate,
       };
 
-      let savedLeadId = editingRow.leadId || editingRow._id;
+      let savedLeadId = editingRow.leadId || null;
 
       if (savedLeadId) {
-        // Lead already persisted in DB - update it
-        await leadsService.updateLead(savedLeadId, leadPayload);
-        toast.success(`Updated "${compName}" in Database!`);
-      } else {
-        // Create new lead in CRM database
-        const res = await leadsService.createLead(leadPayload);
-        if (res?.data?._id || res?._id) {
-          savedLeadId = res.data?._id || res._id;
-        }
-        toast.success(`Saved "${compName}" to Database successfully!`);
+        // If this record was already converted to a CRM Lead, update the linked lead document
+        await leadsService.updateLead(savedLeadId, leadPayload).catch(console.warn);
       }
 
-      // FIX #6: Only mark isConvertedToLead:true when the DB operation actually
-      // succeeded and we have a valid leadId. If createLead fails (network error,
-      // validation error) the row must keep its previous converted state, not
-      // silently appear as converted without a real lead in the CRM.
-      const didSucceed = Boolean(savedLeadId);
+      const rowSource = (editingRow.source || editingRow.leadSource || '').trim();
+      const isConverted = Boolean(editingRow.isConvertedToLead);
 
-      // Update in active workspace records
+      const updatedRowData = {
+        ...editingRow,
+        companyName: compName,
+        contactPerson: (editingRow.contactPerson || '').trim(),
+        designation: (editingRow.designation || '').trim(),
+        mobileNo: (editingRow.mobileNo || '').trim(),
+        emailId: (editingRow.emailId || '').trim(),
+        industry: (editingRow.industry || '').trim(),
+        source: rowSource,
+        leadSource: rowSource,
+        rating: (editingRow.rating || '').trim(),
+        address: (editingRow.address || '').trim(),
+        remarks: (editingRow.remarks || '').trim(),
+        date: finalDate,
+        leadId: savedLeadId,
+        isConvertedToLead: isConverted,
+      };
+
+      // Update in active workspace records (stays in exact same table position)
       setRecords((prev) =>
-        prev.map((r) =>
-          r.id === editingRow.id
-            ? {
-              ...r,
-              companyName: compName,
-              contactPerson: (editingRow.contactPerson || '').trim(),
-              designation: (editingRow.designation || '').trim(),
-              mobileNo: (editingRow.mobileNo || '').trim(),
-              emailId: (editingRow.emailId || '').trim(),
-              industry: (editingRow.industry || '').trim(),
-              rating: (editingRow.rating || '').trim(),
-              address: (editingRow.address || '').trim(),
-              remarks: (editingRow.remarks || '').trim(),
-              date: finalDate,
-              leadId: savedLeadId || r.leadId,
-              // Only flip to true when we have a confirmed leadId from the API
-              isConvertedToLead: didSucceed ? true : r.isConvertedToLead,
-              isDuplicate: didSucceed ? false : r.isDuplicate,
-              duplicateReason: didSucceed ? '' : r.duplicateReason,
-            }
-            : r
-        )
+        prev.map((r) => (r.id === editingRow.id ? { ...r, ...updatedRowData } : r))
       );
-      // Sync updated row to CrmImportData only if the save actually worked
-      if (didSucceed) {
-        dataService.syncImportData([{
-          ...editingRow,
-          companyName: compName,
-          contactPerson: (editingRow.contactPerson || '').trim(),
-          designation: (editingRow.designation || '').trim(),
-          mobileNo: (editingRow.mobileNo || '').trim(),
-          emailId: (editingRow.emailId || '').trim(),
-          industry: (editingRow.industry || '').trim(),
-          rating: (editingRow.rating || '').trim(),
-          address: (editingRow.address || '').trim(),
-          remarks: (editingRow.remarks || '').trim(),
-          date: finalDate,
-          leadId: savedLeadId,
-          isConvertedToLead: true,
-        }]).catch(console.warn);
-      }
+
+      // Sync updated row to CrmImportData on server
+      dataService.syncImportData([updatedRowData]).catch((err) => {
+        console.warn('Failed to sync edited prospect with server:', err);
+      });
+
+      toast.success(`Saved changes for "${compName}" successfully!`);
 
       // Also update in stagedData if editing a staged preview row
       if (stagedData?.rows) {
@@ -1712,37 +2114,12 @@ export const ImportDataPage = ({ onNavigate }) => {
             r.id === editingRow.id
               ? {
                 ...r,
-                companyName: compName,
-                contactPerson: (editingRow.contactPerson || '').trim(),
-                designation: (editingRow.designation || '').trim(),
-                mobileNo: (editingRow.mobileNo || '').trim(),
-                emailId: (editingRow.emailId || '').trim(),
-                industry: (editingRow.industry || '').trim(),
-                rating: (editingRow.rating || '').trim(),
-                address: (editingRow.address || '').trim(),
-                remarks: (editingRow.remarks || '').trim(),
-                date: finalDate,
-                leadId: savedLeadId,
-                isConvertedToLead: true,
-                rowType: 'update',
-                isDuplicate: false,
-                isUpdate: true,
-                isNew: false,
-                duplicateReason: '',
-                updateReason: 'Saved to CRM Database',
+                ...updatedRowData,
+                rowType: r.rowType || 'update',
               }
               : r
           );
-          const newCount = updatedRows.filter((r) => r.rowType === 'new').length;
-          const updateCount = updatedRows.filter((r) => r.rowType === 'update').length;
-          const dupCount = updatedRows.filter((r) => r.rowType === 'duplicate').length;
-          return {
-            ...prev,
-            rows: updatedRows,
-            newCount,
-            updateCount,
-            duplicateCount: dupCount,
-          };
+          return { ...prev, rows: updatedRows };
         });
       }
 
@@ -1757,8 +2134,29 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {selectedDetailRecord ? (
+        <ImportDataDetailPage
+          record={selectedDetailRecord}
+          onBack={() => setSelectedDetailRecord(null)}
+          onNavigate={onNavigate}
+          onConvert={() => handleOpenConvertSingle(selectedDetailRecord)}
+          onEdit={() => handleOpenEdit(selectedDetailRecord)}
+          onDelete={() => {
+            const r = selectedDetailRecord;
+            setSelectedDetailRecord(null);
+            handleOpenDeleteSingle(r);
+          }}
+          onUpdateRecord={(updated) => {
+            setSelectedDetailRecord(updated);
+            setRecords((prev) =>
+              prev.map((r) => (r.id === updated.id || r._id === updated._id ? { ...r, ...updated } : r))
+            );
+          }}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
             <Database className="w-6 h-6 text-emerald-600 shrink-0" />
@@ -2019,6 +2417,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Email ID</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Remarks</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Date</th>
+                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Status</th>
+                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Source</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Imported By</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center">Action</th>
                     </tr>
@@ -2026,7 +2426,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                   <tbody className="divide-y divide-slate-100">
                     {visibleStagedRows.length === 0 ? (
                       <tr>
-                        <td colSpan={13} className="py-8 text-center text-slate-400">
+                        <td colSpan={15} className="py-8 text-center text-slate-400">
                           No {previewTab} records to display in this sheet.
                         </td>
                       </tr>
@@ -2110,6 +2510,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                           <td className="p-2.5 text-slate-500 max-w-xs truncate">{row.remarks || '—'}</td>
                           <td className="p-2.5 text-slate-600 whitespace-nowrap font-medium">
                             {row.date ? new Date(row.date).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="p-2.5 border-l border-slate-200 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(row.status || row.leadStatus || 'New')}`}>
+                              {row.status || row.leadStatus || 'New'}
+                            </span>
+                          </td>
+                          <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
+                            {row.source || row.leadSource || '—'}
                           </td>
                           <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
@@ -2393,6 +2801,19 @@ export const ImportDataPage = ({ onNavigate }) => {
             })()}
           </div>
 
+          {/* Real-time Outreach & Rep Performance Cockpit */}
+          <RepPerformanceCockpit
+            canViewAll={canViewAll}
+            onOpenLeaderboard={(tab = 'leaderboard') => {
+              setLeaderboardInitialTab(tab);
+              setIsLeaderboardOpen(true);
+            }}
+            onSelectRep={handleSelectRepFromLeaderboard}
+            onOpenUserHistory={handleOpenUserHistory}
+            onOpenMetricHistory={handleOpenMetricHistory}
+            onToggleConvertedFilter={handleToggleConvertedFilter}
+          />
+
           {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
           <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             {/* Left Filter Options: Date Filter + Search */}
@@ -2647,26 +3068,89 @@ export const ImportDataPage = ({ onNavigate }) => {
 
               {selectedIds.length > 0 && (
                 <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    icon={Download}
-                    onClick={handleExportData}
-                    className="shadow-2xs text-slate-700 hover:bg-slate-50 border-slate-300"
-                    title="Export selected records to Excel"
-                  >
-                    Export Selected ({selectedIds.length})
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    icon={Trash2}
-                    onClick={handleOpenDeleteSelected}
-                    className="shadow-sm"
-                    title="Move selected companies to Recycle Bin"
-                  >
-                    Delete Selected ({selectedIds.length})
-                  </Button>
+                  {/* ── Sleek Bulk Actions Burger Menu ── */}
+                  <div className="relative inline-block" ref={bulkMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsBulkMenuOpen((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 shadow-2xs transition cursor-pointer select-none"
+                      title="Bulk Actions Menu"
+                    >
+                      <Menu className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Actions ({selectedIds.length})</span>
+                      <ChevronDown
+                        className={`w-3 h-3 text-indigo-400 transition-transform duration-200 ${
+                          isBulkMenuOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {isBulkMenuOpen && (
+                      <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+                        {/* Header */}
+                        <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+                          <span>Selected: {selectedIds.length}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedIds([]);
+                              setIsBulkMenuOpen(false);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-800 font-medium normal-case hover:underline text-[11px]"
+                          >
+                            Clear Selection
+                          </button>
+                        </div>
+
+                        {/* Change Status Section */}
+                        <div className="px-3 pt-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Change Status:
+                        </div>
+                        <div className="max-h-52 overflow-y-auto px-1.5 py-0.5 space-y-0.5 custom-scrollbar">
+                          {STATUS_OPTIONS.map((status) => (
+                            <button
+                              key={status}
+                              type="button"
+                              disabled={isBulkStatusLoading}
+                              onClick={() => {
+                                handleBulkStatusChange(status);
+                                setIsBulkMenuOpen(false);
+                              }}
+                              className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition text-left cursor-pointer group"
+                            >
+                              <span className="font-medium group-hover:translate-x-0.5 transition-transform">
+                                {status}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${getStatusBadgeStyle(
+                                  status
+                                )}`}
+                              >
+                                Set
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="my-1.5 border-t border-slate-100" />
+
+                        {/* Delete Action */}
+                        <div className="px-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsBulkMenuOpen(false);
+                              handleOpenDeleteSelected();
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition font-semibold text-left cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Delete Selected ({selectedIds.length})</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -2677,7 +3161,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                 disabled={selectedIds.length === 0}
                 isLoading={isSubmitting}
                 onClick={handleOpenConvertBulk}
-                className="shadow-sm"
+                className="shadow-sm whitespace-nowrap"
               >
                 Send to Leads ({selectedIds.length})
               </Button>
@@ -2792,8 +3276,8 @@ export const ImportDataPage = ({ onNavigate }) => {
           </div>
 
           {/* Main Table */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto max-h-[600px]">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
+            <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
               <table className="w-full text-left border-collapse text-xs">
                 {/* Grey Table Header */}
                 <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
@@ -2810,13 +3294,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <th className="p-3 border-l border-slate-200 text-center w-12 whitespace-nowrap">S.NO</th>
                     <th className="p-3 border-l border-slate-200 whitespace-nowrap">Company Name</th>
                     <th className="p-3 border-l border-slate-200 whitespace-nowrap">Industry</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Address</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Rating</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Contact Person</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Designation</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Mobile No</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Email ID</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Remarks</th>
+                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Source</th>
+                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Status</th>
                     <th
                       className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors"
                       onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
@@ -2832,14 +3311,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                       </div>
                     </th>
                     <th className="p-3 border-l border-slate-200 whitespace-nowrap">Imported By</th>
-                    <th className="p-3 border-l border-slate-200 text-center w-24 whitespace-nowrap">Action</th>
+                    <th className="p-3 border-l border-slate-200 text-center w-16 whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
                   {totalMatchingRecords === 0 ? (
                     <tr>
-                      <td colSpan={14} className="py-12 text-center text-slate-400">
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
                           <p className="font-semibold text-slate-600">
@@ -2858,14 +3337,11 @@ export const ImportDataPage = ({ onNavigate }) => {
                   ) : (
                     paginatedRecords.map((row, idx) => {
                       const isSelected = selectedIds.includes(row.id);
-                      const isRemarkExpanded = Boolean(expandedRemarks[row.id]);
-                      const isLongRemark = (row.remarks || '').trim().length > 30;
                       return (
                         <tr
                           key={row.id}
-                          className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${isSelected ? 'bg-indigo-50/40' : ''
-                            } ${isRemarkExpanded ? 'align-top bg-slate-50/30' : ''}`}
-                          onClick={() => handleToggleRow(row.id)}
+                          className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/40' : ''}`}
+                          onClick={() => setSelectedDetailRecord(row)}
                         >
                           <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                             <input
@@ -2879,40 +3355,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                             {startEntry + idx}
                           </td>
                           <td className="p-3 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>{row.companyName || '—'}</span>
-                              {row.isConvertedToLead ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onNavigate) onNavigate('leads');
-                                  }}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1.5 shrink-0 shadow-2xs hover:shadow-xs transition cursor-pointer"
-                                  title="Converted to Lead in CRM. Click to view in Leads tab."
-                                >
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>Converted to Lead</span>
-                                  <ExternalLink className="w-2.5 h-2.5 opacity-60 ml-0.5" />
-                                </button>
-                              ) : row.isDuplicate ? (
-                                <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 ml-1 shrink-0"
-                                  title={row.duplicateReason || 'Duplicate found'}
-                                >
-                                  <AlertTriangle className="w-3 h-3 text-rose-500" />
-                                  Duplicate
-                                </span>
-                              ) : null}
+                            <div className="flex items-center gap-1.5">
+                              <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+                              <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                {row.companyName || '—'}
+                              </span>
                             </div>
-                            {row.isDuplicate && !row.isConvertedToLead && row.duplicateReason && (
-                              <div className="text-[10px] text-rose-600 font-normal mt-0.5">
-                                {row.duplicateReason}
-                              </div>
-                            )}
                           </td>
-                          <td className="p-3 text-slate-700 whitespace-nowrap">
+                          <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             {row.industry ? (
                               <Badge variant="neutral" size="sm">
                                 {row.industry}
@@ -2921,113 +3371,152 @@ export const ImportDataPage = ({ onNavigate }) => {
                               '—'
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 max-w-xs truncate" title={row.address}>
-                            {row.address || '—'}
+                          <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
+                            {row.source || row.leadSource || '—'}
                           </td>
-                          <td className="p-3 text-slate-800 whitespace-nowrap font-semibold">
-                            {row.rating ? (
-                              <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                                ★ {row.rating}
+                          <td className="p-3 border-l border-slate-200 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {row.isDuplicate ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                                title={row.duplicateReason || 'Duplicate found'}
+                              >
+                                <AlertTriangle className="w-3 h-3 text-rose-500" />
+                                <span>Duplicate</span>
                               </span>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="p-3 font-semibold text-slate-800 whitespace-nowrap">
-                            {row.contactPerson || '—'}
-                          </td>
-                          <td className="p-3 text-slate-600 whitespace-nowrap">{row.designation || '—'}</td>
-                          <td className="p-3 text-slate-700 whitespace-nowrap font-mono">{row.mobileNo || '—'}</td>
-                          <td className="p-3 text-slate-700 whitespace-nowrap font-mono">{row.emailId || '—'}</td>
-                          <td
-                            className={`p-3 text-slate-600 transition-all ${
-                              isRemarkExpanded
-                                ? 'min-w-[260px] max-w-md whitespace-normal break-words py-4'
-                                : 'max-w-xs'
-                            }`}
-                          >
-                            {isLongRemark ? (
-                              <div className="flex items-start gap-1.5">
-                                <div
-                                  className={`flex-1 ${
-                                    isRemarkExpanded
-                                      ? 'text-xs text-slate-800 leading-relaxed font-normal bg-slate-50/90 p-2.5 rounded-lg border border-slate-200 shadow-2xs'
-                                      : 'truncate'
-                                  }`}
-                                  title={isRemarkExpanded ? '' : row.remarks}
-                                >
-                                  {row.remarks}
-                                </div>
+                            ) : row.isConvertedToLead ? (
+                              <div className="relative inline-flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-300">
+                                  <CheckCircle2 className="w-3 h-3 text-teal-600" />
+                                  <span>Converted to Lead</span>
+                                </span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    toggleExpandRemark(row.id);
+                                    if (onNavigate) onNavigate('leads');
                                   }}
-                                  className={`p-1 rounded-md transition shrink-0 inline-flex items-center justify-center ${
-                                    isRemarkExpanded
-                                      ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
-                                      : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
-                                  }`}
-                                  title={isRemarkExpanded ? 'Collapse remark' : 'View full remark'}
+                                  className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition"
+                                  title="View in CRM Leads"
                                 >
-                                  {isRemarkExpanded ? (
-                                    <EyeOff className="w-3.5 h-3.5" />
-                                  ) : (
-                                    <Eye className="w-3.5 h-3.5" />
-                                  )}
+                                  <ExternalLink className="w-3 h-3" />
                                 </button>
                               </div>
                             ) : (
-                              <span className="truncate" title={row.remarks}>
-                                {row.remarks || '—'}
-                              </span>
+                              <div className="relative inline-flex items-center gap-1.5">
+                                <div className="relative inline-flex items-center">
+                                  <select
+                                    value={row.status || row.leadStatus || 'New'}
+                                    onChange={(e) => handleStatusChange(row, e.target.value)}
+                                    className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
+                                      row.status || row.leadStatus || 'New'
+                                    )}`}
+                                  >
+                                    {STATUS_OPTIONS.map((opt) => (
+                                      <option key={opt} value={opt} className="bg-white text-slate-800 text-xs font-normal">
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="w-3 h-3 absolute right-2 pointer-events-none opacity-60" />
+                                </div>
+                              </div>
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 whitespace-nowrap font-medium">
+                          <td className="p-3 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium">
                             {row.date ? new Date(row.date).toLocaleDateString() : '—'}
                           </td>
                           <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
-                              <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0">
-                                {(row.importedBy || currentUserName || 'U').charAt(0).toUpperCase()}
+                              <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 uppercase">
+                                {(row.importedBy || currentUserName || 'U').charAt(0)}
                               </div>
                               <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || currentUserName}>
                                 {row.importedBy || currentUserName}
                               </span>
                             </div>
                           </td>
-                          <td className="p-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1.5 min-h-[28px]">
-                              {!row.isConvertedToLead ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenConvertSingle(row)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
-                                    title="Convert to CRM Lead"
-                                  >
-                                    <Send className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenEdit(row)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                                    title="Edit all fields & Save"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenDeleteSingle(row)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                    title="Move this company to Recycle Bin"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="text-slate-300 text-xs select-none" title="Managed as active Lead in CRM Leads">—</span>
+                          <td className="p-3 border-l border-slate-200 text-center whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
+                            <div className="relative inline-flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenActionMenuId((prev) => (prev === row.id ? null : row.id));
+                                }}
+                                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                  openActionMenuId === row.id
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
+                                }`}
+                                title="Row Actions"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {openActionMenuId === row.id && (
+                                <div
+                                  ref={actionMenuRef}
+                                  className={`absolute right-0 w-44 bg-white rounded-xl shadow-2xl border border-slate-200/95 py-1 z-50 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100 ${
+                                    paginatedRecords.length > 4 && idx >= paginatedRecords.length - 2
+                                      ? 'bottom-full mb-1.5'
+                                      : 'top-full mt-1.5'
+                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenOutreach(row, 'call');
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition font-medium cursor-pointer"
+                                    >
+                                      <PhoneCall className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                      <span>Log Outreach</span>
+                                    </button>
+
+                                    {!row.isConvertedToLead && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenActionMenuId(null);
+                                          handleOpenConvertSingle(row);
+                                        }}
+                                        className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 transition font-medium cursor-pointer"
+                                      >
+                                        <Send className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                        <span>Send to Leads</span>
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenEdit(row);
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50 hover:text-slate-900 text-slate-700 transition font-medium cursor-pointer"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                      <span>Edit Company</span>
+                                    </button>
+                                  </div>
+
+                                  <div className="py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenDeleteSingle(row);
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-rose-50 hover:text-rose-700 text-rose-600 transition font-medium cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -3082,6 +3571,8 @@ export const ImportDataPage = ({ onNavigate }) => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* Edit Company Details Modal */}
@@ -3180,6 +3671,19 @@ export const ImportDataPage = ({ onNavigate }) => {
                   setEditingRow((prev) => ({ ...prev, rating: e.target.value }))
                 }
                 placeholder="e.g. 4.5"
+              />
+
+              <Input
+                label="Source"
+                value={editingRow.source || editingRow.leadSource || ''}
+                onChange={(e) =>
+                  setEditingRow((prev) => ({
+                    ...prev,
+                    source: e.target.value,
+                    leadSource: e.target.value,
+                  }))
+                }
+                placeholder="e.g. LinkedIn, Cold Call, Referral"
               />
 
               <Input
@@ -3428,6 +3932,68 @@ export const ImportDataPage = ({ onNavigate }) => {
             )}
           </div>
         </Modal>
+      )}
+
+      {/* Outreach Action Modal (Call, WhatsApp, Email, Follow-up) */}
+      {outreachRow && (
+        <LogOutreachModal
+          isOpen={Boolean(outreachRow)}
+          onClose={() => setOutreachRow(null)}
+          row={outreachRow}
+          initialType={outreachInitialType}
+          onSuccess={handleOutreachSuccess}
+        />
+      )}
+
+      {/* Activity History & Follow-ups Timeline Drawer */}
+      {historyRow && (
+        <ActivityHistoryModal
+          isOpen={Boolean(historyRow)}
+          onClose={() => setHistoryRow(null)}
+          row={historyRow}
+          onLogNew={(r) => handleOpenOutreach(r, 'call')}
+        />
+      )}
+
+      {/* Team Performance & Leaderboard Modal */}
+      <RepLeaderboardModal
+        isOpen={isLeaderboardOpen}
+        initialTab={leaderboardInitialTab}
+        onClose={() => setIsLeaderboardOpen(false)}
+        onSelectRepFilter={handleSelectRepFromLeaderboard}
+        onOpenUserHistory={(rep, filters) => handleOpenUserHistory(rep, true, filters)}
+        onOpenOutreach={(prospect, type) => {
+          setOutreachRow(prospect);
+          setOutreachInitialType(type || 'call');
+        }}
+        onOpenProspectDetails={(prospect) => {
+          setSelectedDetailRecord(prospect);
+        }}
+      />
+
+      {/* Representative Outreach Activity & History Modal */}
+      {historyUserModal.isOpen && (
+        <RepOutreachHistoryModal
+          isOpen={historyUserModal.isOpen}
+          onClose={() => setHistoryUserModal({ isOpen: false, rep: null, fromLeaderboard: false })}
+          onBack={historyUserModal.fromLeaderboard ? handleBackToLeaderboard : null}
+          rep={historyUserModal.rep}
+          initialChannelType={historyUserModal.initialChannelType || 'all'}
+          initialOutcome={historyUserModal.initialOutcome || 'all'}
+          initialDateRange={historyUserModal.initialDateRange || 'today'}
+          initialCustomFrom={historyUserModal.initialCustomFrom || ''}
+          initialCustomTo={historyUserModal.initialCustomTo || ''}
+          onSelectRepFilter={(repName) => {
+            handleSelectRepFromLeaderboard(repName);
+          }}
+          onOpenOutreach={(prospect, type) => {
+            setOutreachRow(prospect);
+            setOutreachInitialType(type || 'call');
+          }}
+          onOpenProspectDetails={(prospect) => {
+            setSelectedDetailRecord(prospect);
+          }}
+        />
       )}
     </div>
   );

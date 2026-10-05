@@ -367,4 +367,32 @@ export const crmAdminService = {
     const res = await api.post('/crm/data/merge', data);
     return res.data;
   },
+  logImportDataActivity: async (id, data) => {
+    const res = await api.post(`/crm/data/import-data/${id}/activity`, data);
+    return res.data;
+  },
+  getImportDataActivities: async (id, params = {}) => {
+    const res = await api.get(`/crm/data/import-data/${id}/activities`, { params });
+    return res.data;
+  },
+  getImportDataById: async (id, params = {}) => {
+    const res = await api.get(`/crm/data/import-data/${id}`, { params });
+    return res.data;
+  },
+  scheduleImportDataFollowUp: async (id, data) => {
+    const res = await api.post(`/crm/data/import-data/${id}/follow-up`, data);
+    return res.data;
+  },
+  updateImportDataStatus: async (id, status) => {
+    const res = await api.patch(`/crm/data/import-data/${id}/status`, { status });
+    return res.data;
+  },
+  getRepPerformance: async (params = {}) => {
+    const res = await api.get('/crm/data/performance', { params });
+    return res.data;
+  },
+  getRepActivities: async (params = {}) => {
+    const res = await api.get('/crm/data/rep-activities', { params });
+    return res.data;
+  },
 };
