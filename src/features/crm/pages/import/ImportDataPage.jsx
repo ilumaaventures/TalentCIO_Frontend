@@ -129,7 +129,21 @@ export const ImportDataPage = ({ onNavigate }) => {
       }
       const key = user?._id ? `${STORAGE_KEY}_${user._id}` : STORAGE_KEY;
       const saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      const seen = new Set();
+      return parsed.filter((r) => {
+        const k = [
+          (r.companyName || '').trim().toLowerCase(),
+          (r.mobileNo || '').trim().replace(/\D/g, '').slice(-10),
+          (r.emailId || '').trim().toLowerCase(),
+        ].join('|');
+        if (k === '||') return true;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     } catch {
       return [];
     }
@@ -425,18 +439,30 @@ export const ImportDataPage = ({ onNavigate }) => {
       const name = (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim();
       if (name) {
         userMap.set(name.toLowerCase(), {
-          id: u._id || name,
+          id: String(u._id || name),
           name,
           email: u.email || '',
         });
       }
     });
 
-    // 2. Ensure current logged-in user is in the options
+    // 2. Add users who have imported records in the workspace (so Admin can filter by any user who imported data)
+    records.forEach((r) => {
+      const name = (r.importedBy || '').trim();
+      if (name && !userMap.has(name.toLowerCase())) {
+        userMap.set(name.toLowerCase(), {
+          id: r.importedByUserId ? String(r.importedByUserId) : name,
+          name,
+          email: '',
+        });
+      }
+    });
+
+    // 3. Ensure current logged-in user is in the options
     if (currentUserName && currentUserName !== 'Admin') {
       if (!userMap.has(currentUserName.toLowerCase())) {
         userMap.set(currentUserName.toLowerCase(), {
-          id: user?._id || currentUserName,
+          id: user?._id ? String(user._id) : currentUserName,
           name: currentUserName,
           email: user?.email || '',
         });
@@ -444,7 +470,7 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
 
     return Array.from(userMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [availableUsers, currentUserName, user]);
+  }, [availableUsers, currentUserName, user, records]);
 
   // Filter active users inside dropdown search bar
   const filteredUserOptions = useMemo(() => {
@@ -477,111 +503,35 @@ export const ImportDataPage = ({ onNavigate }) => {
   // Fetch active import data from server and reconcile with workspace
   const syncWithServer = useCallback(async () => {
     try {
-      const res = await dataService.getImportData();
+      const res = await dataService.getImportData({ all: 'true' });
       if (res?.success && Array.isArray(res.data)) {
         const serverRows = res.data;
-        setRecords((prevRecords) => {
-          // For restricted users, serverRows returned by backend is strictly the source of truth.
-          // Never auto-push old localStorage records to the server!
-          if (!canViewAll) {
-            return serverRows.map((s) => ({
-              ...s,
-              importedBy: s.importedBy || currentUserName,
-            }));
-          }
-
-          // If server has 0 records but local has records, sync local records up to server (admin only)
-          if (serverRows.length === 0 && prevRecords.length > 0) {
-            dataService.syncImportData(prevRecords).catch(console.warn);
-            return prevRecords;
-          }
-
-          // If local has 0 records and server has records, load server records
-          if (prevRecords.length === 0 && serverRows.length > 0) {
-            return serverRows.map((s) => ({
-              ...s,
-              importedBy: s.importedBy || currentUserName,
-            }));
-          }
-
-          const localIdSet = new Set(prevRecords.map((r) => r.id));
-          const localKeySet = new Set(
-            prevRecords.map((r) =>
-              [
-                (r.companyName || '').trim().toLowerCase(),
-                (r.contactPerson || '').trim().toLowerCase(),
-                (r.mobileNo || '').trim(),
-                (r.emailId || '').trim().toLowerCase(),
-              ].join('|')
-            )
-          );
-
-          const serverKeyMap = new Map();
-          serverRows.forEach((sRow) => {
-            const key = [
-              (sRow.companyName || '').trim().toLowerCase(),
-              (sRow.contactPerson || '').trim().toLowerCase(),
-              (sRow.mobileNo || '').trim(),
-              (sRow.emailId || '').trim().toLowerCase(),
-            ].join('|');
-            serverKeyMap.set(key, sRow);
-          });
-
-          // Items restored from Recycle Bin on server that are currently missing locally
-          const restoredRows = serverRows
-            .filter((sRow) => {
-              const key = [
-                (sRow.companyName || '').trim().toLowerCase(),
-                (sRow.contactPerson || '').trim().toLowerCase(),
-                (sRow.mobileNo || '').trim(),
-                (sRow.emailId || '').trim().toLowerCase(),
-              ].join('|');
-              return !localIdSet.has(sRow.id) && !localKeySet.has(key);
-            })
-            .map((s) => ({
-              ...s,
-              importedBy: s.importedBy || currentUserName,
-            }));
-
-          // Update existing rows with latest lead conversion state from server
-          const updatedPrev = prevRecords.map((r) => {
-            const key = [
-              (r.companyName || '').trim().toLowerCase(),
-              (r.contactPerson || '').trim().toLowerCase(),
-              (r.mobileNo || '').trim(),
-              (r.emailId || '').trim().toLowerCase(),
-            ].join('|');
-            const sMatch = serverKeyMap.get(key) || serverRows.find((s) => s.id === r.id);
-            if (sMatch) {
-              const isConverted = Boolean(sMatch.isConvertedToLead);
-              return {
-                ...r,
-                status: sMatch.status || r.status || 'New',
-                leadStatus: sMatch.status || r.leadStatus || 'New',
-                source: sMatch.source || sMatch.leadSource || r.source || r.leadSource || '',
-                leadSource: sMatch.source || sMatch.leadSource || r.source || r.leadSource || '',
-                isConvertedToLead: isConverted,
-                leadId: isConverted ? (sMatch.leadId || r.leadId) : null,
-                duplicateReason: isConverted ? r.duplicateReason : '',
-                importedBy: sMatch.importedBy || r.importedBy || currentUserName,
-              };
+        if (serverRows.length > 0) {
+          const mappedServer = serverRows.map((s) => ({
+            ...s,
+            importedBy: s.importedBy || (canViewAll ? '' : currentUserName),
+            importedByUserId: s.importedByUserId || null,
+          }));
+          setRecords(mappedServer);
+          try {
+            if (userStorageKey) {
+              localStorage.setItem(userStorageKey, JSON.stringify(mappedServer));
             }
-            return {
-              ...r,
-              importedBy: r.importedBy || currentUserName,
-            };
+          } catch (_) {}
+        } else {
+          setRecords((prev) => {
+            if (canViewAll && prev.length > 0) {
+              dataService.syncImportData(prev).catch(console.warn);
+              return prev;
+            }
+            return [];
           });
-
-          if (restoredRows.length > 0) {
-            return [...restoredRows, ...updatedPrev];
-          }
-          return updatedPrev;
-        });
+        }
       }
     } catch (err) {
       console.warn('Failed to sync import data from server:', err);
     }
-  }, [canViewAll, currentUserName, user?._id]);
+  }, [canViewAll, currentUserName, userStorageKey]);
 
   // Verify lead status against CRM database
   const verifyLeadsStatus = useCallback(async (currentRecords) => {
@@ -749,6 +699,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             leadSource: String(source).trim(),
             date: dateObj.toISOString(),
             importedBy: currentUserName,
+            importedByUserId: user?._id || null,
           };
         });
 
@@ -1034,6 +985,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             isConvertedToLead: isConverted,
             leadId: isConverted ? (uRow.leadId || ex.leadId || null) : (ex.leadId || null),
             importedBy: uRow.importedBy || ex.importedBy || currentUserName,
+            importedByUserId: uRow.importedByUserId || ex.importedByUserId || null,
           };
         } else {
           unshiftedUpdates.push({
@@ -1043,6 +995,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             source: uRow.source || uRow.leadSource || '',
             leadSource: uRow.source || uRow.leadSource || '',
             importedBy: uRow.importedBy || currentUserName,
+            importedByUserId: uRow.importedByUserId || user?._id || null,
           });
         }
       });
@@ -1054,6 +1007,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         source: r.source || r.leadSource || '',
         leadSource: r.source || r.leadSource || '',
         importedBy: r.importedBy || currentUserName,
+        importedByUserId: r.importedByUserId || user?._id || null,
       }));
 
       const combined = [...newRowsWithUser, ...unshiftedUpdates, ...updatedList];
@@ -1333,7 +1287,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
           status: row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New'),
           source: row.leadSource || row.source || '',
-          importedBy: row.importedBy || currentUserName || '',
+          importedBy: row.importedBy || '',
         };
 
         const addedRow = worksheet.addRow(rowData);
@@ -1501,19 +1455,49 @@ export const ImportDataPage = ({ onNavigate }) => {
     });
   }, [records, canViewAll, currentUserName, user?._id]);
 
+  // Filter scoped records by selected user(s) (Imported By)
+  const userFilteredRecords = useMemo(() => {
+    if (selectedUsers.length === 0) return scopedRecords;
+    return scopedRecords.filter((item) => {
+      const itemUser = (item.importedBy || '').trim().toLowerCase();
+      const itemUserId = item.importedByUserId ? String(item.importedByUserId).toLowerCase() : '';
+      return selectedUsers.some((selected) => {
+        const selLower = selected.trim().toLowerCase();
+
+        // When item has an importedBy name, it MUST match the selected user
+        if (itemUser) {
+          if (itemUser === selLower) return true;
+          const opt = activeUserOptions.find(
+            (o) => o.name.toLowerCase() === selLower || String(o.id).toLowerCase() === selLower
+          );
+          if (opt && itemUser === opt.name.toLowerCase()) return true;
+          return false;
+        }
+
+        // Fallback when importedBy is empty: match by user ID
+        if (itemUserId && itemUserId === selLower) return true;
+        const opt = activeUserOptions.find(
+          (o) => o.name.toLowerCase() === selLower || String(o.id).toLowerCase() === selLower
+        );
+        if (opt && itemUserId && String(opt.id).toLowerCase() === itemUserId) return true;
+        return false;
+      });
+    });
+  }, [scopedRecords, selectedUsers, activeUserOptions]);
+
   // Records filtered strictly by the date filter (used for both Card 2 and Table)
   const dateFilteredRecords = useMemo(() => {
-    return scopedRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
-  }, [scopedRecords, dateFilter, fromDate, toDate]);
+    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
+  }, [userFilteredRecords, dateFilter, fromDate, toDate]);
 
-  // Card metric values
-  const totalDataCount = scopedRecords.length;
-  const uniqueDataCount = useMemo(() => scopedRecords.filter((r) => !r.isDuplicate).length, [scopedRecords]);
+  // Card metric values (dynamically reflecting active Imported By and Date filters)
+  const totalDataCount = userFilteredRecords.length;
+  const uniqueDataCount = useMemo(() => userFilteredRecords.filter((r) => !r.isDuplicate).length, [userFilteredRecords]);
   const dateFilteredCount = dateFilteredRecords.length;
 
   const totalConvertedCount = useMemo(() => {
-    return scopedRecords.filter(isConvertedLead).length;
-  }, [scopedRecords]);
+    return userFilteredRecords.filter(isConvertedLead).length;
+  }, [userFilteredRecords]);
 
   const dateFilteredConvertedCount = useMemo(() => {
     return dateFilteredRecords.filter(isConvertedLead).length;
@@ -1526,15 +1510,6 @@ export const ImportDataPage = ({ onNavigate }) => {
         // Filter by Converted to Lead if card filter is active
         if (showConvertedOnly && !isConvertedLead(item)) {
           return false;
-        }
-
-        // Multi-select user filter (Imported By)
-        if (selectedUsers.length > 0) {
-          const itemUser = (item.importedBy || currentUserName || '').trim().toLowerCase();
-          const matchesUser = selectedUsers.some(
-            (u) => u.trim().toLowerCase() === itemUser || (item.importedByUserId && item.importedByUserId === u)
-          );
-          if (!matchesUser) return false;
         }
 
         if (!searchQuery.trim()) return true;
@@ -1558,7 +1533,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         const dateB = new Date(b.date).getTime();
         return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
       });
-  }, [dateFilteredRecords, selectedUsers, searchQuery, sortDirection, currentUserName, showConvertedOnly]);
+  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly]);
 
   // Reset to first page when any filters change
   useEffect(() => {
@@ -2536,10 +2511,10 @@ export const ImportDataPage = ({ onNavigate }) => {
                           <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                {(row.importedBy || currentUserName || 'U').charAt(0).toUpperCase()}
+                                {(row.importedBy || 'U').charAt(0).toUpperCase()}
                               </div>
-                              <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || currentUserName}>
-                                {row.importedBy || currentUserName}
+                              <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || '—'}>
+                                {row.importedBy || '—'}
                               </span>
                             </div>
                           </td>
@@ -2644,7 +2619,11 @@ export const ImportDataPage = ({ onNavigate }) => {
                           }`}>
                             Total Data
                           </p>
-                          {isTotalActive && (
+                          {selectedUsers.length > 0 ? (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                              {selectedUsers.length === 1 ? selectedUsers[0] : `${selectedUsers.length} Users`}
+                            </span>
+                          ) : isTotalActive && (
                             <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
                               All Records
                             </span>
@@ -2669,10 +2648,18 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </div>
                     <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                       <span className="truncate">
-                        {isTotalActive ? 'Showing all records in workspace' : 'Click to show all records'}
+                        {selectedUsers.length > 0
+                          ? `Filtered by ${selectedUsers.join(', ')}`
+                          : isTotalActive
+                            ? 'Showing all records in workspace'
+                            : 'Click to show all records'}
                       </span>
                       <span className={`font-semibold shrink-0 ${isTotalActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-600'}`}>
-                        {totalDataCount > 0 ? '100%' : '0%'}
+                        {scopedRecords.length > 0
+                          ? selectedUsers.length > 0
+                            ? `${Math.round((totalDataCount / scopedRecords.length) * 100)}% of total`
+                            : '100%'
+                          : '0%'}
                       </span>
                     </div>
                   </div>
@@ -3198,8 +3185,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <strong className="text-slate-800 font-bold">{endEntry}</strong>
                   </>
                 )}{' '}
-                of <strong className="text-slate-800 font-bold">{scopedRecords.length}</strong>
-                {totalMatchingRecords !== scopedRecords.length && totalMatchingRecords > 0 && (
+                of <strong className="text-slate-800 font-bold">{totalDataCount}</strong>
+                {totalMatchingRecords !== totalDataCount && totalMatchingRecords > 0 && (
                   <span className="text-slate-400 font-normal ml-1">
                     ({totalMatchingRecords} matching filter)
                   </span>
@@ -3442,10 +3429,10 @@ export const ImportDataPage = ({ onNavigate }) => {
                           <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 uppercase">
-                                {(row.importedBy || currentUserName || 'U').charAt(0)}
+                                {(row.importedBy || 'U').charAt(0)}
                               </div>
-                              <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || currentUserName}>
-                                {row.importedBy || currentUserName}
+                              <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || '—'}>
+                                {row.importedBy || '—'}
                               </span>
                             </div>
                           </td>

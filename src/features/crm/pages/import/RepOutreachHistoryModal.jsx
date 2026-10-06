@@ -772,18 +772,6 @@ export const RepOutreachHistoryModal = ({
                         {/* Direct Action */}
                         <td className="p-3 align-top text-center">
                           <div className="flex flex-col gap-1 items-center">
-                            {onOpenOutreach && prospect._id && (
-                              <button
-                                type="button"
-                                onClick={() => onOpenOutreach(prospect, 'call')}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition"
-                                title="Log another outreach for this client"
-                              >
-                                <PhoneCall className="w-3 h-3" />
-                                <span>Outreach</span>
-                              </button>
-                            )}
-
                             {onOpenProspectDetails && prospect._id && (
                               <button
                                 type="button"
