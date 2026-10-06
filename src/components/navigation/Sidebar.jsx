@@ -70,6 +70,8 @@ const CRM_NAV_SECTIONS = [
   {
     title: 'Growth & Automation',
     items: [
+      { id: 'email-templates', label: 'Email Templates', icon: Mail, permissions: ['crm.growth.read', 'crm.growth.manage', 'crm.communication.send', 'crm.admin'] },
+      { id: 'email', label: 'Email Hub', icon: Mail, permissions: ['crm.communication.read', 'crm.communication.send', 'crm.admin'] },
       { id: 'sequences', label: 'Sequences', icon: Layers, permissions: ['crm.growth.read', 'crm.growth.manage', 'crm.admin'] },
       { id: 'campaigns', label: 'Campaigns', icon: Megaphone, permissions: ['crm.growth.read', 'crm.growth.manage', 'crm.admin'] },
       { id: 'workflows', label: 'Workflows', icon: Workflow, permissions: ['crm.workflows.read', 'crm.workflows.manage', 'crm.admin'] },

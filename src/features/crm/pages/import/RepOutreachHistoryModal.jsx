@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Phone,
   PhoneCall,
@@ -17,7 +17,6 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   ArrowUpRight,
   Check,
   X,
@@ -27,6 +26,7 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ArrowLeft,
+  ArrowUpDown,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -48,10 +48,17 @@ export const RepOutreachHistoryModal = ({
   onOpenOutreach, // (row, type) => void
   onOpenProspectDetails, // (row) => void
 }) => {
-  const [dateRange, setDateRange] = useState(initialDateRange || 'today');
+  const sanitizeDateRange = (val) => {
+    if (['yesterday', 'this_month'].includes(val)) return 'today';
+    return val || 'today';
+  };
+
+  const [dateRange, setDateRange] = useState(() => sanitizeDateRange(initialDateRange));
   const [customFrom, setCustomFrom] = useState(initialCustomFrom || '');
   const [customTo, setCustomTo] = useState(initialCustomTo || '');
   const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const sortDropdownRef = useRef(null);
 
   const [channelType, setChannelType] = useState(initialChannelType || 'all'); // 'all' | 'call' | 'whatsapp' | 'email' | 'task'
   const [outcomeFilter, setOutcomeFilter] = useState(initialOutcome || 'all');
@@ -75,10 +82,24 @@ export const RepOutreachHistoryModal = ({
   );
 
   useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setIsSortDropdownOpen(false);
+      }
+    };
+    if (isSortDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSortDropdownOpen]);
+
+  useEffect(() => {
     if (isOpen) {
       if (initialChannelType) setChannelType(initialChannelType);
       if (initialOutcome) setOutcomeFilter(initialOutcome);
-      if (initialDateRange) setDateRange(initialDateRange);
+      if (initialDateRange) setDateRange(sanitizeDateRange(initialDateRange));
       if (initialCustomFrom) setCustomFrom(initialCustomFrom);
       if (initialCustomTo) setCustomTo(initialCustomTo);
     }
@@ -213,7 +234,6 @@ export const RepOutreachHistoryModal = ({
 
     if (['Connected - Interested', 'Scheduled Meeting'].includes(outcome)) {
       badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
-      icon = <Sparkles className="w-3 h-3 text-emerald-600 inline mr-1" />;
     } else if (['Callback Requested', 'Sent', 'Completed'].includes(outcome)) {
       badgeClass = 'bg-amber-100 text-amber-800 border-amber-300 font-semibold';
       icon = <Clock className="w-3 h-3 text-amber-600 inline mr-1" />;
@@ -235,14 +255,14 @@ export const RepOutreachHistoryModal = ({
 
   const dateFilterButtons = [
     { id: 'today', label: 'Today' },
-    { id: 'yesterday', label: 'Yesterday' },
     { id: '2days', label: 'Last 2 Days' },
     { id: '5days', label: 'Last 5 Days' },
     { id: 'this_week', label: 'This Week' },
-    { id: 'this_month', label: 'This Month' },
     { id: 'all', label: 'All Time' },
     { id: 'custom', label: 'Custom Range' },
   ];
+
+  const activeSortLabel = dateFilterButtons.find((btn) => btn.id === dateRange)?.label || 'Today';
 
   const channelPills = [
     { id: 'all', label: 'All', count: summary.typeCounts?.all || 0 },
@@ -355,7 +375,6 @@ export const RepOutreachHistoryModal = ({
           <div className="p-3 rounded-xl bg-emerald-50/50 border border-emerald-200/70 shadow-2xs">
             <span className="text-[11px] text-emerald-700 font-medium flex items-center justify-between">
               <span>Positive Outcomes</span>
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
             </span>
             <p className="text-lg font-black text-emerald-900 mt-0.5">{summary.positiveOutcomes || 0}</p>
             <span className="text-[10px] text-emerald-600">Interested / Meetings</span>
@@ -386,35 +405,61 @@ export const RepOutreachHistoryModal = ({
 
         {/* Filter Controls Panel */}
         <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200/90 space-y-3">
-          {/* Time range picker */}
+          {/* Time range picker with Sort Button */}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1 mr-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-indigo-600" />
                 Timeframe:
               </span>
-              <div className="inline-flex flex-wrap rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs text-xs">
-                {dateFilterButtons.map((btn) => (
-                  <button
-                    key={btn.id}
-                    type="button"
-                    onClick={() => {
-                      setDateRange(btn.id);
-                      if (btn.id === 'custom') {
-                        setIsCustomDateOpen(true);
-                      } else {
-                        setIsCustomDateOpen(false);
-                      }
-                    }}
-                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition ${
-                      dateRange === btn.id
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
+
+              {/* Sort / Timeframe Dropdown Button */}
+              <div className="relative inline-block text-left" ref={sortDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsSortDropdownOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition cursor-pointer"
+                  title="Sort by timeframe"
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Sort:</span>
+                  <span className="font-bold text-indigo-600">{activeSortLabel}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${isSortDropdownOpen ? 'rotate-180 text-indigo-600' : ''}`} />
+                </button>
+
+                {isSortDropdownOpen && (
+                  <div className="absolute left-0 mt-1.5 w-48 rounded-xl bg-white border border-slate-200/90 shadow-lg py-1.5 z-40">
+                    <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
+                      Sort by Timeframe
+                    </div>
+                    {dateFilterButtons.map((btn) => {
+                      const isSelected = dateRange === btn.id;
+                      return (
+                        <button
+                          key={btn.id}
+                          type="button"
+                          onClick={() => {
+                            setDateRange(btn.id);
+                            if (btn.id === 'custom') {
+                              setIsCustomDateOpen(true);
+                            } else {
+                              setIsCustomDateOpen(false);
+                            }
+                            setIsSortDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-50/80 font-bold text-indigo-700'
+                              : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                          }`}
+                        >
+                          <span>{btn.label}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -616,8 +661,7 @@ export const RepOutreachHistoryModal = ({
                               {companyName}
                             </span>
                             {isConverted && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                                <Sparkles className="w-2.5 h-2.5 text-purple-600" />
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
                                 Lead
                               </span>
                             )}
@@ -655,33 +699,74 @@ export const RepOutreachHistoryModal = ({
 
                         {/* Discussion Notes / Remarks */}
                         <td className="p-3 align-top text-slate-700">
-                          <div className="max-w-md">
-                            {act.subject && act.description && (
-                              <p className="text-[11px] font-bold text-slate-800 mb-0.5">
-                                {act.subject}
-                              </p>
-                            )}
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                              {hasLongNote && !isNoteExpanded ? `${noteText.substring(0, 95)}...` : noteText}
-                            </p>
-                            {hasLongNote && (
-                              <button
-                                type="button"
-                                onClick={() => toggleExpandNote(act._id)}
-                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline mt-0.5 cursor-pointer block"
-                              >
-                                {isNoteExpanded ? 'Show less' : 'Read more'}
-                              </button>
-                            )}
-
-                            {/* Show Next Follow-up Pill if linked */}
-                            {prospect.nextFollowUpAt && (
-                              <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-semibold">
-                                <Calendar className="w-3 h-3 text-amber-600" />
-                                <span>Next: {new Date(prospect.nextFollowUpAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                          {act.type === 'email' ? (
+                            <div className="max-w-md">
+                              <div className="flex items-start gap-1.5">
+                                <div className="w-5 h-5 rounded-md bg-sky-50 text-sky-600 flex items-center justify-center shrink-0 mt-0.5 border border-sky-200/60">
+                                  <Mail className="w-3 h-3" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-900 leading-snug break-words">
+                                    {act.metadata?.emailSubject || (act.subject ? act.subject.replace(/^Email:\s*/i, '') : '') || 'Sales Outreach Email'}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const targetRecord = prospect?._id ? prospect : (lead?._id ? lead : { _id: act.importDataId || act.leadId, companyName });
+                                      if (onOpenProspectDetails && targetRecord?._id) {
+                                        onOpenProspectDetails(targetRecord, {
+                                          tab: 'timeline',
+                                          emailId: act._id,
+                                          activity: act,
+                                        });
+                                        onClose();
+                                      }
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline mt-1 cursor-pointer"
+                                  >
+                                    <span>Read more</span>
+                                    <ArrowUpRight className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </div>
-                            )}
-                          </div>
+
+                              {/* Show Next Follow-up Pill if linked */}
+                              {prospect.nextFollowUpAt && (
+                                <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-semibold">
+                                  <Calendar className="w-3 h-3 text-amber-600" />
+                                  <span>Next: {new Date(prospect.nextFollowUpAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="max-w-md">
+                              {act.subject && act.description && (
+                                <p className="text-[11px] font-bold text-slate-800 mb-0.5">
+                                  {act.subject}
+                                </p>
+                              )}
+                              <p className="text-xs text-slate-600 leading-relaxed">
+                                {hasLongNote && !isNoteExpanded ? `${noteText.substring(0, 95)}...` : noteText}
+                              </p>
+                              {hasLongNote && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandNote(act._id)}
+                                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline mt-0.5 cursor-pointer block"
+                                >
+                                  {isNoteExpanded ? 'Show less' : 'Read more'}
+                                </button>
+                              )}
+
+                              {/* Show Next Follow-up Pill if linked */}
+                              {prospect.nextFollowUpAt && (
+                                <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-semibold">
+                                  <Calendar className="w-3 h-3 text-amber-600" />
+                                  <span>Next: {new Date(prospect.nextFollowUpAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </td>
 
                         {/* Direct Action */}

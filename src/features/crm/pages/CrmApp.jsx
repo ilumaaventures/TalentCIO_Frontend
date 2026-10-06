@@ -20,6 +20,7 @@ import { ActivitiesPage } from './activities/ActivitiesPage';
 import { EmailHubPage } from './communication/EmailHubPage';
 import { WhatsAppHubPage } from './communication/WhatsAppHubPage';
 import { CallingHubPage } from './communication/CallingHubPage';
+import { CrmEmailTemplatesPage } from './communication/CrmEmailTemplatesPage';
 import { SequencesPage } from './growth/SequencesPage';
 import { CampaignsPage } from './growth/CampaignsPage';
 import { ReportsPage } from './analytics/ReportsPage';
@@ -49,6 +50,7 @@ const TAB_PERMISSIONS = {
   tasks: ['crm.tasks.read', 'crm.tasks.manage', 'crm.admin'],
   calendar: ['crm.tasks.read', 'crm.tasks.manage', 'crm.admin'],
   activities: ['crm.activities.read', 'crm.activities.create', 'crm.admin'],
+  'email-templates': ['crm.growth.read', 'crm.growth.manage', 'crm.communication.send', 'crm.admin'],
   email: ['crm.communication.read', 'crm.communication.send', 'crm.admin'],
   whatsapp: ['crm.communication.read', 'crm.communication.send', 'crm.admin'],
   calls: ['crm.communication.read', 'crm.communication.send', 'crm.admin'],
@@ -78,19 +80,13 @@ function CrmWorkspaceContent() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab') || 'dashboard';
-  const tabFromUrl = ['whatsapp', 'email', 'calls'].includes(rawTab) ? 'dashboard' : rawTab;
+  const tabFromUrl = rawTab;
   const [activePage, setActivePage] = useState(tabFromUrl);
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [selectedDealId, setSelectedDealId] = useState(null);
 
   const requiredPerms = TAB_PERMISSIONS[activePage];
   const hasTabAccess = isAdmin || !requiredPerms || requiredPerms.some(p => user?.permissions?.includes(p));
-
-  useEffect(() => {
-    if (['whatsapp', 'email', 'calls'].includes(rawTab)) {
-      setSearchParams({ tab: 'dashboard' }, { replace: true });
-    }
-  }, [rawTab, setSearchParams]);
 
   useEffect(() => {
     setActivePage(tabFromUrl);
@@ -139,6 +135,8 @@ function CrmWorkspaceContent() {
         return { title: 'Sales Meetings & Schedule', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Calendar'] };
       case 'activities':
         return { title: 'Interaction Feed & Timeline', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Activities'] };
+      case 'email-templates':
+        return { title: 'Sales Email Templates', breadcrumbs: ['TalentCIO', 'Sales CRM', 'Email Templates'] };
       case 'email':
         return { title: 'Email Communication Hub', breadcrumbs: ['TalentCIO', 'Communication', 'Email'] };
       case 'whatsapp':
@@ -251,6 +249,7 @@ function CrmWorkspaceContent() {
           {activePage === 'calendar' && <CalendarPage onNavigate={handleNavigate} />}
           {activePage === 'activities' && <ActivitiesPage />}
 
+          {activePage === 'email-templates' && <CrmEmailTemplatesPage />}
           {activePage === 'email' && <EmailHubPage />}
           {activePage === 'whatsapp' && <WhatsAppHubPage />}
           {activePage === 'calls' && <CallingHubPage />}

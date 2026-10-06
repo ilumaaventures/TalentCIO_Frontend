@@ -18,7 +18,6 @@ import {
   AlertCircle,
   ExternalLink,
   Check,
-  Sparkles,
   Building2,
   UserCheck,
 } from 'lucide-react';

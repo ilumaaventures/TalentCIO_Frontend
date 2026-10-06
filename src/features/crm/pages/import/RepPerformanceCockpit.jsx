@@ -10,7 +10,6 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
-  Sparkles,
   Users,
   Target,
   CalendarCheck,
@@ -24,8 +23,9 @@ export const RepPerformanceCockpit = ({
   onOpenUserHistory,
   onOpenMetricHistory,
   onToggleConvertedFilter,
+  defaultExpanded = false,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [dateRange, setDateRange] = useState('today');
   const [performanceData, setPerformanceData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -293,7 +293,6 @@ export const RepPerformanceCockpit = ({
             >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                 <span className="group-hover:text-purple-600 font-semibold transition-colors">Converted to Leads</span>
-                <Sparkles className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
               </div>
               <p className="text-xl font-extrabold text-purple-700 mt-1">
                 {summary.convertedRows || 0}

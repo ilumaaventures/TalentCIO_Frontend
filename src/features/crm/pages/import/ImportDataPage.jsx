@@ -55,6 +55,7 @@ import { RepLeaderboardModal } from './RepLeaderboardModal';
 import { RepPerformanceCockpit } from './RepPerformanceCockpit';
 import { ImportDataDetailPage } from './ImportDataDetailPage';
 import { RepOutreachHistoryModal } from './RepOutreachHistoryModal';
+import { CrmMailComposerModal } from '../../components/communication/CrmMailComposerModal';
 
 const STORAGE_KEY = 'crm_imported_excel_records';
 
@@ -194,10 +195,13 @@ export const ImportDataPage = ({ onNavigate }) => {
   // Outreach & Performance Tracking State
   const [outreachRow, setOutreachRow] = useState(null);
   const [outreachInitialType, setOutreachInitialType] = useState('call');
+  const [mailComposerRow, setMailComposerRow] = useState(null);
   const [historyRow, setHistoryRow] = useState(null);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [leaderboardInitialTab, setLeaderboardInitialTab] = useState('leaderboard');
   const [selectedDetailRecord, setSelectedDetailRecord] = useState(null);
+  const [detailInitialTab, setDetailInitialTab] = useState('overview');
+  const [detailFocusedActivityId, setDetailFocusedActivityId] = useState(null);
   const [openActionMenuId, setOpenActionMenuId] = useState(null);
   const actionMenuRef = useRef(null);
 
@@ -298,6 +302,10 @@ export const ImportDataPage = ({ onNavigate }) => {
         // fallback
       }
     }
+    if (type === 'email') {
+      setMailComposerRow(targetRow);
+      return;
+    }
     setOutreachRow(targetRow);
     setOutreachInitialType(type);
   };
@@ -317,9 +325,9 @@ export const ImportDataPage = ({ onNavigate }) => {
           return {
             ...r,
             ...updatedRecord,
-            callCount: updatedRecord.callCount || r.callCount || 0,
-            whatsappCount: updatedRecord.whatsappCount || r.whatsappCount || 0,
-            emailCount: updatedRecord.emailCount || r.emailCount || 0,
+            callCount: updatedRecord.callCount !== undefined ? updatedRecord.callCount : (r.callCount || 0),
+            whatsappCount: updatedRecord.whatsappCount !== undefined ? updatedRecord.whatsappCount : (r.whatsappCount || 0),
+            emailCount: updatedRecord.emailCount !== undefined ? updatedRecord.emailCount : (r.emailCount || 0),
             lastOutcome: updatedRecord.lastOutcome || r.lastOutcome,
             lastContactedAt: updatedRecord.lastContactedAt || new Date().toISOString(),
             nextFollowUpAt: updatedRecord.nextFollowUpAt || r.nextFollowUpAt,
@@ -2137,7 +2145,13 @@ export const ImportDataPage = ({ onNavigate }) => {
       {selectedDetailRecord ? (
         <ImportDataDetailPage
           record={selectedDetailRecord}
-          onBack={() => setSelectedDetailRecord(null)}
+          initialTab={detailInitialTab}
+          focusedActivityId={detailFocusedActivityId}
+          onBack={() => {
+            setSelectedDetailRecord(null);
+            setDetailInitialTab('overview');
+            setDetailFocusedActivityId(null);
+          }}
           onNavigate={onNavigate}
           onConvert={() => handleOpenConvertSingle(selectedDetailRecord)}
           onEdit={() => handleOpenEdit(selectedDetailRecord)}
@@ -2147,7 +2161,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             handleOpenDeleteSingle(r);
           }}
           onUpdateRecord={(updated) => {
-            setSelectedDetailRecord(updated);
+            if (!updated) return;
             setRecords((prev) =>
               prev.map((r) => (r.id === updated.id || r._id === updated._id ? { ...r, ...updated } : r))
             );
@@ -3476,6 +3490,18 @@ export const ImportDataPage = ({ onNavigate }) => {
                                       <span>Log Outreach</span>
                                     </button>
 
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenOutreach(row, 'email');
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-sky-50 hover:text-sky-700 text-slate-700 transition font-medium cursor-pointer"
+                                    >
+                                      <Mail className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                      <span>Send Sales Email</span>
+                                    </button>
+
                                     {!row.isConvertedToLead && (
                                       <button
                                         type="button"
@@ -3945,6 +3971,19 @@ export const ImportDataPage = ({ onNavigate }) => {
         />
       )}
 
+      {/* Direct Sales Email Composer Modal (Same as TA style) */}
+      {mailComposerRow && (
+        <CrmMailComposerModal
+          isOpen={Boolean(mailComposerRow)}
+          onClose={() => setMailComposerRow(null)}
+          row={mailComposerRow}
+          onSuccess={(updated) => {
+            setMailComposerRow(null);
+            handleOutreachSuccess(updated);
+          }}
+        />
+      )}
+
       {/* Activity History & Follow-ups Timeline Drawer */}
       {historyRow && (
         <ActivityHistoryModal
@@ -3966,8 +4005,10 @@ export const ImportDataPage = ({ onNavigate }) => {
           setOutreachRow(prospect);
           setOutreachInitialType(type || 'call');
         }}
-        onOpenProspectDetails={(prospect) => {
+        onOpenProspectDetails={(prospect, options = {}) => {
           setSelectedDetailRecord(prospect);
+          setDetailInitialTab(options?.tab || 'overview');
+          setDetailFocusedActivityId(options?.emailId || options?.activityId || null);
         }}
       />
 
@@ -3990,8 +4031,10 @@ export const ImportDataPage = ({ onNavigate }) => {
             setOutreachRow(prospect);
             setOutreachInitialType(type || 'call');
           }}
-          onOpenProspectDetails={(prospect) => {
+          onOpenProspectDetails={(prospect, options = {}) => {
             setSelectedDetailRecord(prospect);
+            setDetailInitialTab(options?.tab || 'overview');
+            setDetailFocusedActivityId(options?.emailId || options?.activityId || null);
           }}
         />
       )}

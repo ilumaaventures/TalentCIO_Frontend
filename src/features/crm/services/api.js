@@ -14,6 +14,7 @@ import {
   crmWorkflowService,
   crmAiService,
   crmAdminService,
+  crmEmailTemplateService,
 } from './crmApi';
 
 export const leadsService = crmLeadsService;
@@ -25,6 +26,8 @@ export const activitiesService = crmActivitiesService;
 export const tasksService = crmTasksService;
 export const followUpsService = crmFollowUpsService;
 export const communicationService = crmCommunicationService;
+export const emailTemplateService = crmEmailTemplateService;
+export const crmTemplatesService = crmEmailTemplateService;
 export const growthService = crmGrowthService;
 export const forecastService = {
   ...crmForecastService,

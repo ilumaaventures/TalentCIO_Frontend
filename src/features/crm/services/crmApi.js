@@ -198,7 +198,32 @@ export const crmCommunicationService = {
     return res.data;
   },
   sendEmail: async (data) => {
-    const res = await api.post('/crm/communication/emails', data);
+    const res = await api.post('/crm/communication/send-email', data);
+    return res.data;
+  },
+  getSenderAccounts: async () => {
+    try {
+      const res = await api.get('/company/email-settings/senders');
+      return res.data;
+    } catch {
+      const res = await api.get('/crm/communication/senders');
+      return res.data;
+    }
+  },
+  getEmailTemplates: async () => {
+    const res = await api.get('/crm/communication/email-templates');
+    return res.data;
+  },
+  createEmailTemplate: async (data) => {
+    const res = await api.post('/crm/communication/email-templates', data);
+    return res.data;
+  },
+  updateEmailTemplate: async (id, data) => {
+    const res = await api.put(`/crm/communication/email-templates/${id}`, data);
+    return res.data;
+  },
+  deleteEmailTemplate: async (id) => {
+    const res = await api.delete(`/crm/communication/email-templates/${id}`);
     return res.data;
   },
   // getWhatsAppMessages is the canonical name; getWhatsApp is kept as an alias
@@ -221,6 +246,15 @@ export const crmCommunicationService = {
     const res = await api.post('/crm/communication/calls', data);
     return res.data;
   },
+};
+
+export const crmEmailTemplateService = {
+  getTemplates: crmCommunicationService.getEmailTemplates,
+  createTemplate: crmCommunicationService.createEmailTemplate,
+  updateTemplate: crmCommunicationService.updateEmailTemplate,
+  deleteTemplate: crmCommunicationService.deleteEmailTemplate,
+  getSenders: crmCommunicationService.getSenderAccounts,
+  sendEmail: crmCommunicationService.sendEmail,
 };
 
 export const crmForecastService = {
