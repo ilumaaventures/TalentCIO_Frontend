@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import api from '@/lib/apiClient';
-import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X, Eye, ArrowUp, ArrowDown, ArrowUpDown, Filter } from 'lucide-react';
+import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X, Eye, ArrowUp, ArrowDown, ArrowUpDown, Filter, ChevronDown, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import Button from '@/components/ui/Button';
@@ -86,6 +86,22 @@ const Projects = () => {
 
     const [activeTab, setActiveTab] = useState(resolvedInitialTab);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const statusDropdownRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
+                setStatusDropdownOpen(false);
+            }
+        };
+        if (statusDropdownOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [statusDropdownOpen]);
 
     useEffect(() => {
         const raw = searchParams.get('tab') || searchParams.get('status');
@@ -143,6 +159,8 @@ const Projects = () => {
         { id: 'on hold', label: 'On Hold', count: counts.onHold },
         { id: 'completed', label: 'Completed', count: counts.completed }
     ];
+
+    const selectedTabObj = tabs.find((t) => t.id === activeTab) || tabs[1] || tabs[0];
 
     const filteredProjects = useMemo(() => {
         const result = projects.filter(project => {
@@ -419,34 +437,71 @@ const Projects = () => {
 
                 {/* Tabs, Filters, Search & Action Toolbar (Navbar) */}
                 <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
-                    {/* Status Tabs */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 xl:pb-0 scrollbar-none">
-                        {tabs.map((tab) => {
-                            const isSelected = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    type="button"
-                                    onClick={() => handleTabChange(tab.id)}
-                                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
-                                        isSelected
-                                            ? 'bg-blue-600 text-white shadow-xs'
-                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                                    }`}
-                                >
-                                    <span>{tab.label}</span>
-                                    <span
-                                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
-                                            isSelected
-                                                ? 'bg-white/20 text-white'
-                                                : 'bg-slate-100 text-slate-500'
-                                        }`}
-                                    >
-                                        {tab.count}
-                                    </span>
-                                </button>
-                            );
-                        })}
+                    {/* Status Filter Vertical Dropdown */}
+                    <div className="relative shrink-0" ref={statusDropdownRef}>
+                        <button
+                            type="button"
+                            onClick={() => setStatusDropdownOpen((prev) => !prev)}
+                            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all duration-150 cursor-pointer"
+                            aria-expanded={statusDropdownOpen}
+                            title="Filter projects by status"
+                        >
+                            <span>{selectedTabObj.label}</span>
+                            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-white/20 text-white">
+                                {selectedTabObj.count}
+                            </span>
+                            <ChevronDown
+                                size={14}
+                                className={`transition-transform duration-200 text-white/80 ${statusDropdownOpen ? 'rotate-180' : ''}`}
+                            />
+                        </button>
+
+                        {/* Dropdown Vertical Menu */}
+                        {statusDropdownOpen && (
+                            <div className="absolute left-0 top-full mt-1.5 w-48 bg-white rounded-xl shadow-lg border border-slate-200/90 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                    Project Status
+                                </div>
+                                <div className="px-1 space-y-0.5">
+                                    {tabs.map((tab) => {
+                                        const isSelected = activeTab === tab.id;
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    handleTabChange(tab.id);
+                                                    setStatusDropdownOpen(false);
+                                                }}
+                                                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-blue-50 text-blue-700 font-bold'
+                                                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                                }`}
+                                            >
+                                                <span className="flex items-center gap-2">
+                                                    {isSelected ? (
+                                                        <Check size={13} className="text-blue-600 shrink-0" />
+                                                    ) : (
+                                                        <span className="w-3.25 shrink-0" />
+                                                    )}
+                                                    <span>{tab.label}</span>
+                                                </span>
+                                                <span
+                                                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                                        isSelected
+                                                            ? 'bg-blue-100 text-blue-700'
+                                                            : 'bg-slate-100 text-slate-500'
+                                                    }`}
+                                                >
+                                                    {tab.count}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Filters, Search Bar & New Project Action */}
