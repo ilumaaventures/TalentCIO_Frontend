@@ -364,7 +364,7 @@ export const UserPerformanceTrace = ({
     };
   }, [filteredLogs, selectedUserId, tasks, memberTaskStats]);
 
-  // Daily hours chart data (last 14 active days or chronological sequence)
+  // Daily hours chart data (last 7 days)
   const chartData = useMemo(() => {
     const dateMap = {};
     filteredLogs.forEach(l => {
@@ -373,10 +373,18 @@ export const UserPerformanceTrace = ({
       dateMap[key] = (dateMap[key] || 0) + (Number(l.hours) || 0);
     });
 
-    const sortedDates = Object.keys(dateMap).sort().slice(-14);
-    return sortedDates.map(dateStr => ({
+    // Generate last 7 calendar days ending today
+    const dates = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      dates.push(format(d, 'yyyy-MM-dd'));
+    }
+
+    return dates.map(dateStr => ({
       date: format(new Date(dateStr), 'MMM d'),
-      hours: Number(dateMap[dateStr].toFixed(1)),
+      hours: Number((dateMap[dateStr] || 0).toFixed(1)),
       rawDate: dateStr
     }));
   }, [filteredLogs]);
@@ -617,10 +625,10 @@ export const UserPerformanceTrace = ({
               <h3 className="text-sm font-bold text-slate-900">
                 Daily Hours Distribution {selectedMemberObj ? `– ${selectedMemberObj.firstName} ${selectedMemberObj.lastName}` : '– Project Team'}
               </h3>
-              <p className="text-xs text-slate-500">Hours logged per active day</p>
+              <p className="text-xs text-slate-500">Hours logged in the last 7 days</p>
             </div>
             <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
-              Recent {chartData.length} active days
+              Last 7 days
             </span>
           </div>
 
