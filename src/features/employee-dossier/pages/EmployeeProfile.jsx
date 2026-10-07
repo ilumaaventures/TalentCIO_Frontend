@@ -46,6 +46,19 @@ const DEFAULT_EMPLOYMENT_TYPES = [
     'Probation'
 ];
 
+const hasCrmPermission = (userObj) => {
+    if (!userObj) return false;
+    const roles = Array.isArray(userObj.roles)
+        ? userObj.roles.map(r => (typeof r === 'string' ? r : r?.name)).filter(Boolean)
+        : [];
+    const isAdmin = roles.some(r => ['Admin', 'Super Admin', 'System Admin'].includes(r))
+        || Boolean(userObj.hasAllPermissions)
+        || (Array.isArray(userObj.permissions) && userObj.permissions.includes('*'));
+    if (isAdmin) return true;
+    const perms = Array.isArray(userObj.permissions) ? userObj.permissions : [];
+    return perms.some(p => typeof p === 'string' && (p === 'crm.view' || p === 'crm.manage' || p.startsWith('crm.')));
+};
+
 const EmployeeProfile = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -96,15 +109,18 @@ const EmployeeProfile = () => {
     const hasTimesheet = enabledModules.includes('timesheet');
     const hasDossier = enabledModules.includes('employeeDossier');
     const hasCrm = enabledModules.includes('crm');
-    const isSelfProfile = currentUser?._id && profile?.user && (String(currentUser._id) === String(profile.user._id || profile.user));
+    const isSelfProfile = Boolean(
+        currentUser?._id && (
+            String(currentUser._id) === String(id) ||
+            String(currentUser._id) === String(profile?._id || profile?.user?._id || profile?.user)
+        )
+    );
     const isAuthorizedForTA = (currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('ta.read')) && hasTA;
-    const isAuthorizedForCrm = hasCrm && (
-        currentUser?.roles?.includes('Admin') ||
-        currentUser?.hasAllPermissions ||
-        currentUser?.permissions?.includes('*') ||
-        currentUser?.permissions?.includes('crm.view') ||
-        currentUser?.permissions?.includes('crm.manage') ||
-        isSelfProfile
+    const targetUser = isSelfProfile ? currentUser : (profile || null);
+    const isAuthorizedForCrm = Boolean(
+        hasCrm &&
+        hasCrmPermission(currentUser) &&
+        (targetUser ? hasCrmPermission(targetUser) : false)
     );
     const isAuthorizedForEdit = currentUser?.roles?.includes('Admin') || currentUser?.permissions?.includes('user.update');
     const canViewRevisions = Boolean(
@@ -161,11 +177,12 @@ const EmployeeProfile = () => {
     // Reset active tab if it becomes unauthorized or module is disabled
     useEffect(() => {
         if (activeTab === 'ta-analytics' && !isAuthorizedForTA) setActiveTab('overview');
+        if (activeTab === 'sales-performance' && !isAuthorizedForCrm) setActiveTab('overview');
         if (activeTab === 'revised-details' && !canViewRevisions) setActiveTab('overview');
         if (activeTab === 'attendance' && !hasAttendance) setActiveTab('overview');
         if (activeTab === 'timesheet' && !hasTimesheet) setActiveTab('overview');
         if (activeTab === 'dossier' && !hasDossier) setActiveTab('overview');
-    }, [activeTab, isAuthorizedForTA, canViewRevisions, hasAttendance, hasTimesheet, hasDossier]);
+    }, [activeTab, isAuthorizedForTA, isAuthorizedForCrm, canViewRevisions, hasAttendance, hasTimesheet, hasDossier]);
 
     const calculateSalaryBreakdown = (updatedSalaryFields) => {
         setFormData(prev => {
