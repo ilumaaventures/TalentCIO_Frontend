@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Check, Folder, Calendar, Clock, Tag, User, AlertCircle, Edit3 } from 'lucide-react';
+import { X, Search, Check, Folder, Calendar, Clock, Tag, User, Users, AlertCircle, Edit3 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 const COLUMNS = [

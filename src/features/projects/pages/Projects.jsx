@@ -2,11 +2,12 @@ import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import api from '@/lib/apiClient';
-import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X, Eye, ArrowUp, ArrowDown, ArrowUpDown, Filter } from 'lucide-react';
+import { Briefcase, Plus, Search, Building, MoreVertical, Edit2, Trash2, XCircle, CheckCircle, PauseCircle, X, Eye, ArrowUp, ArrowDown, ArrowUpDown, Filter, ChevronDown, Check, Users, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import Button from '@/components/ui/Button';
 import { createCachePayload, isCacheFresh, readSessionCache } from '@/lib/cache';
+import TeamPerformanceTracer from '../components/TeamPerformanceTracer';
 
 import { useAuth } from '@/features/auth/context/AuthContext';
 
@@ -84,8 +85,35 @@ const Projects = () => {
         ? normalizeTab(rawTabParam)
         : 'active';
 
+    const rawViewParam = searchParams.get('view');
+    const [viewMode, setViewMode] = useState(rawViewParam === 'team-performance' || rawViewParam === 'user-performance' ? 'team-performance' : 'projects');
     const [activeTab, setActiveTab] = useState(resolvedInitialTab);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const statusDropdownRef = useRef(null);
+
+    useEffect(() => {
+        const v = searchParams.get('view');
+        if (v === 'team-performance' || v === 'user-performance') {
+            setViewMode('team-performance');
+        } else if (!v) {
+            setViewMode('projects');
+        }
+    }, [searchParams]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
+                setStatusDropdownOpen(false);
+            }
+        };
+        if (statusDropdownOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [statusDropdownOpen]);
 
     useEffect(() => {
         const raw = searchParams.get('tab') || searchParams.get('status');
@@ -143,6 +171,8 @@ const Projects = () => {
         { id: 'on hold', label: 'On Hold', count: counts.onHold },
         { id: 'completed', label: 'Completed', count: counts.completed }
     ];
+
+    const selectedTabObj = tabs.find((t) => t.id === activeTab) || tabs[1] || tabs[0];
 
     const filteredProjects = useMemo(() => {
         const result = projects.filter(project => {
@@ -419,119 +449,237 @@ const Projects = () => {
 
                 {/* Tabs, Filters, Search & Action Toolbar (Navbar) */}
                 <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
-                    {/* Status Tabs */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 xl:pb-0 scrollbar-none">
-                        {tabs.map((tab) => {
-                            const isSelected = activeTab === tab.id;
-                            return (
+                    {/* Left Controls: Status Dropdown & View Mode Switcher */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Status Filter Vertical Dropdown (shown when in projects view) */}
+                        {viewMode === 'projects' && (
+                            <div className="relative shrink-0" ref={statusDropdownRef}>
                                 <button
-                                    key={tab.id}
                                     type="button"
-                                    onClick={() => handleTabChange(tab.id)}
-                                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
-                                        isSelected
-                                            ? 'bg-blue-600 text-white shadow-xs'
-                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                                    }`}
+                                    onClick={() => setStatusDropdownOpen((prev) => !prev)}
+                                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all duration-150 cursor-pointer"
+                                    aria-expanded={statusDropdownOpen}
+                                    title="Filter projects by status"
                                 >
-                                    <span>{tab.label}</span>
-                                    <span
-                                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
-                                            isSelected
-                                                ? 'bg-white/20 text-white'
-                                                : 'bg-slate-100 text-slate-500'
-                                        }`}
-                                    >
-                                        {tab.count}
+                                    <span>{selectedTabObj.label}</span>
+                                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-white/20 text-white">
+                                        {selectedTabObj.count}
                                     </span>
+                                    <ChevronDown
+                                        size={14}
+                                        className={`transition-transform duration-200 text-white/80 ${statusDropdownOpen ? 'rotate-180' : ''}`}
+                                    />
                                 </button>
-                            );
-                        })}
-                    </div>
 
-                    {/* Filters, Search Bar & New Project Action */}
-                    <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto shrink-0">
-                        {/* Client Filter */}
-                        <div className="relative">
-                            <select
-                                value={selectedClient}
-                                onChange={(e) => setSelectedClient(e.target.value)}
-                                className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
-                                    selectedClient !== 'all'
-                                        ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
-                                        : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
-                                }`}
-                                title="Filter by Client"
-                            >
-                                <option value="all">All Clients</option>
-                                {clients.map(c => (
-                                    <option key={c._id} value={c._id}>{c.name}</option>
-                                ))}
-                            </select>
-                            <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                        </div>
+                                {/* Dropdown Vertical Menu */}
+                                {statusDropdownOpen && (
+                                    <div className="absolute left-0 top-full mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-slate-200/90 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+                                        <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Project Status
+                                        </div>
+                                        <div className="px-1 space-y-0.5">
+                                            {tabs.map((tab) => {
+                                                const isSelected = activeTab === tab.id;
+                                                return (
+                                                    <button
+                                                        key={tab.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            handleTabChange(tab.id);
+                                                            setStatusDropdownOpen(false);
+                                                        }}
+                                                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                                                            isSelected
+                                                                ? 'bg-blue-50 text-blue-700 font-bold'
+                                                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                                        }`}
+                                                    >
+                                                        <span className="flex items-center gap-2">
+                                                            {isSelected ? (
+                                                                <Check size={13} className="text-blue-600 shrink-0" />
+                                                            ) : (
+                                                                <span className="w-3.25 shrink-0" />
+                                                            )}
+                                                            <span>{tab.label}</span>
+                                                        </span>
+                                                        <span
+                                                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                isSelected
+                                                                    ? 'bg-blue-100 text-blue-700'
+                                                                    : 'bg-slate-100 text-slate-500'
+                                                            }`}
+                                                        >
+                                                            {tab.count}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
 
-                        {/* Business Unit Filter */}
-                        <div className="relative">
-                            <select
-                                value={selectedBusinessUnit}
-                                onChange={(e) => setSelectedBusinessUnit(e.target.value)}
-                                className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
-                                    selectedBusinessUnit !== 'all'
-                                        ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
-                                        : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
-                                }`}
-                                title="Filter by Business Unit"
-                            >
-                                <option value="all">All Business Units</option>
-                                {businessUnits.map(bu => (
-                                    <option key={bu._id} value={bu._id}>{bu.name}</option>
-                                ))}
-                            </select>
-                            <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                        </div>
+                                        {/* Quick Link to User Performance inside the dropdown menu */}
+                                        <div className="pt-1 mt-1 border-t border-slate-100 px-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setViewMode('team-performance');
+                                                    setStatusDropdownOpen(false);
+                                                    const newParams = new URLSearchParams(searchParams);
+                                                    newParams.set('view', 'team-performance');
+                                                    setSearchParams(newParams, { replace: true });
+                                                }}
+                                                className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                            >
+                                                <span className="flex items-center gap-2">
+                                                    <Users size={13} className="text-blue-600 shrink-0" />
+                                                    <span>User Performance</span>
+                                                </span>
+                                                <ChevronRight size={13} className="text-blue-400" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                        {/* Search Bar */}
-                        <div className="relative flex-1 sm:w-52 md:w-60">
-                            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Search projects..."
-                                className="w-full h-9 pl-9 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                            />
-                            {searchTerm && (
-                                <button
-                                    type="button"
-                                    onClick={() => setSearchTerm('')}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
-                                >
-                                    <X size={13} />
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Reset Filters shortcut if active */}
-                        {(selectedClient !== 'all' || selectedBusinessUnit !== 'all' || searchTerm || sortConfig.field) && (
+                        {/* View Switcher Tabs */}
+                        <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-semibold">
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setSelectedClient('all');
-                                    setSelectedBusinessUnit('all');
-                                    setSearchTerm('');
-                                    setSortConfig({ field: null, direction: 'asc' });
+                                    setViewMode('projects');
+                                    const newParams = new URLSearchParams(searchParams);
+                                    newParams.delete('view');
+                                    setSearchParams(newParams, { replace: true });
                                 }}
-                                className="text-xs font-semibold text-slate-400 hover:text-red-500 px-2 py-1 transition-colors whitespace-nowrap"
-                                title="Reset all filters and sorting"
+                                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                                    viewMode === 'projects'
+                                        ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
                             >
-                                Clear filters
+                                Projects
                             </button>
-                        )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setViewMode('team-performance');
+                                    const newParams = new URLSearchParams(searchParams);
+                                    newParams.set('view', 'team-performance');
+                                    setSearchParams(newParams, { replace: true });
+                                }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                                    viewMode === 'team-performance'
+                                        ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Users size={13} className={viewMode === 'team-performance' ? 'text-blue-600' : 'text-slate-500'} />
+                                <span>User Performance</span>
+                            </button>
+                        </div>
                     </div>
+
+                    {/* Filters, Search Bar & Actions (shown for projects view) */}
+                    {viewMode === 'projects' ? (
+                        <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto shrink-0">
+                            {/* Client Filter */}
+                            <div className="relative">
+                                <select
+                                    value={selectedClient}
+                                    onChange={(e) => setSelectedClient(e.target.value)}
+                                    className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                        selectedClient !== 'all'
+                                            ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                            : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                    }`}
+                                    title="Filter by Client"
+                                >
+                                    <option value="all">All Clients</option>
+                                    {clients.map(c => (
+                                        <option key={c._id} value={c._id}>{c.name}</option>
+                                    ))}
+                                </select>
+                                <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            </div>
+
+                            {/* Business Unit Filter */}
+                            <div className="relative">
+                                <select
+                                    value={selectedBusinessUnit}
+                                    onChange={(e) => setSelectedBusinessUnit(e.target.value)}
+                                    className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                        selectedBusinessUnit !== 'all'
+                                            ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                            : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                    }`}
+                                    title="Filter by Business Unit"
+                                >
+                                    <option value="all">All Business Units</option>
+                                    {businessUnits.map(bu => (
+                                        <option key={bu._id} value={bu._id}>{bu.name}</option>
+                                    ))}
+                                </select>
+                                <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            </div>
+
+                            {/* Search Bar */}
+                            <div className="relative flex-1 sm:w-52 md:w-60">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Search projects..."
+                                    className="w-full h-9 pl-9 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                                />
+                                {searchTerm && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Reset Filters shortcut if active */}
+                            {(selectedClient !== 'all' || selectedBusinessUnit !== 'all' || searchTerm || sortConfig.field) && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedClient('all');
+                                        setSelectedBusinessUnit('all');
+                                        setSearchTerm('');
+                                        setSortConfig({ field: null, direction: 'asc' });
+                                    }}
+                                    className="text-xs font-semibold text-slate-400 hover:text-red-500 px-2 py-1 transition-colors whitespace-nowrap"
+                                    title="Reset all filters and sorting"
+                                >
+                                    Clear filters
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-xs text-slate-500 font-medium hidden sm:block">
+                            <span className="font-bold text-slate-700">{employees.length}</span> Total Team Members
+                        </div>
+                    )}
                 </div>
 
-                <div className="zoho-card overflow-hidden">
+                {viewMode === 'team-performance' ? (
+                    <TeamPerformanceTracer
+                        employees={employees}
+                        projects={projects}
+                        onBackToProjects={() => {
+                            setViewMode('projects');
+                            const newParams = new URLSearchParams(searchParams);
+                            newParams.delete('view');
+                            setSearchParams(newParams, { replace: true });
+                        }}
+                    />
+                ) : (
+                    <div className="zoho-card overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 font-medium">
@@ -753,6 +901,7 @@ const Projects = () => {
                         </table>
                     </div>
                 </div>
+                )}
 
             </div>
 

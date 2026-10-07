@@ -18,7 +18,9 @@ import {
   Check,
   Tag,
   ExternalLink,
-  Filter
+  Filter,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import projectService from '../services/projectService';
 
@@ -64,6 +66,14 @@ export const ProjectDiscussions = ({
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
+
+  // Pagination state (default: 20 entries)
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [serverCounts, setServerCounts] = useState(null);
+  const [serverMetrics, setServerMetrics] = useState(null);
 
   // Worklogs linked to this project/discussions
   const [projectWorkLogs, setProjectWorkLogs] = useState(() =>
@@ -123,15 +133,43 @@ export const ProjectDiscussions = ({
     }
   };
 
-  // Fetch discussions for this project
-  const fetchDiscussions = async () => {
+  // Fetch discussions for this project with server-side pagination & filtering
+  const fetchDiscussions = useCallback(async (
+    targetPage = page,
+    targetLimit = limit,
+    targetTab = activeTab,
+    targetPriority = priorityFilter,
+    targetSearch = searchQuery
+  ) => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const res = await api.get(`/discussions?project=${projectId}&limit=100`);
+      const params = new URLSearchParams();
+      params.append('project', projectId);
+      params.append('page', String(targetPage));
+      params.append('limit', String(targetLimit));
+      if (targetTab && targetTab !== 'all') {
+        params.append('status', targetTab);
+      }
+      if (targetPriority && targetPriority !== 'all') {
+        params.append('priority', targetPriority);
+      }
+      if (targetSearch && targetSearch.trim()) {
+        params.append('search', targetSearch.trim());
+      }
+
+      const res = await api.get(`/discussions?${params.toString()}`);
       const list = res.data?.discussions || res.data?.data || res.data || [];
       const arrayList = Array.isArray(list) ? list : [];
       setDiscussions(arrayList);
+      setTotalPages(res.data?.totalPages || 1);
+      setTotalCount(res.data?.total ?? arrayList.length);
+      if (res.data?.counts) {
+        setServerCounts(res.data.counts);
+      }
+      if (res.data?.metrics) {
+        setServerMetrics(res.data.metrics);
+      }
 
       // Auto-open worklogs on any discussion that already has logged hours
       const withHours = arrayList
@@ -154,54 +192,67 @@ export const ProjectDiscussions = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
-    fetchDiscussions();
+    const timer = setTimeout(() => {
+      fetchDiscussions(page, limit, activeTab, priorityFilter, searchQuery);
+    }, searchQuery ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [fetchDiscussions, page, limit, activeTab, priorityFilter, searchQuery]);
+
+  useEffect(() => {
     fetchWorkLogs();
   }, [projectId]);
 
+  const handleTabChange = (key) => {
+    setActiveTab(key);
+    setPage(1);
+  };
+
+  const handlePriorityChange = (val) => {
+    setPriorityFilter(val);
+    setPage(1);
+  };
+
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    setPage(1);
+  };
+
+  const handleLimitChange = (val) => {
+    setLimit(Number(val));
+    setPage(1);
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setPage(newPage);
+    }
+  };
+
   // Tab counts
   const tabCounts = useMemo(() => {
-    const counts = { all: discussions.length };
+    if (serverCounts) return serverCounts;
+    const counts = { all: totalCount || discussions.length };
     STATUS_TABS.slice(1).forEach((t) => {
       counts[t.key] = discussions.filter((d) => d.status === t.key).length;
     });
     return counts;
-  }, [discussions]);
+  }, [serverCounts, totalCount, discussions]);
 
-  // Filtered discussions
-  const filteredDiscussions = useMemo(() => {
-    return discussions.filter((d) => {
-      // Tab filter
-      if (activeTab !== 'all' && d.status !== activeTab) {
-        return false;
-      }
-      // Priority filter
-      if (priorityFilter !== 'all') {
-        const p = d.priority || 'Medium';
-        if (p.toLowerCase() !== priorityFilter.toLowerCase()) return false;
-      }
-      // Search
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const titleMatch = d.title?.toLowerCase().includes(q);
-        const textMatch = d.discussion?.toLowerCase().includes(q);
-        const creatorMatch = `${d.createdBy?.firstName || ''} ${d.createdBy?.lastName || ''}`.toLowerCase().includes(q);
-        if (!titleMatch && !textMatch && !creatorMatch) return false;
-      }
-      return true;
-    });
-  }, [discussions, activeTab, priorityFilter, searchQuery]);
+  // Filtered discussions (already filtered & paginated by backend)
+  const filteredDiscussions = discussions;
 
   // Metrics summary
   const metrics = useMemo(() => {
-    const totalDiscussions = discussions.length;
+    if (serverMetrics) return serverMetrics;
+    const totalDiscussions = totalCount || discussions.length;
     const inProgress = discussions.filter((d) => d.status === 'inprogress').length;
     const completed = discussions.filter((d) => d.status === 'mark as complete').length;
     const totalHoursLogged = discussions.reduce((sum, d) => sum + (Number(d.totalLoggedHours) || 0), 0);
     return { totalDiscussions, inProgress, completed, totalHoursLogged };
-  }, [discussions]);
+  }, [serverMetrics, totalCount, discussions]);
 
   const toggleExpand = (id) => {
     setExpandedIds((prev) => {
@@ -285,7 +336,7 @@ export const ProjectDiscussions = ({
             return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => handleTabChange(tab.key)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive ? tab.active : 'bg-slate-50 hover:bg-slate-100 text-slate-600'
                 }`}
@@ -308,7 +359,7 @@ export const ProjectDiscussions = ({
           {/* Priority filter */}
           <select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
+            onChange={(e) => handlePriorityChange(e.target.value)}
             className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="all">All Priorities</option>
@@ -325,7 +376,7 @@ export const ProjectDiscussions = ({
               type="text"
               placeholder="Search discussions..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-44 sm:w-52"
             />
           </div>
@@ -639,6 +690,116 @@ export const ProjectDiscussions = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Pagination Bar ── */}
+      {totalCount > 0 && (
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Left: Showing Range & Per-page Selector */}
+          <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+            <span>
+              Showing <strong className="text-slate-800 font-semibold">{Math.min((page - 1) * limit + 1, totalCount)}</strong> to{' '}
+              <strong className="text-slate-800 font-semibold">{Math.min(page * limit, totalCount)}</strong> of{' '}
+              <strong className="text-slate-800 font-semibold">{totalCount}</strong> discussions
+            </span>
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <div className="flex items-center gap-1.5">
+              <span>Show:</span>
+              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                {[20, 50, 100].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => handleLimitChange(num)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                      limit === num
+                        ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+              <span className="text-slate-400">per page</span>
+            </div>
+          </div>
+
+          {/* Right: Page Navigation */}
+          <div className="flex items-center gap-1.5 self-center sm:self-auto">
+            <button
+              type="button"
+              onClick={() => handlePageChange(page - 1)}
+              disabled={page <= 1 || loading}
+              className={`px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors ${
+                page <= 1 || loading
+                  ? 'opacity-40 cursor-not-allowed text-slate-400 bg-slate-50'
+                  : 'hover:bg-slate-50 text-slate-700 cursor-pointer'
+              }`}
+              title="Previous Page"
+            >
+              <ChevronLeft size={14} />
+              <span>Prev</span>
+            </button>
+
+            {/* Page number buttons */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => {
+                  if (p === 1 || p === totalPages) return true;
+                  if (Math.abs(p - page) <= 1) return true;
+                  return false;
+                })
+                .reduce((acc, p, idx, arr) => {
+                  if (idx > 0 && p - arr[idx - 1] > 1) {
+                    acc.push('...');
+                  }
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, idx) => {
+                  if (item === '...') {
+                    return (
+                      <span key={`ellipsis-${idx}`} className="px-1 text-slate-400 text-xs select-none">
+                        ...
+                      </span>
+                    );
+                  }
+                  const pNum = Number(item);
+                  return (
+                    <button
+                      key={pNum}
+                      type="button"
+                      onClick={() => handlePageChange(pNum)}
+                      disabled={loading}
+                      className={`min-w-8 h-8 px-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                        page === pNum
+                          ? 'bg-blue-600 text-white shadow-2xs font-bold'
+                          : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {pNum}
+                    </button>
+                  );
+                })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handlePageChange(page + 1)}
+              disabled={page >= totalPages || loading}
+              className={`px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors ${
+                page >= totalPages || loading
+                  ? 'opacity-40 cursor-not-allowed text-slate-400 bg-slate-50'
+                  : 'hover:bg-slate-50 text-slate-700 cursor-pointer'
+              }`}
+              title="Next Page"
+            >
+              <span>Next</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
       )}
 
