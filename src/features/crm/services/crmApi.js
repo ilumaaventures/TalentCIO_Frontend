@@ -198,7 +198,32 @@ export const crmCommunicationService = {
     return res.data;
   },
   sendEmail: async (data) => {
-    const res = await api.post('/crm/communication/emails', data);
+    const res = await api.post('/crm/communication/send-email', data);
+    return res.data;
+  },
+  getSenderAccounts: async () => {
+    try {
+      const res = await api.get('/company/email-settings/senders');
+      return res.data;
+    } catch {
+      const res = await api.get('/crm/communication/senders');
+      return res.data;
+    }
+  },
+  getEmailTemplates: async () => {
+    const res = await api.get('/crm/communication/email-templates');
+    return res.data;
+  },
+  createEmailTemplate: async (data) => {
+    const res = await api.post('/crm/communication/email-templates', data);
+    return res.data;
+  },
+  updateEmailTemplate: async (id, data) => {
+    const res = await api.put(`/crm/communication/email-templates/${id}`, data);
+    return res.data;
+  },
+  deleteEmailTemplate: async (id) => {
+    const res = await api.delete(`/crm/communication/email-templates/${id}`);
     return res.data;
   },
   // getWhatsAppMessages is the canonical name; getWhatsApp is kept as an alias
@@ -221,6 +246,15 @@ export const crmCommunicationService = {
     const res = await api.post('/crm/communication/calls', data);
     return res.data;
   },
+};
+
+export const crmEmailTemplateService = {
+  getTemplates: crmCommunicationService.getEmailTemplates,
+  createTemplate: crmCommunicationService.createEmailTemplate,
+  updateTemplate: crmCommunicationService.updateEmailTemplate,
+  deleteTemplate: crmCommunicationService.deleteEmailTemplate,
+  getSenders: crmCommunicationService.getSenderAccounts,
+  sendEmail: crmCommunicationService.sendEmail,
 };
 
 export const crmForecastService = {
@@ -365,6 +399,34 @@ export const crmAdminService = {
   },
   mergeDuplicates: async (data) => {
     const res = await api.post('/crm/data/merge', data);
+    return res.data;
+  },
+  logImportDataActivity: async (id, data) => {
+    const res = await api.post(`/crm/data/import-data/${id}/activity`, data);
+    return res.data;
+  },
+  getImportDataActivities: async (id, params = {}) => {
+    const res = await api.get(`/crm/data/import-data/${id}/activities`, { params });
+    return res.data;
+  },
+  getImportDataById: async (id, params = {}) => {
+    const res = await api.get(`/crm/data/import-data/${id}`, { params });
+    return res.data;
+  },
+  scheduleImportDataFollowUp: async (id, data) => {
+    const res = await api.post(`/crm/data/import-data/${id}/follow-up`, data);
+    return res.data;
+  },
+  updateImportDataStatus: async (id, status) => {
+    const res = await api.patch(`/crm/data/import-data/${id}/status`, { status });
+    return res.data;
+  },
+  getRepPerformance: async (params = {}) => {
+    const res = await api.get('/crm/data/performance', { params });
+    return res.data;
+  },
+  getRepActivities: async (params = {}) => {
+    const res = await api.get('/crm/data/rep-activities', { params });
     return res.data;
   },
 };

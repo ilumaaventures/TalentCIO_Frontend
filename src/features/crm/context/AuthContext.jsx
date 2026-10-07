@@ -1,10 +1,16 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import useTalentAuth from '@/features/auth/hooks/useAuth';
 
 const CrmAuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const { user, logout } = useTalentAuth();
+  const { user, logout, refreshProfile } = useTalentAuth();
+
+  useEffect(() => {
+    if (refreshProfile) {
+      refreshProfile().catch(() => {});
+    }
+  }, [refreshProfile]);
 
   const formattedUser = user ? {
     ...user,

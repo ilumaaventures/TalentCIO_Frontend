@@ -12,21 +12,28 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  Building2,
+  ExternalLink,
+  Loader2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
-import { followUpsService, tasksService } from '../../services/api';
+import { followUpsService, tasksService, dataService } from '../../services/api';
+import { ImportDataDetailPage } from '../import/ImportDataDetailPage';
 
-export const CalendarPage = () => {
+export const CalendarPage = ({ onNavigate }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedCompanyRecord, setSelectedCompanyRecord] = useState(null);
+  const [isLoadingCompany, setIsLoadingCompany] = useState(false);
   const [createForm, setCreateForm] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -34,6 +41,20 @@ export const CalendarPage = () => {
     type: 'call',
     priority: 'High',
   });
+
+  const extractCompanyFromTitle = (title = '') => {
+    if (!title) return '';
+    // Format 1: "Follow-up call with bhk in Gurgaon" -> "bhk in Gurgaon"
+    // Format 2: "Call for Asian Paints" -> "Asian Paints"
+    const match = title.match(/(?:with|for)\s+([^•\-–|,]+)/i);
+    if (match && match[1]) {
+      const candidate = match[1].trim();
+      if (candidate.length > 1 && !/^(call|meeting|whatsapp|email|task|client|prospect|lead)$/i.test(candidate)) {
+        return candidate;
+      }
+    }
+    return '';
+  };
 
   const fetchEvents = async () => {
     setIsLoading(true);
@@ -44,24 +65,45 @@ export const CalendarPage = () => {
       ]);
 
       const all = [
-        ...(fRes.data || []).map((f) => ({
-          id: f._id,
-          title: f.title,
-          date: new Date(f.scheduledDate),
-          type: 'followup',
-          channel: f.type || 'call',
-          priority: f.priority,
-          status: f.status,
-        })),
-        ...(tRes.data || []).map((t) => ({
-          id: t._id,
-          title: t.title,
-          date: new Date(t.dueDate),
-          type: 'task',
-          channel: 'task',
-          priority: t.priority,
-          status: t.status,
-        })),
+        ...(fRes.data || []).map((f) => {
+          const comp =
+            f.importDataId?.companyName ||
+            f.leadId?.companyName ||
+            f.accountId?.name ||
+            extractCompanyFromTitle(f.title);
+          return {
+            id: f._id,
+            title: f.title,
+            date: new Date(f.scheduledDate),
+            type: 'followup',
+            channel: f.type || 'call',
+            priority: f.priority,
+            status: f.status,
+            companyName: comp,
+            importDataId: f.importDataId?._id || (typeof f.importDataId === 'string' ? f.importDataId : null),
+            importRecord: typeof f.importDataId === 'object' && f.importDataId?.companyName ? f.importDataId : null,
+            leadId: f.leadId?._id || (typeof f.leadId === 'string' ? f.leadId : null),
+            leadRecord: typeof f.leadId === 'object' && f.leadId?.companyName ? f.leadId : null,
+            raw: f,
+          };
+        }),
+        ...(tRes.data || []).map((t) => {
+          const comp = extractCompanyFromTitle(t.title);
+          return {
+            id: t._id,
+            title: t.title,
+            date: new Date(t.dueDate),
+            type: 'task',
+            channel: 'task',
+            priority: t.priority,
+            status: t.status,
+            companyName: comp,
+            importDataId: t.relatedEntityId || null,
+            importRecord: null,
+            leadId: null,
+            raw: t,
+          };
+        }),
       ];
 
       setEvents(all.sort((a, b) => a.date - b.date));
@@ -69,6 +111,82 @@ export const CalendarPage = () => {
       console.error('Error fetching calendar events', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOpenCompanyProfile = async (evt) => {
+    if (!evt) return;
+    setIsLoadingCompany(true);
+    try {
+      // 1. If event already carries the populated importRecord
+      if (evt.importRecord && evt.importRecord.companyName) {
+        setSelectedCompanyRecord(evt.importRecord);
+        return;
+      }
+
+      // 2. Fetch by importDataId if available
+      if (evt.importDataId) {
+        try {
+          const res = await dataService.getImportDataById(evt.importDataId);
+          if (res?.data) {
+            setSelectedCompanyRecord(res.data);
+            return;
+          }
+        } catch (e) {
+          console.warn('Could not fetch importData by id', e);
+        }
+      }
+
+      // 3. Search import data by company name
+      const searchTarget = evt.companyName || extractCompanyFromTitle(evt.title);
+      if (searchTarget) {
+        try {
+          const res = await dataService.getImportData({ search: searchTarget });
+          const rows = res?.data || [];
+          const found =
+            rows.find(
+              (r) =>
+                r.companyName?.toLowerCase().trim() === searchTarget.toLowerCase().trim() ||
+                r.contactPerson?.toLowerCase().trim() === searchTarget.toLowerCase().trim()
+            ) || rows[0];
+
+          if (found) {
+            setSelectedCompanyRecord(found);
+            return;
+          }
+        } catch (e) {
+          console.warn('Could not search import data by target name', e);
+        }
+      }
+
+      // 4. If leadId is attached and onNavigate exists, navigate to lead
+      if (evt.leadId && onNavigate) {
+        onNavigate('leads', evt.leadId);
+        return;
+      }
+
+      // 5. Fallback: synthesize a company record so the profile page still opens cleanly
+      if (searchTarget) {
+        setSelectedCompanyRecord({
+          _id: evt.id,
+          id: evt.id,
+          companyName: searchTarget,
+          contactPerson: searchTarget,
+          mobileNo: evt.raw?.phone || '',
+          emailId: evt.raw?.email || '',
+          industry: 'General',
+          status: 'Follow-up Scheduled',
+          remarks: `Follow-up event: ${evt.title}`,
+        });
+        return;
+      }
+
+      toast.error('No company record found for this calendar item');
+    } catch (err) {
+      console.error('Error opening company profile', err);
+      toast.error('Could not open company profile');
+    } finally {
+      setIsLoadingCompany(false);
     }
   };
 
@@ -148,8 +266,34 @@ export const CalendarPage = () => {
 
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  if (selectedCompanyRecord) {
+    return (
+      <ImportDataDetailPage
+        record={selectedCompanyRecord}
+        onBack={() => setSelectedCompanyRecord(null)}
+        onNavigate={onNavigate}
+        onConvert={() => {
+          if (onNavigate) onNavigate('leads');
+        }}
+        onEdit={() => {}}
+        onDelete={() => setSelectedCompanyRecord(null)}
+        onUpdateRecord={(updated) => setSelectedCompanyRecord(updated)}
+      />
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Loading Overlay when resolving company profile */}
+      {isLoadingCompany && (
+        <div className="fixed inset-0 z-50 bg-slate-900/20 backdrop-blur-2xs flex items-center justify-center">
+          <div className="bg-white p-4 rounded-2xl shadow-xl flex items-center gap-3 border border-slate-200">
+            <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+            <span className="text-xs font-bold text-slate-700">Opening company profile...</span>
+          </div>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -256,13 +400,18 @@ export const CalendarPage = () => {
                       {dayEvents.slice(0, 2).map((evt) => (
                         <div
                           key={evt.id}
-                          className={`text-[10px] font-semibold px-1 py-0.5 rounded truncate ${
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenCompanyProfile(evt);
+                          }}
+                          title={evt.companyName ? `Open company profile: ${evt.companyName}` : evt.title}
+                          className={`text-[10px] font-semibold px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition ${
                             evt.type === 'followup'
                               ? 'bg-indigo-100 text-indigo-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}
                         >
-                          {evt.title}
+                          {evt.companyName ? `🏢 ${evt.companyName}` : evt.title}
                         </div>
                       ))}
                       {dayEvents.length > 2 && (
@@ -306,7 +455,10 @@ export const CalendarPage = () => {
                 </div>
               ) : (
                 displayedEvents.map((evt) => (
-                  <div key={evt.id} className="py-3 flex items-start gap-3">
+                  <div
+                    key={evt.id}
+                    className="py-3 flex items-start gap-3 hover:bg-slate-50/70 p-2 rounded-xl transition"
+                  >
                     <div className="w-11 text-center bg-slate-50 border border-slate-200/60 rounded-lg p-1 shrink-0">
                       <span className="text-[10px] font-bold text-indigo-600 uppercase block">
                         {evt.date.toLocaleDateString([], { month: 'short' })}
@@ -317,8 +469,14 @@ export const CalendarPage = () => {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-slate-800 truncate">{evt.title}</h4>
+                      <div className="flex items-center justify-between gap-1">
+                        <h4
+                          onClick={() => handleOpenCompanyProfile(evt)}
+                          className="text-xs font-bold text-slate-800 truncate hover:text-indigo-600 cursor-pointer"
+                          title="Click to view company profile"
+                        >
+                          {evt.title}
+                        </h4>
                         <Badge
                           variant={evt.type === 'followup' ? 'indigo' : 'amber'}
                           size="xs"
@@ -326,7 +484,27 @@ export const CalendarPage = () => {
                           {evt.channel}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
+
+                      {/* Clickable Company Badge / Link */}
+                      {evt.companyName && (
+                        <div className="mt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCompanyProfile(evt);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/70 text-indigo-700 hover:text-indigo-900 text-xs font-bold transition cursor-pointer group"
+                            title={`Open ${evt.companyName} company profile`}
+                          >
+                            <Building2 className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                            <span className="truncate max-w-[190px]">{evt.companyName}</span>
+                            <ExternalLink className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
                         <Clock className="w-3 h-3 text-slate-400" />
                         <span>
                           {evt.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

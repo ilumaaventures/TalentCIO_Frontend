@@ -28,8 +28,19 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Phone,
+  Mail,
+  MessageSquare,
+  Clock,
+  Trophy,
+  History,
+  PhoneCall,
+  MoreVertical,
+  Menu,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -38,6 +49,13 @@ import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { dataService, leadsService, adminService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { LogOutreachModal } from './LogOutreachModal';
+import { ActivityHistoryModal } from './ActivityHistoryModal';
+import { RepLeaderboardModal } from './RepLeaderboardModal';
+import { RepPerformanceCockpit } from './RepPerformanceCockpit';
+import { ImportDataDetailPage } from './ImportDataDetailPage';
+import { RepOutreachHistoryModal } from './RepOutreachHistoryModal';
+import { CrmMailComposerModal } from '../../components/communication/CrmMailComposerModal';
 
 const STORAGE_KEY = 'crm_imported_excel_records';
 
@@ -49,6 +67,29 @@ const normalizePhone = (p) => {
   return digits.length >= 10 ? digits.slice(-10) : digits;
 };
 
+const STATUS_OPTIONS = [
+  'New',
+  'Interested',
+  'Not Interested',
+  'Callback Requested',
+  'Not picking',
+  'Did not turn up',
+  'Meeting Scheduled',
+  'Lost',
+  'Other',
+];
+
+const getStatusBadgeStyle = (val) => {
+  const s = String(val || '').toLowerCase().trim();
+  if (s === 'interested') return 'bg-emerald-50 text-emerald-700 border-emerald-300 focus:ring-emerald-400';
+  if (s === 'not interested' || s === 'notinterested' || s === 'lost') return 'bg-rose-50 text-rose-700 border-rose-300 focus:ring-rose-400';
+  if (s.includes('converted')) return 'bg-teal-50 text-teal-700 border-teal-300 focus:ring-teal-400';
+  if (s.includes('turn up') || s.includes('not picking') || s.includes('callback') || s.includes('rnr')) return 'bg-amber-50 text-amber-700 border-amber-300 focus:ring-amber-400';
+  if (s === 'meeting scheduled') return 'bg-purple-50 text-purple-700 border-purple-300 focus:ring-purple-400';
+  if (s === 'new') return 'bg-blue-50 text-blue-700 border-blue-300 focus:ring-blue-400';
+  return 'bg-slate-50 text-slate-700 border-slate-300 focus:ring-slate-400';
+};
+
 export const ImportDataPage = ({ onNavigate }) => {
   const { user } = useAuth();
   const currentUserName = useMemo(() => {
@@ -57,14 +98,89 @@ export const ImportDataPage = ({ onNavigate }) => {
     return fullName || user.name || user.email || 'Admin';
   }, [user]);
 
+  const canViewAll = useMemo(() => {
+    if (!user) return false;
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    const hasAdminRole = roles.some((r) => {
+      const name = typeof r === 'string' ? r : r?.name;
+      return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
+    });
+    if (hasAdminRole) return true;
+    const perms = Array.isArray(user.permissions) ? user.permissions : [];
+    return perms.includes('*') || perms.includes('crm.data.view_all');
+  }, [user]);
+
+  const userStorageKey = useMemo(() => {
+    return user?._id ? `${STORAGE_KEY}_${user._id}` : STORAGE_KEY;
+  }, [user?._id]);
+
   const [records, setRecords] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
+      const roles = Array.isArray(user?.roles) ? user.roles : [];
+      const hasAdminRole = roles.some((r) => {
+        const name = typeof r === 'string' ? r : r?.name;
+        return ['Admin', 'Super Admin', 'System Admin'].includes(name) || r?.isSystem;
+      });
+      const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+      const canSeeAll = hasAdminRole || perms.includes('*') || perms.includes('crm.data.view_all');
+      if (!canSeeAll) {
+        // Restricted users must start with empty local state until server returns their records
+        return [];
+      }
+      const key = user?._id ? `${STORAGE_KEY}_${user._id}` : STORAGE_KEY;
+      const saved = localStorage.getItem(key);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      const seen = new Set();
+      return parsed.filter((r) => {
+        const k = [
+          (r.companyName || '').trim().toLowerCase(),
+          (r.mobileNo || '').trim().replace(/\D/g, '').slice(-10),
+          (r.emailId || '').trim().toLowerCase(),
+        ].join('|');
+        if (k === '||') return true;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     } catch {
       return [];
     }
   });
+
+  // Purge any leaked un-namespaced or admin records from restricted user's localStorage
+  useEffect(() => {
+    if (!canViewAll) {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        if (user?._id) {
+          const userKey = `${STORAGE_KEY}_${user._id}`;
+          const saved = localStorage.getItem(userKey);
+          if (saved) {
+            const list = JSON.parse(saved);
+            const myName = (user.name || `${user.firstName || ''} ${user.lastName || ''}`).trim().toLowerCase();
+            const myId = String(user._id);
+            const filtered = list.filter((r) => {
+              const recUser = (r.importedBy || '').trim().toLowerCase();
+              const recUserId = r.importedByUserId ? String(r.importedByUserId) : '';
+              return (myId && recUserId === myId) || (myName && recUser === myName);
+            });
+            if (filtered.length !== list.length) {
+              if (filtered.length > 0) {
+                localStorage.setItem(userKey, JSON.stringify(filtered));
+              } else {
+                localStorage.removeItem(userKey);
+              }
+              setRecords(filtered);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  }, [canViewAll, user?._id, user?.name, user?.firstName, user?.lastName]);
 
   const [fileName, setFileName] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -90,6 +206,158 @@ export const ImportDataPage = ({ onNavigate }) => {
     }));
   };
 
+  // Outreach & Performance Tracking State
+  const [outreachRow, setOutreachRow] = useState(null);
+  const [outreachInitialType, setOutreachInitialType] = useState('call');
+  const [mailComposerRow, setMailComposerRow] = useState(null);
+  const [historyRow, setHistoryRow] = useState(null);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [leaderboardInitialTab, setLeaderboardInitialTab] = useState('leaderboard');
+  const [selectedDetailRecord, setSelectedDetailRecord] = useState(null);
+  const [detailInitialTab, setDetailInitialTab] = useState('overview');
+  const [detailFocusedActivityId, setDetailFocusedActivityId] = useState(null);
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const actionMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target)) {
+        setOpenActionMenuId(null);
+      }
+    };
+    if (openActionMenuId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openActionMenuId]);
+  const [historyUserModal, setHistoryUserModal] = useState({
+    isOpen: false,
+    rep: null,
+    fromLeaderboard: false,
+    initialChannelType: 'all',
+    initialOutcome: 'all',
+    initialDateRange: 'today',
+  });
+
+  const handleOpenUserHistory = (repInfo, fromLeaderboard = false, initialFilters = {}) => {
+    if (!repInfo) return;
+    const rep = typeof repInfo === 'string'
+      ? { userName: repInfo }
+      : {
+          userName: repInfo.userName || repInfo.name || 'Representative',
+          userId: repInfo.userId || repInfo._id || null,
+          email: repInfo.email || '',
+          avatar: repInfo.avatar || repInfo.profilePicture || '',
+          isAll: Boolean(repInfo.isAll),
+        };
+    setHistoryUserModal({
+      isOpen: true,
+      rep,
+      fromLeaderboard,
+      initialChannelType: initialFilters.channelType || 'all',
+      initialOutcome: initialFilters.outcome || 'all',
+      initialDateRange: initialFilters.dateRange || 'today',
+      initialCustomFrom: initialFilters.customFrom || '',
+      initialCustomTo: initialFilters.customTo || '',
+    });
+    if (fromLeaderboard) {
+      setIsLeaderboardOpen(false);
+    }
+  };
+
+  const handleOpenMetricHistory = ({ channelType = 'all', outcome = 'all', dateRange = 'today', rep }) => {
+    const targetRep = rep || (canViewAll
+      ? { userName: 'All Team Telemetry', isAll: true }
+      : { userName: currentUserName || 'My History', userId: user?._id });
+
+    setHistoryUserModal({
+      isOpen: true,
+      rep: targetRep,
+      fromLeaderboard: false,
+      initialChannelType: channelType,
+      initialOutcome: outcome,
+      initialDateRange: dateRange,
+    });
+  };
+
+  const handleToggleConvertedFilter = () => {
+    setShowConvertedOnly((prev) => {
+      const next = !prev;
+      if (next) {
+        toast.success('Filtering table by Converted Leads');
+      } else {
+        toast('Showing all imported records');
+      }
+      return next;
+    });
+    const tableEl = document.querySelector('table');
+    if (tableEl) {
+      tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleBackToLeaderboard = () => {
+    setHistoryUserModal({ isOpen: false, rep: null, fromLeaderboard: false });
+    setIsLeaderboardOpen(true);
+  };
+
+  const handleOpenOutreach = async (row, type = 'call') => {
+    let targetRow = row;
+    const targetId = row?._id || row?.id;
+    if (targetId && !row?.mobileNo && !row?.emailId) {
+      try {
+        const res = await dataService.getImportDataById(targetId, {
+          companyName: row.companyName,
+        });
+        if (res?.success && res.data) {
+          targetRow = { ...row, ...res.data };
+        }
+      } catch {
+        // fallback
+      }
+    }
+    if (type === 'email') {
+      setMailComposerRow(targetRow);
+      return;
+    }
+    setOutreachRow(targetRow);
+    setOutreachInitialType(type);
+  };
+
+  const handleOpenHistory = (row) => {
+    setHistoryRow(row);
+  };
+
+  const handleOutreachSuccess = (updatedRecord) => {
+    if (!updatedRecord) return;
+    setRecords((prev) =>
+      prev.map((r) => {
+        const isMatch =
+          (updatedRecord.id && r.id === updatedRecord.id) ||
+          (updatedRecord._id && (r._id === updatedRecord._id || r.id === String(updatedRecord._id)));
+        if (isMatch) {
+          return {
+            ...r,
+            ...updatedRecord,
+            callCount: updatedRecord.callCount !== undefined ? updatedRecord.callCount : (r.callCount || 0),
+            whatsappCount: updatedRecord.whatsappCount !== undefined ? updatedRecord.whatsappCount : (r.whatsappCount || 0),
+            emailCount: updatedRecord.emailCount !== undefined ? updatedRecord.emailCount : (r.emailCount || 0),
+            lastOutcome: updatedRecord.lastOutcome || r.lastOutcome,
+            lastContactedAt: updatedRecord.lastContactedAt || new Date().toISOString(),
+            nextFollowUpAt: updatedRecord.nextFollowUpAt || r.nextFollowUpAt,
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleSelectRepFromLeaderboard = (repName) => {
+    if (!repName) return;
+    setSelectedUsers([repName]);
+    toast.success(`Filtering table by representative: ${repName}`);
+  };
+
   // Imported By User Filter state (Active users only, multi-select with search)
   const [availableUsers, setAvailableUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]); // array of selected user names
@@ -113,18 +381,18 @@ export const ImportDataPage = ({ onNavigate }) => {
     return stagedData.rows;
   }, [stagedData, previewTab]);
 
-  // Persist records to localStorage
+  // Persist records to localStorage (scoped per user)
   useEffect(() => {
     try {
       if (records.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        localStorage.setItem(userStorageKey, JSON.stringify(records));
       } else {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(userStorageKey);
       }
     } catch (e) {
       console.error('Failed to save imported records in localStorage', e);
     }
-  }, [records]);
+  }, [records, userStorageKey]);
 
   // Load active company users for "Imported By" filter (strictly exclude inactive users)
   useEffect(() => {
@@ -171,18 +439,30 @@ export const ImportDataPage = ({ onNavigate }) => {
       const name = (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim();
       if (name) {
         userMap.set(name.toLowerCase(), {
-          id: u._id || name,
+          id: String(u._id || name),
           name,
           email: u.email || '',
         });
       }
     });
 
-    // 2. Ensure current logged-in user is in the options
+    // 2. Add users who have imported records in the workspace (so Admin can filter by any user who imported data)
+    records.forEach((r) => {
+      const name = (r.importedBy || '').trim();
+      if (name && !userMap.has(name.toLowerCase())) {
+        userMap.set(name.toLowerCase(), {
+          id: r.importedByUserId ? String(r.importedByUserId) : name,
+          name,
+          email: '',
+        });
+      }
+    });
+
+    // 3. Ensure current logged-in user is in the options
     if (currentUserName && currentUserName !== 'Admin') {
       if (!userMap.has(currentUserName.toLowerCase())) {
         userMap.set(currentUserName.toLowerCase(), {
-          id: user?._id || currentUserName,
+          id: user?._id ? String(user._id) : currentUserName,
           name: currentUserName,
           email: user?.email || '',
         });
@@ -190,7 +470,7 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
 
     return Array.from(userMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [availableUsers, currentUserName, user]);
+  }, [availableUsers, currentUserName, user, records]);
 
   // Filter active users inside dropdown search bar
   const filteredUserOptions = useMemo(() => {
@@ -223,98 +503,35 @@ export const ImportDataPage = ({ onNavigate }) => {
   // Fetch active import data from server and reconcile with workspace
   const syncWithServer = useCallback(async () => {
     try {
-      const res = await dataService.getImportData();
+      const res = await dataService.getImportData({ all: 'true' });
       if (res?.success && Array.isArray(res.data)) {
         const serverRows = res.data;
-        setRecords((prevRecords) => {
-          // If server has 0 records but local has records, sync local records up to server
-          if (serverRows.length === 0 && prevRecords.length > 0) {
-            dataService.syncImportData(prevRecords).catch(console.warn);
-            return prevRecords;
-          }
-
-          // If local has 0 records and server has records, load server records
-          if (prevRecords.length === 0 && serverRows.length > 0) {
-            return serverRows.map((s) => ({
-              ...s,
-              importedBy: s.importedBy || currentUserName,
-            }));
-          }
-
-          const localIdSet = new Set(prevRecords.map((r) => r.id));
-          const localKeySet = new Set(
-            prevRecords.map((r) =>
-              [
-                (r.companyName || '').trim().toLowerCase(),
-                (r.contactPerson || '').trim().toLowerCase(),
-                (r.mobileNo || '').trim(),
-                (r.emailId || '').trim().toLowerCase(),
-              ].join('|')
-            )
-          );
-
-          const serverKeyMap = new Map();
-          serverRows.forEach((sRow) => {
-            const key = [
-              (sRow.companyName || '').trim().toLowerCase(),
-              (sRow.contactPerson || '').trim().toLowerCase(),
-              (sRow.mobileNo || '').trim(),
-              (sRow.emailId || '').trim().toLowerCase(),
-            ].join('|');
-            serverKeyMap.set(key, sRow);
-          });
-
-          // Items restored from Recycle Bin on server that are currently missing locally
-          const restoredRows = serverRows
-            .filter((sRow) => {
-              const key = [
-                (sRow.companyName || '').trim().toLowerCase(),
-                (sRow.contactPerson || '').trim().toLowerCase(),
-                (sRow.mobileNo || '').trim(),
-                (sRow.emailId || '').trim().toLowerCase(),
-              ].join('|');
-              return !localIdSet.has(sRow.id) && !localKeySet.has(key);
-            })
-            .map((s) => ({
-              ...s,
-              importedBy: s.importedBy || currentUserName,
-            }));
-
-          // Update existing rows with latest lead conversion state from server
-          const updatedPrev = prevRecords.map((r) => {
-            const key = [
-              (r.companyName || '').trim().toLowerCase(),
-              (r.contactPerson || '').trim().toLowerCase(),
-              (r.mobileNo || '').trim(),
-              (r.emailId || '').trim().toLowerCase(),
-            ].join('|');
-            const sMatch = serverKeyMap.get(key) || serverRows.find((s) => s.id === r.id);
-            if (sMatch) {
-              const isConverted = Boolean(sMatch.isConvertedToLead);
-              return {
-                ...r,
-                isConvertedToLead: isConverted,
-                leadId: isConverted ? (sMatch.leadId || r.leadId) : null,
-                duplicateReason: isConverted ? r.duplicateReason : '',
-                importedBy: sMatch.importedBy || r.importedBy || currentUserName,
-              };
+        if (serverRows.length > 0) {
+          const mappedServer = serverRows.map((s) => ({
+            ...s,
+            importedBy: s.importedBy || (canViewAll ? '' : currentUserName),
+            importedByUserId: s.importedByUserId || null,
+          }));
+          setRecords(mappedServer);
+          try {
+            if (userStorageKey) {
+              localStorage.setItem(userStorageKey, JSON.stringify(mappedServer));
             }
-            return {
-              ...r,
-              importedBy: r.importedBy || currentUserName,
-            };
+          } catch (_) {}
+        } else {
+          setRecords((prev) => {
+            if (canViewAll && prev.length > 0) {
+              dataService.syncImportData(prev).catch(console.warn);
+              return prev;
+            }
+            return [];
           });
-
-          if (restoredRows.length > 0) {
-            return [...restoredRows, ...updatedPrev];
-          }
-          return updatedPrev;
-        });
+        }
       }
     } catch (err) {
       console.warn('Failed to sync import data from server:', err);
     }
-  }, []);
+  }, [canViewAll, currentUserName, userStorageKey]);
 
   // Verify lead status against CRM database
   const verifyLeadsStatus = useCallback(async (currentRecords) => {
@@ -357,7 +574,11 @@ export const ImportDataPage = ({ onNavigate }) => {
       }
     };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    window.addEventListener('crm:import-data-updated', syncWithServer);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('crm:import-data-updated', syncWithServer);
+    };
   }, [syncWithServer, verifyLeadsStatus]);
 
   useEffect(() => {
@@ -421,6 +642,23 @@ export const ImportDataPage = ({ onNavigate }) => {
           const mobileNo = normalized['mobileno'] || normalized['mobile'] || normalized['phone'] || '';
           const emailId = normalized['emailid'] || normalized['email'] || '';
           const remarks = normalized['remarks'] || normalized['remark'] || normalized['notes'] || '';
+          // Comprehensive status header detection from Excel (e.g. status, lead status, call status, prospect status, disposition)
+          const rawStatus =
+            normalized['status'] ||
+            normalized['leadstatus'] ||
+            normalized['callstatus'] ||
+            normalized['prospectstatus'] ||
+            normalized['currentstatus'] ||
+            normalized['disposition'] ||
+            '';
+          const leadStatus = rawStatus ? String(rawStatus).trim() : 'New';
+          const source =
+            normalized['source'] ||
+            normalized['leadsource'] ||
+            normalized['origin'] ||
+            normalized['datasource'] ||
+            normalized['channel'] ||
+            '';
 
           // Look for date in row
           let dateVal = normalized['date'] || normalized['createddate'] || normalized['entrydate'] || normalized['importdate'];
@@ -455,8 +693,13 @@ export const ImportDataPage = ({ onNavigate }) => {
             mobileNo: String(mobileNo).trim(),
             emailId: String(emailId).trim(),
             remarks: String(remarks).trim(),
+            status: String(leadStatus).trim() || 'New',
+            leadStatus: String(leadStatus).trim() || 'New',
+            source: String(source).trim(),
+            leadSource: String(source).trim(),
             date: dateObj.toISOString(),
             importedBy: currentUserName,
+            importedByUserId: user?._id || null,
           };
         });
 
@@ -719,6 +962,10 @@ export const ImportDataPage = ({ onNavigate }) => {
 
         if (matchIdx !== -1) {
           const ex = updatedList[matchIdx];
+          const newStatus = uRow.status || uRow.leadStatus || ex.status || ex.leadStatus || 'New';
+          const newSource = uRow.source || uRow.leadSource || ex.source || ex.leadSource || '';
+          const isConverted = newStatus.toLowerCase().includes('converted') || Boolean(uRow.isConvertedToLead || ex.isConvertedToLead);
+
           updatedList[matchIdx] = {
             ...ex,
             companyName: uRow.companyName || ex.companyName,
@@ -730,22 +977,37 @@ export const ImportDataPage = ({ onNavigate }) => {
             mobileNo: uRow.mobileNo || ex.mobileNo,
             emailId: uRow.emailId || ex.emailId,
             remarks: uRow.remarks || ex.remarks,
+            status: newStatus,
+            leadStatus: newStatus,
+            source: newSource,
+            leadSource: newSource,
             date: uRow.date || ex.date,
-            isConvertedToLead: Boolean(uRow.isConvertedToLead || ex.isConvertedToLead),
-            leadId: uRow.leadId || ex.leadId || null,
+            isConvertedToLead: isConverted,
+            leadId: isConverted ? (uRow.leadId || ex.leadId || null) : (ex.leadId || null),
             importedBy: uRow.importedBy || ex.importedBy || currentUserName,
+            importedByUserId: uRow.importedByUserId || ex.importedByUserId || null,
           };
         } else {
           unshiftedUpdates.push({
             ...uRow,
+            status: uRow.status || uRow.leadStatus || 'New',
+            leadStatus: uRow.status || uRow.leadStatus || 'New',
+            source: uRow.source || uRow.leadSource || '',
+            leadSource: uRow.source || uRow.leadSource || '',
             importedBy: uRow.importedBy || currentUserName,
+            importedByUserId: uRow.importedByUserId || user?._id || null,
           });
         }
       });
 
       const newRowsWithUser = newRows.map((r) => ({
         ...r,
+        status: r.status || r.leadStatus || 'New',
+        leadStatus: r.status || r.leadStatus || 'New',
+        source: r.source || r.leadSource || '',
+        leadSource: r.source || r.leadSource || '',
         importedBy: r.importedBy || currentUserName,
+        importedByUserId: r.importedByUserId || user?._id || null,
       }));
 
       const combined = [...newRowsWithUser, ...unshiftedUpdates, ...updatedList];
@@ -777,82 +1039,314 @@ export const ImportDataPage = ({ onNavigate }) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Download Sample Template matching user's image headers
-  const handleDownloadTemplate = () => {
-    const templateData = [
-      {
-        'S No': 1,
-        'Company Name': 'Infosys Limited',
-        'Industry': 'Information Technology',
-        'Address': 'Electronics City, Hosur Road, Bangalore',
-        'Rating': '4.5',
-        'contact person': 'Rahul Sharma',
-        'Designation': 'VP Engineering',
-        'mobile no': '+91 98765 43210',
-        'Email ID': 'rahul.sharma@infosys.example',
-        'Remarks': 'Interested in enterprise talent pipeline',
-        'Date': new Date().toISOString().split('T')[0],
-      },
-      {
-        'S No': 2,
-        'Company Name': 'Tata Consultancy Services',
-        'Industry': 'Consulting & IT',
-        'Address': 'TCS House, Raveline Street, Fort, Mumbai',
-        'Rating': '4.8',
-        'contact person': 'Priya Nair',
-        'Designation': 'Head of Talent Acquisition',
-        'mobile no': '+91 98111 22334',
-        'Email ID': 'priya.nair@tcs.example',
-        'Remarks': 'Needs executive search services',
-        'Date': new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0],
-      },
-    ];
+  // Download Sample Template — includes Status dropdown, Source and Date columns
+  const handleDownloadTemplate = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    const worksheet = XLSX.utils.json_to_sheet(templateData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Companies');
-    XLSX.writeFile(workbook, 'CRM_Import_Companies_Template.xlsx');
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Talentcio CRM';
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet('CRM Import Template', {
+        views: [{ showGridLines: true }],
+      });
+
+      // ── Define Columns & Widths ──────────────────────────────────────────
+      worksheet.columns = [
+        { header: 'S No', key: 'sNo', width: 8 },
+        { header: 'Company Name', key: 'companyName', width: 32 },
+        { header: 'Industry', key: 'industry', width: 24 },
+        { header: 'Address', key: 'address', width: 36 },
+        { header: 'Rating', key: 'rating', width: 10 },
+        { header: 'Contact Person', key: 'contactPerson', width: 24 },
+        { header: 'Designation', key: 'designation', width: 24 },
+        { header: 'Mobile No', key: 'mobileNo', width: 20 },
+        { header: 'Email ID', key: 'emailId', width: 30 },
+        { header: 'Remarks', key: 'remarks', width: 36 },
+        { header: 'Date', key: 'date', width: 16 },
+        { header: 'Status', key: 'status', width: 22 },
+        { header: 'Source', key: 'source', width: 22 },
+      ];
+
+      // ── Header Styling (Yellow background for columns with headers) ───────
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 28;
+      headerRow.font = { bold: true, color: { argb: 'FF000000' }, size: 10 };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFEB3B' }, // Yellow header
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          bottom: { style: 'medium', color: { argb: 'FF9CA3AF' } },
+          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        };
+      });
+
+      // ── Sample Rows ──────────────────────────────────────────────────────
+      const sampleRows = [
+        {
+          sNo: 1,
+          companyName: 'Infosys Limited',
+          industry: 'Information Technology',
+          address: 'Electronics City, Hosur Road, Bangalore',
+          rating: '4.5',
+          contactPerson: 'Rahul Sharma',
+          designation: 'VP Engineering',
+          mobileNo: '+91 98765 43210',
+          emailId: 'rahul.sharma@infosys.example',
+          remarks: 'Interested in enterprise talent pipeline',
+          date: today,
+          status: 'Interested',
+          source: 'LinkedIn',
+        },
+        {
+          sNo: 2,
+          companyName: 'Tata Consultancy Services',
+          industry: 'Consulting & IT',
+          address: 'TCS House, Raveline Street, Fort, Mumbai',
+          rating: '4.8',
+          contactPerson: 'Priya Nair',
+          designation: 'Head of Talent Acquisition',
+          mobileNo: '+91 98111 22334',
+          emailId: 'priya.nair@tcs.example',
+          remarks: 'Needs executive search services',
+          date: yesterday,
+          status: 'Not picking',
+          source: 'Cold Call',
+        },
+        {
+          sNo: 3,
+          companyName: '',
+          industry: '',
+          address: '',
+          rating: '',
+          contactPerson: '',
+          designation: '',
+          mobileNo: '',
+          emailId: '',
+          remarks: '',
+          date: today,
+          status: '',
+          source: '',
+        },
+      ];
+
+      sampleRows.forEach((rowData) => {
+        const row = worksheet.addRow(rowData);
+        row.height = 22;
+        row.alignment = { vertical: 'middle' };
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          };
+        });
+      });
+
+      // ── Status Dropdown Data Validation on Column L (rows 2–1000) ─────────
+      // Options: New, Interested, Not Interested, Did not turn up, Not picking, Other
+      const statusOptions = ['New', 'Interested', 'Not Interested', 'Callback Requested', 'Did not turn up', 'Not picking', 'Meeting Scheduled', 'Other'];
+      const statusFormula = `"${statusOptions.join(',')}"`;
+
+      // ── Source Dropdown Data Validation on Column M (rows 2–1000) ─────────
+      const sourceOptions = ['LinkedIn', 'Cold Call', 'Website', 'Referral', 'Email Campaign', 'WhatsApp', 'Direct', 'Other'];
+      const sourceFormula = `"${sourceOptions.join(',')}"`;
+
+      for (let r = 2; r <= 1000; r++) {
+        // Column L: Status dropdown
+        worksheet.getCell(`L${r}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          showErrorMessage: true,
+          errorStyle: 'stop',
+          errorTitle: 'Invalid Status',
+          error: `Please choose one of the options: ${statusOptions.join(', ')}`,
+          formulae: [statusFormula],
+        };
+
+        // Column M: Source dropdown
+        worksheet.getCell(`M${r}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          showErrorMessage: false,
+          formulae: [sourceFormula],
+        };
+      }
+
+      // ── Generate & Download ──────────────────────────────────────────────
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      saveAs(blob, 'CRM_Import_Template.xlsx');
+      toast.success('Template downloaded! Fill columns and re-upload.');
+    } catch (err) {
+      console.error('Error generating template:', err);
+      toast.error('Failed to download template. Please try again.');
+    }
   };
 
-  // Export Database records to Excel (.xlsx)
-  const handleExportData = () => {
+  // Export Database records to Excel (.xlsx) with styled yellow header
+  const handleExportData = async () => {
+    // Always start from the date-filtered + search-filtered set so the
+    // active date filter (All / Today / Last 2 Days / Last 5 Days / Custom)
+    // is always respected.
+    const dateFiltered = filteredAndSortedRecords;
+
     let rowsToExport = [];
     if (selectedIds.length > 0) {
-      rowsToExport = records.filter((r) => selectedIds.includes(r.id));
-    } else if (filteredAndSortedRecords && filteredAndSortedRecords.length > 0) {
-      rowsToExport = filteredAndSortedRecords;
+      // Intersect selection with the currently visible (date-filtered) rows
+      rowsToExport = dateFiltered.filter((r) => selectedIds.includes(r.id));
+      if (rowsToExport.length === 0) {
+        toast.error('None of the selected records match the active date filter.');
+        return;
+      }
     } else {
-      rowsToExport = records;
+      rowsToExport = dateFiltered;
     }
 
     if (!rowsToExport || rowsToExport.length === 0) {
-      toast.error('No database records available to export.');
+      const filterLabel =
+        dateFilter === 'today' ? 'Today' :
+        dateFilter === '2days' ? 'Last 2 Days' :
+        dateFilter === '5days' ? 'Last 5 Days' :
+        dateFilter === 'custom' ? 'Custom date range' :
+        'the selected filters';
+      toast.error(`No records found for ${filterLabel}.`);
       return;
     }
 
-    const exportRows = rowsToExport.map((row, index) => ({
-      'S No': index + 1,
-      'Company Name': row.companyName || '',
-      'Industry': row.industry || '',
-      'Address': row.address || '',
-      'Rating': row.rating || '',
-      'Contact Person': row.contactPerson || '',
-      'Designation': row.designation || '',
-      'Mobile No': row.mobileNo || '',
-      'Email ID': row.emailId || '',
-      'Remarks': row.remarks || '',
-      'Date': row.date ? new Date(row.date).toISOString().split('T')[0] : '',
-      'Imported By': row.importedBy || currentUserName || '',
-      'Status': row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'Active',
-    }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Database');
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `CRM_Database_Export_${timestamp}.xlsx`;
-    XLSX.writeFile(workbook, filename);
-    toast.success(`Successfully exported ${exportRows.length} record${exportRows.length === 1 ? '' : 's'}.`);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Talentcio CRM';
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet('CRM Database Export', {
+        views: [{ showGridLines: true }],
+      });
+
+      worksheet.columns = [
+        { header: 'S No', key: 'sNo', width: 8 },
+        { header: 'Company Name', key: 'companyName', width: 32 },
+        { header: 'Industry', key: 'industry', width: 24 },
+        { header: 'Address', key: 'address', width: 36 },
+        { header: 'Rating', key: 'rating', width: 10 },
+        { header: 'Contact Person', key: 'contactPerson', width: 24 },
+        { header: 'Designation', key: 'designation', width: 24 },
+        { header: 'Mobile No', key: 'mobileNo', width: 20 },
+        { header: 'Email ID', key: 'emailId', width: 30 },
+        { header: 'Remarks', key: 'remarks', width: 36 },
+        { header: 'Date', key: 'date', width: 16 },
+        { header: 'Status', key: 'status', width: 22 },
+        { header: 'Source', key: 'source', width: 20 },
+        { header: 'Imported By', key: 'importedBy', width: 22 },
+      ];
+
+      // ── Header Styling (Yellow background up to header columns) ─────────
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 28;
+      headerRow.font = { bold: true, color: { argb: 'FF000000' }, size: 10 };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFEB3B' }, // Yellow header
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          bottom: { style: 'medium', color: { argb: 'FF9CA3AF' } },
+          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        };
+      });
+
+      // ── Add Data Rows ──────────────────────────────────────────────────
+      rowsToExport.forEach((row, index) => {
+        const rowData = {
+          sNo: index + 1,
+          companyName: row.companyName || '',
+          industry: row.industry || '',
+          address: row.address || '',
+          rating: row.rating || '',
+          contactPerson: row.contactPerson || '',
+          designation: row.designation || '',
+          mobileNo: row.mobileNo || '',
+          emailId: row.emailId || '',
+          remarks: row.remarks || '',
+          date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
+          status: row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New'),
+          source: row.leadSource || row.source || '',
+          importedBy: row.importedBy || '',
+        };
+
+        const addedRow = worksheet.addRow(rowData);
+        addedRow.height = 22;
+        addedRow.alignment = { vertical: 'middle' };
+        addedRow.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          };
+        });
+      });
+
+      // ── Status dropdown on every data row (column L = col 12) ──────────
+      const exportStatusOptions = [
+        'New', 'Interested', 'Not Interested', 'Callback Requested',
+        'Did not turn up', 'Not picking', 'Meeting Scheduled',
+        'Converted to Lead', 'Lost', 'Other',
+      ];
+      const exportStatusFormula = `"${exportStatusOptions.join(',')}"`;
+      for (let r = 2; r <= rowsToExport.length + 1; r++) {
+        worksheet.getCell(`L${r}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          showDropDown: false, // false = always show the arrow in Excel
+          showErrorMessage: true,
+          errorStyle: 'warning',
+          errorTitle: 'Invalid Status',
+          error: `Choose: ${exportStatusOptions.join(', ')}`,
+          formulae: [exportStatusFormula],
+        };
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filterSuffix =
+        dateFilter === 'today' ? '_Today' :
+        dateFilter === '2days' ? '_Last2Days' :
+        dateFilter === '5days' ? '_Last5Days' :
+        dateFilter === 'custom' ? '_Custom' :
+        '_All';
+      const filename = `CRM_Export${filterSuffix}_${timestamp}.xlsx`;
+      saveAs(blob, filename);
+      const filterLabel =
+        dateFilter === 'today' ? 'Today' :
+        dateFilter === '2days' ? 'Last 2 Days' :
+        dateFilter === '5days' ? 'Last 5 Days' :
+        dateFilter === 'custom' ? 'Custom range' :
+        'All';
+      toast.success(`Exported ${rowsToExport.length} record${rowsToExport.length === 1 ? '' : 's'} (Filter: ${filterLabel}).`);
+    } catch (err) {
+      console.error('Export error:', err);
+      toast.error('Failed to export database records. Please try again.');
+    }
   };
 
   // Helper to check if a row is converted to lead in CRM
@@ -945,19 +1439,65 @@ export const ImportDataPage = ({ onNavigate }) => {
     }
   }, [dateFilter, fromDate, toDate]);
 
+  // Scoped records: when user does not have view_all permission, strictly restrict to their own records
+  const scopedRecords = useMemo(() => {
+    if (canViewAll) return records;
+    const currUser = (currentUserName || '').trim().toLowerCase();
+    const myId = user?._id ? String(user._id) : '';
+    return records.filter((r) => {
+      const recUser = (r.importedBy || '').trim().toLowerCase();
+      const recUserId = r.importedByUserId ? String(r.importedByUserId) : '';
+      const assignedId = r.assignedTo ? String(r.assignedTo) : '';
+      return (
+        (myId && (recUserId === myId || assignedId === myId)) ||
+        (currUser && recUser === currUser)
+      );
+    });
+  }, [records, canViewAll, currentUserName, user?._id]);
+
+  // Filter scoped records by selected user(s) (Imported By)
+  const userFilteredRecords = useMemo(() => {
+    if (selectedUsers.length === 0) return scopedRecords;
+    return scopedRecords.filter((item) => {
+      const itemUser = (item.importedBy || '').trim().toLowerCase();
+      const itemUserId = item.importedByUserId ? String(item.importedByUserId).toLowerCase() : '';
+      return selectedUsers.some((selected) => {
+        const selLower = selected.trim().toLowerCase();
+
+        // When item has an importedBy name, it MUST match the selected user
+        if (itemUser) {
+          if (itemUser === selLower) return true;
+          const opt = activeUserOptions.find(
+            (o) => o.name.toLowerCase() === selLower || String(o.id).toLowerCase() === selLower
+          );
+          if (opt && itemUser === opt.name.toLowerCase()) return true;
+          return false;
+        }
+
+        // Fallback when importedBy is empty: match by user ID
+        if (itemUserId && itemUserId === selLower) return true;
+        const opt = activeUserOptions.find(
+          (o) => o.name.toLowerCase() === selLower || String(o.id).toLowerCase() === selLower
+        );
+        if (opt && itemUserId && String(opt.id).toLowerCase() === itemUserId) return true;
+        return false;
+      });
+    });
+  }, [scopedRecords, selectedUsers, activeUserOptions]);
+
   // Records filtered strictly by the date filter (used for both Card 2 and Table)
   const dateFilteredRecords = useMemo(() => {
-    return records.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
-  }, [records, dateFilter, fromDate, toDate]);
+    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
+  }, [userFilteredRecords, dateFilter, fromDate, toDate]);
 
-  // Card metric values
-  const totalDataCount = records.length;
-  const uniqueDataCount = useMemo(() => records.filter((r) => !r.isDuplicate).length, [records]);
+  // Card metric values (dynamically reflecting active Imported By and Date filters)
+  const totalDataCount = userFilteredRecords.length;
+  const uniqueDataCount = useMemo(() => userFilteredRecords.filter((r) => !r.isDuplicate).length, [userFilteredRecords]);
   const dateFilteredCount = dateFilteredRecords.length;
 
   const totalConvertedCount = useMemo(() => {
-    return records.filter(isConvertedLead).length;
-  }, [records]);
+    return userFilteredRecords.filter(isConvertedLead).length;
+  }, [userFilteredRecords]);
 
   const dateFilteredConvertedCount = useMemo(() => {
     return dateFilteredRecords.filter(isConvertedLead).length;
@@ -972,15 +1512,6 @@ export const ImportDataPage = ({ onNavigate }) => {
           return false;
         }
 
-        // Multi-select user filter (Imported By)
-        if (selectedUsers.length > 0) {
-          const itemUser = (item.importedBy || currentUserName || '').trim().toLowerCase();
-          const matchesUser = selectedUsers.some(
-            (u) => u.trim().toLowerCase() === itemUser || (item.importedByUserId && item.importedByUserId === u)
-          );
-          if (!matchesUser) return false;
-        }
-
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase();
         const matchCompany = item.companyName?.toLowerCase().includes(q);
@@ -993,11 +1524,16 @@ export const ImportDataPage = ({ onNavigate }) => {
         return matchCompany || matchPerson || matchEmail || matchMobile || matchIndustry || matchAddress || matchUser;
       })
       .sort((a, b) => {
+        // Converted-to-lead rows always go to the bottom
+        const aConverted = Boolean(a.isConvertedToLead) ? 1 : 0;
+        const bConverted = Boolean(b.isConvertedToLead) ? 1 : 0;
+        if (aConverted !== bConverted) return aConverted - bConverted;
+        // Within each group keep the user's chosen date sort
         const dateA = new Date(a.date).getTime();
         const dateB = new Date(b.date).getTime();
         return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
       });
-  }, [dateFilteredRecords, selectedUsers, searchQuery, sortDirection, currentUserName, showConvertedOnly]);
+  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly]);
 
   // Reset to first page when any filters change
   useEffect(() => {
@@ -1027,6 +1563,50 @@ export const ImportDataPage = ({ onNavigate }) => {
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
+    }
+  };
+
+  // Change status of a record directly from table dropdown
+  const handleStatusChange = async (row, newStatus) => {
+    if (!row || !newStatus) return;
+    if (newStatus === 'Converted to Lead') {
+      handleOpenConvertSingle(row);
+      return;
+    }
+    const oldStatus = row.status || row.leadStatus || 'New';
+    if (oldStatus === newStatus) return;
+
+    const rowId = row._id || row.id;
+
+    // Optimistically update local state & localStorage
+    setRecords((prev) => {
+      const next = prev.map((r) =>
+        r.id === row.id ? { ...r, status: newStatus, leadStatus: newStatus } : r
+      );
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch (err) {
+        console.warn('Failed to persist status to localStorage:', err);
+      }
+      return next;
+    });
+
+    try {
+      await dataService.updateImportDataStatus(rowId, newStatus);
+      toast.success(`Status updated to "${newStatus}"`);
+    } catch (err) {
+      console.error('Failed to update status on server:', err);
+      toast.error('Failed to update status on server');
+      // Revert optimistic update
+      setRecords((prev) => {
+        const reverted = prev.map((r) =>
+          r.id === row.id ? { ...r, status: oldStatus, leadStatus: oldStatus } : r
+        );
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted));
+        } catch (_) {}
+        return reverted;
+      });
     }
   };
 
@@ -1062,13 +1642,92 @@ export const ImportDataPage = ({ onNavigate }) => {
     paginatedRecords.length > 0 &&
     paginatedRecords.every((r) => selectedIds.includes(r.id));
 
+  // Bulk status change & actions menu
+  const [bulkStatusValue, setBulkStatusValue] = useState('');
+  const [isBulkStatusLoading, setIsBulkStatusLoading] = useState(false);
+  const [isBulkMenuOpen, setIsBulkMenuOpen] = useState(false);
+  const bulkMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target)) {
+        setIsBulkMenuOpen(false);
+      }
+    };
+    if (isBulkMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isBulkMenuOpen]);
+
+  const handleBulkStatusChange = async (targetStatus) => {
+    const statusToApply = targetStatus || bulkStatusValue;
+    if (!statusToApply || selectedIds.length === 0) return;
+    const targets = records.filter(
+      (r) => selectedIds.includes(r.id) && !r.isDuplicate
+    );
+    if (targets.length === 0) {
+      toast.error('No eligible rows selected (duplicates are skipped).');
+      return;
+    }
+    setIsBulkStatusLoading(true);
+    const oldStatuses = Object.fromEntries(targets.map((r) => [r.id, r.status || r.leadStatus || 'New']));
+    // Optimistic update
+    setRecords((prev) => {
+      const next = prev.map((r) =>
+        selectedIds.includes(r.id) && !r.isDuplicate
+          ? { ...r, status: statusToApply, leadStatus: statusToApply }
+          : r
+      );
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    try {
+      await Promise.all(
+        targets.map((r) =>
+          dataService.updateImportDataStatus(r._id || r.id, statusToApply)
+        )
+      );
+      toast.success(`Status set to "${statusToApply}" for ${targets.length} record${targets.length === 1 ? '' : 's'}.`);
+      setBulkStatusValue('');
+    } catch (err) {
+      console.error('Bulk status update failed:', err);
+      toast.error('Failed to update status on server — changes reverted.');
+      setRecords((prev) => {
+        const reverted = prev.map((r) =>
+          oldStatuses[r.id] !== undefined
+            ? { ...r, status: oldStatuses[r.id], leadStatus: oldStatuses[r.id] }
+            : r
+        );
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted)); } catch (_) {}
+        return reverted;
+      });
+    } finally {
+      setIsBulkStatusLoading(false);
+    }
+  };
+
   // Move to Lead confirmation modal state
   const [convertTarget, setConvertTarget] = useState(null); // null | { type: 'single', row } | { type: 'bulk', count, rows }
 
   // Open convert confirmation modal for single row
-  const handleOpenConvertSingle = (row) => {
+  const handleOpenConvertSingle = async (row) => {
     if (!row || row.isConvertedToLead) return;
-    setConvertTarget({ type: 'single', row });
+    let targetRow = row;
+    const targetId = row._id || row.id;
+    if (targetId && !row.contactPerson && !row.mobileNo) {
+      try {
+        const res = await dataService.getImportDataById(targetId, {
+          companyName: row.companyName,
+        });
+        if (res?.success && res.data) {
+          targetRow = { ...row, ...res.data };
+        }
+      } catch {
+        // fallback
+      }
+    }
+    setConvertTarget({ type: 'single', row: targetRow });
   };
 
   // Open convert confirmation modal for bulk selected
@@ -1139,6 +1798,8 @@ export const ImportDataPage = ({ onNavigate }) => {
         const updatedRow = {
           ...row,
           isConvertedToLead: true,
+          status: 'Converted to Lead',
+          leadStatus: 'Converted to Lead',
           leadId: newLeadId,
           isDuplicate: false,
           duplicateReason: '',
@@ -1146,6 +1807,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         setRecords((prev) =>
           prev.map((r) => (r.id === row.id ? updatedRow : r))
         );
+        dataService.updateImportDataStatus(row._id || row.id, 'Converted to Lead').catch(console.warn);
         dataService.syncImportData([updatedRow]).catch(console.warn);
         toast.success(`"${row.companyName}" converted to Lead successfully!`);
         setConvertTarget(null);
@@ -1195,9 +1857,21 @@ export const ImportDataPage = ({ onNavigate }) => {
         if (res.success) {
           const sentIds = new Set(selectedRows.map((r) => r.id));
           const updated = records.map((r) =>
-            sentIds.has(r.id) ? { ...r, isConvertedToLead: true } : r
+            sentIds.has(r.id)
+              ? {
+                  ...r,
+                  isConvertedToLead: true,
+                  status: 'Converted to Lead',
+                  leadStatus: 'Converted to Lead',
+                }
+              : r
           );
           setRecords(updated);
+          Promise.all(
+            selectedRows.map((r) =>
+              dataService.updateImportDataStatus(r._id || r.id, 'Converted to Lead')
+            )
+          ).catch(console.warn);
           dataService.syncImportData(updated).catch(console.warn);
 
           toast.success(
@@ -1294,18 +1968,32 @@ export const ImportDataPage = ({ onNavigate }) => {
   const [editingRow, setEditingRow] = useState(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  const handleOpenEdit = (row) => {
+  const handleOpenEdit = async (row) => {
     if (!row || row.isConvertedToLead) return;
-    let dateInput = '';
-    if (row.date) {
+    let targetRow = row;
+    const targetId = row._id || row.id;
+    if (targetId && !row.contactPerson && !row.mobileNo) {
       try {
-        dateInput = new Date(row.date).toISOString().split('T')[0];
+        const res = await dataService.getImportDataById(targetId, {
+          companyName: row.companyName,
+        });
+        if (res?.success && res.data) {
+          targetRow = { ...row, ...res.data };
+        }
+      } catch {
+        // fallback
+      }
+    }
+    let dateInput = '';
+    if (targetRow.date) {
+      try {
+        dateInput = new Date(targetRow.date).toISOString().split('T')[0];
       } catch {
         dateInput = '';
       }
     }
     setEditingRow({
-      ...row,
+      ...targetRow,
       dateInput,
     });
   };
@@ -1361,70 +2049,45 @@ export const ImportDataPage = ({ onNavigate }) => {
         date: finalDate,
       };
 
-      let savedLeadId = editingRow.leadId || editingRow._id;
+      let savedLeadId = editingRow.leadId || null;
 
       if (savedLeadId) {
-        // Lead already persisted in DB - update it
-        await leadsService.updateLead(savedLeadId, leadPayload);
-        toast.success(`Updated "${compName}" in Database!`);
-      } else {
-        // Create new lead in CRM database
-        const res = await leadsService.createLead(leadPayload);
-        if (res?.data?._id || res?._id) {
-          savedLeadId = res.data?._id || res._id;
-        }
-        toast.success(`Saved "${compName}" to Database successfully!`);
+        // If this record was already converted to a CRM Lead, update the linked lead document
+        await leadsService.updateLead(savedLeadId, leadPayload).catch(console.warn);
       }
 
-      // FIX #6: Only mark isConvertedToLead:true when the DB operation actually
-      // succeeded and we have a valid leadId. If createLead fails (network error,
-      // validation error) the row must keep its previous converted state, not
-      // silently appear as converted without a real lead in the CRM.
-      const didSucceed = Boolean(savedLeadId);
+      const rowSource = (editingRow.source || editingRow.leadSource || '').trim();
+      const isConverted = Boolean(editingRow.isConvertedToLead);
 
-      // Update in active workspace records
+      const updatedRowData = {
+        ...editingRow,
+        companyName: compName,
+        contactPerson: (editingRow.contactPerson || '').trim(),
+        designation: (editingRow.designation || '').trim(),
+        mobileNo: (editingRow.mobileNo || '').trim(),
+        emailId: (editingRow.emailId || '').trim(),
+        industry: (editingRow.industry || '').trim(),
+        source: rowSource,
+        leadSource: rowSource,
+        rating: (editingRow.rating || '').trim(),
+        address: (editingRow.address || '').trim(),
+        remarks: (editingRow.remarks || '').trim(),
+        date: finalDate,
+        leadId: savedLeadId,
+        isConvertedToLead: isConverted,
+      };
+
+      // Update in active workspace records (stays in exact same table position)
       setRecords((prev) =>
-        prev.map((r) =>
-          r.id === editingRow.id
-            ? {
-              ...r,
-              companyName: compName,
-              contactPerson: (editingRow.contactPerson || '').trim(),
-              designation: (editingRow.designation || '').trim(),
-              mobileNo: (editingRow.mobileNo || '').trim(),
-              emailId: (editingRow.emailId || '').trim(),
-              industry: (editingRow.industry || '').trim(),
-              rating: (editingRow.rating || '').trim(),
-              address: (editingRow.address || '').trim(),
-              remarks: (editingRow.remarks || '').trim(),
-              date: finalDate,
-              leadId: savedLeadId || r.leadId,
-              // Only flip to true when we have a confirmed leadId from the API
-              isConvertedToLead: didSucceed ? true : r.isConvertedToLead,
-              isDuplicate: didSucceed ? false : r.isDuplicate,
-              duplicateReason: didSucceed ? '' : r.duplicateReason,
-            }
-            : r
-        )
+        prev.map((r) => (r.id === editingRow.id ? { ...r, ...updatedRowData } : r))
       );
-      // Sync updated row to CrmImportData only if the save actually worked
-      if (didSucceed) {
-        dataService.syncImportData([{
-          ...editingRow,
-          companyName: compName,
-          contactPerson: (editingRow.contactPerson || '').trim(),
-          designation: (editingRow.designation || '').trim(),
-          mobileNo: (editingRow.mobileNo || '').trim(),
-          emailId: (editingRow.emailId || '').trim(),
-          industry: (editingRow.industry || '').trim(),
-          rating: (editingRow.rating || '').trim(),
-          address: (editingRow.address || '').trim(),
-          remarks: (editingRow.remarks || '').trim(),
-          date: finalDate,
-          leadId: savedLeadId,
-          isConvertedToLead: true,
-        }]).catch(console.warn);
-      }
+
+      // Sync updated row to CrmImportData on server
+      dataService.syncImportData([updatedRowData]).catch((err) => {
+        console.warn('Failed to sync edited prospect with server:', err);
+      });
+
+      toast.success(`Saved changes for "${compName}" successfully!`);
 
       // Also update in stagedData if editing a staged preview row
       if (stagedData?.rows) {
@@ -1434,37 +2097,12 @@ export const ImportDataPage = ({ onNavigate }) => {
             r.id === editingRow.id
               ? {
                 ...r,
-                companyName: compName,
-                contactPerson: (editingRow.contactPerson || '').trim(),
-                designation: (editingRow.designation || '').trim(),
-                mobileNo: (editingRow.mobileNo || '').trim(),
-                emailId: (editingRow.emailId || '').trim(),
-                industry: (editingRow.industry || '').trim(),
-                rating: (editingRow.rating || '').trim(),
-                address: (editingRow.address || '').trim(),
-                remarks: (editingRow.remarks || '').trim(),
-                date: finalDate,
-                leadId: savedLeadId,
-                isConvertedToLead: true,
-                rowType: 'update',
-                isDuplicate: false,
-                isUpdate: true,
-                isNew: false,
-                duplicateReason: '',
-                updateReason: 'Saved to CRM Database',
+                ...updatedRowData,
+                rowType: r.rowType || 'update',
               }
               : r
           );
-          const newCount = updatedRows.filter((r) => r.rowType === 'new').length;
-          const updateCount = updatedRows.filter((r) => r.rowType === 'update').length;
-          const dupCount = updatedRows.filter((r) => r.rowType === 'duplicate').length;
-          return {
-            ...prev,
-            rows: updatedRows,
-            newCount,
-            updateCount,
-            duplicateCount: dupCount,
-          };
+          return { ...prev, rows: updatedRows };
         });
       }
 
@@ -1479,12 +2117,51 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {selectedDetailRecord ? (
+        <ImportDataDetailPage
+          record={selectedDetailRecord}
+          initialTab={detailInitialTab}
+          focusedActivityId={detailFocusedActivityId}
+          onBack={() => {
+            setSelectedDetailRecord(null);
+            setDetailInitialTab('overview');
+            setDetailFocusedActivityId(null);
+          }}
+          onNavigate={onNavigate}
+          onConvert={() => handleOpenConvertSingle(selectedDetailRecord)}
+          onEdit={() => handleOpenEdit(selectedDetailRecord)}
+          onDelete={() => {
+            const r = selectedDetailRecord;
+            setSelectedDetailRecord(null);
+            handleOpenDeleteSingle(r);
+          }}
+          onUpdateRecord={(updated) => {
+            if (!updated) return;
+            setRecords((prev) =>
+              prev.map((r) => (r.id === updated.id || r._id === updated._id ? { ...r, ...updated } : r))
+            );
+          }}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Database className="w-6 h-6 text-emerald-600" />
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+            <Database className="w-6 h-6 text-emerald-600 shrink-0" />
             <span>Database</span>
+            {canViewAll ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                All Organization Records
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                title="You have personal data visibility: you can only view records you uploaded or are assigned to."
+              >
+                Personal View (My Data Only)
+              </span>
+            )}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Select Excel file, preview extracted rows, import to workspace, sort/filter by date, and send to Leads.
@@ -1729,6 +2406,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Email ID</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Remarks</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Date</th>
+                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Status</th>
+                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Source</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Imported By</th>
                       <th className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center">Action</th>
                     </tr>
@@ -1736,7 +2415,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                   <tbody className="divide-y divide-slate-100">
                     {visibleStagedRows.length === 0 ? (
                       <tr>
-                        <td colSpan={13} className="py-8 text-center text-slate-400">
+                        <td colSpan={15} className="py-8 text-center text-slate-400">
                           No {previewTab} records to display in this sheet.
                         </td>
                       </tr>
@@ -1821,13 +2500,21 @@ export const ImportDataPage = ({ onNavigate }) => {
                           <td className="p-2.5 text-slate-600 whitespace-nowrap font-medium">
                             {row.date ? new Date(row.date).toLocaleDateString() : '—'}
                           </td>
+                          <td className="p-2.5 border-l border-slate-200 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(row.status || row.leadStatus || 'New')}`}>
+                              {row.status || row.leadStatus || 'New'}
+                            </span>
+                          </td>
+                          <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
+                            {row.source || row.leadSource || '—'}
+                          </td>
                           <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                {(row.importedBy || currentUserName || 'U').charAt(0).toUpperCase()}
+                                {(row.importedBy || 'U').charAt(0).toUpperCase()}
                               </div>
-                              <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || currentUserName}>
-                                {row.importedBy || currentUserName}
+                              <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || '—'}>
+                                {row.importedBy || '—'}
                               </span>
                             </div>
                           </td>
@@ -1902,152 +2589,231 @@ export const ImportDataPage = ({ onNavigate }) => {
         <div className="space-y-4">
           {/* Summary Stat Cards: Total Data, Date Filter Imports, Converted to Leads */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Card 1: Total Data (Clickable: shows all records) */}
-            <div
-              onClick={() => setShowConvertedOnly(false)}
-              className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs hover:shadow-xs transition-all duration-150 cursor-pointer select-none ${
-                !showConvertedOnly
-                  ? 'bg-white border-slate-200/90 hover:border-slate-300'
-                  : 'bg-white/80 border-slate-200/70 hover:border-indigo-300 hover:bg-white'
-              }`}
-              title="Click to view all imported records"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Total Data
-                  </p>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                      {totalDataCount}
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400">
-                      records
-                    </span>
-                  </div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                  <Database className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span className="truncate">Total dataset in workspace</span>
-                {showConvertedOnly && (
-                  <span className="text-[10px] font-semibold text-indigo-600 hover:underline">
-                    Show All
-                  </span>
-                )}
-              </div>
-            </div>
+            {/* Card 1: Total Data (Clickable: resets filters and shows all records) */}
+            {(() => {
+              const isTotalActive = !showConvertedOnly && dateFilter === 'all' && !fromDate && !toDate;
+              const isTodayActive = !showConvertedOnly && dateFilter === 'today';
+              const isConvertedActive = showConvertedOnly;
 
-            {/* Card 2: Import Today (Dynamically adjusts based on date filter) */}
-            <div className="bg-white p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all duration-150">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                      {dateFilterInfo.title}
-                    </p>
-                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-                      {dateFilterInfo.badge}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                      {dateFilteredCount}
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400">
-                      {dateFilter === 'today' ? 'imported today' : 'matching filter'}
-                    </span>
-                  </div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-                  <Calendar className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span className="truncate">{dateFilterInfo.description}</span>
-                <span className="font-semibold text-blue-600 shrink-0">
-                  {totalDataCount > 0 ? `${Math.round((dateFilteredCount / totalDataCount) * 100)}% of total` : '0%'}
-                </span>
-              </div>
-            </div>
-
-            {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
-            <div
-              onClick={() => setShowConvertedOnly((prev) => !prev)}
-              className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
-                showConvertedOnly
-                  ? 'bg-emerald-50/50 border-emerald-400 ring-2 ring-emerald-500/30 shadow-xs'
-                  : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
-              }`}
-              title={showConvertedOnly ? 'Click to show all records' : 'Click to filter table by Converted to Lead'}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                      showConvertedOnly ? 'text-emerald-800 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
-                    }`}>
-                      Converted to Lead
-                    </p>
-                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                      {dateFilterInfo.badge}
-                    </span>
-                    {showConvertedOnly && (
-                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-600 text-white shrink-0 shadow-2xs">
-                        Active Filter
+              return (
+                <>
+                  <div
+                    onClick={() => {
+                      setShowConvertedOnly(false);
+                      setDateFilter('all');
+                      setFromDate('');
+                      setToDate('');
+                    }}
+                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
+                      isTotalActive
+                        ? 'bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/25 shadow-xs'
+                        : 'bg-white border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
+                    }`}
+                    title={isTotalActive ? 'Currently showing all records' : 'Click to view all records in workspace'}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                            isTotalActive ? 'text-indigo-900 font-bold' : 'text-slate-500 group-hover:text-indigo-700'
+                          }`}>
+                            Total Data
+                          </p>
+                          {selectedUsers.length > 0 ? (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                              {selectedUsers.length === 1 ? selectedUsers[0] : `${selectedUsers.length} Users`}
+                            </span>
+                          ) : isTotalActive && (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                              All Records
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                            {totalDataCount}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            records
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                        isTotalActive
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
+                          : 'bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                      }`}>
+                        <Database className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="truncate">
+                        {selectedUsers.length > 0
+                          ? `Filtered by ${selectedUsers.join(', ')}`
+                          : isTotalActive
+                            ? 'Showing all records in workspace'
+                            : 'Click to show all records'}
                       </span>
-                    )}
+                      <span className={`font-semibold shrink-0 ${isTotalActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-600'}`}>
+                        {scopedRecords.length > 0
+                          ? selectedUsers.length > 0
+                            ? `${Math.round((totalDataCount / scopedRecords.length) * 100)}% of total`
+                            : '100%'
+                          : '0%'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-xl sm:text-2xl font-bold text-emerald-600 tracking-tight">
-                      {dateFilteredConvertedCount}
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400">
-                      {dateFilter === 'today' ? 'converted today' : 'leads converted'}
-                    </span>
+
+                  {/* Card 2: Import Today (Clickable: filters by today's date) */}
+                  <div
+                    onClick={() => {
+                      if (isTodayActive) {
+                        setDateFilter('all');
+                      } else {
+                        setShowConvertedOnly(false);
+                        setDateFilter('today');
+                        setFromDate('');
+                        setToDate('');
+                      }
+                    }}
+                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
+                      isTodayActive
+                        ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
+                        : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
+                    }`}
+                    title={isTodayActive ? 'Filtered by today (Click to reset to all)' : 'Click to filter records imported today'}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                            isTodayActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
+                          }`}>
+                            {dateFilterInfo.title}
+                          </p>
+                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${
+                            isTodayActive
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}>
+                            {isTodayActive ? 'Active Filter' : dateFilterInfo.badge}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                            {dateFilteredCount}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {dateFilter === 'today' ? 'imported today' : 'matching filter'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                        isTodayActive
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                          : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
+                      }`}>
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="truncate">
+                        {isTodayActive ? 'Filtered by today (Click to show all)' : 'Click to filter today’s records'}
+                      </span>
+                      <span className="font-semibold text-blue-600 shrink-0">
+                        {totalDataCount > 0 ? `${Math.round((dateFilteredCount / totalDataCount) * 100)}% of total` : '0%'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  {onNavigate && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNavigate('leads');
-                      }}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-100/50 transition"
-                      title="Open CRM Leads page"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                    showConvertedOnly
-                      ? 'bg-emerald-600 border-emerald-600 text-white'
-                      : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
-                  }`}>
-                    <CheckCircle2 className="w-4 h-4" />
+
+                  {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
+                  <div
+                    onClick={() => setShowConvertedOnly((prev) => !prev)}
+                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
+                      isConvertedActive
+                        ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-500/25 shadow-xs'
+                        : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
+                    }`}
+                    title={isConvertedActive ? 'Filtered: Showing converted leads (Click to show all)' : 'Click to filter table by Converted to Lead'}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+                            isConvertedActive ? 'text-emerald-900 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
+                          }`}>
+                            Converted to Lead
+                          </p>
+                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${
+                            isConvertedActive
+                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {isConvertedActive ? 'Active Filter' : dateFilterInfo.badge}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="text-xl sm:text-2xl font-bold text-emerald-600 tracking-tight">
+                            {dateFilteredConvertedCount}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {dateFilter === 'today' ? 'converted today' : 'leads converted'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {onNavigate && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigate('leads');
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-100/50 transition cursor-pointer"
+                            title="Open CRM Leads page"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                          isConvertedActive
+                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
+                            : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
+                        }`}>
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="truncate">
+                        {isConvertedActive
+                          ? 'Filtered: Showing converted leads (Click to reset)'
+                          : 'Click to filter converted leads'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 shrink-0">
+                        {dateFilteredCount > 0
+                          ? `${Math.round((dateFilteredConvertedCount / dateFilteredCount) * 100)}% converted`
+                          : '0% converted'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span className="truncate">
-                  {showConvertedOnly
-                    ? 'Filtered: Showing converted leads (Click to reset)'
-                    : dateFilter !== 'all'
-                      ? `From ${dateFilteredCount} record${dateFilteredCount === 1 ? '' : 's'} (${totalConvertedCount} overall)`
-                      : 'Converted to Leads in CRM'}
-                </span>
-                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 shrink-0">
-                  {dateFilteredCount > 0
-                    ? `${Math.round((dateFilteredConvertedCount / dateFilteredCount) * 100)}% converted`
-                    : '0% converted'}
-                </span>
-              </div>
-            </div>
+                </>
+              );
+            })()}
           </div>
+
+          {/* Real-time Outreach & Rep Performance Cockpit */}
+          <RepPerformanceCockpit
+            canViewAll={canViewAll}
+            onOpenLeaderboard={(tab = 'leaderboard') => {
+              setLeaderboardInitialTab(tab);
+              setIsLeaderboardOpen(true);
+            }}
+            onSelectRep={handleSelectRepFromLeaderboard}
+            onOpenUserHistory={handleOpenUserHistory}
+            onOpenMetricHistory={handleOpenMetricHistory}
+            onToggleConvertedFilter={handleToggleConvertedFilter}
+          />
 
           {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
           <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -2113,8 +2879,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                 </div>
               )}
 
-              {/* Imported By User Filter Dropdown */}
-              <div className="relative" ref={userDropdownRef}>
+              {/* Imported By User Filter Dropdown — only for users with full org view */}
+              {canViewAll && (
+                <div className="relative" ref={userDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsUserDropdownOpen((prev) => !prev)}
@@ -2269,7 +3036,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </div>
                   </div>
                 )}
-              </div>
+                </div>
+              )}
 
               {/* Search Bar */}
               <div className="relative min-w-[200px]">
@@ -2301,26 +3069,89 @@ export const ImportDataPage = ({ onNavigate }) => {
 
               {selectedIds.length > 0 && (
                 <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    icon={Download}
-                    onClick={handleExportData}
-                    className="shadow-2xs text-slate-700 hover:bg-slate-50 border-slate-300"
-                    title="Export selected records to Excel"
-                  >
-                    Export Selected ({selectedIds.length})
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    icon={Trash2}
-                    onClick={handleOpenDeleteSelected}
-                    className="shadow-sm"
-                    title="Move selected companies to Recycle Bin"
-                  >
-                    Delete Selected ({selectedIds.length})
-                  </Button>
+                  {/* ── Sleek Bulk Actions Burger Menu ── */}
+                  <div className="relative inline-block" ref={bulkMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsBulkMenuOpen((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 shadow-2xs transition cursor-pointer select-none"
+                      title="Bulk Actions Menu"
+                    >
+                      <Menu className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Actions ({selectedIds.length})</span>
+                      <ChevronDown
+                        className={`w-3 h-3 text-indigo-400 transition-transform duration-200 ${
+                          isBulkMenuOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {isBulkMenuOpen && (
+                      <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+                        {/* Header */}
+                        <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+                          <span>Selected: {selectedIds.length}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedIds([]);
+                              setIsBulkMenuOpen(false);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-800 font-medium normal-case hover:underline text-[11px]"
+                          >
+                            Clear Selection
+                          </button>
+                        </div>
+
+                        {/* Change Status Section */}
+                        <div className="px-3 pt-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Change Status:
+                        </div>
+                        <div className="max-h-52 overflow-y-auto px-1.5 py-0.5 space-y-0.5 custom-scrollbar">
+                          {STATUS_OPTIONS.map((status) => (
+                            <button
+                              key={status}
+                              type="button"
+                              disabled={isBulkStatusLoading}
+                              onClick={() => {
+                                handleBulkStatusChange(status);
+                                setIsBulkMenuOpen(false);
+                              }}
+                              className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition text-left cursor-pointer group"
+                            >
+                              <span className="font-medium group-hover:translate-x-0.5 transition-transform">
+                                {status}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${getStatusBadgeStyle(
+                                  status
+                                )}`}
+                              >
+                                Set
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="my-1.5 border-t border-slate-100" />
+
+                        {/* Delete Action */}
+                        <div className="px-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsBulkMenuOpen(false);
+                              handleOpenDeleteSelected();
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition font-semibold text-left cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Delete Selected ({selectedIds.length})</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -2331,7 +3162,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                 disabled={selectedIds.length === 0}
                 isLoading={isSubmitting}
                 onClick={handleOpenConvertBulk}
-                className="shadow-sm"
+                className="shadow-sm whitespace-nowrap"
               >
                 Send to Leads ({selectedIds.length})
               </Button>
@@ -2354,8 +3185,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <strong className="text-slate-800 font-bold">{endEntry}</strong>
                   </>
                 )}{' '}
-                of <strong className="text-slate-800 font-bold">{records.length}</strong>
-                {totalMatchingRecords !== records.length && totalMatchingRecords > 0 && (
+                of <strong className="text-slate-800 font-bold">{totalDataCount}</strong>
+                {totalMatchingRecords !== totalDataCount && totalMatchingRecords > 0 && (
                   <span className="text-slate-400 font-normal ml-1">
                     ({totalMatchingRecords} matching filter)
                   </span>
@@ -2446,8 +3277,8 @@ export const ImportDataPage = ({ onNavigate }) => {
           </div>
 
           {/* Main Table */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto max-h-[600px]">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
+            <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
               <table className="w-full text-left border-collapse text-xs">
                 {/* Grey Table Header */}
                 <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
@@ -2464,13 +3295,8 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <th className="p-3 border-l border-slate-200 text-center w-12 whitespace-nowrap">S.NO</th>
                     <th className="p-3 border-l border-slate-200 whitespace-nowrap">Company Name</th>
                     <th className="p-3 border-l border-slate-200 whitespace-nowrap">Industry</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Address</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Rating</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Contact Person</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Designation</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Mobile No</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Email ID</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Remarks</th>
+                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Source</th>
+                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Status</th>
                     <th
                       className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors"
                       onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
@@ -2486,14 +3312,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                       </div>
                     </th>
                     <th className="p-3 border-l border-slate-200 whitespace-nowrap">Imported By</th>
-                    <th className="p-3 border-l border-slate-200 text-center w-24 whitespace-nowrap">Action</th>
+                    <th className="p-3 border-l border-slate-200 text-center w-16 whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
                   {totalMatchingRecords === 0 ? (
                     <tr>
-                      <td colSpan={14} className="py-12 text-center text-slate-400">
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center">
                           <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
                           <p className="font-semibold text-slate-600">
@@ -2512,14 +3338,11 @@ export const ImportDataPage = ({ onNavigate }) => {
                   ) : (
                     paginatedRecords.map((row, idx) => {
                       const isSelected = selectedIds.includes(row.id);
-                      const isRemarkExpanded = Boolean(expandedRemarks[row.id]);
-                      const isLongRemark = (row.remarks || '').trim().length > 30;
                       return (
                         <tr
                           key={row.id}
-                          className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${isSelected ? 'bg-indigo-50/40' : ''
-                            } ${isRemarkExpanded ? 'align-top bg-slate-50/30' : ''}`}
-                          onClick={() => handleToggleRow(row.id)}
+                          className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/40' : ''}`}
+                          onClick={() => setSelectedDetailRecord(row)}
                         >
                           <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                             <input
@@ -2533,40 +3356,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                             {startEntry + idx}
                           </td>
                           <td className="p-3 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>{row.companyName || '—'}</span>
-                              {row.isConvertedToLead ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onNavigate) onNavigate('leads');
-                                  }}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 ml-1.5 shrink-0 shadow-2xs hover:shadow-xs transition cursor-pointer"
-                                  title="Converted to Lead in CRM. Click to view in Leads tab."
-                                >
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>Converted to Lead</span>
-                                  <ExternalLink className="w-2.5 h-2.5 opacity-60 ml-0.5" />
-                                </button>
-                              ) : row.isDuplicate ? (
-                                <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 ml-1 shrink-0"
-                                  title={row.duplicateReason || 'Duplicate found'}
-                                >
-                                  <AlertTriangle className="w-3 h-3 text-rose-500" />
-                                  Duplicate
-                                </span>
-                              ) : null}
+                            <div className="flex items-center gap-1.5">
+                              <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+                              <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                {row.companyName || '—'}
+                              </span>
                             </div>
-                            {row.isDuplicate && !row.isConvertedToLead && row.duplicateReason && (
-                              <div className="text-[10px] text-rose-600 font-normal mt-0.5">
-                                {row.duplicateReason}
-                              </div>
-                            )}
                           </td>
-                          <td className="p-3 text-slate-700 whitespace-nowrap">
+                          <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             {row.industry ? (
                               <Badge variant="neutral" size="sm">
                                 {row.industry}
@@ -2575,113 +3372,164 @@ export const ImportDataPage = ({ onNavigate }) => {
                               '—'
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 max-w-xs truncate" title={row.address}>
-                            {row.address || '—'}
+                          <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
+                            {row.source || row.leadSource || '—'}
                           </td>
-                          <td className="p-3 text-slate-800 whitespace-nowrap font-semibold">
-                            {row.rating ? (
-                              <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                                ★ {row.rating}
+                          <td className="p-3 border-l border-slate-200 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {row.isDuplicate ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                                title={row.duplicateReason || 'Duplicate found'}
+                              >
+                                <AlertTriangle className="w-3 h-3 text-rose-500" />
+                                <span>Duplicate</span>
                               </span>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="p-3 font-semibold text-slate-800 whitespace-nowrap">
-                            {row.contactPerson || '—'}
-                          </td>
-                          <td className="p-3 text-slate-600 whitespace-nowrap">{row.designation || '—'}</td>
-                          <td className="p-3 text-slate-700 whitespace-nowrap font-mono">{row.mobileNo || '—'}</td>
-                          <td className="p-3 text-slate-700 whitespace-nowrap font-mono">{row.emailId || '—'}</td>
-                          <td
-                            className={`p-3 text-slate-600 transition-all ${
-                              isRemarkExpanded
-                                ? 'min-w-[260px] max-w-md whitespace-normal break-words py-4'
-                                : 'max-w-xs'
-                            }`}
-                          >
-                            {isLongRemark ? (
-                              <div className="flex items-start gap-1.5">
-                                <div
-                                  className={`flex-1 ${
-                                    isRemarkExpanded
-                                      ? 'text-xs text-slate-800 leading-relaxed font-normal bg-slate-50/90 p-2.5 rounded-lg border border-slate-200 shadow-2xs'
-                                      : 'truncate'
-                                  }`}
-                                  title={isRemarkExpanded ? '' : row.remarks}
-                                >
-                                  {row.remarks}
-                                </div>
+                            ) : row.isConvertedToLead ? (
+                              <div className="relative inline-flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-300">
+                                  <CheckCircle2 className="w-3 h-3 text-teal-600" />
+                                  <span>Converted to Lead</span>
+                                </span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    toggleExpandRemark(row.id);
+                                    if (onNavigate) onNavigate('leads');
                                   }}
-                                  className={`p-1 rounded-md transition shrink-0 inline-flex items-center justify-center ${
-                                    isRemarkExpanded
-                                      ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
-                                      : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
-                                  }`}
-                                  title={isRemarkExpanded ? 'Collapse remark' : 'View full remark'}
+                                  className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition"
+                                  title="View in CRM Leads"
                                 >
-                                  {isRemarkExpanded ? (
-                                    <EyeOff className="w-3.5 h-3.5" />
-                                  ) : (
-                                    <Eye className="w-3.5 h-3.5" />
-                                  )}
+                                  <ExternalLink className="w-3 h-3" />
                                 </button>
                               </div>
                             ) : (
-                              <span className="truncate" title={row.remarks}>
-                                {row.remarks || '—'}
-                              </span>
+                              <div className="relative inline-flex items-center gap-1.5">
+                                <div className="relative inline-flex items-center">
+                                  <select
+                                    value={row.status || row.leadStatus || 'New'}
+                                    onChange={(e) => handleStatusChange(row, e.target.value)}
+                                    className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
+                                      row.status || row.leadStatus || 'New'
+                                    )}`}
+                                  >
+                                    {STATUS_OPTIONS.map((opt) => (
+                                      <option key={opt} value={opt} className="bg-white text-slate-800 text-xs font-normal">
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="w-3 h-3 absolute right-2 pointer-events-none opacity-60" />
+                                </div>
+                              </div>
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 whitespace-nowrap font-medium">
+                          <td className="p-3 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium">
                             {row.date ? new Date(row.date).toLocaleDateString() : '—'}
                           </td>
                           <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
-                              <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0">
-                                {(row.importedBy || currentUserName || 'U').charAt(0).toUpperCase()}
+                              <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 uppercase">
+                                {(row.importedBy || 'U').charAt(0)}
                               </div>
-                              <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || currentUserName}>
-                                {row.importedBy || currentUserName}
+                              <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || '—'}>
+                                {row.importedBy || '—'}
                               </span>
                             </div>
                           </td>
-                          <td className="p-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1.5 min-h-[28px]">
-                              {!row.isConvertedToLead ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenConvertSingle(row)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
-                                    title="Convert to CRM Lead"
-                                  >
-                                    <Send className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenEdit(row)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                                    title="Edit all fields & Save"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenDeleteSingle(row)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                    title="Move this company to Recycle Bin"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="text-slate-300 text-xs select-none" title="Managed as active Lead in CRM Leads">—</span>
+                          <td className="p-3 border-l border-slate-200 text-center whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
+                            <div className="relative inline-flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenActionMenuId((prev) => (prev === row.id ? null : row.id));
+                                }}
+                                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                  openActionMenuId === row.id
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
+                                }`}
+                                title="Row Actions"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {openActionMenuId === row.id && (
+                                <div
+                                  ref={actionMenuRef}
+                                  className={`absolute right-0 w-44 bg-white rounded-xl shadow-2xl border border-slate-200/95 py-1 z-50 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100 ${
+                                    paginatedRecords.length > 4 && idx >= paginatedRecords.length - 2
+                                      ? 'bottom-full mb-1.5'
+                                      : 'top-full mt-1.5'
+                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenOutreach(row, 'call');
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition font-medium cursor-pointer"
+                                    >
+                                      <PhoneCall className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                      <span>Log Outreach</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenOutreach(row, 'email');
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-sky-50 hover:text-sky-700 text-slate-700 transition font-medium cursor-pointer"
+                                    >
+                                      <Mail className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                      <span>Send Sales Email</span>
+                                    </button>
+
+                                    {!row.isConvertedToLead && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenActionMenuId(null);
+                                          handleOpenConvertSingle(row);
+                                        }}
+                                        className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 transition font-medium cursor-pointer"
+                                      >
+                                        <Send className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                        <span>Send to Leads</span>
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenEdit(row);
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50 hover:text-slate-900 text-slate-700 transition font-medium cursor-pointer"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                      <span>Edit Company</span>
+                                    </button>
+                                  </div>
+
+                                  <div className="py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        handleOpenDeleteSingle(row);
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-rose-50 hover:text-rose-700 text-rose-600 transition font-medium cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -2736,6 +3584,8 @@ export const ImportDataPage = ({ onNavigate }) => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* Edit Company Details Modal */}
@@ -2834,6 +3684,19 @@ export const ImportDataPage = ({ onNavigate }) => {
                   setEditingRow((prev) => ({ ...prev, rating: e.target.value }))
                 }
                 placeholder="e.g. 4.5"
+              />
+
+              <Input
+                label="Source"
+                value={editingRow.source || editingRow.leadSource || ''}
+                onChange={(e) =>
+                  setEditingRow((prev) => ({
+                    ...prev,
+                    source: e.target.value,
+                    leadSource: e.target.value,
+                  }))
+                }
+                placeholder="e.g. LinkedIn, Cold Call, Referral"
               />
 
               <Input
@@ -3082,6 +3945,85 @@ export const ImportDataPage = ({ onNavigate }) => {
             )}
           </div>
         </Modal>
+      )}
+
+      {/* Outreach Action Modal (Call, WhatsApp, Email, Follow-up) */}
+      {outreachRow && (
+        <LogOutreachModal
+          isOpen={Boolean(outreachRow)}
+          onClose={() => setOutreachRow(null)}
+          row={outreachRow}
+          initialType={outreachInitialType}
+          onSuccess={handleOutreachSuccess}
+        />
+      )}
+
+      {/* Direct Sales Email Composer Modal (Same as TA style) */}
+      {mailComposerRow && (
+        <CrmMailComposerModal
+          isOpen={Boolean(mailComposerRow)}
+          onClose={() => setMailComposerRow(null)}
+          row={mailComposerRow}
+          onSuccess={(updated) => {
+            setMailComposerRow(null);
+            handleOutreachSuccess(updated);
+          }}
+        />
+      )}
+
+      {/* Activity History & Follow-ups Timeline Drawer */}
+      {historyRow && (
+        <ActivityHistoryModal
+          isOpen={Boolean(historyRow)}
+          onClose={() => setHistoryRow(null)}
+          row={historyRow}
+          onLogNew={(r) => handleOpenOutreach(r, 'call')}
+        />
+      )}
+
+      {/* Team Performance & Leaderboard Modal */}
+      <RepLeaderboardModal
+        isOpen={isLeaderboardOpen}
+        initialTab={leaderboardInitialTab}
+        onClose={() => setIsLeaderboardOpen(false)}
+        onSelectRepFilter={handleSelectRepFromLeaderboard}
+        onOpenUserHistory={(rep, filters) => handleOpenUserHistory(rep, true, filters)}
+        onOpenOutreach={(prospect, type) => {
+          setOutreachRow(prospect);
+          setOutreachInitialType(type || 'call');
+        }}
+        onOpenProspectDetails={(prospect, options = {}) => {
+          setSelectedDetailRecord(prospect);
+          setDetailInitialTab(options?.tab || 'overview');
+          setDetailFocusedActivityId(options?.emailId || options?.activityId || null);
+        }}
+      />
+
+      {/* Representative Outreach Activity & History Modal */}
+      {historyUserModal.isOpen && (
+        <RepOutreachHistoryModal
+          isOpen={historyUserModal.isOpen}
+          onClose={() => setHistoryUserModal({ isOpen: false, rep: null, fromLeaderboard: false })}
+          onBack={historyUserModal.fromLeaderboard ? handleBackToLeaderboard : null}
+          rep={historyUserModal.rep}
+          initialChannelType={historyUserModal.initialChannelType || 'all'}
+          initialOutcome={historyUserModal.initialOutcome || 'all'}
+          initialDateRange={historyUserModal.initialDateRange || 'today'}
+          initialCustomFrom={historyUserModal.initialCustomFrom || ''}
+          initialCustomTo={historyUserModal.initialCustomTo || ''}
+          onSelectRepFilter={(repName) => {
+            handleSelectRepFromLeaderboard(repName);
+          }}
+          onOpenOutreach={(prospect, type) => {
+            setOutreachRow(prospect);
+            setOutreachInitialType(type || 'call');
+          }}
+          onOpenProspectDetails={(prospect, options = {}) => {
+            setSelectedDetailRecord(prospect);
+            setDetailInitialTab(options?.tab || 'overview');
+            setDetailFocusedActivityId(options?.emailId || options?.activityId || null);
+          }}
+        />
       )}
     </div>
   );

@@ -47,8 +47,42 @@ export const TEMPLATE_PLACEHOLDERS = [
     'JD'
 ];
 
+export const CRM_EMAIL_TEMPLATE_PLACEHOLDERS = [
+    'companyName',
+    'contactPerson',
+    'firstName',
+    'lastName',
+    'fullName',
+    'email',
+    'emailId',
+    'mobileNo',
+    'phoneNumber',
+    'phone',
+    'designation',
+    'industry',
+    'address',
+    'rating',
+    'status',
+    'leadStatus',
+    'source',
+    'leadSource',
+    'remarks',
+    'senderName',
+    'senderEmail',
+    'senderPhone',
+    'senderCompany',
+    'senderDesignation',
+    'senderRole',
+    'meetingLink',
+    'proposalDetails',
+    'customNote',
+    'currentDate',
+    'currentYear'
+];
+
 export const PLACEHOLDER_ALIASES = [
     ...TEMPLATE_PLACEHOLDERS,
+    ...CRM_EMAIL_TEMPLATE_PLACEHOLDERS,
     'fullName',
     'candidateEmail',
     'workEmail',
