@@ -309,8 +309,8 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*');
   const homeRoute = showDashboard ? '/' : (showEss ? '/ess' : (showAttendance ? '/attendance' : '/'));
   const sectionLabelClass = isCustomAppRoute
-    ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-100/55'
-    : 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6d6258]';
+    ? 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-white'
+    : 'px-3 mb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#FFFFFF]';
   const sidebarCardClass = isCustomAppRoute
     ? 'rounded-2xl border border-white/12 bg-white/[0.07] backdrop-blur-sm'
     : 'rounded-2xl border border-white/6 bg-white/[0.03]';
@@ -320,16 +320,16 @@ const Sidebar = ({ isOpen, onClose }) => {
     ? 'bg-gradient-to-b from-[#134a85] via-[#0f3d70] to-[#0a2f57] border-r border-blue-200/15'
     : 'bg-[#111315] border-r border-white/6';
   const sidebarLinkClass = isCustomAppRoute
-    ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-blue-100/80 transition-all duration-200 hover:bg-white/10 hover:text-white'
+    ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-white transition-all duration-200 hover:bg-white/10 hover:text-white'
     : 'zoho-sidebar-link';
   const sidebarLinkActiveClass = isCustomAppRoute
     ? 'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold text-white bg-blue-600/30 text-blue-200 shadow-[0_10px_24px_rgba(6,22,48,0.28)] ring-1 ring-blue-500/40'
     : 'zoho-sidebar-link-active';
-  const sidebarSubtleTextClass = isCustomAppRoute ? 'text-blue-100/55' : 'text-[#6d6258]';
+  const sidebarSubtleTextClass = isCustomAppRoute ? 'text-white' : 'text-[#FFFFFF]';
   const sidebarDividerClass = isCustomAppRoute ? 'border-white/10' : 'border-white/6';
   const sidebarLogoutClass = isCustomAppRoute
-    ? 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/75 transition-colors hover:bg-white/10 hover:text-white'
-    : 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition-colors hover:bg-white/5 hover:text-white';
+    ? 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-white/10 hover:text-white'
+    : 'mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#FFFFFF] transition-colors hover:bg-white/5 hover:text-white';
   const getSidebarLinkClass = (isLinkActive) => (isLinkActive ? sidebarLinkActiveClass : sidebarLinkClass);
 
   useEffect(() => {
@@ -434,7 +434,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             </div>
           </Link>
           {/* Mobile Close Button */}
-          <button onClick={onClose} className="md:hidden text-slate-500 hover:text-white">
+          <button onClick={onClose} className="md:hidden text-white hover:text-white">
             <X size={20} />
           </button>
         </div>

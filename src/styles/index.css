@@ -118,7 +118,13 @@
   }
 
   .zoho-sidebar-link {
-    @apply flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-[#998f82] transition-all duration-200 hover:bg-white/5 hover:text-white;
+    @apply flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-[#FFFFFF] transition-all duration-200 hover:bg-white/10 hover:text-white;
+    color: #FFFFFF;
+  }
+
+  .zoho-sidebar-link svg {
+    color: #FFFFFF;
+    stroke: #FFFFFF;
   }
 
   .zoho-sidebar-link-active {
