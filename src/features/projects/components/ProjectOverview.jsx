@@ -104,11 +104,13 @@ const TaskRow = ({ task, onSelectTask }) => {
 const ModuleCard = ({
   mod,
   tasks,
+  discussions = [],
   canUpdateProject,
   onEditModule,
   onDeleteModule,
   onOpenCreateTask,
   onSelectTask,
+  onViewDiscussions,
   isOpen,
   onToggle
 }) => {
@@ -118,6 +120,9 @@ const ModuleCard = ({
 
   const modTasks = tasks.filter(
     (t) => String(t.module?._id || t.module) === String(mod._id)
+  );
+  const modDiscussions = discussions.filter(
+    (d) => String(d.module?._id || d.module) === String(mod._id)
   );
   const modCompleted = modTasks.filter((t) => t.status === 'DONE').length;
   const modPercent = modTasks.length > 0 ? Math.round((modCompleted / modTasks.length) * 100) : 0;
@@ -136,6 +141,7 @@ const ModuleCard = ({
         <span className="flex-1 font-semibold text-sm text-slate-800 truncate">{mod.name}</span>
         <span className="text-[11px] text-slate-400 flex-shrink-0">
           {modTasks.length} {modTasks.length === 1 ? 'task' : 'tasks'}
+          {modDiscussions.length > 0 && ` • ${modDiscussions.length} ${modDiscussions.length === 1 ? 'discussion' : 'discussions'}`}
         </span>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${modPercent === 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
           {modPercent}%
@@ -182,6 +188,49 @@ const ModuleCard = ({
                 className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1">
                 <Plus size={12} /> Add Task
               </button>
+            </div>
+          )}
+
+          {/* Module discussions */}
+          {modDiscussions.length > 0 && (
+            <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-wide">
+                  <MessageSquare size={12} className="text-blue-500" />
+                  Module Discussions ({modDiscussions.length})
+                </span>
+                {onViewDiscussions && (
+                  <button
+                    onClick={onViewDiscussions}
+                    className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                  >
+                    Open Discussions Tab &rarr;
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {modDiscussions.map((d) => (
+                  <div
+                    key={d._id}
+                    onClick={onViewDiscussions}
+                    className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/70 hover:border-blue-300 hover:bg-blue-50/30 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-xs font-semibold text-slate-800 truncate">
+                        {d.title || d.discussion}
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase bg-slate-100 text-slate-600 shrink-0">
+                        {d.status}
+                      </span>
+                    </div>
+                    {d.hours ? (
+                      <span className="text-[10px] font-semibold text-indigo-600 ml-2 shrink-0">
+                        {d.hours}h
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -313,6 +362,12 @@ const DiscussionsSection = ({ projectId, onViewDiscussions }) => {
                           {tab.label}
                         </span>
                       )}
+                      {disc.module?.name && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                          <Folder size={10} className="text-blue-500" />
+                          {disc.module.name}
+                        </span>
+                      )}
                     </div>
 
                     {/* body preview */}
@@ -428,6 +483,19 @@ export const ProjectOverview = ({
       });
     }
   }, [modules]);
+
+  const [projectDiscussions, setProjectDiscussions] = useState([]);
+
+  useEffect(() => {
+    const pId = projectId || project?._id;
+    if (!pId) return;
+    api.get(`/discussions?project=${pId}&limit=200`)
+      .then(res => {
+        const list = res.data?.discussions || res.data?.data || res.data || [];
+        setProjectDiscussions(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setProjectDiscussions([]));
+  }, [projectId, project?._id]);
 
   const handleExpandAll = () => {
     setOpenModuleIds(new Set(modules.map(m => String(m._id))));
@@ -609,11 +677,13 @@ export const ProjectOverview = ({
                 key={mod._id}
                 mod={mod}
                 tasks={tasks}
+                discussions={projectDiscussions}
                 canUpdateProject={canUpdateProject}
                 onEditModule={onEditModule}
                 onDeleteModule={onDeleteModule}
                 onOpenCreateTask={onOpenCreateTask}
                 onSelectTask={onSelectTask}
+                onViewDiscussions={onViewDiscussions}
                 isOpen={openModuleIds.has(String(mod._id))}
                 onToggle={() => handleToggleModule(mod._id)}
               />

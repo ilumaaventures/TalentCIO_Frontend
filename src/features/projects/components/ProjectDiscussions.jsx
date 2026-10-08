@@ -20,7 +20,8 @@ import {
   ExternalLink,
   Filter,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Folder
 } from 'lucide-react';
 import projectService from '../services/projectService';
 
@@ -66,6 +67,24 @@ export const ProjectDiscussions = ({
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [creatorFilter, setCreatorFilter] = useState('all');
+  const [moduleFilter, setModuleFilter] = useState('all');
+  const [modules, setModules] = useState([]);
+
+  // Fetch modules for this project
+  const fetchModules = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const res = await api.get(`/projects/${projectId}/modules`);
+      setModules(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to fetch project modules in discussions:', err);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchModules();
+  }, [fetchModules]);
 
   // Pagination state (default: 20 entries)
   const [page, setPage] = useState(1);
@@ -139,7 +158,9 @@ export const ProjectDiscussions = ({
     targetLimit = limit,
     targetTab = activeTab,
     targetPriority = priorityFilter,
-    targetSearch = searchQuery
+    targetSearch = searchQuery,
+    targetCreator = creatorFilter,
+    targetModule = moduleFilter
   ) => {
     if (!projectId) return;
     setLoading(true);
@@ -156,6 +177,12 @@ export const ProjectDiscussions = ({
       }
       if (targetSearch && targetSearch.trim()) {
         params.append('search', targetSearch.trim());
+      }
+      if (targetCreator && targetCreator !== 'all') {
+        params.append('createdBy', targetCreator);
+      }
+      if (targetModule && targetModule !== 'all') {
+        params.append('module', targetModule);
       }
 
       const res = await api.get(`/discussions?${params.toString()}`);
@@ -196,10 +223,10 @@ export const ProjectDiscussions = ({
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchDiscussions(page, limit, activeTab, priorityFilter, searchQuery);
+      fetchDiscussions(page, limit, activeTab, priorityFilter, searchQuery, creatorFilter, moduleFilter);
     }, searchQuery ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [fetchDiscussions, page, limit, activeTab, priorityFilter, searchQuery]);
+  }, [fetchDiscussions, page, limit, activeTab, priorityFilter, searchQuery, creatorFilter, moduleFilter]);
 
   useEffect(() => {
     fetchWorkLogs();
@@ -212,6 +239,16 @@ export const ProjectDiscussions = ({
 
   const handlePriorityChange = (val) => {
     setPriorityFilter(val);
+    setPage(1);
+  };
+
+  const handleCreatorChange = (val) => {
+    setCreatorFilter(val);
+    setPage(1);
+  };
+
+  const handleModuleChange = (val) => {
+    setModuleFilter(val);
     setPage(1);
   };
 
@@ -230,6 +267,37 @@ export const ProjectDiscussions = ({
       setPage(newPage);
     }
   };
+
+  const projectCreators = useMemo(() => {
+    const map = new Map();
+    if (Array.isArray(project?.members)) {
+      project.members.forEach((m) => {
+        if (m && (m._id || m)) {
+          const id = String(m._id || m);
+          const name = `${m.firstName || ''} ${m.lastName || ''}`.trim() || 'Member';
+          map.set(id, { _id: id, name });
+        }
+      });
+    }
+    if (project?.manager) {
+      const mgr = project.manager;
+      const id = String(mgr._id || mgr);
+      const name = `${mgr.firstName || ''} ${mgr.lastName || ''}`.trim() || 'Manager';
+      map.set(id, { _id: id, name });
+    }
+    discussions.forEach((d) => {
+      if (d.createdBy && (d.createdBy._id || d.createdBy)) {
+        const id = String(d.createdBy._id || d.createdBy);
+        const name = typeof d.createdBy === 'object'
+          ? `${d.createdBy.firstName || ''} ${d.createdBy.lastName || ''}`.trim() || 'Creator'
+          : 'Creator';
+        if (!map.has(id)) {
+          map.set(id, { _id: id, name });
+        }
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [project, discussions]);
 
   // Tab counts
   const tabCounts = useMemo(() => {
@@ -369,6 +437,35 @@ export const ProjectDiscussions = ({
             <option value="Low">Low</option>
           </select>
 
+          {/* Creator / User filter */}
+          <select
+            value={creatorFilter}
+            onChange={(e) => handleCreatorChange(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 max-w-[150px]"
+          >
+            <option value="all">All Creators</option>
+            {projectCreators.map((c) => (
+              <option key={c._id} value={c._id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Module filter */}
+          <select
+            value={moduleFilter}
+            onChange={(e) => handleModuleChange(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 max-w-[150px]"
+          >
+            <option value="all">All Modules</option>
+            <option value="none">General (No Module)</option>
+            {modules.map((m) => (
+              <option key={m._id} value={m._id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+
           {/* Search bar */}
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -404,7 +501,7 @@ export const ProjectDiscussions = ({
           </div>
           <h4 className="font-bold text-slate-800 text-sm">No discussions found</h4>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            {searchQuery || activeTab !== 'all' || priorityFilter !== 'all'
+            {searchQuery || activeTab !== 'all' || priorityFilter !== 'all' || creatorFilter !== 'all'
               ? 'No discussions match your filter criteria. Try clearing search or filters.'
               : 'Create a discussion topic, meeting agenda, or technical brainstorming thread to collaborate and log project time.'}
           </p>
@@ -462,6 +559,12 @@ export const ProjectDiscussions = ({
                     >
                       {statusBadge.label}
                     </span>
+                    {disc.module && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+                        <Folder size={11} className="text-blue-500" />
+                        {disc.module.name}
+                      </span>
+                    )}
                   </div>
 
                   {/* Right Header: Logged Hours Chip (clickable to toggle logs) & Quick Log Button */}
@@ -808,6 +911,8 @@ export const ProjectDiscussions = ({
         <CreateDiscussionModal
           projectId={projectId}
           project={project}
+          modules={modules}
+          onModuleCreated={(m) => setModules((prev) => [...prev, m])}
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => {
             setShowCreateModal(false);
@@ -821,16 +926,65 @@ export const ProjectDiscussions = ({
 };
 
 /* ── Submodal 1: Create Discussion Modal ── */
-const CreateDiscussionModal = ({ projectId, project, onClose, onSuccess }) => {
+const CreateDiscussionModal = ({ projectId, project, modules = [], onModuleCreated, onClose, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false);
+  const [localModules, setLocalModules] = useState(modules);
+  const [showNewModuleModal, setShowNewModuleModal] = useState(false);
+  const [newModName, setNewModName] = useState('');
+  const [newModDesc, setNewModDesc] = useState('');
+  const [creatingModule, setCreatingModule] = useState(false);
   const [form, setForm] = useState({
     title: '',
     discussion: '',
+    module: '',
     priority: 'Medium',
     status: 'inprogress',
     dueDate: '',
     hours: ''
   });
+
+  useEffect(() => {
+    setLocalModules(modules);
+  }, [modules]);
+
+  useEffect(() => {
+    if ((!modules || modules.length === 0) && projectId) {
+      api.get(`/projects/${projectId}/modules`)
+        .then((res) => {
+          if (Array.isArray(res.data)) setLocalModules(res.data);
+        })
+        .catch((err) => console.error('Failed to load modules in modal:', err));
+    }
+  }, [modules, projectId]);
+
+  const handleCreateModuleInline = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!newModName.trim()) {
+      return toast.error('Please enter module name');
+    }
+    setCreatingModule(true);
+    try {
+      const res = await api.post('/projects/modules', {
+        name: newModName.trim(),
+        description: newModDesc.trim(),
+        project: projectId,
+        status: 'PLANNED'
+      });
+      const created = res.data;
+      setLocalModules((prev) => [...prev, created]);
+      if (onModuleCreated) onModuleCreated(created);
+      setForm((prev) => ({ ...prev, module: created._id }));
+      toast.success('Module created and selected!');
+      setShowNewModuleModal(false);
+      setNewModName('');
+      setNewModDesc('');
+    } catch (err) {
+      console.error('Failed to create module:', err);
+      toast.error(err.response?.data?.message || 'Failed to create module');
+    } finally {
+      setCreatingModule(false);
+    }
+  };
 
   // Project members for assignees/visibleTo
   const members = useMemo(() => {
@@ -891,6 +1045,7 @@ const CreateDiscussionModal = ({ projectId, project, onClose, onSuccess }) => {
         priority: form.priority,
         status: form.status,
         project: projectId,
+        module: form.module || undefined,
         dueDate: form.dueDate || undefined,
         hours: form.hours ? Number(form.hours) : undefined,
         supervisor: project?.manager?._id || project?.manager || undefined,
@@ -963,6 +1118,40 @@ const CreateDiscussionModal = ({ projectId, project, onClose, onSuccess }) => {
                   onChange={(e) => setForm({ ...form, discussion: e.target.value })}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                 />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">Module (Optional)</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewModuleModal(true)}
+                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Plus size={12} /> Add New Module
+                  </button>
+                </div>
+                <select
+                  value={form.module}
+                  onChange={(e) => {
+                    if (e.target.value === '__NEW_MODULE__') {
+                      setShowNewModuleModal(true);
+                      return;
+                    }
+                    setForm({ ...form, module: e.target.value });
+                  }}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                >
+                  <option value="">No Module (General)</option>
+                  {(localModules || []).map((m) => (
+                    <option key={m._id} value={m._id}>
+                      {m.name}
+                    </option>
+                  ))}
+                  <option value="__NEW_MODULE__" className="text-blue-600 font-semibold">
+                    + Add New Module...
+                  </option>
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1136,6 +1325,77 @@ const CreateDiscussionModal = ({ projectId, project, onClose, onSuccess }) => {
           </div>
         </form>
       </div>
+
+      {/* ── Submodal: Quick Add Module ── */}
+      {showNewModuleModal && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Add New Module</h3>
+                <p className="text-[11px] text-slate-500">Under project: {project?.name || 'This Project'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewModuleModal(false);
+                  setNewModName('');
+                  setNewModDesc('');
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateModuleInline} className="p-5 space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Module Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Authentication, Billing, Dashboard"
+                  value={newModName}
+                  onChange={(e) => setNewModName(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Description (Optional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Module description or goals..."
+                  value={newModDesc}
+                  onChange={(e) => setNewModDesc(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 resize-none"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewModuleModal(false);
+                    setNewModName('');
+                    setNewModDesc('');
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingModule || !newModName.trim()}
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs disabled:opacity-50"
+                >
+                  {creatingModule ? 'Creating...' : 'Create Module'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

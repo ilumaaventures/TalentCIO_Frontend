@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import api from '@/lib/apiClient';
-import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, MoreVertical, Eye } from 'lucide-react';
+import { Plus, MessageSquare, Calendar, Search, ChevronLeft, ChevronRight, X, MoreVertical, Eye, ChevronDown, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/ui/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +24,209 @@ const useDebounce = (value, delay) => {
     }, [value, delay]);
     return debouncedValue;
 };
+
+const getUserDisplayName = (person) => (
+    [person?.firstName, person?.lastName].filter(Boolean).join(' ') || 'Not assigned'
+);
+
+const SearchableFilterSelect = ({
+    label,
+    value,
+    options = [],
+    onChange,
+    placeholder = 'All',
+    searchPlaceholder = 'Search...',
+    className = 'w-44 shrink-0'
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const triggerRef = useRef(null);
+    const dropdownRef = useRef(null);
+    const searchInputRef = useRef(null);
+    const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+
+    const selectedOption = useMemo(() => {
+        return options.find((opt) => String(opt.value) === String(value));
+    }, [options, value]);
+
+    const displayLabel = selectedOption ? selectedOption.label : placeholder;
+    const hasActiveFilter = Boolean(value && value !== '');
+
+    const filteredOptions = useMemo(() => {
+        if (!searchTerm.trim()) return options;
+        const term = searchTerm.toLowerCase();
+        return options.filter((opt) =>
+            (opt.label || '').toLowerCase().includes(term)
+        );
+    }, [options, searchTerm]);
+
+    const updatePosition = useCallback(() => {
+        if (!triggerRef.current) return;
+        const rect = triggerRef.current.getBoundingClientRect();
+        const dropdownWidth = Math.max(rect.width, 220);
+        let left = rect.left;
+        if (left + dropdownWidth > window.innerWidth - 12) {
+            left = Math.max(12, window.innerWidth - dropdownWidth - 12);
+        }
+        let top = rect.bottom + 4;
+        if (top + 250 > window.innerHeight && rect.top > 250) {
+            top = Math.max(10, rect.top - 250);
+        }
+        setCoords({
+            top,
+            left,
+            width: rect.width
+        });
+    }, []);
+
+    useEffect(() => {
+        if (isOpen) {
+            updatePosition();
+            const handleScroll = (e) => {
+                if (dropdownRef.current && dropdownRef.current.contains(e.target)) return;
+                updatePosition();
+            };
+            window.addEventListener('scroll', handleScroll, true);
+            window.addEventListener('resize', updatePosition);
+            const focusTimer = setTimeout(() => {
+                searchInputRef.current?.focus();
+            }, 50);
+            return () => {
+                clearTimeout(focusTimer);
+                window.removeEventListener('scroll', handleScroll, true);
+                window.removeEventListener('resize', updatePosition);
+            };
+        } else {
+            setSearchTerm('');
+        }
+    }, [isOpen, updatePosition]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleClickOutside = (e) => {
+            if (
+                triggerRef.current && !triggerRef.current.contains(e.target) &&
+                dropdownRef.current && !dropdownRef.current.contains(e.target)
+            ) {
+                setIsOpen(false);
+            }
+        };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen]);
+
+    return (
+        <div className={`flex flex-col gap-1 ${className}`}>
+            {label && (
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    {label}
+                </label>
+            )}
+            <button
+                ref={triggerRef}
+                type="button"
+                onClick={() => setIsOpen((prev) => !prev)}
+                className={`rounded-lg border px-3 py-1.5 text-xs text-left cursor-pointer transition-all flex items-center justify-between gap-1 w-full shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 ${
+                    hasActiveFilter
+                        ? 'bg-indigo-50/50 border-indigo-300 text-indigo-900 font-semibold'
+                        : 'bg-white border-slate-200 text-slate-700 font-medium hover:border-slate-300'
+                }`}
+                title={displayLabel}
+            >
+                <span className="truncate">{displayLabel}</span>
+                <ChevronDown
+                    size={14}
+                    className={`text-slate-400 shrink-0 transition-transform duration-150 ${
+                        isOpen ? 'rotate-180 text-indigo-600' : ''
+                    }`}
+                />
+            </button>
+
+            {isOpen &&
+                createPortal(
+                    <div
+                        ref={dropdownRef}
+                        style={{
+                            position: 'fixed',
+                            top: `${coords.top}px`,
+                            left: `${coords.left}px`,
+                            minWidth: `${Math.max(coords.width, 220)}px`,
+                            maxWidth: '320px',
+                            zIndex: 9999
+                        }}
+                        className="bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+                    >
+                        <div className="p-2 border-b border-slate-100 bg-slate-50/70">
+                            <div className="relative">
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder={searchPlaceholder}
+                                    className="w-full pl-7 pr-6 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 placeholder-slate-400"
+                                />
+                                {searchTerm && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="max-h-56 overflow-y-auto py-1">
+                            {filteredOptions.length === 0 ? (
+                                <div className="px-3 py-4 text-center text-xs text-slate-400">
+                                    No matching results
+                                </div>
+                            ) : (
+                                filteredOptions.map((opt) => {
+                                    const isSelected = String(opt.value) === String(value);
+                                    return (
+                                        <button
+                                            key={String(opt.value)}
+                                            type="button"
+                                            onClick={() => {
+                                                onChange(opt.value);
+                                                setIsOpen(false);
+                                            }}
+                                            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors cursor-pointer ${
+                                                isSelected
+                                                    ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                                                    : 'text-slate-700 hover:bg-slate-100/70 font-normal'
+                                            }`}
+                                        >
+                                            <span className="truncate pr-2">{opt.label}</span>
+                                            {isSelected && <Check size={13} className="text-indigo-600 shrink-0" />}
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>,
+                    document.body
+                )}
+        </div>
+    );
+};
+
+const getUserInitials = (person) => (
+    `${person?.firstName?.[0] || ''}${person?.lastName?.[0] || ''}`.toUpperCase() || 'NA'
+);
 
 const Discussions = () => {
     const navigate = useNavigate();
@@ -67,6 +271,14 @@ const Discussions = () => {
     const [editSupervisorSearchVal, setEditSupervisorSearchVal] = useState('');
     const editSupervisorSearch = useDebounce(editSupervisorSearchVal, 300);
 
+    const [modulesByProject, setModulesByProject] = useState({});
+    const [loadingModules, setLoadingModules] = useState(false);
+    const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
+    const [moduleModalProjectId, setModuleModalProjectId] = useState('');
+    const [newModuleName, setNewModuleName] = useState('');
+    const [newModuleDescription, setNewModuleDescription] = useState('');
+    const [isCreatingModule, setIsCreatingModule] = useState(false);
+
     const [newDiscussion, setNewDiscussion] = useState({
         discussion: '',
         status: 'inprogress',
@@ -74,6 +286,7 @@ const Discussions = () => {
         supervisor: [],
         visibleToUserIds: [],
         project: '',
+        module: '',
         priority: 'Medium',
         hours: ''
     });
@@ -86,16 +299,45 @@ const Discussions = () => {
     const [projectFilter, setProjectFilter] = useState('');
     const [priorityFilter, setPriorityFilter] = useState('');
     const [supervisorFilter, setSupervisorFilter] = useState('');
+    const [createdByFilter, setCreatedByFilter] = useState('');
     const [sortField, setSortField] = useState(null); // 'dueDate' | 'createdAt' | null
     const [sortDirection, setSortDirection] = useState(null); // 'asc' | 'desc' | null
     const DISCUSSION_CACHE_TTL_MS = 30 * 1000;
     const SUPERVISOR_CACHE_TTL_MS = 60 * 1000;
 
+    const canViewAllDiscussions = useMemo(() => {
+        if (!user) return false;
+        if (user.hasAllPermissions) return true;
+        const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+        if (
+            permissions.includes('*') ||
+            permissions.includes('all') ||
+            permissions.includes('admin') ||
+            permissions.includes('discussion.view_all') ||
+            permissions.includes('discussion.viewAll') ||
+            permissions.includes('discussion.read_all')
+        ) {
+            return true;
+        }
+        const roles = Array.isArray(user.roles) ? user.roles : [];
+        return roles.some((role) => {
+            const roleName = typeof role === 'string' ? role : role?.name || '';
+            return role?.isSystem || ['Admin', 'System', 'Super Admin', 'System Admin'].includes(roleName);
+        });
+    }, [user]);
+
+    useEffect(() => {
+        if (!canViewAllDiscussions && createdByFilter) {
+            setCreatedByFilter('');
+        }
+    }, [canViewAllDiscussions, createdByFilter]);
+
     const fetchDiscussions = useCallback(async (page, options = {}) => {
         const force = options === true || !!options.force;
         const silent = typeof options === 'object' ? !!options.silent : false;
 
-        const CACHE_KEY = `discussion_data_${user?._id}_p${page}_s${statusFilter}_pj${projectFilter}_pr${priorityFilter}`;
+        const activeCreatedBy = canViewAllDiscussions ? createdByFilter : '';
+        const CACHE_KEY = `discussion_data_${user?._id}_p${page}_s${statusFilter}_pj${projectFilter}_pr${priorityFilter}_cb${activeCreatedBy}`;
 
         // 1. Initial Load from Cache
         if (!silent && !force) {
@@ -124,6 +366,7 @@ const Discussions = () => {
                     status: statusFilter || undefined,
                     project: projectFilter || undefined,
                     priority: priorityFilter || undefined,
+                    createdBy: activeCreatedBy || undefined,
                     _t: force ? Date.now() : undefined
                 },
                 headers
@@ -157,6 +400,7 @@ const Discussions = () => {
                         : [],
                     visibleToUsers: Array.isArray(d.visibleToUsers) ? d.visibleToUsers.map((u) => ({ _id: u._id, firstName: u.firstName, lastName: u.lastName, profilePicture: u.profilePicture })) : [],
                     project: d.project ? { _id: d.project._id, name: d.project.name } : null,
+                    module: d.module ? { _id: d.module._id, name: d.module.name } : null,
                     priority: d.priority,
                     hours: d.hours,
                     totalLoggedHours: d.totalLoggedHours,
@@ -193,7 +437,7 @@ const Discussions = () => {
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [limit, user?._id, statusFilter, projectFilter, priorityFilter]);
+    }, [limit, user?._id, statusFilter, projectFilter, priorityFilter, createdByFilter, canViewAllDiscussions]);
 
     const fetchSupervisors = useCallback(async () => {
         const SUPERVISOR_CACHE_KEY = `supervisors_data_${user?._id}`;
@@ -247,6 +491,75 @@ const Discussions = () => {
         }
     }, [user]);
 
+    const fetchProjectModules = useCallback(async (projectId) => {
+        if (!projectId) return [];
+        if (modulesByProject[projectId]) return modulesByProject[projectId];
+        try {
+            setLoadingModules(true);
+            const res = await api.get(`/projects/${projectId}/modules`);
+            const list = Array.isArray(res.data) ? res.data : [];
+            setModulesByProject(prev => ({ ...prev, [projectId]: list }));
+            return list;
+        } catch (err) {
+            console.error('Failed to fetch modules for project:', err);
+            return [];
+        } finally {
+            setLoadingModules(false);
+        }
+    }, [modulesByProject]);
+
+    const handleOpenAddModule = (projectId) => {
+        if (!projectId) {
+            toast.error('Please select a project first');
+            return;
+        }
+        setModuleModalProjectId(projectId);
+        setNewModuleName('');
+        setNewModuleDescription('');
+        setIsModuleModalOpen(true);
+    };
+
+    const handleCreateModuleSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!newModuleName.trim()) {
+            toast.error('Module name is required');
+            return;
+        }
+        if (!moduleModalProjectId) {
+            toast.error('Project is required');
+            return;
+        }
+        try {
+            setIsCreatingModule(true);
+            const res = await api.post('/projects/modules', {
+                name: newModuleName.trim(),
+                description: newModuleDescription.trim(),
+                project: moduleModalProjectId,
+                status: 'PLANNED'
+            });
+            const created = res.data;
+            setModulesByProject(prev => ({
+                ...prev,
+                [moduleModalProjectId]: [...(prev[moduleModalProjectId] || []), created]
+            }));
+            // Auto-select in active form
+            if (isCreating) {
+                setNewDiscussion(prev => ({ ...prev, module: created._id }));
+            } else if (editingId) {
+                setEditData(prev => ({ ...prev, module: created._id }));
+            }
+            toast.success('Module created and selected!');
+            setIsModuleModalOpen(false);
+            setNewModuleName('');
+            setNewModuleDescription('');
+        } catch (err) {
+            console.error('Failed to create module:', err);
+            toast.error(err.response?.data?.message || 'Failed to create module');
+        } finally {
+            setIsCreatingModule(false);
+        }
+    };
+
     useEffect(() => {
         fetchDiscussions(currentPage);
         if (currentPage === 1) {
@@ -258,8 +571,36 @@ const Discussions = () => {
         fetchAssignedProjects();
     }, [fetchAssignedProjects]);
 
+    const creatorOptions = useMemo(() => {
+        const map = new Map();
+        (supervisors || []).forEach((u) => {
+            if (u && u._id) map.set(String(u._id), u);
+        });
+        (discussions || []).forEach((d) => {
+            if (d.createdBy && (d.createdBy._id || d.createdBy)) {
+                const id = String(d.createdBy._id || d.createdBy);
+                if (!map.has(id)) {
+                    map.set(id, typeof d.createdBy === 'object' ? d.createdBy : { _id: id });
+                }
+            }
+        });
+        return Array.from(map.values()).sort((a, b) => {
+            const nameA = getUserDisplayName(a).toLowerCase();
+            const nameB = getUserDisplayName(b).toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+    }, [supervisors, discussions]);
+
     const sortedDiscussions = useMemo(() => {
         let result = discussions;
+
+        // Apply createdBy filter (client-side fallback)
+        if (canViewAllDiscussions && createdByFilter) {
+            result = result.filter((d) => {
+                const creatorId = d.createdBy?._id || d.createdBy;
+                return String(creatorId) === String(createdByFilter);
+            });
+        }
 
         // Apply supervisor filter (client-side)
         if (supervisorFilter) {
@@ -286,7 +627,7 @@ const Discussions = () => {
                 return dateB - dateA;
             }
         });
-    }, [discussions, sortField, sortDirection, supervisorFilter]);
+    }, [discussions, sortField, sortDirection, supervisorFilter, createdByFilter, canViewAllDiscussions]);
 
     const handleSortClick = (field) => {
         if (sortField !== field) {
@@ -320,6 +661,7 @@ const Discussions = () => {
         setProjectFilter('');
         setPriorityFilter('');
         setSupervisorFilter('');
+        setCreatedByFilter('');
         setSortField(null);
         setSortDirection(null);
         setCurrentPage(1);
@@ -373,6 +715,7 @@ const Discussions = () => {
             supervisor: [],
             visibleToUserIds: [],
             project: '',
+            module: '',
             priority: 'Medium',
             hours: ''
         });
@@ -437,6 +780,7 @@ const Discussions = () => {
                 { header: 'Supervisor', key: 'supervisor', width: 24 },
                 { header: 'Visible To', key: 'visibleTo', width: 36 },
                 { header: 'Project', key: 'project', width: 24 },
+                { header: 'Module', key: 'module', width: 24 },
                 { header: 'Hours', key: 'hours', width: 12 },
                 { header: 'Priority', key: 'priority', width: 15 },
                 { header: 'Created Date', key: 'createdDate', width: 20 },
@@ -455,6 +799,7 @@ const Discussions = () => {
                     supervisor: formatPersonName(item.supervisor) || '-',
                     visibleTo: formatVisibleUsers(item.visibleToUsers) || '-',
                     project: item.project?.name || '-',
+                    module: item.module?.name || '-',
                     hours: item.hours !== undefined && item.hours !== null ? item.hours : '-',
                     priority: item.priority || 'Medium',
                     createdDate: item.createdAt ? format(new Date(item.createdAt), 'dd MMM yyyy') : '-',
@@ -567,6 +912,7 @@ const Discussions = () => {
             setIsSaving(true);
             const payload = { ...newDiscussion, title: 'Discussion' }; // Setting default title since field is removed
             if (!payload.dueDate) delete payload.dueDate;
+            if (!payload.module) delete payload.module;
 
             const res = await api.post('/discussions', payload);
             toast.success('Discussion created');
@@ -612,13 +958,19 @@ const Discussions = () => {
             ? discussion.visibleToUsers
             : [];
 
+        const projId = discussion.project?._id || discussion.project || '';
+        if (projId) {
+            fetchProjectModules(projId);
+        }
+
         setEditData({
             discussion: discussion.discussion,
             status: discussion.status,
             dueDate: discussion.dueDate ? discussion.dueDate.split('T')[0] : '',
             supervisor: rawSupervisors.map(extractId).filter(Boolean),
             visibleToUserIds: rawVisible.map(extractId).filter(Boolean),
-            project: discussion.project?._id || discussion.project || '',
+            project: projId,
+            module: extractId(discussion.module) || '',
             priority: discussion.priority || 'Medium',
             hours: discussion.hours !== undefined && discussion.hours !== null ? discussion.hours : ''
         });
@@ -662,6 +1014,7 @@ const Discussions = () => {
             };
             delete payload.status;
             if (!payload.dueDate) delete payload.dueDate;
+            if (!payload.module) payload.module = null;
 
             const res = await api.put(`/discussions/${id}`, payload);
             toast.success('Discussion updated');
@@ -741,14 +1094,6 @@ const Discussions = () => {
 
     const canUpdateStatus = (discussion) => (
         discussion?.canUpdateStatus ?? canChangeRestrictedStatus(discussion)
-    );
-
-    const getUserDisplayName = (person) => (
-        [person?.firstName, person?.lastName].filter(Boolean).join(' ') || 'Not assigned'
-    );
-
-    const getUserInitials = (person) => (
-        `${person?.firstName?.[0] || ''}${person?.lastName?.[0] || ''}`.toUpperCase() || 'NA'
     );
 
     const toggleDiscussionMenu = (discussionId) => {
@@ -938,9 +1283,15 @@ const Discussions = () => {
                             <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Project</label>
                             <select
                                 value={isEdit ? editData?.project || '' : newDiscussion.project}
-                                onChange={(event) => isEdit
-                                    ? setEditData({ ...editData, project: event.target.value })
-                                    : setNewDiscussion({ ...newDiscussion, project: event.target.value })}
+                                onChange={(event) => {
+                                    const projId = event.target.value;
+                                    if (isEdit) {
+                                        setEditData(prev => ({ ...prev, project: projId, module: '' }));
+                                    } else {
+                                        setNewDiscussion(prev => ({ ...prev, project: projId, module: '' }));
+                                    }
+                                    if (projId) fetchProjectModules(projId);
+                                }}
                                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
                             >
                                 <option value="">Select Project</option>
@@ -949,6 +1300,55 @@ const Discussions = () => {
                                         {project.name}
                                     </option>
                                 ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Module</label>
+                                {(isEdit ? editData?.project : newDiscussion.project) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenAddModule(isEdit ? editData?.project : newDiscussion.project)}
+                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
+                                    >
+                                        <Plus size={13} /> Add New Module
+                                    </button>
+                                )}
+                            </div>
+                            <select
+                                disabled={!(isEdit ? editData?.project : newDiscussion.project)}
+                                value={isEdit ? editData?.module || '' : newDiscussion.module || ''}
+                                onChange={(event) => {
+                                    const val = event.target.value;
+                                    const currentProj = isEdit ? editData?.project : newDiscussion.project;
+                                    if (val === '__ADD_NEW_MODULE__') {
+                                        handleOpenAddModule(currentProj);
+                                        return;
+                                    }
+                                    if (isEdit) {
+                                        setEditData(prev => ({ ...prev, module: val }));
+                                    } else {
+                                        setNewDiscussion(prev => ({ ...prev, module: val }));
+                                    }
+                                }}
+                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                            >
+                                {!(isEdit ? editData?.project : newDiscussion.project) ? (
+                                    <option value="">Select project first</option>
+                                ) : (
+                                    <>
+                                        <option value="">No Module (General)</option>
+                                        {(modulesByProject[isEdit ? editData?.project : newDiscussion.project] || []).map((mod) => (
+                                            <option key={mod._id} value={mod._id}>
+                                                {mod.name}
+                                            </option>
+                                        ))}
+                                        <option value="__ADD_NEW_MODULE__" className="text-indigo-600 font-semibold">
+                                            + Add New Module...
+                                        </option>
+                                    </>
+                                )}
                             </select>
                         </div>
 
@@ -968,7 +1368,7 @@ const Discussions = () => {
                             </select>
                         </div>
 
-                        <div className="space-y-2 lg:col-span-2">
+                        <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700 font-semibold text-slate-800">Hours</label>
                             <input
                                 type="number"
@@ -1255,9 +1655,9 @@ const Discussions = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200">
 
                     {/* Filters Bar */}
-                    <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-4 items-center justify-between bg-slate-50/50 rounded-t-xl">
-                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                            <div className="flex flex-col gap-1 min-w-[150px] w-full sm:w-auto">
+                    <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-3 bg-slate-50/50 rounded-t-xl overflow-x-auto">
+                        <div className="flex items-center gap-3 shrink-0 flex-nowrap">
+                            <div className="flex flex-col gap-1 w-36 shrink-0">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</label>
                                 <select
                                     value={statusFilter}
@@ -1265,7 +1665,7 @@ const Discussions = () => {
                                         setStatusFilter(e.target.value);
                                         setCurrentPage(1);
                                     }}
-                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700"
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700 w-full"
                                 >
                                     <option value="">All Statuses</option>
                                     <option value="inprogress">In Progress</option>
@@ -1274,26 +1674,26 @@ const Discussions = () => {
                                     <option value="mark as complete">Mark as complete</option>
                                 </select>
                             </div>
-                            <div className="flex flex-col gap-1 min-w-[180px] w-full sm:w-auto">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project</label>
-                                <select
-                                    value={projectFilter}
-                                    onChange={(e) => {
-                                        setProjectFilter(e.target.value);
-                                        setCurrentPage(1);
-                                    }}
-                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700 w-full"
-                                >
-                                    <option value="">All Projects</option>
-                                    <option value="null">No Project</option>
-                                    {projects.map((project) => (
-                                        <option key={project._id} value={project._id}>
-                                            {project.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex flex-col gap-1 min-w-[150px] w-full sm:w-auto">
+                            <SearchableFilterSelect
+                                label="Project"
+                                value={projectFilter}
+                                options={[
+                                    { value: '', label: 'All Projects' },
+                                    { value: 'null', label: 'No Project' },
+                                    ...projects.map((project) => ({
+                                        value: project._id,
+                                        label: project.name || 'Untitled Project'
+                                    }))
+                                ]}
+                                onChange={(val) => {
+                                    setProjectFilter(val);
+                                    setCurrentPage(1);
+                                }}
+                                placeholder="All Projects"
+                                searchPlaceholder="Search projects..."
+                                className="w-44 shrink-0"
+                            />
+                            <div className="flex flex-col gap-1 w-32 shrink-0">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Priority</label>
                                 <select
                                     value={priorityFilter}
@@ -1310,27 +1710,46 @@ const Discussions = () => {
                                     <option value="Low">Low</option>
                                 </select>
                             </div>
-                            <div className="flex flex-col gap-1 min-w-[190px] w-full sm:w-auto">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supervisor</label>
-                                <select
-                                    id="supervisor-filter"
-                                    value={supervisorFilter}
-                                    onChange={(e) => setSupervisorFilter(e.target.value)}
-                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer font-medium text-slate-700 w-full"
-                                >
-                                    <option value="">All Supervisors</option>
-                                    {supervisors.map((sup) => (
-                                        <option key={sup._id} value={sup._id}>
-                                            {[sup.firstName, sup.lastName].filter(Boolean).join(' ')}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                            <SearchableFilterSelect
+                                label="Supervisor"
+                                value={supervisorFilter}
+                                options={[
+                                    { value: '', label: 'All Supervisors' },
+                                    ...supervisors.map((sup) => ({
+                                        value: sup._id,
+                                        label: [sup.firstName, sup.lastName].filter(Boolean).join(' ') || sup.email || 'Unnamed'
+                                    }))
+                                ]}
+                                onChange={(val) => setSupervisorFilter(val)}
+                                placeholder="All Supervisors"
+                                searchPlaceholder="Search supervisors..."
+                                className="w-44 shrink-0"
+                            />
+                            {canViewAllDiscussions && (
+                                <SearchableFilterSelect
+                                    label="Created By"
+                                    value={createdByFilter}
+                                    options={[
+                                        { value: '', label: 'All Users' },
+                                        ...creatorOptions.map((creator) => ({
+                                            value: creator._id,
+                                            label: getUserDisplayName(creator)
+                                        }))
+                                    ]}
+                                    onChange={(val) => {
+                                        setCreatedByFilter(val);
+                                        setCurrentPage(1);
+                                    }}
+                                    placeholder="All Users"
+                                    searchPlaceholder="Search users..."
+                                    className="w-44 shrink-0"
+                                />
+                            )}
                         </div>
-                        {(statusFilter || projectFilter || priorityFilter || supervisorFilter || sortField) && (
+                        {(statusFilter || projectFilter || priorityFilter || supervisorFilter || (canViewAllDiscussions && createdByFilter) || sortField) && (
                             <button
                                 onClick={handleClearAll}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors cursor-pointer self-start sm:self-center"
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors cursor-pointer shrink-0 self-end mb-0.5"
                             >
                                 <X size={14} />
                                 <span>Clear Filters</span>
@@ -1391,6 +1810,10 @@ const Discussions = () => {
                                                     {discussion.hours} hrs
                                                 </span>
                                             )}
+                                            <div className="flex items-center text-slate-500 text-xs">
+                                                <span className="mr-1 text-slate-400">By:</span>
+                                                <span className="font-medium text-slate-700">{getUserDisplayName(discussion.createdBy)}</span>
+                                            </div>
                                             {discussion.dueDate ? (
                                                 <div className="flex items-center text-slate-500 text-xs">
                                                     <Calendar size={12} className="mr-1 text-slate-400" />
@@ -1504,7 +1927,7 @@ const Discussions = () => {
                                                     )}
                                                 </td>
                                                 <td className="px-2.5 py-3.5 text-slate-700 text-xs break-words whitespace-normal">
-                                                    {discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}
+                                                    <div>{discussion.project?.name || <span className="text-slate-400 italic">No Project</span>}</div>
                                                 </td>
                                                 <td className="px-2.5 py-3.5 text-slate-600 text-xs text-center whitespace-nowrap">
                                                     {discussion.hours !== undefined && discussion.hours !== null && discussion.hours !== '' ? `${discussion.hours} hrs` : '-'}
@@ -1647,6 +2070,12 @@ const Discussions = () => {
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Module</p>
+                                        <p className="mt-2 text-sm font-medium text-slate-700">
+                                            {detailsDiscussion.module?.name || 'No Module (General)'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estimated Hours</p>
                                         <p className="mt-2 text-sm font-medium text-slate-700">
                                             {detailsDiscussion.hours !== undefined && detailsDiscussion.hours !== null && detailsDiscussion.hours !== '' ? `${detailsDiscussion.hours} hrs` : '-'}
@@ -1735,6 +2164,92 @@ const Discussions = () => {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Add New Module Modal ── */}
+                {isModuleModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+                        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-100 overflow-hidden">
+                            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-800">Add New Module</h3>
+                                    <p className="text-xs text-slate-500">
+                                        Under project: <span className="font-semibold text-slate-700">{projects.find(p => p._id === moduleModalProjectId)?.name || 'Selected Project'}</span>
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsModuleModalOpen(false);
+                                        setNewModuleName('');
+                                        setNewModuleDescription('');
+                                    }}
+                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleCreateModuleSubmit} className="p-6 space-y-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-slate-700">
+                                        Module Name <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        autoFocus
+                                        placeholder="e.g. Authentication, Billing, Dashboard"
+                                        value={newModuleName}
+                                        onChange={(e) => setNewModuleName(e.target.value)}
+                                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-slate-700">Description (Optional)</label>
+                                    <textarea
+                                        rows={3}
+                                        placeholder="Brief notes about this module..."
+                                        value={newModuleDescription}
+                                        onChange={(e) => setNewModuleDescription(e.target.value)}
+                                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsModuleModalOpen(false);
+                                            setNewModuleName('');
+                                            setNewModuleDescription('');
+                                        }}
+                                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isCreatingModule || !newModuleName.trim()}
+                                        className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                    >
+                                        {isCreatingModule ? (
+                                            <>
+                                                <Loader size={13} className="animate-spin" />
+                                                Creating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plus size={13} />
+                                                Create Module
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 )}
