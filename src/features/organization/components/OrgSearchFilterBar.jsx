@@ -28,12 +28,17 @@ const OrgSearchFilterBar = ({
 }) => {
     const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
     const typeDropdownRef = useRef(null);
+    const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
+    const viewDropdownRef = useRef(null);
 
     // Close dropdown on click outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) {
                 setIsTypeDropdownOpen(false);
+            }
+            if (viewDropdownRef.current && !viewDropdownRef.current.contains(event.target)) {
+                setIsViewDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -221,48 +226,69 @@ const OrgSearchFilterBar = ({
                 </label>
             </div>
 
-            {/* Right Side: Manager Toggle & View Mode */}
-            <div className="flex flex-wrap items-center gap-2.5 self-end md:self-auto">
-                {/* Show Reporting Managers Checkbox (shown when filtering by employment type) */}
-                {canManageOrgChart && employmentTypes.length > 0 && (
-                    <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50/80 hover:bg-blue-100/70 border border-blue-200 text-xs font-semibold text-blue-700 cursor-pointer transition-all select-none shadow-2xs">
-                        <input
-                            type="checkbox"
-                            checked={showReportingManagers}
-                            onChange={(e) => onShowReportingManagersChange?.(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-blue-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span>Show reporting managers</span>
-                    </label>
-                )}
+            {/* Right Side: View Mode Dropdown */}
+            <div className="relative self-end md:self-auto" ref={viewDropdownRef}>
+                <button
+                    type="button"
+                    onClick={() => setIsViewDropdownOpen(!isViewDropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-200 hover:border-slate-300 text-slate-800 shadow-xs hover:bg-slate-50/80 transition-all cursor-pointer"
+                    title="Change chart view mode"
+                >
+                    {viewMode === 'list' ? (
+                        <>
+                            <List size={14} className="text-blue-600" />
+                            <span>Grouped List</span>
+                        </>
+                    ) : (
+                        <>
+                            <Network size={14} className="text-blue-600" />
+                            <span>Tree Chart</span>
+                        </>
+                    )}
+                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isViewDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-                {/* View Mode Toggle */}
-                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/60">
-                    <button
-                        type="button"
-                        onClick={() => onViewModeChange('tree')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                            viewMode === 'tree'
-                                ? 'bg-white text-blue-600 shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        <Network size={14} />
-                        <span>Tree Chart</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => onViewModeChange('list')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                            viewMode === 'list'
-                                ? 'bg-white text-blue-600 shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        <List size={14} />
-                        <span>Grouped List</span>
-                    </button>
-                </div>
+                {isViewDropdownOpen && (
+                    <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-200 rounded-2xl shadow-xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onViewModeChange?.('tree');
+                                setIsViewDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-colors ${
+                                viewMode === 'tree'
+                                    ? 'bg-blue-50/70 text-blue-700 font-semibold'
+                                    : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <Network size={14} className={viewMode === 'tree' ? 'text-blue-600' : 'text-slate-500'} />
+                                <span>Tree Chart</span>
+                            </div>
+                            {viewMode === 'tree' && <Check size={14} className="text-blue-600" />}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onViewModeChange?.('list');
+                                setIsViewDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-colors mt-0.5 ${
+                                viewMode === 'list'
+                                    ? 'bg-blue-50/70 text-blue-700 font-semibold'
+                                    : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <List size={14} className={viewMode === 'list' ? 'text-blue-600' : 'text-slate-500'} />
+                                <span>Grouped List</span>
+                            </div>
+                            {viewMode === 'list' && <Check size={14} className="text-blue-600" />}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

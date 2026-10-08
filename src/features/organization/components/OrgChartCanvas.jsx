@@ -79,7 +79,10 @@ const TreeNode = ({
 const OrgChartCanvas = ({
     tree = [],
     selectedNode,
-    onSelectNode
+    onSelectNode,
+    showReportingManagers = false,
+    onShowReportingManagersChange,
+    canShowReportingManagers = false
 }) => {
     const [scale, setScale] = useState(1);
     const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -214,7 +217,20 @@ const OrgChartCanvas = ({
 
     if (!tree || tree.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-[550px] bg-slate-50 border border-slate-200/80 rounded-3xl p-6 text-center shadow-inner">
+            <div className="relative flex flex-col items-center justify-center h-[550px] bg-slate-50 border border-slate-200/80 rounded-3xl p-6 text-center shadow-inner">
+                {canShowReportingManagers && (
+                    <div className="absolute top-4 right-4 z-20">
+                        <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/95 backdrop-blur-md hover:bg-blue-50/70 border border-blue-200 text-xs font-semibold text-blue-700 cursor-pointer transition-all select-none shadow-sm">
+                            <input
+                                type="checkbox"
+                                checked={showReportingManagers}
+                                onChange={(e) => onShowReportingManagersChange?.(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-blue-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span>Show reporting managers</span>
+                        </label>
+                    </div>
+                )}
                 <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-400 mb-3">
                     <Maximize2 size={22} />
                 </div>
@@ -228,52 +244,70 @@ const OrgChartCanvas = ({
 
     return (
         <div className="relative w-full h-[720px] overflow-hidden bg-slate-50 border border-slate-200/90 rounded-3xl shadow-sm select-none">
-            {/* Canvas Toolbar Controls */}
-            <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-200 shadow-md">
-                <button
-                    type="button"
-                    onClick={zoomIn}
-                    className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                    title="Zoom In (or Ctrl + Scroll)"
-                >
-                    <ZoomIn size={16} />
-                </button>
-                <button
-                    type="button"
-                    onClick={zoomOut}
-                    className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                    title="Zoom Out (or Ctrl + Scroll)"
-                >
-                    <ZoomOut size={16} />
-                </button>
-                <span className="text-[11px] font-bold text-slate-600 px-1.5 min-w-[42px] text-center">
-                    {Math.round(scale * 100)}%
-                </span>
-                <button
-                    type="button"
-                    onClick={resetZoom}
-                    className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                    title="Reset View & Center"
-                >
-                    <RotateCcw size={16} />
-                </button>
+            {/* Canvas Toolbar Controls & Options */}
+            <div
+                className="absolute top-4 right-4 z-20 flex flex-col items-end gap-2"
+                onMouseDown={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-200 shadow-md">
+                    <button
+                        type="button"
+                        onClick={zoomIn}
+                        className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        title="Zoom In (or Ctrl + Scroll)"
+                    >
+                        <ZoomIn size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={zoomOut}
+                        className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        title="Zoom Out (or Ctrl + Scroll)"
+                    >
+                        <ZoomOut size={16} />
+                    </button>
+                    <span className="text-[11px] font-bold text-slate-600 px-1.5 min-w-[42px] text-center">
+                        {Math.round(scale * 100)}%
+                    </span>
+                    <button
+                        type="button"
+                        onClick={resetZoom}
+                        className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        title="Reset View & Center"
+                    >
+                        <RotateCcw size={16} />
+                    </button>
 
-                <div className="h-4 w-px bg-slate-200 mx-1" />
+                    <div className="h-4 w-px bg-slate-200 mx-1" />
 
-                <button
-                    type="button"
-                    onClick={handleExpandAll}
-                    className="px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                >
-                    Expand All
-                </button>
-                <button
-                    type="button"
-                    onClick={handleCollapseAll}
-                    className="px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                >
-                    Collapse All
-                </button>
+                    <button
+                        type="button"
+                        onClick={handleExpandAll}
+                        className="px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                    >
+                        Expand All
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleCollapseAll}
+                        className="px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                    >
+                        Collapse All
+                    </button>
+                </div>
+
+                {/* Show Reporting Managers Option (just below the Collapse All button bar) */}
+                {canShowReportingManagers && (
+                    <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/95 backdrop-blur-md hover:bg-blue-50/70 border border-blue-200 text-xs font-semibold text-blue-700 cursor-pointer transition-all select-none shadow-md">
+                        <input
+                            type="checkbox"
+                            checked={showReportingManagers}
+                            onChange={(e) => onShowReportingManagersChange?.(e.target.checked)}
+                            className="w-3.5 h-3.5 rounded border-blue-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span>Show reporting managers</span>
+                    </label>
+                )}
             </div>
 
             {/* Draggable & Scalable Infinite Canvas Stage */}
