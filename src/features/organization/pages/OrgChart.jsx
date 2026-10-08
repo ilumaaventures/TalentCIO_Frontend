@@ -8,6 +8,7 @@ import { Users, Network, UserCheck, ChevronRight } from 'lucide-react';
 import Skeleton from '@/components/ui/Skeleton';
 import { Link, useNavigate } from 'react-router-dom';
 import { getEmploymentTypeStyle, getEmploymentTypeBadgeStyle } from '../utils/employmentTypeColors';
+import { canAccessBusinessUnits, canManageOrgChart } from '@/config/accessPolicies';
 
 const OrgChart = () => {
     const { user } = useAuth();
@@ -17,8 +18,16 @@ const OrgChart = () => {
     const [businessUnitId, setBusinessUnitId] = useState('');
     const [includeInactive, setIncludeInactive] = useState(false);
     const [employmentTypes, setEmploymentTypes] = useState([]);
+    const [showReportingManagers, setShowReportingManagers] = useState(false);
     const [viewMode, setViewMode] = useState('tree');
     const [selectedNode, setSelectedNode] = useState(null);
+
+    const handleEmploymentTypesChange = (types) => {
+        setEmploymentTypes(types);
+        if (!types || types.length === 0) {
+            setShowReportingManagers(false);
+        }
+    };
 
     const handleNodeClick = (node) => {
         const userId = node?._id || node?.id;
@@ -33,7 +42,9 @@ const OrgChart = () => {
 
     const isGlobalViewer = isAdmin || user?.permissions?.includes('org_chart.view');
 
-    const canManageReportingLine = isAdmin || user?.permissions?.includes('org_chart.manage');
+    const canManageReportingLine = canManageOrgChart(user);
+
+    const canViewBusinessUnits = canAccessBusinessUnits(user);
 
     const {
         treeData,
@@ -45,10 +56,13 @@ const OrgChart = () => {
         refetch
     } = useOrgChartData({
         departmentId,
-        businessUnitId,
+        businessUnitId: canViewBusinessUnits ? businessUnitId : '',
         search,
         includeInactive,
-        employmentTypes
+        employmentTypes,
+        showReportingManagers,
+        canViewBusinessUnits,
+        canManageOrgChart: canManageReportingLine
     });
 
     // Flatten tree for list view grouped by department
@@ -56,7 +70,7 @@ const OrgChart = () => {
         const list = [];
         const walk = (nodes) => {
             for (const n of nodes) {
-                if (employmentTypes.length === 0 || n.isMatch) {
+                if (employmentTypes.length === 0 || showReportingManagers || n.isMatch) {
                     list.push(n);
                 }
                 if (n.children) walk(n.children);
@@ -64,7 +78,7 @@ const OrgChart = () => {
         };
         walk(treeData);
         return list;
-    }, [treeData, employmentTypes]);
+    }, [treeData, employmentTypes, showReportingManagers]);
 
     const groupedByDepartment = useMemo(() => {
         const groups = {};
@@ -136,10 +150,14 @@ const OrgChart = () => {
                 includeInactive={includeInactive}
                 onIncludeInactiveChange={setIncludeInactive}
                 employmentTypes={employmentTypes}
-                onEmploymentTypesChange={setEmploymentTypes}
+                onEmploymentTypesChange={handleEmploymentTypesChange}
+                showReportingManagers={showReportingManagers}
+                onShowReportingManagersChange={setShowReportingManagers}
                 availableEmploymentTypes={availableEmploymentTypes}
                 departments={departments}
                 businessUnits={businessUnits}
+                canViewBusinessUnits={canViewBusinessUnits}
+                canManageOrgChart={canManageReportingLine}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
             />

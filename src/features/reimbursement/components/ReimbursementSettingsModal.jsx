@@ -470,13 +470,34 @@ const ReimbursementSettingsModal = ({ onClose, onSuccess }) => {
                 </div>
 
                 {/* Footer */}
-                <div className="border-t border-slate-100 bg-slate-50 px-6 py-3.5 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                    >
-                        Close
-                    </button>
+                <div className="border-t border-slate-100 bg-slate-50 px-6 py-3.5 flex items-center justify-between">
+                    <div>
+                        {activeTab === 'workflow' && (
+                            <span className="text-xs font-semibold text-slate-500">
+                                {levels.length} approval level{levels.length !== 1 ? 's' : ''} configured
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                        >
+                            Close
+                        </button>
+                        {activeTab === 'workflow' && (
+                            <button
+                                type="button"
+                                onClick={handleSaveWorkflow}
+                                disabled={wfSubmitting}
+                                className="flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60 transition-all shadow-sm"
+                            >
+                                {wfSubmitting && <Loader size={15} className="animate-spin" />}
+                                <Save size={15} /> Save Approval Workflow
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
