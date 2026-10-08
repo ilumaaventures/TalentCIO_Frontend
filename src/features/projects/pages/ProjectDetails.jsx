@@ -47,7 +47,18 @@ const ProjectDetails = () => {
   const [viewMode, setViewMode] = useState('overview'); // 'overview', 'board', 'hierarchy', 'performance', 'user-trace', 'discussions'
   const [traceUserId, setTraceUserId] = useState('ALL');
   const [discussionsCount, setDiscussionsCount] = useState(0);
+  const [selectedDiscussionModuleId, setSelectedDiscussionModuleId] = useState('all');
   const hasModules = project?.hasModules !== false;
+
+  const handleOpenDiscussions = useCallback((targetModuleId) => {
+    if (targetModuleId && typeof targetModuleId === 'string') {
+      setSelectedDiscussionModuleId(targetModuleId);
+    } else {
+      setSelectedDiscussionModuleId('all');
+    }
+    setViewMode('discussions');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleSelectMemberTrace = useCallback((memberId) => {
     setTraceUserId(memberId || 'ALL');
@@ -883,7 +894,10 @@ const ProjectDetails = () => {
           project={project}
           employees={employees}
           viewMode={viewMode}
-          onChangeViewMode={setViewMode}
+          onChangeViewMode={(mode) => {
+            if (mode === 'discussions') setSelectedDiscussionModuleId('all');
+            setViewMode(mode);
+          }}
           onOpenCreateModule={openCreateModuleModal}
           onOpenCreateTask={openCreateTaskModal}
           onOpenLogModal={openProjectLogModal}
@@ -913,7 +927,7 @@ const ProjectDetails = () => {
                 onDeleteModule={handleDeleteModule}
                 onSelectTask={setSelectedTaskId}
                 canUpdateProject={canUpdateProject}
-                onViewDiscussions={() => setViewMode('discussions')}
+                onViewDiscussions={handleOpenDiscussions}
               />
             )}
 
@@ -979,6 +993,7 @@ const ProjectDetails = () => {
                 onRefreshProject={fetchData}
                 onSelectTask={setSelectedTaskId}
                 allTasks={tasks}
+                initialModuleFilter={selectedDiscussionModuleId}
               />
             )}
           </div>

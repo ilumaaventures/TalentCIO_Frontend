@@ -30,6 +30,127 @@ const STATUS_META = {
 };
 const getStatusMeta = (s) => STATUS_META[s] || STATUS_META.TODO;
 
+/* ── discussions constants ──────────────────────────────── */
+const DISC_TABS = [
+  { key: 'inprogress',       label: 'In Progress',   color: 'text-blue-600',    bg: 'bg-blue-50',    active: 'bg-blue-600 text-white' },
+  { key: 'planning',        label: 'Planning',      color: 'text-purple-600',  bg: 'bg-purple-50',  active: 'bg-purple-600 text-white' },
+  { key: 'on-hold',         label: 'On Hold',       color: 'text-amber-600',   bg: 'bg-amber-50',   active: 'bg-amber-500 text-white' },
+  { key: 'mark as complete',label: 'Completed',     color: 'text-emerald-600', bg: 'bg-emerald-50', active: 'bg-emerald-600 text-white' },
+];
+
+const PRIORITY_COLORS = {
+  Urgent: 'bg-rose-100 text-rose-700',
+  High:   'bg-orange-100 text-orange-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low:    'bg-slate-100 text-slate-500',
+};
+
+/* ── full module discussion card ────────────────────────── */
+const ModuleDiscussionCard = ({ discussion, onOpenDiscussion }) => {
+  const tab = DISC_TABS.find((t) => t.key === discussion.status) || {
+    label: discussion.status || 'In Progress',
+    bg: 'bg-blue-50',
+    color: 'text-blue-700'
+  };
+  const creator = discussion.createdBy;
+  const creatorName = creator?.firstName
+    ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+    : creator?.name || 'Unknown';
+  const photo = creator?.profilePicture || creator?.profilePhoto;
+
+  const rawSupervisors = Array.isArray(discussion.supervisor)
+    ? discussion.supervisor
+    : (discussion.supervisor ? [discussion.supervisor] : []);
+
+  const hasCustomTitle = discussion.title && discussion.title.trim().toLowerCase() !== 'discussion';
+
+  return (
+    <div
+      onClick={onOpenDiscussion}
+      className="bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-blue-300 transition-all p-3.5 cursor-pointer group space-y-2.5"
+    >
+      {/* Top author row and badges */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          {photo ? (
+            <img src={photo} alt={creatorName} className="w-6 h-6 rounded-full object-cover shrink-0" />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+              {creatorName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span className="text-xs font-semibold text-slate-800 truncate">{creatorName}</span>
+          {discussion.createdAt && (
+            <span className="text-[11px] text-slate-400 shrink-0">
+              • {new Date(discussion.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          {discussion.priority && (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${PRIORITY_COLORS[discussion.priority] || PRIORITY_COLORS.Medium}`}>
+              {discussion.priority}
+            </span>
+          )}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tab.bg} ${tab.color}`}>
+            {tab.label}
+          </span>
+          {discussion.hours !== undefined && discussion.hours !== null && discussion.hours !== '' && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+              {discussion.hours}h planned
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Main Discussion Content */}
+      <div className="space-y-1">
+        {hasCustomTitle && (
+          <h5 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+            {discussion.title}
+          </h5>
+        )}
+        {discussion.discussion ? (
+          <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50/60 p-2.5 rounded-lg border border-slate-100">
+            {discussion.discussion}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400 italic">No discussion notes provided.</p>
+        )}
+      </div>
+
+      {/* Footer meta info: Due Date, Supervisor, Action Link */}
+      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          {discussion.dueDate && (
+            <span className="flex items-center gap-1 text-slate-600">
+              <Calendar size={12} className="text-slate-400" />
+              Due: {new Date(discussion.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+          {rawSupervisors.length > 0 && (
+            <span className="flex items-center gap-1 text-slate-600">
+              <User size={12} className="text-slate-400" />
+              Supervisor: {rawSupervisors.map(s => [s.firstName, s.lastName].filter(Boolean).join(' ') || s.name || 'Supervisor').join(', ')}
+            </span>
+          )}
+          {discussion.totalLoggedHours > 0 && (
+            <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+              <Clock size={12} />
+              Logged: {discussion.totalLoggedHours}h
+            </span>
+          )}
+        </div>
+
+        <span className="text-blue-600 font-semibold group-hover:underline flex items-center gap-1 ml-auto">
+          View in Discussions &rarr;
+        </span>
+      </div>
+    </div>
+  );
+};
+
 /* ── tiny priority pill ─────────────────────────────────── */
 const PriorityPill = ({ priority }) => {
   const map = {
@@ -193,7 +314,7 @@ const ModuleCard = ({
 
           {/* Module discussions */}
           {modDiscussions.length > 0 && (
-            <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/50 space-y-2">
+            <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/50 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-wide">
                   <MessageSquare size={12} className="text-blue-500" />
@@ -201,34 +322,28 @@ const ModuleCard = ({
                 </span>
                 {onViewDiscussions && (
                   <button
-                    onClick={onViewDiscussions}
-                    className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onViewDiscussions(mod._id);
+                    }}
+                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer flex items-center gap-1"
                   >
                     Open Discussions Tab &rarr;
                   </button>
                 )}
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {modDiscussions.map((d) => (
-                  <div
+                  <ModuleDiscussionCard
                     key={d._id}
-                    onClick={onViewDiscussions}
-                    className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/70 hover:border-blue-300 hover:bg-blue-50/30 transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="text-xs font-semibold text-slate-800 truncate">
-                        {d.title || d.discussion}
-                      </span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase bg-slate-100 text-slate-600 shrink-0">
-                        {d.status}
-                      </span>
-                    </div>
-                    {d.hours ? (
-                      <span className="text-[10px] font-semibold text-indigo-600 ml-2 shrink-0">
-                        {d.hours}h
-                      </span>
-                    ) : null}
-                  </div>
+                    discussion={d}
+                    onOpenDiscussion={(e) => {
+                      e?.stopPropagation();
+                      if (onViewDiscussions) onViewDiscussions(mod._id);
+                    }}
+                  />
                 ))}
               </div>
             </div>
@@ -240,20 +355,6 @@ const ModuleCard = ({
 };
 
 /* ── Discussions Section ────────────────────────────────── */
-const DISC_TABS = [
-  { key: 'inprogress',       label: 'In Progress',   color: 'text-blue-600',    bg: 'bg-blue-50',    active: 'bg-blue-600 text-white' },
-  { key: 'planning',        label: 'Planning',      color: 'text-purple-600',  bg: 'bg-purple-50',  active: 'bg-purple-600 text-white' },
-  { key: 'on-hold',         label: 'On Hold',       color: 'text-amber-600',   bg: 'bg-amber-50',   active: 'bg-amber-500 text-white' },
-  { key: 'mark as complete',label: 'Completed',     color: 'text-emerald-600', bg: 'bg-emerald-50', active: 'bg-emerald-600 text-white' },
-];
-
-const PRIORITY_COLORS = {
-  Urgent: 'bg-rose-100 text-rose-700',
-  High:   'bg-orange-100 text-orange-700',
-  Medium: 'bg-amber-100 text-amber-700',
-  Low:    'bg-slate-100 text-slate-500',
-};
-
 const DiscussionsSection = ({ projectId, onViewDiscussions }) => {
   const [activeTab, setActiveTab] = useState('inprogress');
   const [discussions, setDiscussions] = useState([]);

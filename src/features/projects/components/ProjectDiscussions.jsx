@@ -60,7 +60,8 @@ export const ProjectDiscussions = ({
   workLogs: initialWorkLogs = [],
   onRefreshProject,
   onSelectTask,
-  allTasks = []
+  allTasks = [],
+  initialModuleFilter = 'all'
 }) => {
   const [discussions, setDiscussions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,8 +69,15 @@ export const ProjectDiscussions = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [creatorFilter, setCreatorFilter] = useState('all');
-  const [moduleFilter, setModuleFilter] = useState('all');
+  const [moduleFilter, setModuleFilter] = useState(initialModuleFilter || 'all');
   const [modules, setModules] = useState([]);
+
+  useEffect(() => {
+    if (initialModuleFilter) {
+      setModuleFilter(initialModuleFilter);
+      setPage(1);
+    }
+  }, [initialModuleFilter]);
 
   // Fetch modules for this project
   const fetchModules = useCallback(async () => {
