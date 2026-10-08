@@ -108,8 +108,8 @@ const OrgChart = () => {
                             <Users size={20} />
                         </div>
                         <div>
-                            <p className="text-[11px] font-medium text-slate-500">Total Headcount</p>
-                            <h3 className="text-lg font-bold text-slate-800">{stats.totalHeadcount ?? stats.totalEmployees ?? 0}</h3>
+                            <p className="text-[11px] font-medium text-slate-500">Total Workforce</p>
+                            <h3 className="text-lg font-bold text-slate-800">{stats.totalWorkforce ?? stats.totalHeadcount ?? stats.totalEmployees ?? 0}</h3>
                         </div>
                     </div>
 

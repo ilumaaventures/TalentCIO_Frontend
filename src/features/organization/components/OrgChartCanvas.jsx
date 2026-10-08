@@ -90,12 +90,12 @@ const OrgChartCanvas = ({
     const canvasContainerRef = useRef(null);
     const treeContentRef = useRef(null);
 
-    // Initialize 2 levels expanded by default
+    // Initialize expanded levels by default (up to 4 levels so teams/subordinates are visible)
     useEffect(() => {
         const initialMap = {};
         const walk = (nodes, depth = 0) => {
             for (const n of nodes) {
-                initialMap[String(n._id)] = depth < 2;
+                initialMap[String(n._id)] = depth < 4;
                 if (n.children) walk(n.children, depth + 1);
             }
         };
