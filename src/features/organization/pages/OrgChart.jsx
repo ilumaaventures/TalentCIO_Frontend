@@ -175,6 +175,9 @@ const OrgChart = () => {
                     tree={treeData}
                     selectedNode={selectedNode}
                     onSelectNode={handleNodeClick}
+                    showReportingManagers={showReportingManagers}
+                    onShowReportingManagersChange={setShowReportingManagers}
+                    canShowReportingManagers={canManageReportingLine && employmentTypes.length > 0}
                 />
             ) : (
                 /* Grouped Department List Fallback */
