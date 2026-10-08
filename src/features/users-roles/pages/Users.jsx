@@ -49,7 +49,9 @@ const Users = () => {
                 const res = await api.get('/payroll/config');
                 setPayrollConfig(res.data);
             } catch (err) {
-                console.error('Failed to fetch payroll config:', err);
+                if (err?.response?.status !== 403) {
+                    console.error('Failed to fetch payroll config:', err);
+                }
             }
         };
         fetchPayrollConfig();

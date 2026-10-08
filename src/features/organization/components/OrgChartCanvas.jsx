@@ -134,16 +134,34 @@ const OrgChartCanvas = ({
         setExpandedMap(newMap);
     };
 
-    // Auto-center and fit
+    // Auto-center and fit to viewport dimensions
     const centerAndFitView = useCallback(() => {
-        if (!canvasContainerRef.current) return;
+        if (!canvasContainerRef.current || !treeContentRef.current) return;
         const container = canvasContainerRef.current;
-        const containerWidth = container.clientWidth || 1000;
-        
-        // Reset scale and position
-        setScale(1);
-        setPosition({ x: 0, y: 20 });
+        const content = treeContentRef.current;
+
+        const containerW = container.clientWidth || 1000;
+        const containerH = container.clientHeight || 700;
+        const contentW = content.scrollWidth || content.offsetWidth || 1000;
+        const contentH = content.scrollHeight || content.offsetHeight || 600;
+
+        const paddingX = 64;
+        const paddingY = 64;
+        const scaleX = (containerW - paddingX) / Math.max(contentW, 1);
+        const scaleY = (containerH - paddingY) / Math.max(contentH, 1);
+        const fitScale = Math.min(1.0, Math.max(0.45, Number(Math.min(scaleX, scaleY).toFixed(2))));
+
+        setScale(fitScale);
+        setPosition({ x: 0, y: 24 });
     }, []);
+
+    // Auto-fit whenever tree data loads or updates
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            centerAndFitView();
+        }, 80);
+        return () => clearTimeout(timer);
+    }, [tree, centerAndFitView]);
 
     // Zoom controls
     const zoomIn = () => setScale((s) => Math.min(s + 0.15, 2));
@@ -265,7 +283,7 @@ const OrgChartCanvas = ({
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
-                className="w-full h-full cursor-grab active:cursor-grabbing overflow-hidden relative flex items-start justify-center"
+                className="w-full h-full cursor-grab active:cursor-grabbing overflow-hidden relative"
                 style={{
                     backgroundImage: 'radial-gradient(#cbd5e1 1.2px, transparent 1.2px)',
                     backgroundSize: '24px 24px',
@@ -273,26 +291,28 @@ const OrgChartCanvas = ({
                     touchAction: 'none'
                 }}
             >
-                <div
-                    ref={treeContentRef}
-                    style={{
-                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-                        transformOrigin: 'top center',
-                        transition: isDragging ? 'none' : 'transform 0.15s ease-out'
-                    }}
-                    className="inline-flex items-start justify-center gap-16 min-w-max px-32 py-16"
-                >
-                    {tree.map((rootNode) => (
-                        <TreeNode
-                            key={rootNode._id}
-                            node={rootNode}
-                            expandedMap={expandedMap}
-                            onToggleExpand={handleToggleExpand}
-                            onSelectNode={onSelectNode}
-                            selectedNodeId={selectedNode?._id}
-                            isRoot={true}
-                        />
-                    ))}
+                <div className="w-full h-full absolute inset-0 flex items-start justify-center pointer-events-none overflow-visible">
+                    <div
+                        ref={treeContentRef}
+                        style={{
+                            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                            transformOrigin: 'top center',
+                            transition: isDragging ? 'none' : 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1)'
+                        }}
+                        className="inline-flex items-start justify-center gap-12 min-w-max px-20 py-12 pointer-events-auto select-none"
+                    >
+                        {tree.map((rootNode) => (
+                            <TreeNode
+                                key={rootNode._id}
+                                node={rootNode}
+                                expandedMap={expandedMap}
+                                onToggleExpand={handleToggleExpand}
+                                onSelectNode={onSelectNode}
+                                selectedNodeId={selectedNode?._id}
+                                isRoot={true}
+                            />
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>

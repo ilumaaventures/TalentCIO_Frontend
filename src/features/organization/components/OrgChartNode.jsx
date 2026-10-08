@@ -37,8 +37,10 @@ const OrgChartNode = ({
                         : `bg-white ${empStyle.cardBorder}`
                 }`}
             >
-                {/* Top Colored Accent Strip for Employment Type */}
-                <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl ${empStyle.topBar}`} />
+                {/* Top Colored Accent Strip for Employment Type (clipped cleanly to card curvature) */}
+                <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+                    <div className={`h-1.5 w-full ${empStyle.topBar}`} />
+                </div>
 
                 {/* Status / Inactive indicator */}
                 {isInactive && (

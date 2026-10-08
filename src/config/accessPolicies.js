@@ -80,6 +80,23 @@ export const canAccessOrgChart = (user) => (
     || Boolean(user)
 );
 
+export const canManageOrgChart = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, ORG_CHART_MANAGE_PERMISSIONS)
+);
+
+export const canAccessBusinessUnits = (user) => (
+    hasModuleEnabled(user?.company?.enabledModules || [], 'businessUnits') && (
+        isAdminUser(user)
+        || hasAnyPermission(user, [
+            'business_unit.read',
+            'business_unit.create',
+            'business_unit.update',
+            'business_unit.delete'
+        ])
+    )
+);
+
 export const CRM_ACCESS_PERMISSIONS = [
     'crm.view',
     'crm.leads.read',
