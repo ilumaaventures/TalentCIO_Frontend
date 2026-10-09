@@ -106,8 +106,8 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
 
     const phase2Metrics = {
         totalShortlisted: candidates.filter(c => isProfileSharedCandidate(c)).length,
-        shortlisted: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Shortlisted').length,
-        totalScreened: candidates.filter(c => isProfileSharedCandidate(c) && c.phase2Decision === 'Shortlisted').length,
+        shortlisted: candidates.filter(c => isProfileSharedCandidate(c) && (c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected')).length,
+        totalScreened: candidates.filter(c => isProfileSharedCandidate(c) && (c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected')).length,
         interviewScheduled: candidates.filter(c => {
             const cDec = c.phase2Decision || 'None';
             const rounds = getDisplayInterviewRoundsForPhase(c, 2);
@@ -139,8 +139,8 @@ const OpeningSection = ({ opening, openingNum, onTransfer, users }) => {
             if (!isProfileSharedCandidate(candidate)) return false;
             const cDec2 = candidate.phase2Decision || 'None';
             if (filterDecision !== 'All') {
-                if (filterDecision === 'Shortlisted_Selected' && cDec2 !== 'Shortlisted' && cDec2 !== 'Selected') return false;
-                if (filterDecision !== 'Shortlisted_Selected' && cDec2 !== filterDecision) return false;
+                if ((filterDecision === 'Shortlisted_Selected' || filterDecision === 'Shortlisted') && cDec2 !== 'Shortlisted' && cDec2 !== 'Selected') return false;
+                if (filterDecision !== 'Shortlisted_Selected' && filterDecision !== 'Shortlisted' && cDec2 !== filterDecision) return false;
             }
         } else if (activePhase === 3) {
             const cDec3 = candidate.phase3Decision || 'None';
