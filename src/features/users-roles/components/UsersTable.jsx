@@ -4,6 +4,31 @@ import { Search, Shield, ArrowUpDown, ChevronLeft, ChevronRight, ChevronDown, Ch
 import { PAGE_SIZE_OPTIONS } from '../utils/userExportUtils';
 import { isImpersonationTargetEligible } from '../utils/impersonationEligibility';
 
+const EmployeeAvatar = ({ person, size = 'h-6.5 w-6.5', textSize = 'text-[9.5px]' }) => {
+    const [imageError, setImageError] = useState(false);
+    const photo = person?.profilePicture || person?.profilePhoto || person?.avatar;
+    const firstInitial = (person?.firstName?.charAt(0) || '').toUpperCase();
+    const lastInitial = (person?.lastName?.charAt(0) || '').toUpperCase();
+    const initials = `${firstInitial}${lastInitial}` || (person?.name?.charAt(0) || '?').toUpperCase();
+
+    if (photo && !imageError) {
+        return (
+            <img
+                src={photo}
+                alt={`${person?.firstName || ''} ${person?.lastName || ''}`.trim() || 'User'}
+                onError={() => setImageError(true)}
+                className={`${size} rounded-full object-cover shrink-0 border border-slate-200/90 shadow-2xs`}
+            />
+        );
+    }
+
+    return (
+        <div className={`${size} rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold ${textSize} shrink-0 border border-blue-100`}>
+            {initials}
+        </div>
+    );
+};
+
 const UsersTable = ({
     searchTerm,
     setSearchTerm,
@@ -216,9 +241,7 @@ const UsersTable = ({
                                 </td>
                                 <td className="px-2.5 py-1.5">
                                     <div className="flex items-center space-x-2">
-                                        <div className="h-6 w-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[9px] shrink-0">
-                                            {employee.firstName.charAt(0)}{employee.lastName?.charAt(0)}
-                                        </div>
+                                        <EmployeeAvatar person={employee} size="h-6.5 w-6.5" textSize="text-[9.5px]" />
                                         <div className="min-w-0">
                                             <div className="font-semibold text-slate-800 truncate leading-tight text-xs">{employee.firstName} {employee.lastName}</div>
                                             <div className="text-[9.5px] text-slate-500 leading-tight">{employee.employeeCode || 'N/A'}</div>
@@ -244,9 +267,14 @@ const UsersTable = ({
                                 </td>
                                 <td className="px-2.5 py-1.5 text-slate-600">
                                     {employee.reportingManagers && employee.reportingManagers.length > 0 ? (
-                                        <div className="flex flex-col">
+                                        <div className="flex flex-col gap-1">
                                             {employee.reportingManagers.map(mgr => (
-                                                <span key={mgr._id} className="font-medium text-[10.5px] text-slate-700 truncate max-w-[110px]" title={mgr.email}>{mgr.firstName} {mgr.lastName.charAt(0)}.</span>
+                                                <div key={mgr._id} className="flex items-center gap-1.5 min-w-0" title={mgr.email}>
+                                                    <EmployeeAvatar person={mgr} size="h-4.5 w-4.5" textSize="text-[7.5px]" />
+                                                    <span className="font-medium text-[10.5px] text-slate-700 truncate max-w-[110px]">
+                                                        {mgr.firstName} {mgr.lastName ? `${mgr.lastName.charAt(0)}.` : ''}
+                                                    </span>
+                                                </div>
                                             ))}
                                         </div>
                                     ) : (

@@ -30,6 +30,127 @@ const STATUS_META = {
 };
 const getStatusMeta = (s) => STATUS_META[s] || STATUS_META.TODO;
 
+/* ── discussions constants ──────────────────────────────── */
+const DISC_TABS = [
+  { key: 'inprogress',       label: 'In Progress',   color: 'text-blue-600',    bg: 'bg-blue-50',    active: 'bg-blue-600 text-white' },
+  { key: 'planning',        label: 'Planning',      color: 'text-purple-600',  bg: 'bg-purple-50',  active: 'bg-purple-600 text-white' },
+  { key: 'on-hold',         label: 'On Hold',       color: 'text-amber-600',   bg: 'bg-amber-50',   active: 'bg-amber-500 text-white' },
+  { key: 'mark as complete',label: 'Completed',     color: 'text-emerald-600', bg: 'bg-emerald-50', active: 'bg-emerald-600 text-white' },
+];
+
+const PRIORITY_COLORS = {
+  Urgent: 'bg-rose-100 text-rose-700',
+  High:   'bg-orange-100 text-orange-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low:    'bg-slate-100 text-slate-500',
+};
+
+/* ── full module discussion card ────────────────────────── */
+const ModuleDiscussionCard = ({ discussion, onOpenDiscussion }) => {
+  const tab = DISC_TABS.find((t) => t.key === discussion.status) || {
+    label: discussion.status || 'In Progress',
+    bg: 'bg-blue-50',
+    color: 'text-blue-700'
+  };
+  const creator = discussion.createdBy;
+  const creatorName = creator?.firstName
+    ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+    : creator?.name || 'Unknown';
+  const photo = creator?.profilePicture || creator?.profilePhoto;
+
+  const rawSupervisors = Array.isArray(discussion.supervisor)
+    ? discussion.supervisor
+    : (discussion.supervisor ? [discussion.supervisor] : []);
+
+  const hasCustomTitle = discussion.title && discussion.title.trim().toLowerCase() !== 'discussion';
+
+  return (
+    <div
+      onClick={onOpenDiscussion}
+      className="bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-blue-300 transition-all p-3.5 cursor-pointer group space-y-2.5"
+    >
+      {/* Top author row and badges */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          {photo ? (
+            <img src={photo} alt={creatorName} className="w-6 h-6 rounded-full object-cover shrink-0" />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+              {creatorName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span className="text-xs font-semibold text-slate-800 truncate">{creatorName}</span>
+          {discussion.createdAt && (
+            <span className="text-[11px] text-slate-400 shrink-0">
+              • {new Date(discussion.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          {discussion.priority && (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${PRIORITY_COLORS[discussion.priority] || PRIORITY_COLORS.Medium}`}>
+              {discussion.priority}
+            </span>
+          )}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tab.bg} ${tab.color}`}>
+            {tab.label}
+          </span>
+          {discussion.hours !== undefined && discussion.hours !== null && discussion.hours !== '' && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+              {discussion.hours}h planned
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Main Discussion Content */}
+      <div className="space-y-1">
+        {hasCustomTitle && (
+          <h5 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+            {discussion.title}
+          </h5>
+        )}
+        {discussion.discussion ? (
+          <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50/60 p-2.5 rounded-lg border border-slate-100">
+            {discussion.discussion}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400 italic">No discussion notes provided.</p>
+        )}
+      </div>
+
+      {/* Footer meta info: Due Date, Supervisor, Action Link */}
+      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          {discussion.dueDate && (
+            <span className="flex items-center gap-1 text-slate-600">
+              <Calendar size={12} className="text-slate-400" />
+              Due: {new Date(discussion.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+          {rawSupervisors.length > 0 && (
+            <span className="flex items-center gap-1 text-slate-600">
+              <User size={12} className="text-slate-400" />
+              Supervisor: {rawSupervisors.map(s => [s.firstName, s.lastName].filter(Boolean).join(' ') || s.name || 'Supervisor').join(', ')}
+            </span>
+          )}
+          {discussion.totalLoggedHours > 0 && (
+            <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+              <Clock size={12} />
+              Logged: {discussion.totalLoggedHours}h
+            </span>
+          )}
+        </div>
+
+        <span className="text-blue-600 font-semibold group-hover:underline flex items-center gap-1 ml-auto">
+          View in Discussions &rarr;
+        </span>
+      </div>
+    </div>
+  );
+};
+
 /* ── tiny priority pill ─────────────────────────────────── */
 const PriorityPill = ({ priority }) => {
   const map = {
@@ -104,11 +225,13 @@ const TaskRow = ({ task, onSelectTask }) => {
 const ModuleCard = ({
   mod,
   tasks,
+  discussions = [],
   canUpdateProject,
   onEditModule,
   onDeleteModule,
   onOpenCreateTask,
   onSelectTask,
+  onViewDiscussions,
   isOpen,
   onToggle
 }) => {
@@ -118,6 +241,9 @@ const ModuleCard = ({
 
   const modTasks = tasks.filter(
     (t) => String(t.module?._id || t.module) === String(mod._id)
+  );
+  const modDiscussions = discussions.filter(
+    (d) => String(d.module?._id || d.module) === String(mod._id)
   );
   const modCompleted = modTasks.filter((t) => t.status === 'DONE').length;
   const modPercent = modTasks.length > 0 ? Math.round((modCompleted / modTasks.length) * 100) : 0;
@@ -136,6 +262,7 @@ const ModuleCard = ({
         <span className="flex-1 font-semibold text-sm text-slate-800 truncate">{mod.name}</span>
         <span className="text-[11px] text-slate-400 flex-shrink-0">
           {modTasks.length} {modTasks.length === 1 ? 'task' : 'tasks'}
+          {modDiscussions.length > 0 && ` • ${modDiscussions.length} ${modDiscussions.length === 1 ? 'discussion' : 'discussions'}`}
         </span>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${modPercent === 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
           {modPercent}%
@@ -184,6 +311,43 @@ const ModuleCard = ({
               </button>
             </div>
           )}
+
+          {/* Module discussions */}
+          {modDiscussions.length > 0 && (
+            <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/50 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-wide">
+                  <MessageSquare size={12} className="text-blue-500" />
+                  Module Discussions ({modDiscussions.length})
+                </span>
+                {onViewDiscussions && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onViewDiscussions(mod._id);
+                    }}
+                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    Open Discussions Tab &rarr;
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {modDiscussions.map((d) => (
+                  <ModuleDiscussionCard
+                    key={d._id}
+                    discussion={d}
+                    onOpenDiscussion={(e) => {
+                      e?.stopPropagation();
+                      if (onViewDiscussions) onViewDiscussions(mod._id);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -191,20 +355,6 @@ const ModuleCard = ({
 };
 
 /* ── Discussions Section ────────────────────────────────── */
-const DISC_TABS = [
-  { key: 'inprogress',       label: 'In Progress',   color: 'text-blue-600',    bg: 'bg-blue-50',    active: 'bg-blue-600 text-white' },
-  { key: 'planning',        label: 'Planning',      color: 'text-purple-600',  bg: 'bg-purple-50',  active: 'bg-purple-600 text-white' },
-  { key: 'on-hold',         label: 'On Hold',       color: 'text-amber-600',   bg: 'bg-amber-50',   active: 'bg-amber-500 text-white' },
-  { key: 'mark as complete',label: 'Completed',     color: 'text-emerald-600', bg: 'bg-emerald-50', active: 'bg-emerald-600 text-white' },
-];
-
-const PRIORITY_COLORS = {
-  Urgent: 'bg-rose-100 text-rose-700',
-  High:   'bg-orange-100 text-orange-700',
-  Medium: 'bg-amber-100 text-amber-700',
-  Low:    'bg-slate-100 text-slate-500',
-};
-
 const DiscussionsSection = ({ projectId, onViewDiscussions }) => {
   const [activeTab, setActiveTab] = useState('inprogress');
   const [discussions, setDiscussions] = useState([]);
@@ -311,6 +461,12 @@ const DiscussionsSection = ({ projectId, onViewDiscussions }) => {
                       {tab && (
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tab.bg} ${tab.color}`}>
                           {tab.label}
+                        </span>
+                      )}
+                      {disc.module?.name && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                          <Folder size={10} className="text-blue-500" />
+                          {disc.module.name}
                         </span>
                       )}
                     </div>
@@ -428,6 +584,19 @@ export const ProjectOverview = ({
       });
     }
   }, [modules]);
+
+  const [projectDiscussions, setProjectDiscussions] = useState([]);
+
+  useEffect(() => {
+    const pId = projectId || project?._id;
+    if (!pId) return;
+    api.get(`/discussions?project=${pId}&limit=200`)
+      .then(res => {
+        const list = res.data?.discussions || res.data?.data || res.data || [];
+        setProjectDiscussions(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setProjectDiscussions([]));
+  }, [projectId, project?._id]);
 
   const handleExpandAll = () => {
     setOpenModuleIds(new Set(modules.map(m => String(m._id))));
@@ -609,11 +778,13 @@ export const ProjectOverview = ({
                 key={mod._id}
                 mod={mod}
                 tasks={tasks}
+                discussions={projectDiscussions}
                 canUpdateProject={canUpdateProject}
                 onEditModule={onEditModule}
                 onDeleteModule={onDeleteModule}
                 onOpenCreateTask={onOpenCreateTask}
                 onSelectTask={onSelectTask}
+                onViewDiscussions={onViewDiscussions}
                 isOpen={openModuleIds.has(String(mod._id))}
                 onToggle={() => handleToggleModule(mod._id)}
               />
