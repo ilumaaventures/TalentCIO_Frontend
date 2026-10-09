@@ -8,7 +8,7 @@ import { Users, Network, UserCheck, ChevronRight } from 'lucide-react';
 import Skeleton from '@/components/ui/Skeleton';
 import { Link, useNavigate } from 'react-router-dom';
 import { getEmploymentTypeStyle, getEmploymentTypeBadgeStyle } from '../utils/employmentTypeColors';
-import { canAccessBusinessUnits, canManageOrgChart } from '@/config/accessPolicies';
+import { canAccessBusinessUnits, canManageOrgChart, canViewOrgChartStats } from '@/config/accessPolicies';
 
 const OrgChart = () => {
     const { user } = useAuth();
@@ -40,9 +40,11 @@ const OrgChart = () => {
         || user?.permissions?.includes('*')
         || Boolean(user?.hasAllPermissions);
 
-    const isGlobalViewer = isAdmin || user?.permissions?.includes('org_chart.view');
+    const isGlobalViewer = isAdmin || user?.permissions?.includes('org_chart.view') || user?.permissions?.includes('org.chart.view');
 
     const canManageReportingLine = canManageOrgChart(user);
+
+    const canViewStatsCards = canViewOrgChartStats(user);
 
     const canViewBusinessUnits = canAccessBusinessUnits(user);
 
@@ -62,7 +64,8 @@ const OrgChart = () => {
         employmentTypes,
         showReportingManagers,
         canViewBusinessUnits,
-        canManageOrgChart: canManageReportingLine
+        canManageOrgChart: canManageReportingLine,
+        canViewStats: canViewStatsCards
     });
 
     // Flatten tree for list view grouped by department
@@ -114,8 +117,8 @@ const OrgChart = () => {
                 </div>
             </div>
 
-            {/* Statistics Bar */}
-            {stats && (
+            {/* Statistics Bar - only visible with org_chart.view or org_chart.manage (or Admin) */}
+            {canViewStatsCards && stats && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3.5">
                         <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">

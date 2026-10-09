@@ -31,8 +31,32 @@ const getInitials = (first, last) => {
 const Projects = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const canCreate = user?.roles?.includes('Admin') || user?.permissions?.includes('project.create');
-    const canUpdate = user?.roles?.includes('Admin') || user?.permissions?.includes('project.update');
+    const [canViewAllFromBootstrap, setCanViewAllFromBootstrap] = useState(false);
+
+    const userPermKeys = useMemo(() => {
+        const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+        return new Set(
+            perms.map(p => (typeof p === 'string' ? p : p?.key)).filter(Boolean)
+        );
+    }, [user?.permissions]);
+
+    const isAdmin = Boolean(
+        user?.roles?.includes('Admin') ||
+        user?.roles?.some?.(r => (typeof r === 'string' ? r : r?.name) === 'Admin') ||
+        user?.hasAllPermissions ||
+        userPermKeys.has('*')
+    );
+    const hasAllAccess = isAdmin || Boolean(user?.hasAllPermissions) || userPermKeys.has('*');
+    const canUpdate = hasAllAccess || userPermKeys.has('project.update');
+    const canReadClients = hasAllAccess || userPermKeys.has('client.read');
+    const canReadBusinessUnits = hasAllAccess || userPermKeys.has('business_unit.read');
+    const canViewAllUserPerf = hasAllAccess || canViewAllFromBootstrap || (
+        userPermKeys.has('project.userperformance.view') &&
+        userPermKeys.has('user.read')
+    );
+    const canViewTeamPerf = hasAllAccess || userPermKeys.has('project.view_team');
+    const canAccessUserPerformanceTab = canViewAllUserPerf || canViewTeamPerf;
+
     const [projects, setProjects] = useState([]);
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -56,6 +80,7 @@ const Projects = () => {
     const PROJECT_CACHE_TTL_MS = 30 * 1000;
     const cacheKey = `project_data_${user?._id}`;
     const [employees, setEmployees] = useState([]);
+    const [teamUserIds, setTeamUserIds] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
     const [memberSearchTerm, setMemberSearchTerm] = useState('');
     const [selectedClient, setSelectedClient] = useState('all');
@@ -86,7 +111,8 @@ const Projects = () => {
         : 'active';
 
     const rawViewParam = searchParams.get('view');
-    const [viewMode, setViewMode] = useState(rawViewParam === 'team-performance' || rawViewParam === 'user-performance' ? 'team-performance' : 'projects');
+    const isPerfParam = rawViewParam === 'team-performance' || rawViewParam === 'user-performance';
+    const [viewMode, setViewMode] = useState(isPerfParam && canAccessUserPerformanceTab ? 'team-performance' : 'projects');
     const [activeTab, setActiveTab] = useState(resolvedInitialTab);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
@@ -95,11 +121,18 @@ const Projects = () => {
     useEffect(() => {
         const v = searchParams.get('view');
         if (v === 'team-performance' || v === 'user-performance') {
-            setViewMode('team-performance');
+            if (canAccessUserPerformanceTab) {
+                setViewMode('team-performance');
+            } else {
+                setViewMode('projects');
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete('view');
+                setSearchParams(newParams, { replace: true });
+            }
         } else if (!v) {
             setViewMode('projects');
         }
-    }, [searchParams]);
+    }, [searchParams, canAccessUserPerformanceTab]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -146,11 +179,11 @@ const Projects = () => {
     const counts = useMemo(() => {
         const res = { all: 0, active: 0, inactive: 0, onHold: 0, completed: 0 };
         projects.forEach(p => {
-            if (selectedClient !== 'all') {
+            if (canReadClients && selectedClient !== 'all') {
                 const cId = p.client?._id || p.client;
                 if (cId !== selectedClient) return;
             }
-            if (selectedBusinessUnit !== 'all') {
+            if (canReadBusinessUnits && selectedBusinessUnit !== 'all') {
                 const buId = p.businessUnit?._id || p.businessUnit;
                 if (buId !== selectedBusinessUnit) return;
             }
@@ -162,7 +195,7 @@ const Projects = () => {
             else if (st === 'Completed') res.completed++;
         });
         return res;
-    }, [projects, selectedClient, selectedBusinessUnit, getProjectDisplayStatus]);
+    }, [projects, selectedClient, selectedBusinessUnit, getProjectDisplayStatus, canReadClients, canReadBusinessUnits]);
 
     const tabs = [
         { id: 'all', label: 'All', count: counts.all },
@@ -183,12 +216,12 @@ const Projects = () => {
                 }
             }
 
-            if (selectedClient !== 'all') {
+            if (canReadClients && selectedClient !== 'all') {
                 const cId = project.client?._id || project.client;
                 if (cId !== selectedClient) return false;
             }
 
-            if (selectedBusinessUnit !== 'all') {
+            if (canReadBusinessUnits && selectedBusinessUnit !== 'all') {
                 const buId = project.businessUnit?._id || project.businessUnit;
                 if (buId !== selectedBusinessUnit) return false;
             }
@@ -244,7 +277,7 @@ const Projects = () => {
         }
 
         return result;
-    }, [projects, activeTab, searchTerm, selectedClient, selectedBusinessUnit, sortConfig, getProjectDisplayStatus]);
+    }, [projects, activeTab, searchTerm, selectedClient, selectedBusinessUnit, sortConfig, getProjectDisplayStatus, canReadClients, canReadBusinessUnits]);
 
     const filteredEmployees = useMemo(() => {
         if (!memberSearchTerm.trim()) return employees;
@@ -256,6 +289,19 @@ const Projects = () => {
         });
     }, [employees, memberSearchTerm]);
 
+    const performanceEmployees = useMemo(() => {
+        if (canViewAllUserPerf) return employees;
+        if (canViewTeamPerf) {
+            if (teamUserIds.length > 0) {
+                const allowedSet = new Set(teamUserIds.map(String));
+                allowedSet.add(String(user?._id));
+                return employees.filter(emp => allowedSet.has(String(emp._id)));
+            }
+            return employees.filter(emp => String(emp._id) === String(user?._id));
+        }
+        return employees.filter(emp => String(emp._id) === String(user?._id));
+    }, [employees, canViewAllUserPerf, canViewTeamPerf, teamUserIds, user?._id]);
+
     const fetchData = useCallback(async ({ force = false } = {}) => {
         try {
             const cachedData = readSessionCache(cacheKey);
@@ -266,6 +312,10 @@ const Projects = () => {
                 setClients(data.clients || []);
                 setEmployees(data.employees || []);
                 setBusinessUnits(data.businessUnits || []);
+                if (data.teamUserIds) setTeamUserIds(data.teamUserIds);
+                if (data.canViewAllUserPerformance !== undefined) {
+                    setCanViewAllFromBootstrap(Boolean(data.canViewAllUserPerformance));
+                }
                 setLoading(false);
                 if (!force && isCacheFresh(cachedData, PROJECT_CACHE_TTL_MS)) return;
             }
@@ -284,14 +334,26 @@ const Projects = () => {
             const clientsData = bootstrapRes.data?.clients || [];
             const employeesData = bootstrapRes.data?.employees || [];
             const buData = bootstrapRes.data?.businessUnits || [];
+            const teamIds = bootstrapRes.data?.teamUserIds || [];
+            const canViewAllPerf = Boolean(bootstrapRes.data?.canViewAllUserPerformance);
 
-            const newFingerprint = JSON.stringify({ p: projData.length, c: clientsData.length, e: employeesData.length, bu: buData.length, lp: projData[0]?._id });
+            const newFingerprint = JSON.stringify({
+                p: projData.length,
+                c: clientsData.length,
+                e: employeesData.length,
+                bu: buData.length,
+                t: teamIds.length,
+                lp: projData[0]?._id,
+                perf: canViewAllPerf
+            });
             const oldFingerprint = cachedData?.fingerprint || null;
 
             setProjects(projData);
             setClients(clientsData);
             setEmployees(employeesData);
             setBusinessUnits(buData);
+            setTeamUserIds(teamIds);
+            setCanViewAllFromBootstrap(canViewAllPerf);
 
             if (newFingerprint !== oldFingerprint || force) {
                 const minimalProjects = projData.map(p => ({
@@ -321,7 +383,9 @@ const Projects = () => {
                     projects: minimalProjects,
                     clients: minimalClients,
                     businessUnits: minimalBusinessUnits,
-                    employees: minimalEmployees
+                    employees: minimalEmployees,
+                    teamUserIds: teamIds,
+                    canViewAllUserPerformance: canViewAllPerf
                 }, newFingerprint);
 
                 sessionStorage.setItem(cacheKey, JSON.stringify(payload));
@@ -340,6 +404,13 @@ const Projects = () => {
         initialFetchDoneRef.current = true;
         fetchData();
     }, [fetchData]);
+
+    // Force re-fetch fresh employees if viewing performance tracer and only self is loaded
+    useEffect(() => {
+        if (viewMode === 'team-performance' && employees.length <= 1 && initialFetchDoneRef.current) {
+            fetchData({ force: true });
+        }
+    }, [viewMode, employees.length, fetchData]);
 
     const [editingId, setEditingId] = useState(null);
     const [openMenuId, setOpenMenuId] = useState(null);
@@ -517,110 +588,118 @@ const Projects = () => {
                                         </div>
 
                                         {/* Quick Link to User Performance inside the dropdown menu */}
-                                        <div className="pt-1 mt-1 border-t border-slate-100 px-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setViewMode('team-performance');
-                                                    setStatusDropdownOpen(false);
-                                                    const newParams = new URLSearchParams(searchParams);
-                                                    newParams.set('view', 'team-performance');
-                                                    setSearchParams(newParams, { replace: true });
-                                                }}
-                                                className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                                            >
-                                                <span className="flex items-center gap-2">
-                                                    <Users size={13} className="text-blue-600 shrink-0" />
-                                                    <span>User Performance</span>
-                                                </span>
-                                                <ChevronRight size={13} className="text-blue-400" />
-                                            </button>
-                                        </div>
+                                        {canAccessUserPerformanceTab && (
+                                            <div className="pt-1 mt-1 border-t border-slate-100 px-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setViewMode('team-performance');
+                                                        setStatusDropdownOpen(false);
+                                                        const newParams = new URLSearchParams(searchParams);
+                                                        newParams.set('view', 'team-performance');
+                                                        setSearchParams(newParams, { replace: true });
+                                                    }}
+                                                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                                >
+                                                    <span className="flex items-center gap-2">
+                                                        <Users size={13} className="text-blue-600 shrink-0" />
+                                                        <span>User Performance</span>
+                                                    </span>
+                                                    <ChevronRight size={13} className="text-blue-400" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
                         )}
 
                         {/* View Switcher Tabs */}
-                        <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-semibold">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setViewMode('projects');
-                                    const newParams = new URLSearchParams(searchParams);
-                                    newParams.delete('view');
-                                    setSearchParams(newParams, { replace: true });
-                                }}
-                                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                                    viewMode === 'projects'
-                                        ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                            >
-                                Projects
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setViewMode('team-performance');
-                                    const newParams = new URLSearchParams(searchParams);
-                                    newParams.set('view', 'team-performance');
-                                    setSearchParams(newParams, { replace: true });
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                                    viewMode === 'team-performance'
-                                        ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                            >
-                                <Users size={13} className={viewMode === 'team-performance' ? 'text-blue-600' : 'text-slate-500'} />
-                                <span>User Performance</span>
-                            </button>
-                        </div>
+                        {canAccessUserPerformanceTab && (
+                            <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-semibold">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setViewMode('projects');
+                                        const newParams = new URLSearchParams(searchParams);
+                                        newParams.delete('view');
+                                        setSearchParams(newParams, { replace: true });
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                                        viewMode === 'projects'
+                                            ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    Projects
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setViewMode('team-performance');
+                                        const newParams = new URLSearchParams(searchParams);
+                                        newParams.set('view', 'team-performance');
+                                        setSearchParams(newParams, { replace: true });
+                                    }}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                                        viewMode === 'team-performance'
+                                            ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <Users size={13} className={viewMode === 'team-performance' ? 'text-blue-600' : 'text-slate-500'} />
+                                    <span>User Performance</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Filters, Search Bar & Actions (shown for projects view) */}
                     {viewMode === 'projects' ? (
                         <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto shrink-0">
                             {/* Client Filter */}
-                            <div className="relative">
-                                <select
-                                    value={selectedClient}
-                                    onChange={(e) => setSelectedClient(e.target.value)}
-                                    className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
-                                        selectedClient !== 'all'
-                                            ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
-                                            : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
-                                    }`}
-                                    title="Filter by Client"
-                                >
-                                    <option value="all">All Clients</option>
-                                    {clients.map(c => (
-                                        <option key={c._id} value={c._id}>{c.name}</option>
-                                    ))}
-                                </select>
-                                <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            </div>
+                            {canReadClients && (
+                                <div className="relative">
+                                    <select
+                                        value={selectedClient}
+                                        onChange={(e) => setSelectedClient(e.target.value)}
+                                        className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                            selectedClient !== 'all'
+                                                ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                                : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                        }`}
+                                        title="Filter by Client"
+                                    >
+                                        <option value="all">All Clients</option>
+                                        {clients.map(c => (
+                                            <option key={c._id} value={c._id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                    <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
+                            )}
 
                             {/* Business Unit Filter */}
-                            <div className="relative">
-                                <select
-                                    value={selectedBusinessUnit}
-                                    onChange={(e) => setSelectedBusinessUnit(e.target.value)}
-                                    className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
-                                        selectedBusinessUnit !== 'all'
-                                            ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
-                                            : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
-                                    }`}
-                                    title="Filter by Business Unit"
-                                >
-                                    <option value="all">All Business Units</option>
-                                    {businessUnits.map(bu => (
-                                        <option key={bu._id} value={bu._id}>{bu.name}</option>
-                                    ))}
-                                </select>
-                                <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            </div>
+                            {canReadBusinessUnits && (
+                                <div className="relative">
+                                    <select
+                                        value={selectedBusinessUnit}
+                                        onChange={(e) => setSelectedBusinessUnit(e.target.value)}
+                                        className={`text-xs h-9 pl-3 pr-8 bg-slate-50 border rounded-xl outline-none transition-all cursor-pointer font-medium appearance-none ${
+                                            selectedBusinessUnit !== 'all'
+                                                ? 'border-blue-400 bg-blue-50/60 text-blue-700 font-semibold'
+                                                : 'border-slate-200 text-slate-600 hover:border-slate-300 focus:bg-white focus:border-blue-500'
+                                        }`}
+                                        title="Filter by Business Unit"
+                                    >
+                                        <option value="all">All Business Units</option>
+                                        {businessUnits.map(bu => (
+                                            <option key={bu._id} value={bu._id}>{bu.name}</option>
+                                        ))}
+                                    </select>
+                                    <Filter size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
+                            )}
 
                             {/* Search Bar */}
                             <div className="relative flex-1 sm:w-52 md:w-60">
@@ -644,7 +723,7 @@ const Projects = () => {
                             </div>
 
                             {/* Reset Filters shortcut if active */}
-                            {(selectedClient !== 'all' || selectedBusinessUnit !== 'all' || searchTerm || sortConfig.field) && (
+                            {((canReadClients && selectedClient !== 'all') || (canReadBusinessUnits && selectedBusinessUnit !== 'all') || searchTerm || sortConfig.field) && (
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -662,14 +741,14 @@ const Projects = () => {
                         </div>
                     ) : (
                         <div className="text-xs text-slate-500 font-medium hidden sm:block">
-                            <span className="font-bold text-slate-700">{employees.length}</span> Total Team Members
+                            <span className="font-bold text-slate-700">{performanceEmployees.length}</span> Total Team Members
                         </div>
                     )}
                 </div>
 
                 {viewMode === 'team-performance' ? (
                     <TeamPerformanceTracer
-                        employees={employees}
+                        employees={performanceEmployees}
                         projects={projects}
                         onBackToProjects={() => {
                             setViewMode('projects');
@@ -858,20 +937,20 @@ const Projects = () => {
                                                 <p className="font-medium text-slate-700 text-sm">
                                                     {searchTerm.trim()
                                                         ? `No projects matching "${searchTerm}"`
-                                                        : (selectedClient !== 'all' || selectedBusinessUnit !== 'all')
+                                                        : ((canReadClients && selectedClient !== 'all') || (canReadBusinessUnits && selectedBusinessUnit !== 'all'))
                                                             ? 'No projects matching the selected filters'
                                                             : activeTab === 'all'
                                                                 ? 'No projects found'
                                                                 : `No ${activeTab} projects found`}
                                                 </p>
                                                 <p className="text-xs text-slate-400 max-w-sm">
-                                                    {(searchTerm.trim() || selectedClient !== 'all' || selectedBusinessUnit !== 'all')
+                                                    {(searchTerm.trim() || (canReadClients && selectedClient !== 'all') || (canReadBusinessUnits && selectedBusinessUnit !== 'all'))
                                                         ? 'Try adjusting your search terms or clearing the active filters.'
                                                         : activeTab === 'all'
                                                             ? 'Get started by creating your first project.'
                                                             : `There are currently no projects marked as ${activeTab}.`}
                                                 </p>
-                                                {(searchTerm.trim() || selectedClient !== 'all' || selectedBusinessUnit !== 'all' || sortConfig.field) ? (
+                                                {(searchTerm.trim() || (canReadClients && selectedClient !== 'all') || (canReadBusinessUnits && selectedBusinessUnit !== 'all') || sortConfig.field) ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => {

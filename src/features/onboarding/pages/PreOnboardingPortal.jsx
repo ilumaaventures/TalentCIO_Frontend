@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
-import { CheckCircle, Clock, Upload, ChevronRight, ChevronLeft, LogOut, FileText, AlertTriangle, User, Phone, Building, CreditCard, FileSignature, Loader, Eye, Plus, X, Camera, ZapOff } from 'lucide-react';
+import { CheckCircle, Clock, Upload, ChevronRight, ChevronLeft, LogOut, FileText, AlertTriangle, User, Phone, Building, CreditCard, FileSignature, Loader, Eye, Plus, X, Camera, ZapOff, MapPin, RotateCcw, Calendar, AlertCircle } from 'lucide-react';
 
 axios.defaults.withCredentials = true;
 
@@ -58,8 +58,10 @@ const PreOnboardingPortal = () => {
   const [capturedImageData, setCapturedImageData] = useState(null); // base64 data URL
   const [cameraError, setCameraError] = useState('');
   const [uploadingLivePhoto, setUploadingLivePhoto] = useState(false);
-  const [gpsLocation, setGpsLocation] = useState(null); // { lat, lon, address, coords }
+  const [gpsLocation, setGpsLocation] = useState(null); // { lat, lon, address }
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState('');
+  const [viewLivePhotoDoc, setViewLivePhotoDoc] = useState(null);
   const videoRef = useRef(null);
   const captureCanvasRef = useRef(null);
   const [, setDeadlineTicker] = useState(0);
@@ -314,7 +316,8 @@ const PreOnboardingPortal = () => {
     }
   };
 
-  const handleUploadDocument = async (docId, file) => {
+  const handleUploadDocument = async (docId, file, locationData = null) => {
+    if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       toast.error('File size must be under 5MB');
       return;
@@ -326,8 +329,18 @@ const PreOnboardingPortal = () => {
     }
     const fd = new FormData();
     fd.append('document', file);
-    if (gpsLocation) {
-      fd.append('address', gpsLocation.address || '');
+    const loc = locationData || gpsLocation;
+    if (loc) {
+      if (loc.lat !== undefined && loc.lat !== null && loc.lat !== '') {
+        fd.append('latitude', String(loc.lat));
+      }
+      if (loc.lon !== undefined && loc.lon !== null && loc.lon !== '') {
+        fd.append('longitude', String(loc.lon));
+      }
+      if (loc.address) {
+        fd.append('address', String(loc.address));
+      }
+      fd.append('timestamp', new Date().toISOString());
     }
     try {
       toast.loading('Uploading...', { id: `upload-${docId}` });
@@ -335,11 +348,194 @@ const PreOnboardingPortal = () => {
         headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
       });
       toast.dismiss(`upload-${docId}`);
-      toast.success('Uploaded!');
+      toast.success('Uploaded successfully!');
       fetchProfile();
     } catch (err) {
       toast.dismiss(`upload-${docId}`);
       toast.error(err.response?.data?.message || 'Upload failed');
+    }
+  };
+
+  const fetchGpsLocation = useCallback(async () => {
+    setGpsLoading(true);
+    setGpsError('');
+    if (!navigator.geolocation) {
+      setGpsLoading(false);
+      const msg = 'Geolocation is not supported by your browser.';
+      setGpsError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = parseFloat(pos.coords.latitude.toFixed(5));
+        const lon = parseFloat(pos.coords.longitude.toFixed(5));
+        let address = '';
+        try {
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          if (resp.ok) {
+            const geo = await resp.json();
+            address = geo.display_name || '';
+          }
+        } catch { /* fallback */ }
+
+        if (!address) {
+          try {
+            const bdcResp = await fetch(
+              `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
+            );
+            if (bdcResp.ok) {
+              const bdc = await bdcResp.json();
+              const parts = [bdc.locality, bdc.city, bdc.principalSubdivision, bdc.countryName].filter(Boolean);
+              if (parts.length > 0) address = parts.join(', ');
+            }
+          } catch { /* ignore */ }
+        }
+
+        if (!address) {
+          address = `Lat: ${lat}°, Lon: ${lon}°`;
+        }
+
+        setGpsLocation({ lat, lon, address });
+        setGpsLoading(false);
+        setGpsError('');
+      },
+      (err) => {
+        setGpsLoading(false);
+        let msg = 'Failed to retrieve current location.';
+        if (err.code === err.PERMISSION_DENIED) {
+          msg = 'Location permission is required for live photo verification. Please allow location access in your browser.';
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          msg = 'Location information is unavailable on your device.';
+        } else if (err.code === err.TIMEOUT) {
+          msg = 'Location request timed out. Please click Retry GPS.';
+        }
+        setGpsError(msg);
+        toast.error(msg);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }, []);
+
+  const handleOpenLivePhotoModal = (doc) => {
+    setCapturedImageData(null);
+    setCameraError('');
+    setGpsLocation(null);
+    setGpsError('');
+    setLivePhotoModal({ docId: doc._id, docLabel: doc.label });
+
+    fetchGpsLocation();
+
+    setTimeout(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        setCameraStream(stream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      } catch {
+        setCameraError('Camera access denied or unavailable. Please enable camera access in your browser or choose a photo file.');
+      }
+    }, 100);
+  };
+
+  const handleCapturePhoto = () => {
+    if (!videoRef.current || !cameraStream) return;
+    const video = videoRef.current;
+    const vW = video.videoWidth || 640;
+    const vH = video.videoHeight || 480;
+    const cropSize = Math.min(vW, vH);
+    const startX = (vW - cropSize) / 2;
+    const startY = (vH - cropSize) / 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // Horizontal mirror flip to match user viewfinder
+    ctx.translate(512, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, startX, startY, cropSize, cropSize, 0, 0, 512, 512);
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    setCapturedImageData(dataUrl);
+  };
+
+  const handleSaveAndUploadLivePhoto = async () => {
+    if (!capturedImageData || !livePhotoModal) return;
+    setUploadingLivePhoto(true);
+    try {
+      const img = new Image();
+      img.src = capturedImageData;
+      await new Promise(r => { img.onload = r; });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 512, 512);
+
+      // Watermark bar at bottom (consistent with Profile.jsx profile photo watermark)
+      const barHeight = 55;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.fillRect(0, 512 - barHeight, 512, barHeight);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const locText = (gpsLocation?.lat && gpsLocation?.lon)
+        ? `Location: Lat ${gpsLocation.lat}°, Lon ${gpsLocation.lon}°`
+        : 'Location: Verified';
+      const timeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dateText = `Timestamp: ${timeStr}`;
+
+      if (gpsLocation?.address) {
+        let addr = gpsLocation.address;
+        if (addr.length > 55) addr = addr.slice(0, 52) + '...';
+        ctx.fillText(locText, 256, 512 - 38);
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#bae6fd';
+        ctx.fillText(addr, 256, 512 - 23);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(dateText, 256, 512 - 9);
+      } else {
+        ctx.fillText(locText, 256, 512 - 32);
+        ctx.fillText(dateText, 256, 512 - 14);
+      }
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          toast.error('Failed to process image');
+          setUploadingLivePhoto(false);
+          return;
+        }
+        const stampedFile = new File([blob], `live_photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        await handleUploadDocument(livePhotoModal.docId, stampedFile, gpsLocation);
+
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(t => t.stop());
+          setCameraStream(null);
+        }
+        setLivePhotoModal(null);
+        setCapturedImageData(null);
+        setGpsLocation(null);
+        setGpsError('');
+        setUploadingLivePhoto(false);
+      }, 'image/jpeg', 0.92);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to upload live photo');
+      setUploadingLivePhoto(false);
     }
   };
 
@@ -1173,7 +1369,23 @@ const PreOnboardingPortal = () => {
                                 {isSharedCustomFile && <div style={{ fontSize: '11px', color: '#0369a1', marginTop: '2px', fontWeight: '600' }}>Shared by HR for your reference</div>}
                                 {doc.rejectionReason && <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '1px' }}><AlertTriangle size={10} style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {doc.rejectionReason}</div>}
                                 {preview && !isLiveRequired && <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '1px' }}>📄 {preview.fileName} ({(preview.file.size / 1024).toFixed(0)} KB)</div>}
-                                {doc.livePhotoMetadata?.capturedAt && <div style={{ fontSize: '11px', color: '#7c3aed', marginTop: '1px' }}>📷 Captured: {new Date(doc.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>}
+                                {doc.livePhotoMetadata && (
+                                  <div style={{ marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    {doc.livePhotoMetadata.capturedAt && (
+                                      <div style={{ fontSize: '11px', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <Calendar size={11} /> Captured: {new Date(doc.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </div>
+                                    )}
+                                    {(doc.livePhotoMetadata.address || (doc.livePhotoMetadata.latitude !== null && doc.livePhotoMetadata.latitude !== undefined)) && (
+                                      <div style={{ fontSize: '11px', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', maxWidth: '420px' }}>
+                                        <MapPin size={11} style={{ flexShrink: 0 }} />
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.livePhotoMetadata.address || `${doc.livePhotoMetadata.latitude}°, ${doc.livePhotoMetadata.longitude}°`}>
+                                          {doc.livePhotoMetadata.address || `${parseFloat(doc.livePhotoMetadata.latitude).toFixed(5)}°, ${parseFloat(doc.livePhotoMetadata.longitude).toFixed(5)}°`}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
                               {doc.status !== 'Mail Sent' && (
@@ -1184,60 +1396,29 @@ const PreOnboardingPortal = () => {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                                 {/* View uploaded file */}
                                 {doc.url && (
-                                  <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#3b82f6', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}><Eye size={12} /> View</a>
+                                  isLiveRequired ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewLivePhotoDoc(doc)}
+                                      style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      <Eye size={12} /> View
+                                    </button>
+                                  ) : (
+                                    <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#3b82f6', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                      <Eye size={12} /> View
+                                    </a>
+                                  )
                                 )}
 
                                 {/* Live Photo button — replaces file chooser */}
                                 {canUpload && isLiveRequired && (
                                   <button
-                                    onClick={() => {
-                                      setCapturedImageData(null);
-                                      setCameraError('');
-                                      setGpsLocation(null);
-                                      setLivePhotoModal({ docId: doc._id, docLabel: doc.label });
-
-                                      // Start camera + GPS simultaneously
-                                      setTimeout(async () => {
-                                        // 1. Start camera
-                                        try {
-                                          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
-                                          setCameraStream(stream);
-                                          if (videoRef.current) {
-                                            videoRef.current.srcObject = stream;
-                                            videoRef.current.play();
-                                          }
-                                        } catch {
-                                          setCameraError('Camera access denied. Please allow camera permission and try again.');
-                                        }
-
-                                        // 2. Get GPS location + reverse geocode
-                                        if (navigator.geolocation) {
-                                          setGpsLoading(true);
-                                          navigator.geolocation.getCurrentPosition(
-                                            async (pos) => {
-                                              const lat = pos.coords.latitude.toFixed(5);
-                                              const lon = pos.coords.longitude.toFixed(5);
-                                              let address = '';
-                                              try {
-                                                const resp = await fetch(
-                                                  `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`,
-                                                  { headers: { 'Accept-Language': 'en' } }
-                                                );
-                                                const geo = await resp.json();
-                                                address = geo.display_name || '';
-                                              } catch { /* silently use coords only */ }
-                                              setGpsLocation({ lat, lon, address });
-                                              setGpsLoading(false);
-                                            },
-                                            () => { setGpsLoading(false); }, // user denied GPS — fine, proceed without
-                                            { enableHighAccuracy: true, timeout: 10000 }
-                                          );
-                                        }
-                                      }, 100);
-                                    }}
+                                    type="button"
+                                    onClick={() => handleOpenLivePhotoModal(doc)}
                                     style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid #f59e0b', background: 'linear-gradient(135deg, #fef3c7, #fde68a)', color: '#92400e', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                   >
-                                    <Camera size={13} /> Take Live Photo
+                                    <Camera size={13} /> {isUploaded ? 'Retake Live Photo' : 'Take Live Photo'}
                                   </button>
                                 )}
 
@@ -1315,236 +1496,271 @@ const PreOnboardingPortal = () => {
                       })}
                     </div>
 
-                    {/* ===== LIVE PHOTO CAPTURE MODAL ===== */}
+                    {/* ===== LIVE PHOTO CAPTURE / PREVIEW MODAL (SIMPLE & CAMERA-ONLY) ===== */}
                     {livePhotoModal && (
-                      <div style={{
-                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
-                      }}>
-                        <div style={{
-                          background: '#0f172a', borderRadius: '20px', width: '100%', maxWidth: '560px',
-                          overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
-                          border: '1px solid #1e293b'
-                        }}>
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" style={{ zIndex: 9999 }}>
+                        <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl flex flex-col max-h-[90vh]">
                           {/* Modal Header */}
-                          <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Camera size={18} color="#fff" />
+                          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
+                                <Camera size={20} />
                               </div>
                               <div>
-                                <div style={{ fontSize: '15px', fontWeight: '700', color: '#f8fafc' }}>Live Photo Capture</div>
-                                <div style={{ fontSize: '12px', color: '#64748b' }}>{livePhotoModal.docLabel}</div>
+                                <h2 className="text-base font-bold text-slate-900">Live Photo Verification</h2>
+                                <p className="text-xs text-slate-500">{livePhotoModal.docLabel}</p>
                               </div>
                             </div>
                             <button
+                              type="button"
                               onClick={() => {
                                 if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); setCameraStream(null); }
                                 setLivePhotoModal(null);
                                 setCapturedImageData(null);
                                 setCameraError('');
+                                setGpsLocation(null);
+                                setGpsError('');
                               }}
-                              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', borderRadius: '6px' }}
+                              className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                              aria-label="Close modal"
                             >
-                              <X size={20} />
+                              <X size={18} />
                             </button>
                           </div>
 
-                          {/* Camera / Capture area */}
-                          <div style={{ padding: '20px 24px' }}>
-                            {cameraError ? (
-                              <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                                <ZapOff size={40} style={{ color: '#ef4444', marginBottom: '12px' }} />
-                                <p style={{ color: '#fca5a5', fontSize: '14px', margin: 0 }}>{cameraError}</p>
-                              </div>
-                            ) : capturedImageData ? (
-                              // Preview captured image
-                              <div style={{ textAlign: 'center' }}>
-                                <div style={{ position: 'relative', display: 'inline-block', borderRadius: '12px', overflow: 'hidden', border: '2px solid #22c55e', marginBottom: '16px' }}>
-                                  <img src={capturedImageData} alt="Captured" style={{ display: 'block', maxWidth: '100%', maxHeight: '320px', objectFit: 'contain' }} />
-                                  {/* Stamp overlay preview */}
-                                  <div style={{
-                                    position: 'absolute', bottom: 0, left: 0, right: 0,
-                                    background: 'rgba(0,0,0,0.68)', padding: '7px 10px',
-                                    fontSize: '10px', color: '#fff', textAlign: 'left', lineHeight: '1.6'
-                                  }}>
-                                    <div style={{ fontWeight: '700', fontSize: '11px' }}>
-                                      📷 {new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                    </div>
-                                    {gpsLocation ? (
-                                      <>
-                                        <div style={{ color: '#86efac' }}>
-                                          📍 {gpsLocation.lat}° N, {gpsLocation.lon}° E
-                                        </div>
-                                        {gpsLocation.address && (
-                                          <div style={{ color: '#bae6fd', fontSize: '9.5px' }}>
-                                            {gpsLocation.address.length > 90 ? gpsLocation.address.slice(0, 87) + '...' : gpsLocation.address}
-                                          </div>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <div style={{ color: '#fde68a', fontSize: '9.5px' }}>
-                                        {gpsLoading ? '📡 Acquiring GPS...' : '📍 GPS unavailable'}
-                                      </div>
-                                    )}
+                          {/* Modal Body */}
+                          <div className="px-6 py-6 overflow-y-auto space-y-4">
+                            <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                              <span>{capturedImageData ? 'Photo Preview' : 'Align your face inside the circular guide'}</span>
+                              {cameraStream && !capturedImageData && (
+                                <span className="flex items-center gap-1.5 font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                  <span className="h-2 w-2 rounded-full bg-rose-600 animate-pulse" /> LIVE
+                                </span>
+                              )}
+                            </div>
+
+                            {/* 280x280 Standard Frame matching Profile.jsx */}
+                            <div
+                              className="relative mx-auto h-[280px] w-[280px] touch-none overflow-hidden rounded-[32px] bg-slate-900 shadow-inner select-none flex items-center justify-center border-4 border-slate-100"
+                            >
+                              {capturedImageData ? (
+                                <>
+                                  <img
+                                    src={capturedImageData}
+                                    alt="Captured preview"
+                                    className="pointer-events-none absolute left-1/2 top-1/2 h-full w-full max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"
+                                  />
+                                  {/* Circular guide cutout */}
+                                  <div className="pointer-events-none absolute inset-0">
+                                    <div className="absolute inset-0 bg-slate-950/20" />
+                                    <div className="absolute left-1/2 top-1/2 h-[210px] w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_999px_rgba(15,23,42,0.35)]" />
                                   </div>
-                                </div>
-                                <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px' }}>Photo will be stamped with timestamp, GPS coordinates and address.</p>
-                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                  <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-emerald-600/90 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm shadow">
+                                    ✓ Captured
+                                  </div>
+                                </>
+                              ) : cameraError ? (
+                                <div className="flex flex-col items-center justify-center p-6 text-center text-rose-200">
+                                  <ZapOff size={36} className="text-rose-400 mb-2" />
+                                  <p className="text-xs text-rose-300 font-medium mb-3">{cameraError}</p>
                                   <button
-                                    onClick={() => { setCapturedImageData(null); }}
-                                    style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid #334155', background: '#1e293b', color: '#94a3b8', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                                    type="button"
+                                    onClick={() => handleOpenLivePhotoModal({ _id: livePhotoModal.docId, label: livePhotoModal.docLabel })}
+                                    className="rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-1.5 border border-white/20 flex items-center gap-1.5 transition"
                                   >
-                                    Retake
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                      setUploadingLivePhoto(true);
-                                      try {
-                                        // Draw final stamped image on canvas
-                                        const img = new Image();
-                                        img.src = capturedImageData;
-                                        await new Promise(res => { img.onload = res; });
-
-                                        const canvas = document.createElement('canvas');
-                                        canvas.width = img.width;
-                                        canvas.height = img.height;
-                                        const ctx = canvas.getContext('2d');
-                                        ctx.drawImage(img, 0, 0);
-
-                                        // --- Stamp bar ---
-                                        // 3 lines: timestamp / GPS coords / address
-                                        const hasAddress = Boolean(gpsLocation?.address);
-                                        const lineCount = gpsLocation ? (hasAddress ? 3 : 2) : 1;
-                                        const fontSize = Math.max(11, Math.round(img.height * 0.026));
-                                        const lineH = fontSize + 6;
-                                        const stampHeight = lineH * lineCount + 14;
-
-                                        ctx.fillStyle = 'rgba(0,0,0,0.70)';
-                                        ctx.fillRect(0, img.height - stampHeight, img.width, stampHeight);
-
-                                        const maxW = img.width - 24;
-                                        const baseY = img.height - stampHeight + lineH;
-
-                                        // Line 1: Timestamp
-                                        ctx.fillStyle = '#ffffff';
-                                        ctx.font = `bold ${fontSize}px Arial`;
-                                        const now = new Date();
-                                        const timeStr = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                                        ctx.fillText(`\u{1F4F7} ${timeStr}`, 12, baseY);
-
-                                        if (gpsLocation) {
-                                          // Line 2: GPS coordinates
-                                          ctx.fillStyle = '#86efac';
-                                          ctx.font = `${fontSize}px Arial`;
-                                          ctx.fillText(`\u{1F4CD} ${gpsLocation.lat}\u00b0 N, ${gpsLocation.lon}\u00b0 E`, 12, baseY + lineH);
-
-                                          // Line 3: Address (truncated)
-                                          if (hasAddress) {
-                                            ctx.fillStyle = '#bae6fd';
-                                            ctx.font = `${fontSize - 1}px Arial`;
-                                            let addrText = gpsLocation.address;
-                                            while (ctx.measureText(addrText).width > maxW && addrText.length > 10) {
-                                              addrText = addrText.slice(0, -4) + '...';
-                                            }
-                                            ctx.fillText(addrText, 12, baseY + lineH * 2);
-                                          }
-                                        }
-
-                                        // Convert stamped canvas to blob
-                                        canvas.toBlob(async (blob) => {
-                                          if (!blob) { toast.error('Failed to process image'); setUploadingLivePhoto(false); return; }
-                                          const stampedFile = new File([blob], `live_photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                                          await handleUploadDocument(livePhotoModal.docId, stampedFile);
-
-                                          // Stop camera and close modal
-                                          if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); setCameraStream(null); }
-                                          setLivePhotoModal(null);
-                                          setCapturedImageData(null);
-                                          setGpsLocation(null);
-                                          setUploadingLivePhoto(false);
-                                        }, 'image/jpeg', 0.92);
-                                      } catch {
-                                        toast.error('Failed to upload live photo');
-                                        setUploadingLivePhoto(false);
-                                      }
-                                    }}
-                                    disabled={uploadingLivePhoto}
-                                    style={{ padding: '10px 24px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: uploadingLivePhoto ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', opacity: uploadingLivePhoto ? 0.7 : 1 }}
-                                  >
-                                    <Upload size={14} />{uploadingLivePhoto ? 'Uploading...' : 'Upload Photo'}
+                                    <RotateCcw size={13} /> Retry Camera
                                   </button>
                                 </div>
-                              </div>
-                            ) : (
-                              // Live viewfinder
-                              <div style={{ textAlign: 'center' }}>
-                                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#000', marginBottom: '16px', aspectRatio: '16/9' }}>
+                              ) : (
+                                <>
                                   <video
                                     ref={videoRef}
                                     autoPlay
                                     playsInline
                                     muted
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }}
+                                    className="pointer-events-none absolute left-1/2 top-1/2 h-full w-full max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"
+                                    style={{ transform: 'scaleX(-1)' }}
                                   />
-                                  {/* Guide overlay */}
-                                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div style={{ width: '180px', height: '200px', border: '2px dashed rgba(251,191,36,0.7)', borderRadius: '50% 50% 45% 45%', boxShadow: '0 0 0 4000px rgba(0,0,0,0.3)' }} />
+                                  {/* Circular Guide Overlay matching Profile.jsx */}
+                                  <div className="pointer-events-none absolute inset-0">
+                                    <div className="absolute inset-0 bg-slate-950/20" />
+                                    <div className="absolute left-1/2 top-1/2 h-[210px] w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_999px_rgba(15,23,42,0.35)]" />
                                   </div>
-                                  {/* Live indicator */}
-                                  {cameraStream && (
-                                    <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '20px' }}>
-                                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.2s infinite' }} />
-                                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff', letterSpacing: '1px' }}>LIVE</span>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Location Status / Alert Banner */}
+                            <div className="space-y-2">
+                              {gpsLoading ? (
+                                <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                                  <Loader size={14} className="animate-spin text-amber-600 shrink-0" />
+                                  <span>Retrieving real-time GPS coordinates...</span>
+                                </div>
+                              ) : gpsLocation ? (
+                                <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 text-xs text-emerald-900 space-y-1">
+                                  <div className="flex items-center gap-1.5 font-semibold">
+                                    <MapPin size={13} className="text-emerald-600 shrink-0" />
+                                    <span>GPS: {gpsLocation.lat}° N, {gpsLocation.lon}° E</span>
+                                  </div>
+                                  {gpsLocation.address && (
+                                    <div className="text-[11px] text-emerald-700 pl-4 break-words leading-relaxed">
+                                      {gpsLocation.address}
                                     </div>
                                   )}
                                 </div>
-                                {!cameraStream && !cameraError && (
-                                  <div style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                    <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Starting camera...
+                              ) : gpsError ? (
+                                <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-800 flex items-start justify-between gap-2">
+                                  <div className="flex items-start gap-1.5">
+                                    <AlertCircle size={14} className="text-rose-600 shrink-0 mt-0.5" />
+                                    <span>{gpsError}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={fetchGpsLocation}
+                                    className="shrink-0 text-[11px] font-bold text-rose-700 underline hover:text-rose-900"
+                                  >
+                                    Retry GPS
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                                  <span className="flex items-center gap-1.5">
+                                    <MapPin size={13} className="text-slate-400" /> Location tracking active
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={fetchGpsLocation}
+                                    className="text-[11px] text-blue-600 hover:underline font-semibold"
+                                  >
+                                    Fetch Coordinates
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Camera Action Controls (Camera Shutter or Retake) */}
+                            <div className="pt-2 flex flex-col items-center justify-center">
+                              {!capturedImageData ? (
+                                <button
+                                  type="button"
+                                  onClick={handleCapturePhoto}
+                                  disabled={!cameraStream}
+                                  className="h-16 w-16 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 flex items-center justify-center transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:pointer-events-none border-4 border-white"
+                                  title="Capture Live Photo"
+                                >
+                                  <Camera size={26} />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setCapturedImageData(null)}
+                                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm transition"
+                                >
+                                  <RotateCcw size={13} /> Retake Photo
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Modal Footer */}
+                          <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 border-t border-slate-200 px-6 py-4 bg-slate-50/50">
+                            <span className="text-[11px] text-slate-400">
+                              🔒 Live photo and location data are captured for identity verification.
+                            </span>
+                            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); setCameraStream(null); }
+                                  setLivePhotoModal(null);
+                                  setCapturedImageData(null);
+                                  setCameraError('');
+                                  setGpsLocation(null);
+                                  setGpsError('');
+                                }}
+                                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+                                disabled={uploadingLivePhoto}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveAndUploadLivePhoto}
+                                disabled={!capturedImageData || uploadingLivePhoto}
+                                className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 shadow-sm flex items-center gap-1.5"
+                              >
+                                {uploadingLivePhoto ? (
+                                  <>
+                                    <Loader size={13} className="animate-spin" /> Uploading...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload size={13} /> Confirm & Upload Photo
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ===== VIEW LIVE PHOTO MODAL ===== */}
+                    {viewLivePhotoDoc && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" style={{ zIndex: 9999 }}>
+                        <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                            <div className="flex items-center gap-2">
+                              <Camera size={16} className="text-amber-600" />
+                              <h3 className="text-sm font-bold text-slate-900">{viewLivePhotoDoc.label}</h3>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setViewLivePhotoDoc(null)}
+                              className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                          <div className="p-6 flex flex-col items-center">
+                            <div className="relative h-[240px] w-[240px] overflow-hidden rounded-3xl border-4 border-slate-100 bg-slate-900 shadow-md">
+                              <img
+                                src={viewLivePhotoDoc.url}
+                                alt="Live photo"
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                            {viewLivePhotoDoc.livePhotoMetadata && (
+                              <div className="mt-4 w-full rounded-2xl bg-slate-50 border border-slate-200 p-3.5 text-xs space-y-1.5">
+                                {viewLivePhotoDoc.livePhotoMetadata.capturedAt && (
+                                  <div className="flex items-center gap-1.5 text-purple-700 font-semibold">
+                                    <Calendar size={13} />
+                                    <span>Captured: {new Date(viewLivePhotoDoc.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                   </div>
                                 )}
-                                <div style={{ marginBottom: '12px' }}>
-                                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px' }}>Position your face within the guide and click Capture.</p>
-                                  <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Photo will be stamped with timestamp and your current address.</p>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    if (!videoRef.current || !cameraStream) return;
-                                    const video = videoRef.current;
-                                    const canvas = document.createElement('canvas');
-                                    canvas.width = video.videoWidth || 640;
-                                    canvas.height = video.videoHeight || 480;
-                                    const ctx = canvas.getContext('2d');
-                                    ctx.translate(canvas.width, 0);
-                                    ctx.scale(-1, 1);
-                                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-                                    setCapturedImageData(dataUrl);
-                                  }}
-                                  disabled={!cameraStream}
-                                  style={{
-                                    width: '72px', height: '72px', borderRadius: '50%',
-                                    background: cameraStream ? 'linear-gradient(135deg, #f59e0b, #d97706)' : '#334155',
-                                    border: '4px solid rgba(255,255,255,0.15)',
-                                    color: '#fff', cursor: cameraStream ? 'pointer' : 'not-allowed',
-                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                    boxShadow: cameraStream ? '0 0 0 6px rgba(245,158,11,0.25)' : 'none',
-                                    transition: 'all 0.2s'
-                                  }}
-                                  title="Capture photo"
-                                >
-                                  <Camera size={28} />
-                                </button>
+                                {(viewLivePhotoDoc.livePhotoMetadata.latitude !== null && viewLivePhotoDoc.livePhotoMetadata.latitude !== undefined) && (
+                                  <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
+                                    <MapPin size={13} className="text-emerald-600 shrink-0" />
+                                    <span>GPS: {parseFloat(viewLivePhotoDoc.livePhotoMetadata.latitude).toFixed(5)}°, {parseFloat(viewLivePhotoDoc.livePhotoMetadata.longitude).toFixed(5)}°</span>
+                                  </div>
+                                )}
+                                {viewLivePhotoDoc.livePhotoMetadata.address && (
+                                  <div className="text-[11px] text-slate-600 pl-4 break-words">
+                                    {viewLivePhotoDoc.livePhotoMetadata.address}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
-
-                          {/* Notice */}
-                          <div style={{ padding: '12px 24px 20px', borderTop: '1px solid #1e293b' }}>
-                            <p style={{ margin: 0, fontSize: '11px', color: '#475569', lineHeight: '1.5' }}>
-                              🔒 Your camera is only used to capture this live photo. The capture is stamped with the current time and your address on file for verification purposes.
-                            </p>
+                          <div className="border-t border-slate-100 px-5 py-3 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setViewLivePhotoDoc(null)}
+                              className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                            >
+                              Close
+                            </button>
                           </div>
                         </div>
                       </div>

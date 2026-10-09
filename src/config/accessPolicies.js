@@ -34,10 +34,12 @@ export const BUSINESS_UNIT_ACCESS_PERMISSIONS = ['business_unit.read', 'business
 export const CLIENT_ACCESS_PERMISSIONS = ['client.read', 'client.create', 'client.update'];
 export const CLIENT_CREATE_PERMISSIONS = ['client.create'];
 export const CLIENT_UPDATE_PERMISSIONS = ['client.update'];
-export const ORG_CHART_VIEW_PERMISSIONS = ['org_chart.view'];
-export const ORG_CHART_MANAGE_PERMISSIONS = ['org_chart.manage'];
+export const ORG_CHART_VIEW_PERMISSIONS = ['org_chart.view', 'org.chart.view'];
+export const ORG_CHART_MANAGE_PERMISSIONS = ['org_chart.manage', 'org.chart.manage'];
 export const DEPARTMENT_ACCESS_PERMISSIONS = ['department.read', 'department.create', 'department.update'];
 export const DESIGNATION_ACCESS_PERMISSIONS = ['designation.read', 'designation.create', 'designation.update'];
+export const PROJECT_USER_PERFORMANCE_PERMISSIONS = ['project.userperformance.view'];
+export const PROJECT_VIEW_TEAM_PERMISSIONS = ['project.view_team'];
 
 const hasAnyRole = (user, roles = []) => (
     Array.isArray(roles) && roles.some((role) => user?.roles?.includes(role))
@@ -82,6 +84,12 @@ export const canAccessOrgChart = (user) => (
 
 export const canManageOrgChart = (user) => (
     isAdminUser(user)
+    || hasAnyPermission(user, ORG_CHART_MANAGE_PERMISSIONS)
+);
+
+export const canViewOrgChartStats = (user) => (
+    isAdminUser(user)
+    || hasAnyPermission(user, ORG_CHART_VIEW_PERMISSIONS)
     || hasAnyPermission(user, ORG_CHART_MANAGE_PERMISSIONS)
 );
 
