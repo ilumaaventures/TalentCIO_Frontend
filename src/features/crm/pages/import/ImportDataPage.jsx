@@ -1432,9 +1432,9 @@ export const ImportDataPage = ({ onNavigate }) => {
         };
       default:
         return {
-          title: 'Imported (All Dates)',
-          badge: 'All Dates',
-          description: 'All records across all dates',
+          title: 'Imported Today',
+          badge: 'Today',
+          description: 'Click to filter today’s records',
         };
     }
   }, [dateFilter, fromDate, toDate]);
@@ -1485,10 +1485,16 @@ export const ImportDataPage = ({ onNavigate }) => {
     });
   }, [scopedRecords, selectedUsers, activeUserOptions]);
 
-  // Records filtered strictly by the date filter (used for both Card 2 and Table)
+  // Records filtered strictly by the date filter (used for Table and active filter matching)
   const dateFilteredRecords = useMemo(() => {
     return userFilteredRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
   }, [userFilteredRecords, dateFilter, fromDate, toDate]);
+
+  // Records imported today (always calculated for the Today metric card)
+  const todayFilteredRecords = useMemo(() => {
+    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, 'today'));
+  }, [userFilteredRecords]);
+  const todayFilteredCount = todayFilteredRecords.length;
 
   // Card metric values (dynamically reflecting active Imported By and Date filters)
   const totalDataCount = userFilteredRecords.length;
@@ -2592,8 +2598,10 @@ export const ImportDataPage = ({ onNavigate }) => {
             {/* Card 1: Total Data (Clickable: resets filters and shows all records) */}
             {(() => {
               const isTotalActive = !showConvertedOnly && dateFilter === 'all' && !fromDate && !toDate;
-              const isTodayActive = !showConvertedOnly && dateFilter === 'today';
+              const isDateFilterActive = !showConvertedOnly && dateFilter !== 'all';
               const isConvertedActive = showConvertedOnly;
+              const card2Count = dateFilter === 'all' ? todayFilteredCount : dateFilteredCount;
+              const card2Percentage = totalDataCount > 0 ? Math.round((card2Count / totalDataCount) * 100) : 0;
 
               return (
                 <>
@@ -2664,10 +2672,10 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </div>
                   </div>
 
-                  {/* Card 2: Import Today (Clickable: filters by today's date) */}
+                  {/* Card 2: Date Filter (Today, Last 2 Days, Last 5 Days, Custom - Never All-time) */}
                   <div
                     onClick={() => {
-                      if (isTodayActive) {
+                      if (isDateFilterActive) {
                         setDateFilter('all');
                       } else {
                         setShowConvertedOnly(false);
@@ -2677,39 +2685,43 @@ export const ImportDataPage = ({ onNavigate }) => {
                       }
                     }}
                     className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
-                      isTodayActive
+                      isDateFilterActive
                         ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
                         : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
                     }`}
-                    title={isTodayActive ? 'Filtered by today (Click to reset to all)' : 'Click to filter records imported today'}
+                    title={
+                      isDateFilterActive
+                        ? `${dateFilterInfo.title} (Click to reset to all)`
+                        : 'Click to filter records imported today'
+                    }
                   >
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                            isTodayActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
+                            isDateFilterActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
                           }`}>
                             {dateFilterInfo.title}
                           </p>
                           <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${
-                            isTodayActive
+                            isDateFilterActive
                               ? 'bg-blue-600 text-white shadow-2xs'
                               : 'bg-blue-50 text-blue-700 border border-blue-200'
                           }`}>
-                            {isTodayActive ? 'Active Filter' : dateFilterInfo.badge}
+                            {isDateFilterActive ? 'Active Filter' : dateFilterInfo.badge}
                           </span>
                         </div>
                         <div className="flex items-baseline gap-1.5 mt-0.5">
                           <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                            {dateFilteredCount}
+                            {card2Count}
                           </span>
                           <span className="text-[11px] font-medium text-slate-400">
-                            {dateFilter === 'today' ? 'imported today' : 'matching filter'}
+                            {dateFilter === 'today' || dateFilter === 'all' ? 'imported today' : 'matching filter'}
                           </span>
                         </div>
                       </div>
                       <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                        isTodayActive
+                        isDateFilterActive
                           ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
                           : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
                       }`}>
@@ -2718,10 +2730,14 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </div>
                     <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                       <span className="truncate">
-                        {isTodayActive ? 'Filtered by today (Click to show all)' : 'Click to filter today’s records'}
+                        {isDateFilterActive
+                          ? (dateFilter === 'today'
+                              ? 'Filtered by today (Click to show all)'
+                              : `${dateFilterInfo.description} (Click to show all)`)
+                          : 'Click to filter today’s records'}
                       </span>
                       <span className="font-semibold text-blue-600 shrink-0">
-                        {totalDataCount > 0 ? `${Math.round((dateFilteredCount / totalDataCount) * 100)}% of total` : '0%'}
+                        {card2Percentage}% of total
                       </span>
                     </div>
                   </div>
@@ -2749,7 +2765,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                               ? 'bg-emerald-600 text-white shadow-2xs'
                               : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                           }`}>
-                            {isConvertedActive ? 'Active Filter' : dateFilterInfo.badge}
+                            {isConvertedActive ? 'Active Filter' : (dateFilter === 'all' ? 'All Dates' : dateFilterInfo.badge)}
                           </span>
                         </div>
                         <div className="flex items-baseline gap-1.5 mt-0.5">
