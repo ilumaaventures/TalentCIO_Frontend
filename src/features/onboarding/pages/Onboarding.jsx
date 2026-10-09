@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import api from '@/lib/apiClient';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle, Camera } from 'lucide-react';
+import { FileText, Download, Upload, CheckCircle, Clock, AlertCircle, Eye, Trash2, Settings2, HelpCircle, X, RefreshCw, FileSignature, Briefcase, UserCheck, ScrollText, Check, ChevronDown, ChevronUp, MoreVertical, FileDown, Layout, Type, UserPlus, Search, Filter, AlertTriangle, Users, Send, Square, CheckSquare, Mail, Edit2, Key, ArrowRightCircle, Camera, MapPin } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
@@ -2778,8 +2778,20 @@ const Onboarding = () => {
                             </div>
                           )}
                           {isDoc && item.uploadedAt && <div style={{ fontSize: '11px', color: '#1d4ed8', marginTop: '2px' }}>📤 Uploaded: {new Date(item.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}</div>}
-                          {isDoc && item.livePhotoMetadata?.capturedAt && (
-                            <div style={{ fontSize: '11px', color: '#7c3aed', marginTop: '2px' }}>📷 Live: {new Date(item.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                          {isDoc && item.livePhotoMetadata && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
+                              {item.livePhotoMetadata.capturedAt && (
+                                <div style={{ fontSize: '11px', color: '#7c3aed' }}>
+                                  📷 Live: {new Date(item.livePhotoMetadata.capturedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              )}
+                              {(item.livePhotoMetadata.address || (item.livePhotoMetadata.latitude !== null && item.livePhotoMetadata.latitude !== undefined && item.livePhotoMetadata.latitude !== '')) && (
+                                <div style={{ fontSize: '11px', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <MapPin size={11} style={{ shrink: 0 }} />
+                                  <span>{item.livePhotoMetadata.address || `${parseFloat(item.livePhotoMetadata.latitude).toFixed(5)}°, ${parseFloat(item.livePhotoMetadata.longitude).toFixed(5)}°`}</span>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
 

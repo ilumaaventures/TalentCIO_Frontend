@@ -519,6 +519,25 @@ export const DocumentsTab = ({
                         <span className="h-1 w-1 rounded-full bg-slate-300"></span>
                         <span>{format(new Date(doc.uploadDate), 'MMM dd, yyyy')}</span>
                     </div>
+                    {doc.livePhotoMetadata && (
+                        <div className="mt-2 space-y-1 rounded-xl bg-purple-50/70 border border-purple-100 p-2 text-[11px]">
+                            {doc.livePhotoMetadata.capturedAt && (
+                                <div className="text-purple-700 font-medium">
+                                    📷 Captured: {format(new Date(doc.livePhotoMetadata.capturedAt), 'dd MMM yyyy, hh:mm a')}
+                                </div>
+                            )}
+                            {(doc.livePhotoMetadata.latitude !== null && doc.livePhotoMetadata.latitude !== undefined) && (
+                                <div className="text-emerald-700">
+                                    📍 GPS: {parseFloat(doc.livePhotoMetadata.latitude).toFixed(5)}°, {parseFloat(doc.livePhotoMetadata.longitude).toFixed(5)}°
+                                </div>
+                            )}
+                            {doc.livePhotoMetadata.address && (
+                                <div className="text-slate-600 truncate" title={doc.livePhotoMetadata.address}>
+                                    {doc.livePhotoMetadata.address}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {docStatus === 'Rejected' && doc.rejectionReason ? (
