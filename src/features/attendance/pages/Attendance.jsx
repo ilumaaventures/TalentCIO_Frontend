@@ -1661,13 +1661,19 @@ const Attendance = () => {
                 return day >= lStart && day <= lEnd;
             });
 
+            const isFlexOff = (computedFlexibleOffDays || []).some(item => {
+                const rawVal = typeof item === 'object' && item?.date ? item.date : item;
+                const itemStr = rawVal ? format(new Date(rawVal), 'yyyy-MM-dd') : '';
+                return itemStr === dateStr || String(item).toLowerCase() === dayName.toLowerCase();
+            });
+
             if (joiningDate && day < joiningDate) {
                 status = 'Not Applicable';
                 rowColor = 'FFFFFFFF'; // White
             } else if (isFuture) {
                 status = '-';
                 rowColor = 'FFFFFFFF'; // White
-            } else if (leave && (!(holiday || isWeeklyOff) || leave.sandwichRule)) {
+            } else if (leave && (!(holiday || isWeeklyOff || isFlexOff) || leave.sandwichRule)) {
                 status = `Leave (${leave.leaveType})`;
                 rowColor = 'FFE1BEE7'; // Light Purple/Indigo
             } else if (holiday) {
@@ -1676,13 +1682,16 @@ const Attendance = () => {
             } else if (isWeeklyOff) {
                 status = 'Weekoff';
                 rowColor = 'FFF2F2F2'; // Gray
+            } else if (isFlexOff) {
+                status = 'Flexible Off';
+                rowColor = 'FFEDE9FE'; // Light Violet
             } else if (record) {
                 status = 'Present';
                 rowColor = 'FFEBF1DE'; // Green
             }
 
             const row = sheet.addRow([
-                format(day, 'dd-MMM-yyyy'),
+                format(day, 'dd-MM-yyyy'),
                 format(day, 'EEEE'),
                 status,
                 record ? formatTime(record.clockIn, record.clockInIST) : '-',
