@@ -18,6 +18,7 @@ import {
   validateTemplateSyntax
 } from '@/features/email/utils/templatePlaceholders';
 import OnboardingEmailHistory from '../components/OnboardingEmailHistory';
+import TransferToActiveModal from '../components/TransferToActiveModal';
 
 const parseBool = (val, defaultVal = true) => {
   if (val === false || val === 'false') return false;
@@ -212,6 +213,8 @@ const Onboarding = () => {
   const [candidatePreviewBlob, setCandidatePreviewBlob] = useState(null);
   const [candidatePreviewLoading, setCandidatePreviewLoading] = useState(false);
   const candidateDocxPreviewRef = useRef(null);
+  const [transferModalEmployee, setTransferModalEmployee] = useState(null);
+  const [showTransferToActiveModal, setShowTransferToActiveModal] = useState(false);
 
   // Close menu when clicking outside or scrolling
   useEffect(() => {
@@ -1780,33 +1783,18 @@ const Onboarding = () => {
     Policy: { bg: '#f1f5f9', text: '#64748b' }
   };
 
-  const handleTransferToActive = async (empId) => {
-    if (!confirm('Transfer this onboarding employee to an active user account? This will create a new user with their data and documents.')) return;
-    try {
-      const res = await api.post(`/onboarding/employees/${empId}/transfer-to-active`);
-      toast.success(
-        () => (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <span style={{ fontWeight: 700 }}>Employee Activated!</span>
-            <div style={{ fontSize: '13px' }}>
-              <div><strong>Name:</strong> {res.data.user.firstName} {res.data.user.lastName}</div>
-              <div><strong>Code:</strong> {res.data.user.employeeCode}</div>
-              <div><strong>Docs Transferred:</strong> {res.data.documentsTransferred}</div>
-              <div><strong>Temp Password:</strong> {res.data.tempPassword}</div>
-              <div style={{ color: '#059669', marginTop: '4px', fontSize: '11px' }}>A welcome email with login details has been sent.</div>
-            </div>
-          </div>
-        ),
-        { duration: 15000 }
-      );
-      sessionStorage.removeItem(`user_data_${user?._id}`);
-      setShowDetailModal(false);
-      setSelectedEmployee(null);
-      syncEmployeeState({ _id: empId }, 'delete');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Transfer failed');
-    }
-  };
+  const openTransferToActiveModal = useCallback((emp) => {
+    setTransferModalEmployee(emp);
+    setShowTransferToActiveModal(true);
+  }, []);
+
+  const handleTransferSuccess = useCallback(async (data, empId) => {
+    sessionStorage.removeItem(`user_data_${user?._id}`);
+    setShowDetailModal(false);
+    setSelectedEmployee(null);
+    syncEmployeeState({ _id: empId }, 'delete');
+    await fetchEmployees();
+  }, [fetchEmployees, syncEmployeeState, user?._id]);
 
   const closeDetailModal = useCallback(() => {
     setShowDetailModal(false);
@@ -2076,6 +2064,17 @@ const Onboarding = () => {
                                 >
                                   <Eye size={16} style={{ color: '#3b82f6' }} /> View Details
                                 </button>
+
+                                {canCompleteOnboarding && !emp.transferredToUserId && (
+                                  <button
+                                    onClick={() => { openTransferToActiveModal(emp); setActiveMenu(null); }}
+                                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#059669', fontSize: '14px', fontWeight: '500', borderRadius: '8px', textAlign: 'left', transition: 'background 0.1s' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#ecfdf5'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                                  >
+                                    <ArrowRightCircle size={16} style={{ color: '#059669' }} /> Transfer to Active
+                                  </button>
+                                )}
 
                                 {canEditEmployees && (
                                   <button
@@ -3107,7 +3106,7 @@ const Onboarding = () => {
                 {!selectedEmployee.transferredToUserId && canCompleteOnboarding && (
                   <div style={{ marginBottom: '24px' }}>
                     <button
-                      onClick={() => handleTransferToActive(selectedEmployee._id)}
+                      onClick={() => openTransferToActiveModal(selectedEmployee)}
                       style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 14px rgba(5,150,105,0.3)', transition: 'all 0.2s' }}
                     >
                       <ArrowRightCircle size={18} /> Transfer to Active Employee
@@ -4083,6 +4082,17 @@ const Onboarding = () => {
           </div>
         </div>
       )}
+
+      {/* Transfer to Active Employee Modal (with System Permission, Employment Type & Top Confirmation Pop-up) */}
+      <TransferToActiveModal
+        isOpen={showTransferToActiveModal}
+        onClose={() => {
+          setShowTransferToActiveModal(false);
+          setTransferModalEmployee(null);
+        }}
+        employee={transferModalEmployee}
+        onSuccess={handleTransferSuccess}
+      />
 
       <style>{`
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
