@@ -26,7 +26,8 @@ export const useOrgChartData = ({
     employmentTypes = [],
     showReportingManagers = false,
     canViewBusinessUnits = true,
-    canManageOrgChart = false
+    canManageOrgChart = false,
+    canViewStats = false
 } = {}) => {
     const [treeData, setTreeData] = useState([]);
     const [stats, setStats] = useState(null);
@@ -36,7 +37,7 @@ export const useOrgChartData = ({
     const [availableEmploymentTypes, setAvailableEmploymentTypes] = useState(DEFAULT_EMPLOYMENT_TYPES);
 
     const empTypesKey = (canManageOrgChart && Array.isArray(employmentTypes)) ? [...employmentTypes].sort().join('_') : '';
-    const cacheKey = `org_chart_data_${departmentId}_${businessUnitId}_${includeInactive}_${empTypesKey}_${canManageOrgChart && showReportingManagers}_${canManageOrgChart}`;
+    const cacheKey = `org_chart_data_${departmentId}_${businessUnitId}_${includeInactive}_${empTypesKey}_${canManageOrgChart && showReportingManagers}_${canManageOrgChart}_${canViewStats}`;
 
     // Fetch dropdown filter options (departments, business units, employment types) once on mount or when permissions change
     useEffect(() => {
@@ -104,7 +105,9 @@ export const useOrgChartData = ({
 
             const [treeRes, statsRes] = await Promise.all([
                 api.get(`/organization/org-chart?${params.toString()}`),
-                api.get('/organization/org-chart/stats').catch(() => ({ data: null }))
+                canViewStats
+                    ? api.get('/organization/org-chart/stats').catch(() => ({ data: null }))
+                    : Promise.resolve({ data: null })
             ]);
 
             const newTree = treeRes.data?.tree || [];
@@ -127,7 +130,7 @@ export const useOrgChartData = ({
         } finally {
             setLoading(false);
         }
-    }, [departmentId, businessUnitId, search, includeInactive, empTypesKey, cacheKey, showReportingManagers, canManageOrgChart]);
+    }, [departmentId, businessUnitId, search, includeInactive, empTypesKey, cacheKey, showReportingManagers, canManageOrgChart, canViewStats]);
 
     useEffect(() => {
         fetchOrgData();
