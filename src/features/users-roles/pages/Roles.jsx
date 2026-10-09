@@ -537,6 +537,11 @@ const Roles = () => {
                                                             <div className="flex-1">
                                                                 <div className="text-sm font-medium text-slate-700">{p.key}</div>
                                                                 <div className="text-xs text-slate-500">{p.description}</div>
+                                                                {p.key === 'project.userperformance.view' && (
+                                                                    <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                        <span>Note: This permission only works when <strong>user.read</strong> permission is also granted</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </label>
                                                     ))}

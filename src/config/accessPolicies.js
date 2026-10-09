@@ -38,6 +38,8 @@ export const ORG_CHART_VIEW_PERMISSIONS = ['org_chart.view', 'org.chart.view'];
 export const ORG_CHART_MANAGE_PERMISSIONS = ['org_chart.manage', 'org.chart.manage'];
 export const DEPARTMENT_ACCESS_PERMISSIONS = ['department.read', 'department.create', 'department.update'];
 export const DESIGNATION_ACCESS_PERMISSIONS = ['designation.read', 'designation.create', 'designation.update'];
+export const PROJECT_USER_PERFORMANCE_PERMISSIONS = ['project.userperformance.view'];
+export const PROJECT_VIEW_TEAM_PERMISSIONS = ['project.view_team'];
 
 const hasAnyRole = (user, roles = []) => (
     Array.isArray(roles) && roles.some((role) => user?.roles?.includes(role))
