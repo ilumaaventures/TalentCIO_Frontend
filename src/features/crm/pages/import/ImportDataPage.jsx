@@ -186,10 +186,30 @@ export const ImportDataPage = ({ onNavigate }) => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [sortDirection, setSortDirection] = useState('desc'); // 'desc' | 'asc'
   const [dateFilter, setDateFilter] = useState('today'); // 'all' | 'today' | '2days' | '5days' | 'custom'
+  const [dateFilterType, setDateFilterType] = useState('updatedAt'); // 'updatedAt' | 'createdAt'
+  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
+  const [isDateTypeDropdownOpen, setIsDateTypeDropdownOpen] = useState(false);
+  const dateDropdownRef = useRef(null);
+  const dateTypeDropdownRef = useRef(null);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(e.target)) {
+        setIsDateDropdownOpen(false);
+      }
+      if (dateTypeDropdownRef.current && !dateTypeDropdownRef.current.contains(e.target)) {
+        setIsDateTypeDropdownOpen(false);
+      }
+    };
+    if (isDateDropdownOpen || isDateTypeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isDateDropdownOpen, isDateTypeDropdownOpen]);
 
   // Pagination state (default: 50, options: 50, 80, 100)
   const [pageSize, setPageSize] = useState(50);
@@ -244,12 +264,12 @@ export const ImportDataPage = ({ onNavigate }) => {
     const rep = typeof repInfo === 'string'
       ? { userName: repInfo }
       : {
-          userName: repInfo.userName || repInfo.name || 'Representative',
-          userId: repInfo.userId || repInfo._id || null,
-          email: repInfo.email || '',
-          avatar: repInfo.avatar || repInfo.profilePicture || '',
-          isAll: Boolean(repInfo.isAll),
-        };
+        userName: repInfo.userName || repInfo.name || 'Representative',
+        userId: repInfo.userId || repInfo._id || null,
+        email: repInfo.email || '',
+        avatar: repInfo.avatar || repInfo.profilePicture || '',
+        isAll: Boolean(repInfo.isAll),
+      };
     setHistoryUserModal({
       isOpen: true,
       rep,
@@ -517,7 +537,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             if (userStorageKey) {
               localStorage.setItem(userStorageKey, JSON.stringify(mappedServer));
             }
-          } catch (_) {}
+          } catch (_) { }
         } else {
           setRecords((prev) => {
             if (canViewAll && prev.length > 0) {
@@ -698,6 +718,8 @@ export const ImportDataPage = ({ onNavigate }) => {
             source: String(source).trim(),
             leadSource: String(source).trim(),
             date: dateObj.toISOString(),
+            createdAt: dateObj.toISOString(),
+            updatedAt: new Date().toISOString(),
             importedBy: currentUserName,
             importedByUserId: user?._id || null,
           };
@@ -982,6 +1004,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             source: newSource,
             leadSource: newSource,
             date: uRow.date || ex.date,
+            updatedAt: new Date().toISOString(),
             isConvertedToLead: isConverted,
             leadId: isConverted ? (uRow.leadId || ex.leadId || null) : (ex.leadId || null),
             importedBy: uRow.importedBy || ex.importedBy || currentUserName,
@@ -994,6 +1017,8 @@ export const ImportDataPage = ({ onNavigate }) => {
             leadStatus: uRow.status || uRow.leadStatus || 'New',
             source: uRow.source || uRow.leadSource || '',
             leadSource: uRow.source || uRow.leadSource || '',
+            createdAt: uRow.createdAt || uRow.date || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             importedBy: uRow.importedBy || currentUserName,
             importedByUserId: uRow.importedByUserId || user?._id || null,
           });
@@ -1006,6 +1031,8 @@ export const ImportDataPage = ({ onNavigate }) => {
         leadStatus: r.status || r.leadStatus || 'New',
         source: r.source || r.leadSource || '',
         leadSource: r.source || r.leadSource || '',
+        createdAt: r.createdAt || r.date || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         importedBy: r.importedBy || currentUserName,
         importedByUserId: r.importedByUserId || user?._id || null,
       }));
@@ -1217,10 +1244,10 @@ export const ImportDataPage = ({ onNavigate }) => {
     if (!rowsToExport || rowsToExport.length === 0) {
       const filterLabel =
         dateFilter === 'today' ? 'Today' :
-        dateFilter === '2days' ? 'Last 2 Days' :
-        dateFilter === '5days' ? 'Last 5 Days' :
-        dateFilter === 'custom' ? 'Custom date range' :
-        'the selected filters';
+          dateFilter === '2days' ? 'Last 2 Days' :
+            dateFilter === '5days' ? 'Last 5 Days' :
+              dateFilter === 'custom' ? 'Custom date range' :
+                'the selected filters';
       toast.error(`No records found for ${filterLabel}.`);
       return;
     }
@@ -1330,18 +1357,18 @@ export const ImportDataPage = ({ onNavigate }) => {
       const timestamp = new Date().toISOString().slice(0, 10);
       const filterSuffix =
         dateFilter === 'today' ? '_Today' :
-        dateFilter === '2days' ? '_Last2Days' :
-        dateFilter === '5days' ? '_Last5Days' :
-        dateFilter === 'custom' ? '_Custom' :
-        '_All';
+          dateFilter === '2days' ? '_Last2Days' :
+            dateFilter === '5days' ? '_Last5Days' :
+              dateFilter === 'custom' ? '_Custom' :
+                '_All';
       const filename = `CRM_Export${filterSuffix}_${timestamp}.xlsx`;
       saveAs(blob, filename);
       const filterLabel =
         dateFilter === 'today' ? 'Today' :
-        dateFilter === '2days' ? 'Last 2 Days' :
-        dateFilter === '5days' ? 'Last 5 Days' :
-        dateFilter === 'custom' ? 'Custom range' :
-        'All';
+          dateFilter === '2days' ? 'Last 2 Days' :
+            dateFilter === '5days' ? 'Last 5 Days' :
+              dateFilter === 'custom' ? 'Custom range' :
+                'All';
       toast.success(`Exported ${rowsToExport.length} record${rowsToExport.length === 1 ? '' : 's'} (Filter: ${filterLabel}).`);
     } catch (err) {
       console.error('Export error:', err);
@@ -1361,12 +1388,21 @@ export const ImportDataPage = ({ onNavigate }) => {
   };
 
   // Check if an item matches the date filter
-  const isRecordInDateFilter = (item, filter, from, to) => {
+  const isRecordInDateFilter = (item, filter, from, to, type = dateFilterType) => {
     if (filter === 'all') return true;
-    if (!item?.date) return false;
+
+    // Resolve date to filter against based on dateFilterType
+    let rawDate;
+    if (type === 'createdAt') {
+      rawDate = item?.createdAt || item?.date;
+    } else {
+      // 'updatedAt' (default)
+      rawDate = item?.updatedAt || item?.lastContactedAt || item?.date || item?.createdAt;
+    }
+    if (!rawDate) return false;
 
     try {
-      const itemDate = new Date(item.date);
+      const itemDate = new Date(rawDate);
       if (isNaN(itemDate.getTime())) return false;
 
       const now = new Date();
@@ -1398,28 +1434,29 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   // Dynamic label & info for the active date filter
   const dateFilterInfo = useMemo(() => {
+    const basisLabel = dateFilterType === 'createdAt' ? 'Created' : 'Updated';
     switch (dateFilter) {
       case 'today':
         return {
-          title: 'Imported Today',
+          title: `${basisLabel} Today`,
           badge: 'Today',
-          description: 'Records matching today’s date',
+          description: `Records ${basisLabel.toLowerCase()} today`,
         };
       case '2days':
         return {
-          title: 'Imported (Last 2 Days)',
+          title: `${basisLabel} (Last 2 Days)`,
           badge: 'Last 2 Days',
-          description: 'Records in the last 48 hours',
+          description: `Records ${basisLabel.toLowerCase()} in the last 48 hours`,
         };
       case '5days':
         return {
-          title: 'Imported (Last 5 Days)',
+          title: `${basisLabel} (Last 5 Days)`,
           badge: 'Last 5 Days',
-          description: 'Records in the last 5 days',
+          description: `Records ${basisLabel.toLowerCase()} in the last 5 days`,
         };
       case 'custom':
         return {
-          title: 'Imported (Custom Range)',
+          title: `${basisLabel} (Custom Range)`,
           badge: 'Custom',
           description:
             fromDate && toDate
@@ -1428,16 +1465,16 @@ export const ImportDataPage = ({ onNavigate }) => {
                 ? `From ${fromDate}`
                 : toDate
                   ? `Up to ${toDate}`
-                  : 'Custom date window',
+                  : `Custom ${basisLabel.toLowerCase()} date window`,
         };
       default:
         return {
-          title: 'Imported Today',
+          title: `${basisLabel} Today`,
           badge: 'Today',
-          description: 'Click to filter today’s records',
+          description: `Click to filter today’s records (${basisLabel.toLowerCase()})`,
         };
     }
-  }, [dateFilter, fromDate, toDate]);
+  }, [dateFilter, fromDate, toDate, dateFilterType]);
 
   // Scoped records: when user does not have view_all permission, strictly restrict to their own records
   const scopedRecords = useMemo(() => {
@@ -1487,13 +1524,13 @@ export const ImportDataPage = ({ onNavigate }) => {
 
   // Records filtered strictly by the date filter (used for Table and active filter matching)
   const dateFilteredRecords = useMemo(() => {
-    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate));
-  }, [userFilteredRecords, dateFilter, fromDate, toDate]);
+    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, dateFilter, fromDate, toDate, dateFilterType));
+  }, [userFilteredRecords, dateFilter, fromDate, toDate, dateFilterType]);
 
-  // Records imported today (always calculated for the Today metric card)
+  // Records imported/updated today (always calculated for the Today metric card)
   const todayFilteredRecords = useMemo(() => {
-    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, 'today'));
-  }, [userFilteredRecords]);
+    return userFilteredRecords.filter((item) => isRecordInDateFilter(item, 'today', '', '', dateFilterType));
+  }, [userFilteredRecords, dateFilterType]);
   const todayFilteredCount = todayFilteredRecords.length;
 
   // Card metric values (dynamically reflecting active Imported By and Date filters)
@@ -1508,6 +1545,31 @@ export const ImportDataPage = ({ onNavigate }) => {
   const dateFilteredConvertedCount = useMemo(() => {
     return dateFilteredRecords.filter(isConvertedLead).length;
   }, [dateFilteredRecords]);
+
+  // Check if any non-default filters are applied
+  const hasActiveFilters = useMemo(() => {
+    return (
+      dateFilter !== 'today' ||
+      dateFilterType !== 'updatedAt' ||
+      selectedUsers.length > 0 ||
+      Boolean(searchQuery.trim()) ||
+      Boolean(fromDate) ||
+      Boolean(toDate) ||
+      showConvertedOnly
+    );
+  }, [dateFilter, dateFilterType, selectedUsers, searchQuery, fromDate, toDate, showConvertedOnly]);
+
+  // Reset all filters to default state (Today, Updated At)
+  const handleClearAllFilters = () => {
+    setDateFilter('today');
+    setDateFilterType('updatedAt');
+    setFromDate('');
+    setToDate('');
+    setSelectedUsers([]);
+    setSearchQuery('');
+    setShowConvertedOnly(false);
+    toast.success('Filters cleared (Reset to Today, Updated At)');
+  };
 
   // Filter & Sort Logic for Active Records
   const filteredAndSortedRecords = useMemo(() => {
@@ -1534,17 +1596,23 @@ export const ImportDataPage = ({ onNavigate }) => {
         const aConverted = Boolean(a.isConvertedToLead) ? 1 : 0;
         const bConverted = Boolean(b.isConvertedToLead) ? 1 : 0;
         if (aConverted !== bConverted) return aConverted - bConverted;
-        // Within each group keep the user's chosen date sort
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
+        // Within each group keep the user's chosen date sort respecting date basis
+        const getDateForSort = (rec) => {
+          if (dateFilterType === 'createdAt') {
+            return new Date(rec.createdAt || rec.date).getTime() || 0;
+          }
+          return new Date(rec.updatedAt || rec.lastContactedAt || rec.date || rec.createdAt).getTime() || 0;
+        };
+        const dateA = getDateForSort(a);
+        const dateB = getDateForSort(b);
         return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
       });
-  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly]);
+  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly, dateFilterType]);
 
   // Reset to first page when any filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, fromDate, toDate, selectedUsers, searchQuery, sortDirection, showConvertedOnly]);
+  }, [dateFilter, dateFilterType, fromDate, toDate, selectedUsers, searchQuery, sortDirection, showConvertedOnly]);
 
   // Pagination calculation
   const totalMatchingRecords = filteredAndSortedRecords.length;
@@ -1586,8 +1654,9 @@ export const ImportDataPage = ({ onNavigate }) => {
 
     // Optimistically update local state & localStorage
     setRecords((prev) => {
+      const nowIso = new Date().toISOString();
       const next = prev.map((r) =>
-        r.id === row.id ? { ...r, status: newStatus, leadStatus: newStatus } : r
+        r.id === row.id ? { ...r, status: newStatus, leadStatus: newStatus, updatedAt: nowIso } : r
       );
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -1610,7 +1679,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         );
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted));
-        } catch (_) {}
+        } catch (_) { }
         return reverted;
       });
     }
@@ -1680,12 +1749,13 @@ export const ImportDataPage = ({ onNavigate }) => {
     const oldStatuses = Object.fromEntries(targets.map((r) => [r.id, r.status || r.leadStatus || 'New']));
     // Optimistic update
     setRecords((prev) => {
+      const nowIso = new Date().toISOString();
       const next = prev.map((r) =>
         selectedIds.includes(r.id) && !r.isDuplicate
-          ? { ...r, status: statusToApply, leadStatus: statusToApply }
+          ? { ...r, status: statusToApply, leadStatus: statusToApply, updatedAt: nowIso }
           : r
       );
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (_) {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (_) { }
       return next;
     });
     try {
@@ -1705,7 +1775,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             ? { ...r, status: oldStatuses[r.id], leadStatus: oldStatuses[r.id] }
             : r
         );
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted)); } catch (_) {}
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(reverted)); } catch (_) { }
         return reverted;
       });
     } finally {
@@ -1865,11 +1935,11 @@ export const ImportDataPage = ({ onNavigate }) => {
           const updated = records.map((r) =>
             sentIds.has(r.id)
               ? {
-                  ...r,
-                  isConvertedToLead: true,
-                  status: 'Converted to Lead',
-                  leadStatus: 'Converted to Lead',
-                }
+                ...r,
+                isConvertedToLead: true,
+                status: 'Converted to Lead',
+                leadStatus: 'Converted to Lead',
+              }
               : r
           );
           setRecords(updated);
@@ -2152,1455 +2222,1566 @@ export const ImportDataPage = ({ onNavigate }) => {
         <>
           {/* Top Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
-            <Database className="w-6 h-6 text-emerald-600 shrink-0" />
-            <span>Database</span>
-            {canViewAll ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                All Organization Records
-              </span>
-            ) : (
-              <span
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
-                title="You have personal data visibility: you can only view records you uploaded or are assigned to."
-              >
-                Personal View (My Data Only)
-              </span>
-            )}
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Select Excel file, preview extracted rows, import to workspace, sort/filter by date, and send to Leads.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx, .xls, .csv"
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files && e.target.files[0]) {
-                handleFileUpload(e.target.files[0]);
-              }
-              e.target.value = '';
-            }}
-          />
-
-          <Button
-            size="sm"
-            variant="primary"
-            icon={Upload}
-            onClick={() => fileInputRef.current?.click()}
-            title="Import Excel or CSV file"
-          >
-            Import
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            icon={Download}
-            onClick={handleExportData}
-            title={selectedIds.length > 0 ? `Export ${selectedIds.length} selected records to Excel` : "Export database records to Excel"}
-          >
-            Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            icon={FileSpreadsheet}
-            onClick={handleDownloadTemplate}
-            title="Download sample Excel file with exact header structure"
-          >
-            Sample Template
-          </Button>
-        </div>
-      </div>
-
-
-
-      {/* 2. File Selected - PREVIEW STAGE & IMPORT CONFIRMATION */}
-      {stagedData && (
-        <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden p-6 space-y-5 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                <FileSpreadsheet className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-bold text-slate-900">{stagedData.fileName}</h3>
-                  <Badge variant="blue" size="sm">
-                    {stagedData.rows.length} total
-                  </Badge>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <CheckCircle2 className="w-3 h-3" />
-                    {stagedData.newCount} new
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                <Database className="w-6 h-6 text-emerald-600 shrink-0" />
+                <span>Database</span>
+                {canViewAll ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    All Organization Records
                   </span>
-                  {stagedData.updateCount > 0 && (
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
-                      title="Existing records in CRM or workspace to update"
-                    >
-                      <RefreshCw className="w-3 h-3 text-amber-600" />
-                      {stagedData.updateCount} update
-                    </span>
-                  )}
-                  {stagedData.duplicateCount > 0 && (
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200"
-                      title="Duplicate company name, mobile, or email within sheet"
-                    >
-                      <AlertTriangle className="w-3 h-3 text-rose-500" />
-                      {stagedData.duplicateCount} duplicate(s) skipped
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  File Size: {stagedData.fileSize} • Duplicates in sheet are skipped. New data will upload, and existing records will be updated.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                icon={showPreview ? EyeOff : Eye}
-                onClick={() => setShowPreview((prev) => !prev)}
-              >
-                {showPreview ? 'Hide Preview' : 'Show Preview'}
-              </Button>
-
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={X}
-                onClick={handleCancelStaged}
-              >
-                Cancel
-              </Button>
-
-              {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    icon={CheckCircle2}
-                    onClick={() => handleConfirmImport('new')}
-                    title="Import only new rows"
-                  >
-                    Import New Only ({stagedData.newCount})
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    icon={RefreshCw}
-                    onClick={() => handleConfirmImport('all')}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
-                    title="Import new rows and update existing records"
-                  >
-                    Import & Update All ({stagedData.newCount + stagedData.updateCount} rows)
-                  </Button>
-                </>
-              ) : stagedData.updateCount > 0 ? (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  icon={RefreshCw}
-                  onClick={() => handleConfirmImport('update')}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-xs"
-                >
-                  Update Existing ({stagedData.updateCount} rows)
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  icon={CheckCircle2}
-                  disabled={stagedData.newCount === 0}
-                  onClick={() => handleConfirmImport('new')}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
-                >
-                  {stagedData.newCount > 0
-                    ? `Import New Data (${stagedData.newCount} rows)`
-                    : 'No New Data (All Duplicates)'}
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Preview Table */}
-          {showPreview && (
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                    <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                    Excel Preview ({visibleStagedRows.length} rows)
-                  </span>
-
-                  {/* Filter tabs inside preview: All, New, Update, Duplicates */}
-                  <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewTab('all')}
-                      className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'all'
-                        ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                      All ({stagedData.rows.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewTab('new')}
-                      className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'new'
-                        ? 'bg-emerald-600 text-white shadow-2xs font-bold'
-                        : 'text-emerald-700 hover:text-emerald-900'
-                        }`}
-                    >
-                      New ({stagedData.newCount})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewTab('update')}
-                      className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'update'
-                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                        : 'text-amber-700 hover:text-amber-900'
-                        }`}
-                    >
-                      Update ({stagedData.updateCount})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewTab('duplicates')}
-                      className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'duplicates'
-                        ? 'bg-rose-600 text-white shadow-2xs font-bold'
-                        : 'text-rose-700 hover:text-rose-900'
-                        }`}
-                    >
-                      Duplicates ({stagedData.duplicateCount})
-                    </button>
-                  </div>
-                </div>
-
-                <span className="text-[11px] text-slate-500 font-medium">
-                  {stagedData.duplicateCount > 0
-                    ? `⚠️ ${stagedData.duplicateCount} duplicate(s) in sheet will NOT be imported.`
-                    : stagedData.updateCount > 0
-                      ? `🔄 ${stagedData.updateCount} existing record(s) will be updated, ${stagedData.newCount} new record(s) will upload.`
-                      : 'All records are new and ready to upload.'}
-                </span>
-              </div>
-
-              <div className="overflow-x-auto rounded-xl border border-slate-200/90 max-h-[350px]">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
-                    <tr>
-                      <th className="p-2.5 text-center w-12 whitespace-nowrap">#</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Company Name</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Industry</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Address</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Rating</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Contact Person</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Designation</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Mobile No</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Email ID</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Remarks</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Date</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Status</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Source</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Imported By</th>
-                      <th className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {visibleStagedRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={15} className="py-8 text-center text-slate-400">
-                          No {previewTab} records to display in this sheet.
-                        </td>
-                      </tr>
-                    ) : (
-                      visibleStagedRows.map((row, idx) => (
-                        <tr
-                          key={idx}
-                          className={`transition-colors ${row.rowType === 'duplicate'
-                            ? 'bg-rose-50/40 hover:bg-rose-50/70'
-                            : row.rowType === 'update'
-                              ? 'bg-amber-50/20 hover:bg-amber-50/50'
-                              : 'hover:bg-slate-50'
-                            }`}
-                        >
-                          <td className="p-2.5 text-center font-semibold text-slate-500 whitespace-nowrap">
-                            {idx + 1}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span>{row.companyName || '—'}</span>
-
-                              {/* Badges */}
-                              {row.rowType === 'update' && (
-                                <span
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 ml-1 shrink-0 shadow-2xs"
-                                  title={row.updateReason || 'Matches existing record'}
-                                >
-                                  <RefreshCw className="w-3 h-3 text-amber-600" />
-                                  Update
-                                </span>
-                              )}
-
-                              {row.isConvertedToLead && (
-                                <span
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 ml-1 shrink-0 shadow-2xs"
-                                  title="Converted to Lead in CRM"
-                                >
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  Converted to Lead
-                                </span>
-                              )}
-
-                              {row.rowType === 'duplicate' && (
-                                <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 ml-1 shrink-0"
-                                  title={row.duplicateReason || 'Duplicate in sheet'}
-                                >
-                                  <AlertTriangle className="w-3 h-3 text-rose-500" />
-                                  Duplicate in Sheet
-                                </span>
-                              )}
-
-                              {row.rowType === 'new' && (
-                                <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 ml-1 shrink-0"
-                                >
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  New
-                                </span>
-                              )}
-                            </div>
-
-                            {row.rowType === 'duplicate' && row.duplicateReason && (
-                              <div className="text-[10px] text-rose-600 font-normal mt-0.5">
-                                {row.duplicateReason}
-                              </div>
-                            )}
-                            {row.rowType === 'update' && row.updateReason && !row.isConvertedToLead && (
-                              <div className="text-[10px] text-amber-600 font-normal mt-0.5">
-                                {row.updateReason}
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-2.5 text-slate-700 whitespace-nowrap">{row.industry || '—'}</td>
-                          <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
-                          <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
-                          <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">{row.contactPerson || '—'}</td>
-                          <td className="p-2.5 text-slate-600 whitespace-nowrap">{row.designation || '—'}</td>
-                          <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.mobileNo || '—'}</td>
-                          <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.emailId || '—'}</td>
-                          <td className="p-2.5 text-slate-500 max-w-xs truncate">{row.remarks || '—'}</td>
-                          <td className="p-2.5 text-slate-600 whitespace-nowrap font-medium">
-                            {row.date ? new Date(row.date).toLocaleDateString() : '—'}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(row.status || row.leadStatus || 'New')}`}>
-                              {row.status || row.leadStatus || 'New'}
-                            </span>
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
-                            {row.source || row.leadSource || '—'}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                {(row.importedBy || 'U').charAt(0).toUpperCase()}
-                              </div>
-                              <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || '—'}>
-                                {row.importedBy || '—'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(row)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                              title="Edit all fields & Save"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-end items-center gap-2 pt-2">
-                {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      icon={CheckCircle2}
-                      onClick={() => handleConfirmImport('new')}
-                    >
-                      Import New Only ({stagedData.newCount} rows)
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      icon={RefreshCw}
-                      onClick={() => handleConfirmImport('all')}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
-                    >
-                      Confirm & Import All ({stagedData.newCount + stagedData.updateCount} rows)
-                    </Button>
-                  </>
-                ) : stagedData.updateCount > 0 ? (
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    icon={RefreshCw}
-                    onClick={() => handleConfirmImport('update')}
-                    className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-xs"
-                  >
-                    Confirm & Update ({stagedData.updateCount} rows)
-                  </Button>
                 ) : (
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    icon={CheckCircle2}
-                    disabled={stagedData.newCount === 0}
-                    onClick={() => handleConfirmImport('new')}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                    title="You have personal data visibility: you can only view records you uploaded or are assigned to."
                   >
-                    Confirm & Import New Data ({stagedData.newCount} rows)
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 3. ACTIVE IMPORTED WORKSPACE (Once imported or ready) */}
-      {(!stagedData || records.length > 0) && (
-        <div className="space-y-4">
-          {/* Summary Stat Cards: Total Data, Date Filter Imports, Converted to Leads */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Card 1: Total Data (Clickable: resets filters and shows all records) */}
-            {(() => {
-              const isTotalActive = !showConvertedOnly && dateFilter === 'all' && !fromDate && !toDate;
-              const isDateFilterActive = !showConvertedOnly && dateFilter !== 'all';
-              const isConvertedActive = showConvertedOnly;
-              const card2Count = dateFilter === 'all' ? todayFilteredCount : dateFilteredCount;
-              const card2Percentage = totalDataCount > 0 ? Math.round((card2Count / totalDataCount) * 100) : 0;
-
-              return (
-                <>
-                  <div
-                    onClick={() => {
-                      setShowConvertedOnly(false);
-                      setDateFilter('all');
-                      setFromDate('');
-                      setToDate('');
-                    }}
-                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
-                      isTotalActive
-                        ? 'bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/25 shadow-xs'
-                        : 'bg-white border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
-                    }`}
-                    title={isTotalActive ? 'Currently showing all records' : 'Click to view all records in workspace'}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                            isTotalActive ? 'text-indigo-900 font-bold' : 'text-slate-500 group-hover:text-indigo-700'
-                          }`}>
-                            Total Data
-                          </p>
-                          {selectedUsers.length > 0 ? (
-                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
-                              {selectedUsers.length === 1 ? selectedUsers[0] : `${selectedUsers.length} Users`}
-                            </span>
-                          ) : isTotalActive && (
-                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
-                              All Records
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-baseline gap-1.5 mt-0.5">
-                          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                            {totalDataCount}
-                          </span>
-                          <span className="text-[11px] font-medium text-slate-400">
-                            records
-                          </span>
-                        </div>
-                      </div>
-                      <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                        isTotalActive
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
-                          : 'bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
-                      }`}>
-                        <Database className="w-4 h-4" />
-                      </div>
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                      <span className="truncate">
-                        {selectedUsers.length > 0
-                          ? `Filtered by ${selectedUsers.join(', ')}`
-                          : isTotalActive
-                            ? 'Showing all records in workspace'
-                            : 'Click to show all records'}
-                      </span>
-                      <span className={`font-semibold shrink-0 ${isTotalActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-600'}`}>
-                        {scopedRecords.length > 0
-                          ? selectedUsers.length > 0
-                            ? `${Math.round((totalDataCount / scopedRecords.length) * 100)}% of total`
-                            : '100%'
-                          : '0%'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card 2: Date Filter (Today, Last 2 Days, Last 5 Days, Custom - Never All-time) */}
-                  <div
-                    onClick={() => {
-                      if (isDateFilterActive) {
-                        setDateFilter('all');
-                      } else {
-                        setShowConvertedOnly(false);
-                        setDateFilter('today');
-                        setFromDate('');
-                        setToDate('');
-                      }
-                    }}
-                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
-                      isDateFilterActive
-                        ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
-                        : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
-                    }`}
-                    title={
-                      isDateFilterActive
-                        ? `${dateFilterInfo.title} (Click to reset to all)`
-                        : 'Click to filter records imported today'
-                    }
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                            isDateFilterActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
-                          }`}>
-                            {dateFilterInfo.title}
-                          </p>
-                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${
-                            isDateFilterActive
-                              ? 'bg-blue-600 text-white shadow-2xs'
-                              : 'bg-blue-50 text-blue-700 border border-blue-200'
-                          }`}>
-                            {isDateFilterActive ? 'Active Filter' : dateFilterInfo.badge}
-                          </span>
-                        </div>
-                        <div className="flex items-baseline gap-1.5 mt-0.5">
-                          <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                            {card2Count}
-                          </span>
-                          <span className="text-[11px] font-medium text-slate-400">
-                            {dateFilter === 'today' || dateFilter === 'all' ? 'imported today' : 'matching filter'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                        isDateFilterActive
-                          ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
-                          : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
-                      }`}>
-                        <Calendar className="w-4 h-4" />
-                      </div>
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                      <span className="truncate">
-                        {isDateFilterActive
-                          ? (dateFilter === 'today'
-                              ? 'Filtered by today (Click to show all)'
-                              : `${dateFilterInfo.description} (Click to show all)`)
-                          : 'Click to filter today’s records'}
-                      </span>
-                      <span className="font-semibold text-blue-600 shrink-0">
-                        {card2Percentage}% of total
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
-                  <div
-                    onClick={() => setShowConvertedOnly((prev) => !prev)}
-                    className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${
-                      isConvertedActive
-                        ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-500/25 shadow-xs'
-                        : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
-                    }`}
-                    title={isConvertedActive ? 'Filtered: Showing converted leads (Click to show all)' : 'Click to filter table by Converted to Lead'}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-                            isConvertedActive ? 'text-emerald-900 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
-                          }`}>
-                            Converted to Lead
-                          </p>
-                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${
-                            isConvertedActive
-                              ? 'bg-emerald-600 text-white shadow-2xs'
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          }`}>
-                            {isConvertedActive ? 'Active Filter' : (dateFilter === 'all' ? 'All Dates' : dateFilterInfo.badge)}
-                          </span>
-                        </div>
-                        <div className="flex items-baseline gap-1.5 mt-0.5">
-                          <span className="text-xl sm:text-2xl font-bold text-emerald-600 tracking-tight">
-                            {dateFilteredConvertedCount}
-                          </span>
-                          <span className="text-[11px] font-medium text-slate-400">
-                            {dateFilter === 'today' ? 'converted today' : 'leads converted'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {onNavigate && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigate('leads');
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-100/50 transition cursor-pointer"
-                            title="Open CRM Leads page"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                          isConvertedActive
-                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
-                            : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
-                        }`}>
-                          <CheckCircle2 className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                      <span className="truncate">
-                        {isConvertedActive
-                          ? 'Filtered: Showing converted leads (Click to reset)'
-                          : 'Click to filter converted leads'}
-                      </span>
-                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 shrink-0">
-                        {dateFilteredCount > 0
-                          ? `${Math.round((dateFilteredConvertedCount / dateFilteredCount) * 100)}% converted`
-                          : '0% converted'}
-                      </span>
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-
-          {/* Real-time Outreach & Rep Performance Cockpit */}
-          <RepPerformanceCockpit
-            canViewAll={canViewAll}
-            onOpenLeaderboard={(tab = 'leaderboard') => {
-              setLeaderboardInitialTab(tab);
-              setIsLeaderboardOpen(true);
-            }}
-            onSelectRep={handleSelectRepFromLeaderboard}
-            onOpenUserHistory={handleOpenUserHistory}
-            onOpenMetricHistory={handleOpenMetricHistory}
-            onToggleConvertedFilter={handleToggleConvertedFilter}
-          />
-
-          {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            {/* Left Filter Options: Date Filter + Search */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                Date Filter:
-              </span>
-
-              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs">
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'today', label: 'Today' },
-                  { id: '2days', label: 'Last 2 Days' },
-                  { id: '5days', label: 'Last 5 Days' },
-                  { id: 'custom', label: 'Custom' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setDateFilter(item.id)}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-all ${dateFilter === item.id
-                      ? 'bg-white text-indigo-600 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-
-              {dateFilter === 'custom' && (
-                <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 text-xs">
-                  <span className="text-[11px] font-medium text-slate-500">From:</span>
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="text-xs px-2 py-0.5 rounded border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                  <span className="text-[11px] font-medium text-slate-500">To:</span>
-                  <input
-                    type="date"
-                    value={toDate}
-                    min={fromDate || undefined}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="text-xs px-2 py-0.5 rounded border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                  {(fromDate || toDate) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFromDate('');
-                        setToDate('');
-                      }}
-                      className="text-[11px] text-slate-400 hover:text-slate-700 px-1 font-semibold"
-                      title="Clear date range"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Imported By User Filter Dropdown — only for users with full org view */}
-              {canViewAll && (
-                <div className="relative" ref={userDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsUserDropdownOpen((prev) => !prev)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow-2xs ${selectedUsers.length > 0
-                    ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  title="Filter records by imported user"
-                >
-                  <User className={`w-3.5 h-3.5 ${selectedUsers.length > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
-                  <span>
-                    Imported By:{' '}
-                    {selectedUsers.length === 0 ? (
-                      <span className="font-normal text-slate-500">All</span>
-                    ) : selectedUsers.length === 1 ? (
-                      <span className="font-bold text-indigo-700">{selectedUsers[0]}</span>
-                    ) : (
-                      <span className="font-bold text-indigo-700">{selectedUsers.length} Users</span>
-                    )}
+                    Personal View (My Data Only)
                   </span>
-                  {selectedUsers.length > 0 && (
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleClearUsers();
-                      }}
-                      className="ml-0.5 text-slate-400 hover:text-rose-600 px-0.5 rounded cursor-pointer transition"
-                      title="Clear user filter"
-                    >
-                      ✕
-                    </span>
-                  )}
-                  <ChevronDown
-                    className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${isUserDropdownOpen ? 'rotate-180 text-indigo-600' : ''
-                      }`}
-                  />
-                </button>
-
-                {/* Dropdown Menu */}
-                {isUserDropdownOpen && (
-                  <div className="absolute left-0 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-xl py-2 z-50 animate-in fade-in duration-100">
-                    {/* Header */}
-                    <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
-                      <div className="text-xs font-bold text-slate-800">Imported By (Active Users)</div>
-                      {selectedUsers.length > 0 && (
-                        <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
-                          {selectedUsers.length} selected
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Search active users */}
-                    <div className="p-2 border-b border-slate-100">
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        <input
-                          type="text"
-                          placeholder="Search active users..."
-                          value={userFilterSearch}
-                          onChange={(e) => setUserFilterSearch(e.target.value)}
-                          className="w-full pl-8 pr-6 py-1.5 text-xs rounded-md border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-slate-400"
-                          autoFocus
-                        />
-                        {userFilterSearch && (
-                          <button
-                            type="button"
-                            onClick={() => setUserFilterSearch('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Quick action bar: Select All / Clear */}
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 text-[11px] bg-slate-50/60">
-                      <button
-                        type="button"
-                        onClick={handleSelectAllUsers}
-                        className="font-medium text-indigo-600 hover:text-indigo-800 transition"
-                      >
-                        Select All ({activeUserOptions.length})
-                      </button>
-                      {selectedUsers.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleClearUsers}
-                          className="font-medium text-slate-500 hover:text-rose-600 transition"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Scrollable list of active users */}
-                    <div className="max-h-52 overflow-y-auto py-1">
-                      {filteredUserOptions.length === 0 ? (
-                        <div className="px-4 py-3 text-center text-xs text-slate-400">
-                          {userFilterSearch ? 'No active users found' : 'No active users available'}
-                        </div>
-                      ) : (
-                        filteredUserOptions.map((opt) => {
-                          const isSelected = selectedUsers.includes(opt.name);
-                          const isMe = currentUserName && opt.name.toLowerCase() === currentUserName.toLowerCase();
-                          return (
-                            <label
-                              key={opt.id || opt.name}
-                              className={`flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-50 cursor-pointer select-none text-xs transition ${isSelected ? 'bg-indigo-50/40' : ''
-                                }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => handleToggleUser(opt.name)}
-                                className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px] shrink-0 uppercase">
-                                {opt.name.charAt(0) || 'U'}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="font-medium text-slate-800 truncate flex items-center gap-1.5">
-                                  <span className="truncate">{opt.name}</span>
-                                  {isMe && (
-                                    <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 border border-indigo-200/60 px-1 rounded shrink-0">
-                                      You
-                                    </span>
-                                  )}
-                                </div>
-                                {opt.email && (
-                                  <div className="text-[10px] text-slate-400 truncate">{opt.email}</div>
-                                )}
-                              </div>
-                            </label>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="px-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                      <span className="text-[11px] text-slate-400">
-                        {selectedUsers.length} of {activeUserOptions.length} active
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setIsUserDropdownOpen(false)}
-                        className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition"
-                      >
-                        Apply
-                      </button>
-                    </div>
-                  </div>
                 )}
-                </div>
-              )}
-
-              {/* Search Bar */}
-              <div className="relative min-w-[200px]">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search company, person..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                Select Excel file, preview extracted rows, import to workspace, sort/filter by date, and send to Leads.
+              </p>
             </div>
 
-            {/* Right Action: Delete Selected + Send to Leads */}
-            <div className="flex items-center gap-2.5">
-              {records.some((r) => r.isDuplicate) && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  icon={CheckCircle2}
-                  onClick={handleSelectOnlyNew}
-                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs"
-                  title="Select only unique non-duplicate records"
-                >
-                  Select Only New ({nonDuplicateIds.length})
-                </Button>
-              )}
-
-              {selectedIds.length > 0 && (
-                <>
-                  {/* ── Sleek Bulk Actions Burger Menu ── */}
-                  <div className="relative inline-block" ref={bulkMenuRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsBulkMenuOpen((prev) => !prev)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 shadow-2xs transition cursor-pointer select-none"
-                      title="Bulk Actions Menu"
-                    >
-                      <Menu className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Actions ({selectedIds.length})</span>
-                      <ChevronDown
-                        className={`w-3 h-3 text-indigo-400 transition-transform duration-200 ${
-                          isBulkMenuOpen ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-
-                    {isBulkMenuOpen && (
-                      <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
-                        {/* Header */}
-                        <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
-                          <span>Selected: {selectedIds.length}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedIds([]);
-                              setIsBulkMenuOpen(false);
-                            }}
-                            className="text-indigo-600 hover:text-indigo-800 font-medium normal-case hover:underline text-[11px]"
-                          >
-                            Clear Selection
-                          </button>
-                        </div>
-
-                        {/* Change Status Section */}
-                        <div className="px-3 pt-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                          Change Status:
-                        </div>
-                        <div className="max-h-52 overflow-y-auto px-1.5 py-0.5 space-y-0.5 custom-scrollbar">
-                          {STATUS_OPTIONS.map((status) => (
-                            <button
-                              key={status}
-                              type="button"
-                              disabled={isBulkStatusLoading}
-                              onClick={() => {
-                                handleBulkStatusChange(status);
-                                setIsBulkMenuOpen(false);
-                              }}
-                              className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition text-left cursor-pointer group"
-                            >
-                              <span className="font-medium group-hover:translate-x-0.5 transition-transform">
-                                {status}
-                              </span>
-                              <span
-                                className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${getStatusBadgeStyle(
-                                  status
-                                )}`}
-                              >
-                                Set
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="my-1.5 border-t border-slate-100" />
-
-                        {/* Delete Action */}
-                        <div className="px-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsBulkMenuOpen(false);
-                              handleOpenDeleteSelected();
-                            }}
-                            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition font-semibold text-left cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                            <span>Delete Selected ({selectedIds.length})</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleFileUpload(e.target.files[0]);
+                  }
+                  e.target.value = '';
+                }}
+              />
 
               <Button
                 size="sm"
                 variant="primary"
-                icon={Send}
-                disabled={selectedIds.length === 0}
-                isLoading={isSubmitting}
-                onClick={handleOpenConvertBulk}
-                className="shadow-sm whitespace-nowrap"
+                icon={Upload}
+                onClick={() => fileInputRef.current?.click()}
+                title="Import Excel or CSV file"
               >
-                Send to Leads ({selectedIds.length})
+                Import
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                icon={Download}
+                onClick={handleExportData}
+                title={selectedIds.length > 0 ? `Export ${selectedIds.length} selected records to Excel` : "Export database records to Excel"}
+              >
+                Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                icon={FileSpreadsheet}
+                onClick={handleDownloadTemplate}
+                title="Download sample Excel file with exact header structure"
+              >
+                Sample Template
               </Button>
             </div>
           </div>
 
-          {/* Status & Pagination Toolbar (Row Just Below Filters) */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
-            {/* Left: Showing X of Y | Selected: Z */}
-            <div className="flex items-center gap-2.5 text-xs text-slate-600">
-              <span className="font-medium text-slate-500">
-                Showing{' '}
-                {totalMatchingRecords === 0 ? (
-                  <strong className="text-slate-800 font-bold">0</strong>
-                ) : totalMatchingRecords <= pageSize ? (
-                  <strong className="text-slate-800 font-bold">{totalMatchingRecords}</strong>
-                ) : (
-                  <>
-                    <strong className="text-slate-800 font-bold">{startEntry}</strong>–
-                    <strong className="text-slate-800 font-bold">{endEntry}</strong>
-                  </>
-                )}{' '}
-                of <strong className="text-slate-800 font-bold">{totalDataCount}</strong>
-                {totalMatchingRecords !== totalDataCount && totalMatchingRecords > 0 && (
-                  <span className="text-slate-400 font-normal ml-1">
-                    ({totalMatchingRecords} matching filter)
-                  </span>
-                )}
-                <span className="mx-2 text-slate-300">|</span>
-                Selected: <strong className="text-indigo-600 font-bold">{selectedIds.length}</strong>
-              </span>
 
-              {showConvertedOnly && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 ml-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  Converted Only
-                  <button
-                    type="button"
-                    onClick={() => setShowConvertedOnly(false)}
-                    className="ml-1 text-emerald-700 hover:text-emerald-950 hover:bg-emerald-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
-                    title="Clear converted filter and show all"
-                  >
-                    ✕
-                  </button>
-                </span>
-              )}
 
-              {selectedIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedIds([])}
-                  className="text-[11px] text-slate-400 hover:text-slate-700 underline font-medium ml-1"
-                >
-                  Clear selection
-                </button>
-              )}
-            </div>
-
-            {/* Right: Page Size Selector & Pagination */}
-            <div className="flex items-center gap-3">
-              {/* Entries per page options: 50 (default), 80, 100 */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                <span className="text-[11px] font-medium text-slate-500">Show:</span>
-                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-2xs">
-                  {[50, 80, 100].map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => handlePageSizeChange(size)}
-                      className={`px-2.5 py-0.5 rounded-md text-xs font-semibold transition ${pageSize === size
-                        ? 'bg-indigo-600 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                        }`}
-                    >
-                      {size}
-                    </button>
-                  ))}
+          {/* 2. File Selected - PREVIEW STAGE & IMPORT CONFIRMATION */}
+          {stagedData && (
+            <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden p-6 space-y-5 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <FileSpreadsheet className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-bold text-slate-900">{stagedData.fileName}</h3>
+                      <Badge variant="blue" size="sm">
+                        {stagedData.rows.length} total
+                      </Badge>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {stagedData.newCount} new
+                      </span>
+                      {stagedData.updateCount > 0 && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                          title="Existing records in CRM or workspace to update"
+                        >
+                          <RefreshCw className="w-3 h-3 text-amber-600" />
+                          {stagedData.updateCount} update
+                        </span>
+                      )}
+                      {stagedData.duplicateCount > 0 && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200"
+                          title="Duplicate company name, mobile, or email within sheet"
+                        >
+                          <AlertTriangle className="w-3 h-3 text-rose-500" />
+                          {stagedData.duplicateCount} duplicate(s) skipped
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      File Size: {stagedData.fileSize} • Duplicates in sheet are skipped. New data will upload, and existing records will be updated.
+                    </p>
+                  </div>
                 </div>
-                <span className="text-[11px] text-slate-400">entries</span>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={showPreview ? EyeOff : Eye}
+                    onClick={() => setShowPreview((prev) => !prev)}
+                  >
+                    {showPreview ? 'Hide Preview' : 'Show Preview'}
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={X}
+                    onClick={handleCancelStaged}
+                  >
+                    Cancel
+                  </Button>
+
+                  {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        icon={CheckCircle2}
+                        onClick={() => handleConfirmImport('new')}
+                        title="Import only new rows"
+                      >
+                        Import New Only ({stagedData.newCount})
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={RefreshCw}
+                        onClick={() => handleConfirmImport('all')}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+                        title="Import new rows and update existing records"
+                      >
+                        Import & Update All ({stagedData.newCount + stagedData.updateCount} rows)
+                      </Button>
+                    </>
+                  ) : stagedData.updateCount > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      icon={RefreshCw}
+                      onClick={() => handleConfirmImport('update')}
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-xs"
+                    >
+                      Update Existing ({stagedData.updateCount} rows)
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      icon={CheckCircle2}
+                      disabled={stagedData.newCount === 0}
+                      onClick={() => handleConfirmImport('new')}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                    >
+                      {stagedData.newCount > 0
+                        ? `Import New Data (${stagedData.newCount} rows)`
+                        : 'No New Data (All Duplicates)'}
+                    </Button>
+                  )}
+                </div>
               </div>
 
-              {/* Pagination Page Controls */}
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
-                  <button
-                    type="button"
-                    disabled={validCurrentPage <= 1}
-                    onClick={() => handlePageChange(validCurrentPage - 1)}
-                    className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                    title="Previous page"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
+              {/* Preview Table */}
+              {showPreview && (
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                        Excel Preview ({visibleStagedRows.length} rows)
+                      </span>
 
-                  <span className="text-xs text-slate-600 font-medium px-1">
-                    Page <strong className="text-indigo-600">{validCurrentPage}</strong> of{' '}
-                    <strong className="text-slate-800">{totalPages}</strong>
-                  </span>
+                      {/* Filter tabs inside preview: All, New, Update, Duplicates */}
+                      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTab('all')}
+                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'all'
+                            ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                          All ({stagedData.rows.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTab('new')}
+                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'new'
+                            ? 'bg-emerald-600 text-white shadow-2xs font-bold'
+                            : 'text-emerald-700 hover:text-emerald-900'
+                            }`}
+                        >
+                          New ({stagedData.newCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTab('update')}
+                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'update'
+                            ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                            : 'text-amber-700 hover:text-amber-900'
+                            }`}
+                        >
+                          Update ({stagedData.updateCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTab('duplicates')}
+                          className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${previewTab === 'duplicates'
+                            ? 'bg-rose-600 text-white shadow-2xs font-bold'
+                            : 'text-rose-700 hover:text-rose-900'
+                            }`}
+                        >
+                          Duplicates ({stagedData.duplicateCount})
+                        </button>
+                      </div>
+                    </div>
 
-                  <button
-                    type="button"
-                    disabled={validCurrentPage >= totalPages}
-                    onClick={() => handlePageChange(validCurrentPage + 1)}
-                    className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                    title="Next page"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {stagedData.duplicateCount > 0
+                        ? `⚠️ ${stagedData.duplicateCount} duplicate(s) in sheet will NOT be imported.`
+                        : stagedData.updateCount > 0
+                          ? `🔄 ${stagedData.updateCount} existing record(s) will be updated, ${stagedData.newCount} new record(s) will upload.`
+                          : 'All records are new and ready to upload.'}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200/90 max-h-[350px]">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
+                        <tr>
+                          <th className="p-2.5 text-center w-12 whitespace-nowrap">#</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Company Name</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Industry</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Address</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Rating</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Contact Person</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Designation</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Mobile No</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Email ID</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Remarks</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Date</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Status</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Source</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Imported By</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {visibleStagedRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={15} className="py-8 text-center text-slate-400">
+                              No {previewTab} records to display in this sheet.
+                            </td>
+                          </tr>
+                        ) : (
+                          visibleStagedRows.map((row, idx) => (
+                            <tr
+                              key={idx}
+                              className={`transition-colors ${row.rowType === 'duplicate'
+                                ? 'bg-rose-50/40 hover:bg-rose-50/70'
+                                : row.rowType === 'update'
+                                  ? 'bg-amber-50/20 hover:bg-amber-50/50'
+                                  : 'hover:bg-slate-50'
+                                }`}
+                            >
+                              <td className="p-2.5 text-center font-semibold text-slate-500 whitespace-nowrap">
+                                {idx + 1}
+                              </td>
+                              <td className="p-2.5 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{row.companyName || '—'}</span>
+
+                                  {/* Badges */}
+                                  {row.rowType === 'update' && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 ml-1 shrink-0 shadow-2xs"
+                                      title={row.updateReason || 'Matches existing record'}
+                                    >
+                                      <RefreshCw className="w-3 h-3 text-amber-600" />
+                                      Update
+                                    </span>
+                                  )}
+
+                                  {row.isConvertedToLead && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 ml-1 shrink-0 shadow-2xs"
+                                      title="Converted to Lead in CRM"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      Converted to Lead
+                                    </span>
+                                  )}
+
+                                  {row.rowType === 'duplicate' && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 ml-1 shrink-0"
+                                      title={row.duplicateReason || 'Duplicate in sheet'}
+                                    >
+                                      <AlertTriangle className="w-3 h-3 text-rose-500" />
+                                      Duplicate in Sheet
+                                    </span>
+                                  )}
+
+                                  {row.rowType === 'new' && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 ml-1 shrink-0"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      New
+                                    </span>
+                                  )}
+                                </div>
+
+                                {row.rowType === 'duplicate' && row.duplicateReason && (
+                                  <div className="text-[10px] text-rose-600 font-normal mt-0.5">
+                                    {row.duplicateReason}
+                                  </div>
+                                )}
+                                {row.rowType === 'update' && row.updateReason && !row.isConvertedToLead && (
+                                  <div className="text-[10px] text-amber-600 font-normal mt-0.5">
+                                    {row.updateReason}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-slate-700 whitespace-nowrap">{row.industry || '—'}</td>
+                              <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
+                              <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
+                              <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">{row.contactPerson || '—'}</td>
+                              <td className="p-2.5 text-slate-600 whitespace-nowrap">{row.designation || '—'}</td>
+                              <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.mobileNo || '—'}</td>
+                              <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.emailId || '—'}</td>
+                              <td className="p-2.5 text-slate-500 max-w-xs truncate">{row.remarks || '—'}</td>
+                              <td className="p-2.5 text-slate-600 whitespace-nowrap font-medium">
+                                {row.date ? new Date(row.date).toLocaleDateString() : '—'}
+                              </td>
+                              <td className="p-2.5 border-l border-slate-200 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(row.status || row.leadStatus || 'New')}`}>
+                                  {row.status || row.leadStatus || 'New'}
+                                </span>
+                              </td>
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
+                                {row.source || row.leadSource || '—'}
+                              </td>
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                    {(row.importedBy || 'U').charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="font-medium text-slate-800 text-xs truncate max-w-[120px]" title={row.importedBy || '—'}>
+                                    {row.importedBy || '—'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEdit(row)}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                                  title="Edit all fields & Save"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex justify-end items-center gap-2 pt-2">
+                    {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={CheckCircle2}
+                          onClick={() => handleConfirmImport('new')}
+                        >
+                          Import New Only ({stagedData.newCount} rows)
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          icon={RefreshCw}
+                          onClick={() => handleConfirmImport('all')}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+                        >
+                          Confirm & Import All ({stagedData.newCount + stagedData.updateCount} rows)
+                        </Button>
+                      </>
+                    ) : stagedData.updateCount > 0 ? (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={RefreshCw}
+                        onClick={() => handleConfirmImport('update')}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-xs"
+                      >
+                        Confirm & Update ({stagedData.updateCount} rows)
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={CheckCircle2}
+                        disabled={stagedData.newCount === 0}
+                        onClick={() => handleConfirmImport('new')}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                      >
+                        Confirm & Import New Data ({stagedData.newCount} rows)
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Main Table */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
-              <table className="w-full text-left border-collapse text-xs">
-                {/* Grey Table Header */}
-                <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
-                  <tr>
-                    <th className="p-3 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={isAllSelected}
-                        onChange={handleSelectAll}
-                        className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
-                        title="Select/Deselect All Visible"
-                      />
-                    </th>
-                    <th className="p-3 border-l border-slate-200 text-center w-12 whitespace-nowrap">S.NO</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Company Name</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Industry</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Source</th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Status</th>
-                    <th
-                      className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors"
-                      onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
-                      title="Click to toggle Date Sort Ascending/Descending"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>Date</span>
-                        {sortDirection === 'desc' ? (
-                          <ArrowDown className="w-3.5 h-3.5 text-slate-700 font-bold" />
-                        ) : (
-                          <ArrowUp className="w-3.5 h-3.5 text-slate-700 font-bold" />
-                        )}
-                      </div>
-                    </th>
-                    <th className="p-3 border-l border-slate-200 whitespace-nowrap">Imported By</th>
-                    <th className="p-3 border-l border-slate-200 text-center w-16 whitespace-nowrap">Actions</th>
-                  </tr>
-                </thead>
+          {/* 3. ACTIVE IMPORTED WORKSPACE (Once imported or ready) */}
+          {(!stagedData || records.length > 0) && (
+            <div className="space-y-4">
+              {/* Summary Stat Cards: Total Data, Date Filter Imports, Converted to Leads */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Card 1: Total Data (Clickable: resets filters and shows all records) */}
+                {(() => {
+                  const isTotalActive = !showConvertedOnly && dateFilter === 'all' && !fromDate && !toDate;
+                  const isDateFilterActive = !showConvertedOnly && dateFilter !== 'all';
+                  const isConvertedActive = showConvertedOnly;
+                  const card2Count = dateFilter === 'all' ? todayFilteredCount : dateFilteredCount;
+                  const card2Percentage = totalDataCount > 0 ? Math.round((card2Count / totalDataCount) * 100) : 0;
 
-                <tbody className="divide-y divide-slate-100">
-                  {totalMatchingRecords === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center">
-                          <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
-                          <p className="font-semibold text-slate-600">
-                            {records.length === 0
-                              ? 'No imported records yet'
-                              : 'No records match the current filter'}
-                          </p>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {records.length === 0
-                              ? 'Click the "Import" button above to select and load an Excel file.'
-                              : 'Try resetting the date filter or search query.'}
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedRecords.map((row, idx) => {
-                      const isSelected = selectedIds.includes(row.id);
-                      return (
-                        <tr
-                          key={row.id}
-                          className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/40' : ''}`}
-                          onClick={() => setSelectedDetailRecord(row)}
-                        >
-                          <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleToggleRow(row.id)}
-                              className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
-                            />
-                          </td>
-                          <td className="p-3 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap">
-                            {startEntry + idx}
-                          </td>
-                          <td className="p-3 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
-                              <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                                {row.companyName || '—'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
-                            {row.industry ? (
-                              <Badge variant="neutral" size="sm">
-                                {row.industry}
-                              </Badge>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
-                            {row.source || row.leadSource || '—'}
-                          </td>
-                          <td className="p-3 border-l border-slate-200 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            {row.isDuplicate ? (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
-                                title={row.duplicateReason || 'Duplicate found'}
-                              >
-                                <AlertTriangle className="w-3 h-3 text-rose-500" />
-                                <span>Duplicate</span>
-                              </span>
-                            ) : row.isConvertedToLead ? (
-                              <div className="relative inline-flex items-center gap-1.5">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-300">
-                                  <CheckCircle2 className="w-3 h-3 text-teal-600" />
-                                  <span>Converted to Lead</span>
+                  return (
+                    <>
+                      <div
+                        onClick={() => {
+                          setShowConvertedOnly(false);
+                          setDateFilter('all');
+                          setFromDate('');
+                          setToDate('');
+                        }}
+                        className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isTotalActive
+                            ? 'bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/25 shadow-xs'
+                            : 'bg-white border-slate-200/90 hover:border-indigo-300 hover:shadow-xs'
+                          }`}
+                        title={isTotalActive ? 'Currently showing all records' : 'Click to view all records in workspace'}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${isTotalActive ? 'text-indigo-900 font-bold' : 'text-slate-500 group-hover:text-indigo-700'
+                                }`}>
+                                Total Data
+                              </p>
+                              {selectedUsers.length > 0 ? (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                                  {selectedUsers.length === 1 ? selectedUsers[0] : `${selectedUsers.length} Users`}
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onNavigate) onNavigate('leads');
-                                  }}
-                                  className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition"
-                                  title="View in CRM Leads"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="relative inline-flex items-center gap-1.5">
-                                <div className="relative inline-flex items-center">
-                                  <select
-                                    value={row.status || row.leadStatus || 'New'}
-                                    onChange={(e) => handleStatusChange(row, e.target.value)}
-                                    className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
-                                      row.status || row.leadStatus || 'New'
-                                    )}`}
-                                  >
-                                    {STATUS_OPTIONS.map((opt) => (
-                                      <option key={opt} value={opt} className="bg-white text-slate-800 text-xs font-normal">
-                                        {opt}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <ChevronDown className="w-3 h-3 absolute right-2 pointer-events-none opacity-60" />
-                                </div>
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium">
-                            {row.date ? new Date(row.date).toLocaleDateString() : '—'}
-                          </td>
-                          <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 uppercase">
-                                {(row.importedBy || 'U').charAt(0)}
-                              </div>
-                              <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || '—'}>
-                                {row.importedBy || '—'}
+                              ) : isTotalActive && (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-600 text-white shrink-0 shadow-2xs">
+                                  All Records
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-baseline gap-1.5 mt-0.5">
+                              <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                                {totalDataCount}
+                              </span>
+                              <span className="text-[11px] font-medium text-slate-400">
+                                records
                               </span>
                             </div>
-                          </td>
-                          <td className="p-3 border-l border-slate-200 text-center whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
-                            <div className="relative inline-flex items-center justify-center">
+                          </div>
+                          <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isTotalActive
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
+                              : 'bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                            }`}>
+                            <Database className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="truncate">
+                            {selectedUsers.length > 0
+                              ? `Filtered by ${selectedUsers.join(', ')}`
+                              : isTotalActive
+                                ? 'Showing all records in workspace'
+                                : 'Click to show all records'}
+                          </span>
+                          <span className={`font-semibold shrink-0 ${isTotalActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-600'}`}>
+                            {scopedRecords.length > 0
+                              ? selectedUsers.length > 0
+                                ? `${Math.round((totalDataCount / scopedRecords.length) * 100)}% of total`
+                                : '100%'
+                              : '0%'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card 2: Date Filter (Today, Last 2 Days, Last 5 Days, Custom - Never All-time) */}
+                      <div
+                        onClick={() => {
+                          if (isDateFilterActive) {
+                            setDateFilter('all');
+                          } else {
+                            setShowConvertedOnly(false);
+                            setDateFilter('today');
+                            setFromDate('');
+                            setToDate('');
+                          }
+                        }}
+                        className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isDateFilterActive
+                            ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-500/25 shadow-xs'
+                            : 'bg-white border-slate-200/90 hover:border-blue-300 hover:shadow-xs'
+                          }`}
+                        title={
+                          isDateFilterActive
+                            ? `${dateFilterInfo.title} (Click to reset to all)`
+                            : 'Click to filter records imported today'
+                        }
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${isDateFilterActive ? 'text-blue-900 font-bold' : 'text-slate-500 group-hover:text-blue-700'
+                                }`}>
+                                {dateFilterInfo.title}
+                              </p>
+                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${isDateFilterActive
+                                  ? 'bg-blue-600 text-white shadow-2xs'
+                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                }`}>
+                                {isDateFilterActive ? 'Active Filter' : dateFilterInfo.badge}
+                              </span>
+                            </div>
+                            <div className="flex items-baseline gap-1.5 mt-0.5">
+                              <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                                {card2Count}
+                              </span>
+                              <span className="text-[11px] font-medium text-slate-400">
+                                {dateFilter === 'today' || dateFilter === 'all' ? 'imported today' : 'matching filter'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isDateFilterActive
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                              : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-100 group-hover:text-blue-700'
+                            }`}>
+                            <Calendar className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="truncate">
+                            {isDateFilterActive
+                              ? (dateFilter === 'today'
+                                ? 'Filtered by today (Click to show all)'
+                                : `${dateFilterInfo.description} (Click to show all)`)
+                              : 'Click to filter today’s records'}
+                          </span>
+                          <span className="font-semibold text-blue-600 shrink-0">
+                            {card2Percentage}% of total
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card 3: Converted to Lead (Clickable: filters table & provides link to CRM Leads) */}
+                      <div
+                        onClick={() => setShowConvertedOnly((prev) => !prev)}
+                        className={`p-3 sm:px-4 sm:py-3 rounded-xl border shadow-2xs transition-all duration-150 cursor-pointer select-none group relative ${isConvertedActive
+                            ? 'bg-emerald-50/60 border-emerald-400 ring-2 ring-emerald-500/25 shadow-xs'
+                            : 'bg-white border-slate-200/90 hover:border-emerald-300 hover:shadow-xs'
+                          }`}
+                        title={isConvertedActive ? 'Filtered: Showing converted leads (Click to show all)' : 'Click to filter table by Converted to Lead'}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${isConvertedActive ? 'text-emerald-900 font-bold' : 'text-slate-500 group-hover:text-emerald-700'
+                                }`}>
+                                Converted to Lead
+                              </p>
+                              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 ${isConvertedActive
+                                  ? 'bg-emerald-600 text-white shadow-2xs'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}>
+                                {isConvertedActive ? 'Active Filter' : (dateFilter === 'all' ? 'All Dates' : dateFilterInfo.badge)}
+                              </span>
+                            </div>
+                            <div className="flex items-baseline gap-1.5 mt-0.5">
+                              <span className="text-xl sm:text-2xl font-bold text-emerald-600 tracking-tight">
+                                {dateFilteredConvertedCount}
+                              </span>
+                              <span className="text-[11px] font-medium text-slate-400">
+                                {dateFilter === 'today' ? 'converted today' : 'leads converted'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {onNavigate && (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setOpenActionMenuId((prev) => (prev === row.id ? null : row.id));
+                                  onNavigate('leads');
                                 }}
-                                className={`p-1.5 rounded-lg transition cursor-pointer ${
-                                  openActionMenuId === row.id
-                                    ? 'bg-indigo-600 text-white shadow-xs'
-                                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
-                                }`}
-                                title="Row Actions"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-100/50 transition cursor-pointer"
+                                title="Open CRM Leads page"
                               >
-                                <MoreVertical className="w-4 h-4" />
+                                <ExternalLink className="w-3.5 h-3.5" />
                               </button>
+                            )}
+                            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${isConvertedActive
+                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
+                                : 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100 group-hover:text-emerald-700'
+                              }`}>
+                              <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="truncate">
+                            {isConvertedActive
+                              ? 'Filtered: Showing converted leads (Click to reset)'
+                              : 'Click to filter converted leads'}
+                          </span>
+                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 shrink-0">
+                            {dateFilteredCount > 0
+                              ? `${Math.round((dateFilteredConvertedCount / dateFilteredCount) * 100)}% converted`
+                              : '0% converted'}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
 
-                              {openActionMenuId === row.id && (
-                                <div
-                                  ref={actionMenuRef}
-                                  className={`absolute right-0 w-44 bg-white rounded-xl shadow-2xl border border-slate-200/95 py-1 z-50 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100 ${
-                                    paginatedRecords.length > 4 && idx >= paginatedRecords.length - 2
-                                      ? 'bottom-full mb-1.5'
-                                      : 'top-full mt-1.5'
-                                  }`}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <div className="py-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOpenActionMenuId(null);
-                                        handleOpenOutreach(row, 'call');
-                                      }}
-                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition font-medium cursor-pointer"
-                                    >
-                                      <PhoneCall className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                                      <span>Log Outreach</span>
-                                    </button>
+              {/* Real-time Outreach & Rep Performance Cockpit */}
+              <RepPerformanceCockpit
+                canViewAll={canViewAll}
+                onOpenLeaderboard={(tab = 'leaderboard') => {
+                  setLeaderboardInitialTab(tab);
+                  setIsLeaderboardOpen(true);
+                }}
+                onSelectRep={handleSelectRepFromLeaderboard}
+                onOpenUserHistory={handleOpenUserHistory}
+                onOpenMetricHistory={handleOpenMetricHistory}
+                onToggleConvertedFilter={handleToggleConvertedFilter}
+              />
 
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOpenActionMenuId(null);
-                                        handleOpenOutreach(row, 'email');
-                                      }}
-                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-sky-50 hover:text-sky-700 text-slate-700 transition font-medium cursor-pointer"
-                                    >
-                                      <Mail className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                                      <span>Send Sales Email</span>
-                                    </button>
+              {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Left Filter Options: Date Filter + Search */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Date Filter Dropdown Button */}
+                  <div className="relative" ref={dateDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsDateDropdownOpen((prev) => !prev)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow-2xs cursor-pointer ${dateFilter !== 'all'
+                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      title="Filter records by date"
+                    >
+                      <Calendar className={`w-3.5 h-3.5 ${dateFilter !== 'all' ? 'text-indigo-600' : 'text-slate-500'}`} />
+                      <span>
+                        Date Filter:{' '}
+                        <span className="font-bold text-indigo-700">
+                          {dateFilter === 'today'
+                            ? 'Today'
+                            : dateFilter === '2days'
+                              ? 'Last 2 Days'
+                              : dateFilter === '5days'
+                                ? 'Last 5 Days'
+                                : dateFilter === 'custom'
+                                  ? 'Custom'
+                                  : 'All'}
+                        </span>
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isDateDropdownOpen ? 'rotate-180 text-indigo-600' : 'text-slate-400'}`} />
+                    </button>
 
-                                    {!row.isConvertedToLead && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setOpenActionMenuId(null);
-                                          handleOpenConvertSingle(row);
-                                        }}
-                                        className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 transition font-medium cursor-pointer"
-                                      >
-                                        <Send className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                        <span>Send to Leads</span>
-                                      </button>
-                                    )}
+                    {isDateDropdownOpen && (
+                      <div className="absolute left-0 mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in-50 zoom-in-95 duration-100">
+                        {[
+                          { id: 'today', label: 'Today' },
+                          { id: 'all', label: 'All' },
+                          { id: '2days', label: 'Last 2 Days' },
+                          { id: '5days', label: 'Last 5 Days' },
+                          { id: 'custom', label: 'Custom' },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setDateFilter(item.id);
+                              setIsDateDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition cursor-pointer ${dateFilter === item.id
+                                ? 'bg-indigo-50 text-indigo-700 font-bold'
+                                : 'text-slate-700 hover:bg-slate-50'
+                              }`}
+                          >
+                            <span>{item.label}</span>
+                            {dateFilter === item.id && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOpenActionMenuId(null);
-                                        handleOpenEdit(row);
-                                      }}
-                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50 hover:text-slate-900 text-slate-700 transition font-medium cursor-pointer"
-                                    >
-                                      <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                      <span>Edit Company</span>
-                                    </button>
-                                  </div>
+                  {dateFilter === 'custom' && (
+                    <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 text-xs">
+                      <span className="text-[11px] font-medium text-slate-500">From:</span>
+                      <input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="text-xs px-2 py-0.5 rounded border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] font-medium text-slate-500">To:</span>
+                      <input
+                        type="date"
+                        value={toDate}
+                        min={fromDate || undefined}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="text-xs px-2 py-0.5 rounded border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      {(fromDate || toDate) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFromDate('');
+                            setToDate('');
+                          }}
+                          className="text-[11px] text-slate-400 hover:text-slate-700 px-1 font-semibold"
+                          title="Clear date range"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                                  <div className="py-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOpenActionMenuId(null);
-                                        handleOpenDeleteSingle(row);
-                                      }}
-                                      className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-rose-50 hover:text-rose-700 text-rose-600 transition font-medium cursor-pointer"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                                      <span>Delete</span>
-                                    </button>
-                                  </div>
-                                </div>
+                  {/* Date Basis Dropdown Button (Updated At vs Created At) */}
+                  <div className="relative" ref={dateTypeDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsDateTypeDropdownOpen((prev) => !prev)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow-2xs cursor-pointer ${dateFilterType === 'updatedAt'
+                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      title="Filter records based on Updated Date or Created Date"
+                    >
+                      <Clock className={`w-3.5 h-3.5 ${dateFilterType === 'updatedAt' ? 'text-indigo-600' : 'text-slate-500'}`} />
+                      <span>
+                        Basis:{' '}
+                        <span className="font-bold text-indigo-700">
+                          {dateFilterType === 'updatedAt' ? 'Updated At' : 'Created At'}
+                        </span>
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isDateTypeDropdownOpen ? 'rotate-180 text-indigo-600' : 'text-slate-400'}`} />
+                    </button>
+
+                    {isDateTypeDropdownOpen && (
+                      <div className="absolute left-0 mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in-50 zoom-in-95 duration-100">
+                        {[
+                          { id: 'updatedAt', label: 'Updated At (Default)' },
+                          { id: 'createdAt', label: 'Created At' },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setDateFilterType(item.id);
+                              setIsDateTypeDropdownOpen(false);
+                            }}
+                            className={`w-full flex flex-col items-start px-3 py-2 text-xs transition cursor-pointer text-left ${dateFilterType === item.id
+                                ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                                : 'text-slate-700 hover:bg-slate-50'
+                              }`}
+                          >
+                            <div className="flex items-center justify-between w-full font-bold">
+                              <span>{item.label}</span>
+                              {dateFilterType === item.id && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
                               )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-normal mt-0.5">{item.desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Imported By User Filter Dropdown — only for users with full org view */}
+                  {canViewAll && (
+                    <div className="relative" ref={userDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsUserDropdownOpen((prev) => !prev)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition shadow-2xs ${selectedUsers.length > 0
+                          ? 'border-indigo-300 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100/70'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}
+                        title="Filter records by imported user"
+                      >
+                        <User className={`w-3.5 h-3.5 ${selectedUsers.length > 0 ? 'text-indigo-600' : 'text-slate-500'}`} />
+                        <span>
+                          Imported By:{' '}
+                          {selectedUsers.length === 0 ? (
+                            <span className="font-normal text-slate-500">All</span>
+                          ) : selectedUsers.length === 1 ? (
+                            <span className="font-bold text-indigo-700">{selectedUsers[0]}</span>
+                          ) : (
+                            <span className="font-bold text-indigo-700">{selectedUsers.length} Users</span>
+                          )}
+                        </span>
+                        {selectedUsers.length > 0 && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleClearUsers();
+                            }}
+                            className="ml-0.5 text-slate-400 hover:text-rose-600 px-0.5 rounded cursor-pointer transition"
+                            title="Clear user filter"
+                          >
+                            ✕
+                          </span>
+                        )}
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${isUserDropdownOpen ? 'rotate-180 text-indigo-600' : ''
+                            }`}
+                        />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {isUserDropdownOpen && (
+                        <div className="absolute left-0 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-xl py-2 z-50 animate-in fade-in duration-100">
+                          {/* Header */}
+                          <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
+                            <div className="text-xs font-bold text-slate-800">Imported By (Active Users)</div>
+                            {selectedUsers.length > 0 && (
+                              <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
+                                {selectedUsers.length} selected
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Search active users */}
+                          <div className="p-2 border-b border-slate-100">
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <input
+                                type="text"
+                                placeholder="Search active users..."
+                                value={userFilterSearch}
+                                onChange={(e) => setUserFilterSearch(e.target.value)}
+                                className="w-full pl-8 pr-6 py-1.5 text-xs rounded-md border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-slate-400"
+                                autoFocus
+                              />
+                              {userFilterSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setUserFilterSearch('')}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Quick action bar: Select All / Clear */}
+                          <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 text-[11px] bg-slate-50/60">
+                            <button
+                              type="button"
+                              onClick={handleSelectAllUsers}
+                              className="font-medium text-indigo-600 hover:text-indigo-800 transition"
+                            >
+                              Select All ({activeUserOptions.length})
+                            </button>
+                            {selectedUsers.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleClearUsers}
+                                className="font-medium text-slate-500 hover:text-rose-600 transition"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Scrollable list of active users */}
+                          <div className="max-h-52 overflow-y-auto py-1">
+                            {filteredUserOptions.length === 0 ? (
+                              <div className="px-4 py-3 text-center text-xs text-slate-400">
+                                {userFilterSearch ? 'No active users found' : 'No active users available'}
+                              </div>
+                            ) : (
+                              filteredUserOptions.map((opt) => {
+                                const isSelected = selectedUsers.includes(opt.name);
+                                const isMe = currentUserName && opt.name.toLowerCase() === currentUserName.toLowerCase();
+                                return (
+                                  <label
+                                    key={opt.id || opt.name}
+                                    className={`flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-50 cursor-pointer select-none text-xs transition ${isSelected ? 'bg-indigo-50/40' : ''
+                                      }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => handleToggleUser(opt.name)}
+                                      className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px] shrink-0 uppercase">
+                                      {opt.name.charAt(0) || 'U'}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-medium text-slate-800 truncate flex items-center gap-1.5">
+                                        <span className="truncate">{opt.name}</span>
+                                        {isMe && (
+                                          <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 border border-indigo-200/60 px-1 rounded shrink-0">
+                                            You
+                                          </span>
+                                        )}
+                                      </div>
+                                      {opt.email && (
+                                        <div className="text-[10px] text-slate-400 truncate">{opt.email}</div>
+                                      )}
+                                    </div>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {/* Footer */}
+                          <div className="px-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <span className="text-[11px] text-slate-400">
+                              {selectedUsers.length} of {activeUserOptions.length} active
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setIsUserDropdownOpen(false)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition"
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Search Bar */}
+                  <div className="relative min-w-[200px]">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search company, person..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-7 py-1 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                        title="Clear search"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Clear Filters Button */}
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllFilters}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50/80 hover:bg-rose-100 text-rose-700 text-xs font-semibold shadow-2xs transition cursor-pointer shrink-0 animate-in fade-in duration-150"
+                      title="Reset all filters to default (Today, Updated At)"
+                    >
+                      <X className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Clear Filters</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Right Action: Delete Selected + Send to Leads */}
+                <div className="flex items-center gap-2.5">
+                  {records.some((r) => r.isDuplicate) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      icon={CheckCircle2}
+                      onClick={handleSelectOnlyNew}
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs"
+                      title="Select only unique non-duplicate records"
+                    >
+                      Select Only New ({nonDuplicateIds.length})
+                    </Button>
+                  )}
+
+                  {selectedIds.length > 0 && (
+                    <>
+                      {/* ── Sleek Bulk Actions Burger Menu ── */}
+                      <div className="relative inline-block" ref={bulkMenuRef}>
+                        <button
+                          type="button"
+                          onClick={() => setIsBulkMenuOpen((prev) => !prev)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 shadow-2xs transition cursor-pointer select-none"
+                          title="Bulk Actions Menu"
+                        >
+                          <Menu className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Actions ({selectedIds.length})</span>
+                          <ChevronDown
+                            className={`w-3 h-3 text-indigo-400 transition-transform duration-200 ${isBulkMenuOpen ? 'rotate-180' : ''
+                              }`}
+                          />
+                        </button>
+
+                        {isBulkMenuOpen && (
+                          <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+                            {/* Header */}
+                            <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+                              <span>Selected: {selectedIds.length}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedIds([]);
+                                  setIsBulkMenuOpen(false);
+                                }}
+                                className="text-indigo-600 hover:text-indigo-800 font-medium normal-case hover:underline text-[11px]"
+                              >
+                                Clear Selection
+                              </button>
+                            </div>
+
+                            {/* Change Status Section */}
+                            <div className="px-3 pt-2 pb-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                              Change Status:
+                            </div>
+                            <div className="max-h-52 overflow-y-auto px-1.5 py-0.5 space-y-0.5 custom-scrollbar">
+                              {STATUS_OPTIONS.map((status) => (
+                                <button
+                                  key={status}
+                                  type="button"
+                                  disabled={isBulkStatusLoading}
+                                  onClick={() => {
+                                    handleBulkStatusChange(status);
+                                    setIsBulkMenuOpen(false);
+                                  }}
+                                  className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition text-left cursor-pointer group"
+                                >
+                                  <span className="font-medium group-hover:translate-x-0.5 transition-transform">
+                                    {status}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${getStatusBadgeStyle(
+                                      status
+                                    )}`}
+                                  >
+                                    Set
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="my-1.5 border-t border-slate-100" />
+
+                            {/* Delete Action */}
+                            <div className="px-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsBulkMenuOpen(false);
+                                  handleOpenDeleteSelected();
+                                }}
+                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition font-semibold text-left cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                <span>Delete Selected ({selectedIds.length})</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={Send}
+                    disabled={selectedIds.length === 0}
+                    isLoading={isSubmitting}
+                    onClick={handleOpenConvertBulk}
+                    className="shadow-sm whitespace-nowrap"
+                  >
+                    Send to Leads ({selectedIds.length})
+                  </Button>
+                </div>
+              </div>
+
+              {/* Status & Pagination Toolbar (Row Just Below Filters) */}
+              <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
+                {/* Left: Showing X of Y | Selected: Z */}
+                <div className="flex items-center gap-2.5 text-xs text-slate-600">
+                  <span className="font-medium text-slate-500">
+                    Showing{' '}
+                    {totalMatchingRecords === 0 ? (
+                      <strong className="text-slate-800 font-bold">0</strong>
+                    ) : totalMatchingRecords <= pageSize ? (
+                      <strong className="text-slate-800 font-bold">{totalMatchingRecords}</strong>
+                    ) : (
+                      <>
+                        <strong className="text-slate-800 font-bold">{startEntry}</strong>–
+                        <strong className="text-slate-800 font-bold">{endEntry}</strong>
+                      </>
+                    )}{' '}
+                    of <strong className="text-slate-800 font-bold">{totalDataCount}</strong>
+                    {totalMatchingRecords !== totalDataCount && totalMatchingRecords > 0 && (
+                      <span className="text-slate-400 font-normal ml-1">
+                        ({totalMatchingRecords} matching filter)
+                      </span>
+                    )}
+                    <span className="mx-2 text-slate-300">|</span>
+                    Selected: <strong className="text-indigo-600 font-bold">{selectedIds.length}</strong>
+                  </span>
+
+                  {showConvertedOnly && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 ml-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Converted Only
+                      <button
+                        type="button"
+                        onClick={() => setShowConvertedOnly(false)}
+                        className="ml-1 text-emerald-700 hover:text-emerald-950 hover:bg-emerald-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
+                        title="Clear converted filter and show all"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+
+                  {selectedIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds([])}
+                      className="text-[11px] text-slate-400 hover:text-slate-700 underline font-medium ml-1"
+                    >
+                      Clear selection
+                    </button>
+                  )}
+                </div>
+
+                {/* Right: Page Size Selector & Pagination */}
+                <div className="flex items-center gap-3">
+                  {/* Entries per page options: 50 (default), 80, 100 */}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <span className="text-[11px] font-medium text-slate-500">Show:</span>
+                    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-2xs">
+                      {[50, 80, 100].map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => handlePageSizeChange(size)}
+                          className={`px-2.5 py-0.5 rounded-md text-xs font-semibold transition ${pageSize === size
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                            }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-[11px] text-slate-400">entries</span>
+                  </div>
+
+                  {/* Pagination Page Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+                      <button
+                        type="button"
+                        disabled={validCurrentPage <= 1}
+                        onClick={() => handlePageChange(validCurrentPage - 1)}
+                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
+                        title="Previous page"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      <span className="text-xs text-slate-600 font-medium px-1">
+                        Page <strong className="text-indigo-600">{validCurrentPage}</strong> of{' '}
+                        <strong className="text-slate-800">{totalPages}</strong>
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={validCurrentPage >= totalPages}
+                        onClick={() => handlePageChange(validCurrentPage + 1)}
+                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
+                        title="Next page"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Main Table */}
+              <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
+                <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
+                  <table className="w-full text-left border-collapse text-xs">
+                    {/* Grey Table Header */}
+                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
+                      <tr>
+                        <th className="p-3 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={handleSelectAll}
+                            className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                            title="Select/Deselect All Visible"
+                          />
+                        </th>
+                        <th className="p-3 border-l border-slate-200 text-center w-12 whitespace-nowrap">S.NO</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Company Name</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Industry</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Source</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Status</th>
+                        <th
+                          className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors"
+                          onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                          title="Click to toggle Date Sort Ascending/Descending"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span>{dateFilterType === 'createdAt' ? 'Created Date' : 'Updated Date'}</span>
+                            {sortDirection === 'desc' ? (
+                              <ArrowDown className="w-3.5 h-3.5 text-slate-700 font-bold" />
+                            ) : (
+                              <ArrowUp className="w-3.5 h-3.5 text-slate-700 font-bold" />
+                            )}
+                          </div>
+                        </th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Imported By</th>
+                        <th className="p-3 border-l border-slate-200 text-center w-16 whitespace-nowrap">Actions</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {totalMatchingRecords === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-12 text-center text-slate-400">
+                            <div className="flex flex-col items-center justify-center">
+                              <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
+                              <p className="font-semibold text-slate-600">
+                                {records.length === 0
+                                  ? 'No imported records yet'
+                                  : 'No records match the current filter'}
+                              </p>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {records.length === 0
+                                  ? 'Click the "Import" button above to select and load an Excel file.'
+                                  : 'Try resetting the date filter or search query.'}
+                              </p>
                             </div>
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                      ) : (
+                        paginatedRecords.map((row, idx) => {
+                          const isSelected = selectedIds.includes(row.id);
+                          return (
+                            <tr
+                              key={row.id}
+                              className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/40' : ''}`}
+                              onClick={() => setSelectedDetailRecord(row)}
+                            >
+                              <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleRow(row.id)}
+                                  className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                                />
+                              </td>
+                              <td className="p-3 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap">
+                                {startEntry + idx}
+                              </td>
+                              <td className="p-3 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+                                  <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                    {row.companyName || '—'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
+                                {row.industry ? (
+                                  <Badge variant="neutral" size="sm">
+                                    {row.industry}
+                                  </Badge>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
+                                {row.source || row.leadSource || '—'}
+                              </td>
+                              <td className="p-3 border-l border-slate-200 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                {row.isDuplicate ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                                    title={row.duplicateReason || 'Duplicate found'}
+                                  >
+                                    <AlertTriangle className="w-3 h-3 text-rose-500" />
+                                    <span>Duplicate</span>
+                                  </span>
+                                ) : row.isConvertedToLead ? (
+                                  <div className="relative inline-flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-300">
+                                      <CheckCircle2 className="w-3 h-3 text-teal-600" />
+                                      <span>Converted to Lead</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (onNavigate) onNavigate('leads');
+                                      }}
+                                      className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition"
+                                      title="View in CRM Leads"
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="relative inline-flex items-center gap-1.5">
+                                    <div className="relative inline-flex items-center">
+                                      <select
+                                        value={row.status || row.leadStatus || 'New'}
+                                        onChange={(e) => handleStatusChange(row, e.target.value)}
+                                        className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
+                                          row.status || row.leadStatus || 'New'
+                                        )}`}
+                                      >
+                                        {STATUS_OPTIONS.map((opt) => (
+                                          <option key={opt} value={opt} className="bg-white text-slate-800 text-xs font-normal">
+                                            {opt}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <ChevronDown className="w-3 h-3 absolute right-2 pointer-events-none opacity-60" />
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-3 border-l border-slate-200 text-slate-600 whitespace-nowrap font-medium">
+                                {(() => {
+                                  const targetDate = dateFilterType === 'createdAt'
+                                    ? (row.createdAt || row.date)
+                                    : (row.updatedAt || row.lastContactedAt || row.date || row.createdAt);
+                                  if (!targetDate) return '—';
+                                  const d = new Date(targetDate);
+                                  if (isNaN(d.getTime())) return '—';
+                                  return (
+                                    <div className="flex flex-col">
+                                      <span>{d.toLocaleDateString()}</span>
+                                      {dateFilterType === 'updatedAt' && row.updatedAt && (
+                                        <span className="text-[10px] text-slate-400 font-normal">
+                                          {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center justify-center shrink-0 uppercase">
+                                    {(row.importedBy || 'U').charAt(0)}
+                                  </div>
+                                  <span className="font-medium text-slate-800 text-xs truncate max-w-[130px]" title={row.importedBy || '—'}>
+                                    {row.importedBy || '—'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-3 border-l border-slate-200 text-center whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
+                                <div className="relative inline-flex items-center justify-center">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenActionMenuId((prev) => (prev === row.id ? null : row.id));
+                                    }}
+                                    className={`p-1.5 rounded-lg transition cursor-pointer ${openActionMenuId === row.id
+                                        ? 'bg-indigo-600 text-white shadow-xs'
+                                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
+                                      }`}
+                                    title="Row Actions"
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </button>
 
-            {/* Table Footer */}
-            <div className="p-3 border-t border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-              <div className="flex items-center gap-2">
-                <span>
-                  {/* Tip: Click any row to select. Click the <strong>Date</strong> header to toggle Ascending / Descending order. */}
-                </span>
-                {/* <span className="text-slate-300">|</span> */}
-                <span className="font-medium text-slate-700">
-                  {selectedIds.length} of {records.length} selected
-                </span>
-              </div>
+                                  {openActionMenuId === row.id && (
+                                    <div
+                                      ref={actionMenuRef}
+                                      className={`absolute right-0 w-44 bg-white rounded-xl shadow-2xl border border-slate-200/95 py-1 z-50 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100 ${paginatedRecords.length > 4 && idx >= paginatedRecords.length - 2
+                                          ? 'bottom-full mb-1.5'
+                                          : 'top-full mt-1.5'
+                                        }`}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div className="py-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenActionMenuId(null);
+                                            handleOpenOutreach(row, 'call');
+                                          }}
+                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition font-medium cursor-pointer"
+                                        >
+                                          <PhoneCall className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                          <span>Log Outreach</span>
+                                        </button>
 
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    disabled={validCurrentPage <= 1}
-                    onClick={() => handlePageChange(validCurrentPage - 1)}
-                    className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                    title="Previous page"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenActionMenuId(null);
+                                            handleOpenOutreach(row, 'email');
+                                          }}
+                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-sky-50 hover:text-sky-700 text-slate-700 transition font-medium cursor-pointer"
+                                        >
+                                          <Mail className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                          <span>Send Sales Email</span>
+                                        </button>
 
-                  <span className="text-xs text-slate-600 font-medium px-1">
-                    Page <strong className="text-indigo-600">{validCurrentPage}</strong> of{' '}
-                    <strong className="text-slate-800">{totalPages}</strong>
-                  </span>
+                                        {!row.isConvertedToLead && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setOpenActionMenuId(null);
+                                              handleOpenConvertSingle(row);
+                                            }}
+                                            className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 transition font-medium cursor-pointer"
+                                          >
+                                            <Send className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                            <span>Send to Leads</span>
+                                          </button>
+                                        )}
 
-                  <button
-                    type="button"
-                    disabled={validCurrentPage >= totalPages}
-                    onClick={() => handlePageChange(validCurrentPage + 1)}
-                    className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
-                    title="Next page"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenActionMenuId(null);
+                                            handleOpenEdit(row);
+                                          }}
+                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50 hover:text-slate-900 text-slate-700 transition font-medium cursor-pointer"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                          <span>Edit Company</span>
+                                        </button>
+                                      </div>
+
+                                      <div className="py-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenActionMenuId(null);
+                                            handleOpenDeleteSingle(row);
+                                          }}
+                                          className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-rose-50 hover:text-rose-700 text-rose-600 transition font-medium cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                          <span>Delete</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              )}
+
+                {/* Table Footer */}
+                <div className="p-3 border-t border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <span>
+                      {/* Tip: Click any row to select. Click the <strong>Date</strong> header to toggle Ascending / Descending order. */}
+                    </span>
+                    {/* <span className="text-slate-300">|</span> */}
+                    <span className="font-medium text-slate-700">
+                      {selectedIds.length} of {records.length} selected
+                    </span>
+                  </div>
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={validCurrentPage <= 1}
+                        onClick={() => handlePageChange(validCurrentPage - 1)}
+                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
+                        title="Previous page"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      <span className="text-xs text-slate-600 font-medium px-1">
+                        Page <strong className="text-indigo-600">{validCurrentPage}</strong> of{' '}
+                        <strong className="text-slate-800">{totalPages}</strong>
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={validCurrentPage >= totalPages}
+                        onClick={() => handlePageChange(validCurrentPage + 1)}
+                        className="p-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed text-slate-600 shadow-2xs transition"
+                        title="Next page"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
         </>
       )}
 
