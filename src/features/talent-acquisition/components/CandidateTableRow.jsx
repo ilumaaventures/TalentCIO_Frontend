@@ -1,8 +1,9 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
-    MoreVertical, Eye, FileText, Edit, ArrowRight, ArrowRightLeft, Briefcase, CheckCircle, Trash2
+    MoreVertical, Eye, FileText, Edit, ArrowRight, ArrowRightLeft, Briefcase, CheckCircle, Trash2, Share2
 } from 'lucide-react';
 import {
     hasReviewableApplicantProfile,
@@ -169,6 +170,7 @@ const CandidateTableRow = ({
     isInterviewRoundView,
     activeInterviewRounds = []
 }) => {
+    const navigate = useNavigate();
     const isSelected = selectedCandidateIds.includes(candidate._id);
     const displayRounds = getDisplayInterviewRoundsForPhase(candidate, activePhase);
     const statusSummary = getInterviewStatusSummary(displayRounds);
@@ -526,6 +528,22 @@ const CandidateTableRow = ({
                             >
                                 <Briefcase size={16} className="text-blue-500" />
                                 Transfer Candidate
+                            </button>
+                        )}
+
+                        {activePhase === 2 && (
+                            <button
+                                onClick={() => {
+                                    const reqId = candidate.hiringRequestId?._id || candidate.hiringRequestId || 'all';
+                                    navigate(`/ta/hiring-request/${reqId}/candidate/${candidate._id}/share-client?candidateIds=${candidate._id}`, {
+                                        state: { selectedCandidateIds: [candidate._id] }
+                                    });
+                                    setActiveMenu(null);
+                                }}
+                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-50 transition-colors text-left font-semibold"
+                            >
+                                <Share2 size={16} className="text-indigo-600" />
+                                Share with Client
                             </button>
                         )}
 

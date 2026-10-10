@@ -48,6 +48,7 @@ const PhaseTemplates = lazy(() => import('@/features/talent-acquisition/pages/Ph
 const TAAccessSettings = lazy(() => import('@/features/talent-acquisition/pages/TAAccessSettings'));
 const CandidateForm = lazy(() => import('@/features/talent-acquisition/pages/CandidateForm'));
 const CandidateDetails = lazy(() => import('@/features/talent-acquisition/pages/CandidateDetails'));
+const ShareCandidateWithClient = lazy(() => import('@/features/talent-acquisition/pages/ShareCandidateWithClient'));
 const Phase1Candidates = lazy(() => import('@/features/talent-acquisition/pages/Phase1Candidates'));
 const UserTADashboard = lazy(() => import('@/features/talent-acquisition/pages/UserTADashboard'));
 const Meetings = lazy(() => import('@/features/meetings/pages/Meetings'));
@@ -287,6 +288,10 @@ function App() {
                       <Route path="/ta/hiring-request/:hiringRequestId/add-candidate" element={<CandidateForm />} />
                       <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/edit" element={<CandidateForm />} />
                       <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/view" element={<CandidateDetails />} />
+                      <Route path="/ta/hiring-request/:hiringRequestId/candidate/:candidateId/share-client" element={<ShareCandidateWithClient />} />
+                      <Route path="/ta/candidate/:candidateId/share-client" element={<ShareCandidateWithClient />} />
+                      <Route path="/ta/hiring-request/:hiringRequestId/share-candidates" element={<ShareCandidateWithClient />} />
+                      <Route path="/ta/share-candidates" element={<ShareCandidateWithClient />} />
                       <Route path="/ta/hiring-request/:hiringRequestId/phase1" element={<Phase1Candidates />} />
                       <Route path="/ta/user-dashboard/:userName" element={<UserTADashboard />} />
                       <Route path="/ta/analysis" element={(

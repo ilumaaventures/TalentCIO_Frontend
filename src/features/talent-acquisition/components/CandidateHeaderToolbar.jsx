@@ -1,8 +1,9 @@
 import React from 'react';
 import {
     Calendar, Menu, Download, Mail, ArrowRightLeft, ArrowRight, CheckCircle,
-    ChevronDown, FileText, Upload, Plus, BarChart3
+    ChevronDown, FileText, Upload, Plus, BarChart3, Share2
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import {
     createdDatePresetOptions
 } from '@/features/talent-acquisition/utils/CandidateListConstants';
@@ -313,11 +314,45 @@ const CandidateHeaderToolbar = ({
                                         <span className="rounded-lg bg-rose-50 p-2 text-rose-600">
                                             <Mail size={15} />
                                         </span>
-                                        Send Mail
+                                        Send Mail To Candidate
                                     </span>
                                     <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
                                         {selectedCandidateIds.length || serverResultCount || candidates.length}
                                     </span>
+                                </button>
+                            )}
+                            {Number(activePhase) === 2 && !isLegacyView && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowToolbarMenu(false);
+                                        if (!selectedCandidateIds || selectedCandidateIds.length === 0) {
+                                            toast.error('Please select at least one Phase 2 candidate to share with client');
+                                            return;
+                                        }
+                                        const targetCandidateId = selectedCandidateIds[0];
+                                        const targetReqId = hiringRequestId || 'all';
+                                        navigate(`/ta/hiring-request/${targetReqId}/candidate/${targetCandidateId}/share-client?candidateIds=${selectedCandidateIds.join(',')}`, {
+                                            state: { selectedCandidateIds }
+                                        });
+                                    }}
+                                    className={toolbarMenuItemClass}
+                                    title={selectedCandidateIds.length === 0 ? "Select candidate(s) to share with client" : "Share candidate details with client"}
+                                >
+                                    <span className="flex items-center gap-3">
+                                        <span className="rounded-lg bg-teal-50 p-2 text-teal-600">
+                                            <Share2 size={15} />
+                                        </span>
+                                        <span className="flex flex-col text-left">
+                                            <span className="text-sm font-semibold text-slate-800">Share with Client</span>
+                                            <span className="text-[11px] text-slate-500">Send mail to client</span>
+                                        </span>
+                                    </span>
+                                    {selectedCandidateIds.length > 0 && (
+                                        <span className="inline-flex min-w-5.5 items-center justify-center rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-bold text-teal-700">
+                                            {selectedCandidateIds.length}
+                                        </span>
+                                    )}
                                 </button>
                             )}
                             {canBulkTransfer && !isLegacyView && (
@@ -361,7 +396,7 @@ const CandidateHeaderToolbar = ({
                                 </button>
                             )}
 
-                            {canEditCandidates && selectedCandidateIds.length > 0 && (
+                            {canEditCandidates && selectedCandidateIds.length > 0 && Number(activePhase) !== 2 && (
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -424,7 +459,7 @@ const CandidateHeaderToolbar = ({
                                     )}
                                 </div>
                             )}
-                            {canManageTemplates && (
+                            {canManageTemplates && Number(activePhase) !== 1 && Number(activePhase) !== 2 && (
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -458,7 +493,7 @@ const CandidateHeaderToolbar = ({
                                     </span>
                                 </button>
                             )}
-                            {canImportCandidates && (
+                            {canImportCandidates && Number(activePhase) !== 2 && (
                                 <button
                                     type="button"
                                     onClick={() => {

@@ -8,6 +8,7 @@ import {
   Clock,
   Copy,
   Download,
+  ExternalLink,
   Eye,
   FileText,
   Filter,
@@ -20,9 +21,11 @@ import {
   Send,
   User,
   Users,
+  Building,
   X,
   XCircle
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '@/lib/apiClient';
 import socket from '@/lib/socket';
 import toast from 'react-hot-toast';
@@ -152,6 +155,20 @@ const resolveAttachmentUrl = (urlOrPath) => {
 };
 
 const TAEmailHistory = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const emailType = searchParams.get('type') === 'client' ? 'client' : 'candidate';
+
+  const setEmailType = (type) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('type', type);
+      next.delete('page');
+      return next;
+    });
+    setPage(1);
+    setSelectedIds([]);
+  };
+
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -192,6 +209,7 @@ const TAEmailHistory = () => {
       const params = {
         page,
         limit,
+        type: emailType,
         search: searchQuery.trim() || undefined,
         hiringRequestId: selectedRequisition !== 'All' ? selectedRequisition : undefined,
         status: selectedStatus !== 'All' ? selectedStatus : undefined,
@@ -223,7 +241,7 @@ const TAEmailHistory = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, searchQuery, selectedRequisition, selectedStatus, selectedTemplate]);
+  }, [page, limit, searchQuery, selectedRequisition, selectedStatus, selectedTemplate, emailType]);
 
   useEffect(() => {
     fetchRequisitions();
@@ -279,6 +297,39 @@ const TAEmailHistory = () => {
     if (!email) return;
     navigator.clipboard.writeText(email);
     toast.success(`Copied ${email} to clipboard!`);
+  };
+
+  const handleCopyBody = () => {
+    if (!emailDetail?.body) return;
+    navigator.clipboard.writeText(emailDetail.body);
+    toast.success('Email body copied to clipboard!');
+  };
+
+  const handleOpenInNewTab = () => {
+    if (!emailDetail?.body) return;
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>${emailDetail.subject || 'Email Preview'}</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 32px; color: #1e293b; background: #ffffff; }
+              table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+              th, td { border: 1px solid #cbd5e1; padding: 10px 14px; }
+              th { background-color: #0f172a; color: #ffffff; text-align: left; }
+            </style>
+          </head>
+          <body>
+            ${emailDetail.body}
+          </body>
+        </html>
+      `);
+      newWindow.document.close();
+    }
   };
 
   const handleResendEmail = async (log) => {
@@ -407,19 +458,51 @@ const TAEmailHistory = () => {
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2.5 bg-blue-100/70 text-blue-600 rounded-xl">
-              <History size={22} />
+            <div className={`p-2.5 rounded-xl ${emailType === 'client' ? 'bg-indigo-100/70 text-indigo-600' : 'bg-blue-100/70 text-blue-600'}`}>
+              {emailType === 'client' ? <Building size={22} /> : <History size={22} />}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">TA Email History</h1>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+                {emailType === 'client' ? 'Client Email History' : 'Candidate Email History'}
+              </h1>
               <p className="text-xs font-medium text-slate-500 mt-0.5">
-                Full logs of all recruitment emails sent to candidates, templates used, and delivery statuses.
+                {emailType === 'client'
+                  ? 'Logs of all candidate profile sharing and recruitment emails sent to clients.'
+                  : 'Full logs of all recruitment emails sent directly to candidates, templates used, and delivery statuses.'}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          {/* Email Type Switcher Tabs */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+            <button
+              type="button"
+              onClick={() => setEmailType('candidate')}
+              className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                emailType === 'candidate'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <User size={14} />
+              Candidate Emails
+            </button>
+            <button
+              type="button"
+              onClick={() => setEmailType('client')}
+              className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                emailType === 'client'
+                  ? 'bg-white text-indigo-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Building size={14} />
+              Client Emails
+            </button>
+          </div>
+
           <button
             onClick={fetchEmailHistory}
             disabled={loading}
@@ -472,7 +555,7 @@ const TAEmailHistory = () => {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by candidate name, email, subject, template..."
+              placeholder={emailType === 'client' ? 'Search by client name, email, subject, template...' : 'Search by candidate name, email, subject, template...'}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -598,10 +681,10 @@ const TAEmailHistory = () => {
                       title="Select All on Page"
                     />
                   </th>
-                  <th className="py-3.5 px-4">Candidate (Recipient)</th>
+                  <th className="py-3.5 px-4">{emailType === 'client' ? 'Client (Recipient)' : 'Candidate (Recipient)'}</th>
                   <th className="py-3.5 px-4">Template Used</th>
                   <th className="py-3.5 px-4">Requisition & Subject</th>
-                  <th className="py-3.5 px-4">Sender / From</th>
+                  <th className="py-3.5 px-4">Sender Account</th>
                   <th className="py-3.5 px-4">Date & Time Sent</th>
                   <th className="py-3.5 px-4 text-center">Status</th>
                   <th className="py-3.5 px-4 text-center">Action</th>
@@ -621,24 +704,52 @@ const TAEmailHistory = () => {
                       />
                     </td>
 
-                    {/* Recipient Candidate */}
+                    {/* Recipient Column */}
                     <td className="py-3.5 px-4 align-top">
                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-900">
-                          {getRecipientDisplayName(log)}
-                        </span>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-[11px] text-slate-500">{log.recipientEmail || log.candidateId?.email || '-'}</span>
-                          {log.recipientEmail && (
-                            <button
-                              onClick={() => handleCopyEmail(log.recipientEmail)}
-                              className="text-slate-400 hover:text-blue-600 transition-colors"
-                              title="Copy Email"
-                            >
-                              <Copy size={11} />
-                            </button>
-                          )}
-                        </div>
+                        {emailType === 'client' ? (
+                          <>
+                            <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <Building size={13} className="text-indigo-600 shrink-0" />
+                              {log.recipientName || log.hiringRequestId?.client || 'Client'}
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="text-[11px] text-slate-500">{log.recipientEmail || '-'}</span>
+                              {log.recipientEmail && (
+                                <button
+                                  onClick={() => handleCopyEmail(log.recipientEmail)}
+                                  className="text-slate-400 hover:text-blue-600 transition-colors"
+                                  title="Copy Email"
+                                >
+                                  <Copy size={11} />
+                                </button>
+                              )}
+                            </div>
+                            {log.candidateId?.candidateName && (
+                              <span className="text-[10px] text-slate-500 mt-1 bg-slate-100 px-1.5 py-0.5 rounded w-fit">
+                                Candidate: {log.candidateId.candidateName}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-bold text-slate-900">
+                              {getRecipientDisplayName(log)}
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="text-[11px] text-slate-500">{log.recipientEmail || log.candidateId?.email || '-'}</span>
+                              {log.recipientEmail && (
+                                <button
+                                  onClick={() => handleCopyEmail(log.recipientEmail)}
+                                  className="text-slate-400 hover:text-blue-600 transition-colors"
+                                  title="Copy Email"
+                                >
+                                  <Copy size={11} />
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </td>
 
@@ -671,17 +782,14 @@ const TAEmailHistory = () => {
                       </div>
                     </td>
 
-                    {/* Sender Account / From */}
+                    {/* Sender Account */}
                     <td className="py-3.5 px-4 align-top">
                       <div className="flex flex-col text-[11px]">
-                        <span className="font-bold text-slate-900">
-                          {log.fromName || log.senderName || 'Talent Acquisition Team'}
-                        </span>
-                        <span className="text-slate-600 font-mono text-[10.5px]">
+                        <span className="font-bold text-slate-900 font-mono text-[11px]">
                           {log.fromAddress || log.senderEmail || 'System'}
                         </span>
                         {(log.initiatedBy?.name || log.sentBy?.firstName) && (
-                          <span className="text-[10px] text-slate-400 mt-0.5">
+                          <span className="text-[10.5px] text-slate-500 mt-0.5">
                             Sent by {log.initiatedBy?.name || `${log.sentBy?.firstName || ''} ${log.sentBy?.lastName || ''}`.trim()}
                           </span>
                         )}
@@ -783,111 +891,128 @@ const TAEmailHistory = () => {
 
       {/* Full Email Inspection Modal */}
       {selectedEmailId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Full Email Details</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Logged email communication sent to candidate.
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-2 sm:p-4 md:p-6 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden">
+            {/* Modal Top Header */}
+            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl ${emailDetail?.recipientType === 'client' || emailType === 'client' ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-100 text-blue-600'}`}>
+                  {emailDetail?.recipientType === 'client' || emailType === 'client' ? <Building size={18} /> : <Mail size={18} />}
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
+                    {emailDetail?.recipientType === 'client' || emailType === 'client'
+                      ? 'Client Email Inspection'
+                      : 'Candidate Email Inspection'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Logged email communication • ID: <span className="font-mono text-slate-400">{selectedEmailId}</span>
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => {
                   setSelectedEmailId(null);
                   setEmailDetail(null);
                 }}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-all"
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-all cursor-pointer"
+                title="Close Modal"
               >
                 <X size={18} />
               </button>
             </div>
 
             {loadingDetail ? (
-              <div className="p-8 space-y-4">
-                <Skeleton className="h-20 w-full rounded-xl" />
-                <Skeleton className="h-64 w-full rounded-xl" />
+              <div className="p-8 space-y-4 flex-1 flex flex-col justify-center">
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-full w-full rounded-xl min-h-[300px]" />
               </div>
             ) : emailDetail ? (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Meta Header Card */}
-                <div className="p-5 bg-slate-50/50 border-b border-slate-100 space-y-3 text-xs">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Recipient (To)</p>
-                      <p className="font-bold text-slate-900 mt-0.5">{getRecipientDisplayName(emailDetail)}</p>
-                      <p className="text-slate-500">{emailDetail.recipientEmail}</p>
+              <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+                {/* Compact Metadata Card */}
+                <div className="px-5 py-3 bg-slate-50/70 border-b border-slate-100 text-xs shrink-0">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Recipient */}
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Recipient (To)
+                      </span>
+                      <p className="font-bold text-slate-900 truncate mt-0.5">
+                        {emailDetail.recipientType === 'client' || emailType === 'client'
+                          ? (emailDetail.recipientName || emailDetail.hiringRequestId?.client || 'Client')
+                          : getRecipientDisplayName(emailDetail)}
+                      </p>
+                      <p className="text-slate-500 text-[11px] truncate">{emailDetail.recipientEmail || '-'}</p>
+                      {emailDetail.candidateId?.candidateName && (
+                        <span className="inline-block text-[10px] text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded mt-1 truncate max-w-full font-medium">
+                          Candidate: {emailDetail.candidateId.candidateName}
+                        </span>
+                      )}
                     </div>
 
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sender Account (From)</p>
-                      <p className="font-bold text-slate-900 mt-0.5">
-                        {emailDetail.fromName || emailDetail.senderName || 'Talent Acquisition Team'}
+                    {/* Sender Account */}
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Sender Account
+                      </span>
+                      <p className="font-bold text-slate-900 font-mono text-[11px] truncate mt-0.5">
+                        {emailDetail.fromAddress || emailDetail.senderEmail || 'System'}
                       </p>
-                      <p className="text-slate-600 font-mono text-[11px] mt-0.5">{emailDetail.fromAddress || emailDetail.senderEmail || 'System'}</p>
                       {(emailDetail.initiatedBy || emailDetail.sentBy) && (
-                        <p className="text-[10.5px] text-slate-400 mt-1">
-                          <strong className="text-slate-500">Initiated by:</strong> {emailDetail.initiatedBy?.name || `${emailDetail.sentBy?.firstName || ''} ${emailDetail.sentBy?.lastName || ''}`.trim()} {emailDetail.initiatedBy?.email || emailDetail.sentBy?.email ? `(${emailDetail.initiatedBy?.email || emailDetail.sentBy?.email})` : ''}
+                        <p className="text-[11px] text-slate-500 truncate mt-1">
+                          Sent by: <span className="font-medium text-slate-700">{emailDetail.initiatedBy?.name || `${emailDetail.sentBy?.firstName || ''} ${emailDetail.sentBy?.lastName || ''}`.trim()}</span>
                         </p>
                       )}
                     </div>
-                  </div>
 
-                  <div className="pt-2 border-t border-slate-200/60 grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Template</p>
-                      <span className={`inline-block mt-0.5 px-2.5 py-0.5 rounded text-[11px] font-bold border ${templateBadgeColor(emailDetail.templateName)}`}>
-                        {emailDetail.templateName || 'General Mail'}
-                      </span>
-                    </div>
-
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Date & Time</p>
-                      <p className="font-semibold text-slate-800 mt-0.5">
-                        {emailDetail.sentAt ? format(new Date(emailDetail.sentAt), 'MMM dd, yyyy hh:mm a') : '-'}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</p>
-                      <span className={`inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge(emailDetail.status)}`}>
-                        {emailDetail.status}
-                      </span>
+                    {/* Meta Status & Info */}
+                    <div className="flex flex-col justify-between">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge(emailDetail.status)}`}>
+                          {emailDetail.status}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border truncate max-w-[150px] ${templateBadgeColor(emailDetail.templateName)}`}>
+                          {emailDetail.templateName || 'General Mail'}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        <span>{emailDetail.sentAt ? format(new Date(emailDetail.sentAt), 'MMM dd, yyyy • hh:mm a') : '-'}</span>
+                        {emailDetail.hiringRequestTitle && (
+                          <p className="text-blue-700 font-bold truncate text-[11px] mt-0.5">
+                            {emailDetail.hiringRequestTitle}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {emailDetail.hiringRequestTitle && (
-                    <div className="pt-2 border-t border-slate-200/60">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Requisition</p>
-                      <p className="font-bold text-blue-700">{emailDetail.hiringRequestTitle}</p>
-                    </div>
-                  )}
-
+                  {/* Optional CC/BCC row */}
                   {(emailDetail.cc || emailDetail.bcc) && (
-                    <div className="pt-2 border-t border-slate-200/60 flex items-center gap-4 text-[11px] text-slate-500">
+                    <div className="mt-2 pt-2 border-t border-slate-200/50 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                       {emailDetail.cc && <span><strong className="text-slate-700">CC:</strong> {emailDetail.cc}</span>}
                       {emailDetail.bcc && <span><strong className="text-slate-700">BCC:</strong> {emailDetail.bcc}</span>}
                     </div>
                   )}
 
+                  {/* Horizontal Scrollable Attachments Bar */}
                   {Array.isArray(emailDetail.attachments) && emailDetail.attachments.length > 0 && (
-                    <div className="pt-2 border-t border-slate-200/60">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-                        <Paperclip size={12} /> Attachments ({emailDetail.attachments.length})
-                      </p>
-                      <div className="flex flex-wrap gap-2">
+                    <div className="mt-2.5 pt-2 border-t border-slate-200/50 flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 shrink-0">
+                        <Paperclip size={12} /> ({emailDetail.attachments.length}):
+                      </span>
+                      <div className="flex items-center gap-2 overflow-x-auto py-0.5 no-scrollbar scroll-smooth">
                         {emailDetail.attachments.map((att, idx) => (
                           <button
                             key={idx}
                             type="button"
                             onClick={() => handleDownloadAttachment(selectedEmailId, idx, att.filename, att.url || att.path)}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 hover:border-blue-400 text-slate-800 rounded-xl text-xs font-semibold shadow-2xs transition-all hover:bg-blue-50/50 hover:text-blue-600 cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 hover:border-blue-400 text-slate-700 hover:text-blue-600 rounded-lg text-[11px] font-semibold shadow-2xs transition-all shrink-0 cursor-pointer"
+                            title={`Download ${att.filename}`}
                           >
-                            <FileText size={14} className="text-blue-500" />
-                            <span className="max-w-[200px] truncate">{att.filename || 'Attachment'}</span>
-                            {att.size > 0 && <span className="text-[10px] text-slate-400">({(att.size / 1024).toFixed(1)} KB)</span>}
-                            <Download size={13} className="text-blue-600 ml-1" />
+                            <FileText size={12} className="text-blue-500" />
+                            <span className="max-w-[150px] truncate">{att.filename || 'Attachment'}</span>
+                            {att.size > 0 && <span className="text-[9.5px] text-slate-400">({(att.size / 1024).toFixed(0)} KB)</span>}
+                            <Download size={11} className="text-blue-600 ml-0.5" />
                           </button>
                         ))}
                       </div>
@@ -895,65 +1020,94 @@ const TAEmailHistory = () => {
                   )}
                 </div>
 
-                {/* Subject Header */}
-                <div className="px-5 py-3 bg-white border-b border-slate-100 flex items-center justify-between">
-                  <h4 className="text-sm font-extrabold text-slate-900">
-                    Subject: <span className="font-semibold text-slate-800">{emailDetail.subject}</span>
-                  </h4>
+                {/* Subject Header & Controls */}
+                <div className="px-5 py-3 bg-white border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                      Subject
+                    </span>
+                    <h4 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                      {emailDetail.subject || '(No Subject)'}
+                    </h4>
+                  </div>
 
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+                      <button
+                        onClick={() => setViewTab('preview')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          viewTab === 'preview' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Rendered HTML
+                      </button>
+                      <button
+                        onClick={() => setViewTab('raw')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          viewTab === 'raw' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Raw Text
+                      </button>
+                    </div>
+
                     <button
-                      onClick={() => setViewTab('preview')}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                        viewTab === 'preview' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                      type="button"
+                      onClick={handleCopyBody}
+                      title="Copy email body"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer"
                     >
-                      Rendered HTML
+                      <Copy size={13} />
+                      <span className="hidden sm:inline">Copy</span>
                     </button>
+
                     <button
-                      onClick={() => setViewTab('raw')}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                        viewTab === 'raw' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                      type="button"
+                      onClick={handleOpenInNewTab}
+                      title="Open full email in new tab"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all cursor-pointer"
                     >
-                      Raw Text
+                      <ExternalLink size={13} />
+                      <span className="hidden sm:inline">New Tab</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Email Body Container */}
-                <div className="p-5 flex-1 overflow-y-auto bg-slate-50">
+                <div className="p-4 sm:p-6 flex-1 overflow-y-auto bg-slate-100/70 min-h-0">
                   {viewTab === 'preview' ? (
-                    <div
-                      className="bg-white p-6 rounded-xl border border-slate-200 text-slate-800 text-xs leading-relaxed max-w-none shadow-2xs overflow-x-auto"
-                      dangerouslySetInnerHTML={{ __html: emailDetail.body || '<p class="text-slate-400">No email body content available.</p>' }}
-                    />
+                    <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/90 shadow-xs min-h-full overflow-x-auto text-slate-800 text-sm leading-relaxed">
+                      <div
+                        className="email-body-content max-w-none text-slate-800 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3.5 [&_th]:bg-slate-900 [&_th]:text-white [&_th]:font-bold [&_th]:p-3 [&_th]:text-left [&_th]:border [&_th]:border-slate-300 [&_td]:p-3 [&_td]:border [&_td]:border-slate-200 [&_td]:text-slate-800 [&_td]:align-top [&_p]:my-2 [&_p]:leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: emailDetail.body || '<p class="text-slate-400 italic">No email body content available.</p>' }}
+                      />
+                    </div>
                   ) : (
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap overflow-x-auto">
+                    <pre className="bg-slate-950 text-slate-100 p-5 rounded-2xl text-xs font-mono whitespace-pre-wrap overflow-x-auto min-h-full border border-slate-800 shadow-inner">
                       {emailDetail.body || 'No raw text content available.'}
                     </pre>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="p-8 text-center text-xs text-slate-500">
+              <div className="p-8 text-center text-xs text-slate-500 flex-1 flex items-center justify-center">
                 Failed to load email details.
               </div>
             )}
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
-              <span className="text-slate-400">
-                Email Log ID: {selectedEmailId}
+            <div className="px-5 py-3.5 bg-white border-t border-slate-100 flex items-center justify-between text-xs shrink-0">
+              <span className="text-slate-400 text-[11px]">
+                TA Email History Record
               </span>
               <div className="flex items-center gap-2">
                 {emailDetail && (
                   <button
                     onClick={() => handleResendEmail(emailDetail)}
                     disabled={resendingId === emailDetail._id}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer text-xs"
                   >
-                    <RotateCw size={14} className={resendingId === emailDetail._id ? 'animate-spin' : ''} />
+                    <RotateCw size={13} className={resendingId === emailDetail._id ? 'animate-spin' : ''} />
                     {resendingId === emailDetail._id ? 'Resending...' : 'Resend Email'}
                   </button>
                 )}
@@ -962,7 +1116,7 @@ const TAEmailHistory = () => {
                     setSelectedEmailId(null);
                     setEmailDetail(null);
                   }}
-                  className="px-4 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-all cursor-pointer"
+                  className="px-4 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-all cursor-pointer text-xs"
                 >
                   Close
                 </button>
