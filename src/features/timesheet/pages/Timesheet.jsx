@@ -1168,6 +1168,56 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         }
     };
 
+    const handleDeleteWorkLog = async (logId) => {
+        if (!isDossierComplete) {
+            setShowDossierModal(true);
+            return;
+        }
+        if (!logId) return;
+        if (!isEditableTimesheetStatus) {
+            toast.error('Submitted timesheets cannot be edited');
+            return;
+        }
+        if (!window.confirm('Are you sure you want to delete this work log?')) {
+            return;
+        }
+
+        try {
+            setIsDeleting(true);
+            await api.delete(`/timesheet/entry/${logId}`);
+            toast.success('Work log deleted');
+
+            if (entryToEdit && entryToEdit._id === logId) {
+                setEntryToEdit(null);
+            }
+
+            // Optimistically update timesheet entries
+            setTimesheet(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    entries: (prev.entries || []).filter(e => e._id !== logId)
+                };
+            });
+
+            // Optimistically update selectedCell logs
+            setSelectedCell(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    logs: (prev.logs || []).filter(l => l._id !== logId)
+                };
+            });
+
+            await refreshTimesheetData(true);
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to delete work log');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     const fetchApprovals = async () => {
         try {
             setLoadingApprovals(true);
@@ -3061,6 +3111,12 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         </div>
                                     )}
 
+                                    {selectedCell.logs.length === 0 && !isAddingEntry && (
+                                        <div className="p-4 text-center text-xs text-slate-400 italic">
+                                            No work logs recorded for this day.
+                                        </div>
+                                    )}
+
                                     {selectedCell.logs.map((log, i) => (
                                         <div key={i} className="p-4 hover:bg-slate-50 transition-colors">
                                             {/* Header Always Visible */}
@@ -3228,28 +3284,44 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex justify-end space-x-2">
-                                                        <Button
-                                                            onClick={() => setEntryToEdit(null)}
+                                                    <div className="flex justify-between items-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteWorkLog(entryToEdit._id)}
                                                             disabled={isSaving || isDeleting}
-                                                            variant="secondary"
-                                                            className="px-3 py-1 text-xs font-medium"
+                                                            className="px-3 py-1.5 text-red-600 hover:text-red-700 font-medium text-xs bg-white border border-red-200 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center hover:bg-red-50 transition-colors cursor-pointer"
                                                         >
-                                                            Cancel
-                                                        </Button>
-                                                        <Button
-                                                            onClick={submitEdit}
-                                                            disabled={isSaving || isDeleting}
-                                                            className="px-3 py-1 text-xs font-bold flex items-center justify-center space-x-1"
-                                                        >
-                                                            {isSaving && (
-                                                                <svg className="animate-spin h-3 w-3 text-white mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            {isDeleting && (
+                                                                <svg className="animate-spin h-3 w-3 mr-1 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                                                 </svg>
                                                             )}
-                                                            <span>Save</span>
-                                                        </Button>
+                                                            <Trash2 size={12} className="mr-1" /> Delete
+                                                        </button>
+                                                        <div className="flex space-x-2">
+                                                            <Button
+                                                                onClick={() => setEntryToEdit(null)}
+                                                                disabled={isSaving || isDeleting}
+                                                                variant="secondary"
+                                                                className="px-3 py-1 text-xs font-medium"
+                                                            >
+                                                                Cancel
+                                                            </Button>
+                                                            <Button
+                                                                onClick={submitEdit}
+                                                                disabled={isSaving || isDeleting}
+                                                                className="px-3 py-1 text-xs font-bold flex items-center justify-center space-x-1"
+                                                            >
+                                                                {isSaving && (
+                                                                    <svg className="animate-spin h-3 w-3 text-white mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                    </svg>
+                                                                )}
+                                                                <span>Save</span>
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -3267,12 +3339,23 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                 {log.hours}h
                                                             </span>
                                                             {(isEditableTimesheetStatus && (!targetUserId || canUpdateTimesheet)) && (
-                                                                <button
-                                                                    onClick={() => { handleEditClick(log); }}
-                                                                    className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
-                                                                >
-                                                                    Edit
-                                                                </button>
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => { handleEditClick(log); }}
+                                                                        disabled={isSaving || isDeleting}
+                                                                        className="text-xs text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer disabled:opacity-50"
+                                                                    >
+                                                                        Edit
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDeleteWorkLog(log._id)}
+                                                                        disabled={isSaving || isDeleting}
+                                                                        className="text-xs text-red-600 hover:text-red-800 underline font-medium cursor-pointer disabled:opacity-50 flex items-center gap-0.5"
+                                                                        title="Delete work log"
+                                                                    >
+                                                                        <Trash2 size={11} className="inline" /> Delete
+                                                                    </button>
+                                                                </>
                                                             )}
                                                         </div>
                                                     </div>

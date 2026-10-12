@@ -37,6 +37,7 @@ import {
   PhoneCall,
   MoreVertical,
   Menu,
+  Users,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -733,12 +734,76 @@ export const ImportDataPage = ({ onNavigate }) => {
           return;
         }
 
-        // 1. Intra-sheet duplicate detection by companyName, mobileNo, emailId
-        const seenCompanies = new Set();
-        const seenPhones = new Set();
-        const seenEmails = new Set();
+        // 1. Consolidate rows by Company Name within the uploaded sheet
+        // If company name is identical, combine contact person details into one single entry for that company
+        const consolidatedRows = [];
+        const compIndexMap = new Map();
 
-        const initialEnrichedRows = validRows.map((row) => {
+        validRows.forEach((r) => {
+          const compKey = (r.companyName || '').trim().toLowerCase();
+          const contactObj = {
+            contactPerson: (r.contactPerson || '').trim(),
+            designation: (r.designation || '').trim(),
+            mobileNo: (r.mobileNo || '').trim(),
+            emailId: (r.emailId || '').trim(),
+            isPrimary: false,
+          };
+          const hasContact = Boolean(contactObj.contactPerson || contactObj.mobileNo || contactObj.emailId);
+
+          if (compKey) {
+            if (compIndexMap.has(compKey)) {
+              // Same company in this sheet: append contact details to that company entry
+              const existingCompEntry = consolidatedRows[compIndexMap.get(compKey)];
+              if (hasContact) {
+                const rPhone = normalizePhone(contactObj.mobileNo);
+                const rEmail = (contactObj.emailId || '').toLowerCase();
+                const rName = (contactObj.contactPerson || '').toLowerCase();
+
+                const isContactAlreadyPresent = (existingCompEntry.contacts || []).some((c) => {
+                  const cPhone = normalizePhone(c.mobileNo);
+                  const cEmail = (c.emailId || '').toLowerCase();
+                  const cName = (c.contactPerson || '').toLowerCase();
+                  if (rPhone && cPhone && rPhone === cPhone) return true;
+                  if (rEmail && cEmail && rEmail === cEmail) return true;
+                  if (rName && cName && rName === cName && (!rPhone || !cPhone)) return true;
+                  return false;
+                });
+
+                if (!isContactAlreadyPresent) {
+                  existingCompEntry.contacts.push(contactObj);
+                }
+              }
+
+              // Supplement any empty company metadata from subsequent row
+              if (!existingCompEntry.industry && r.industry) existingCompEntry.industry = r.industry;
+              if (!existingCompEntry.address && r.address) existingCompEntry.address = r.address;
+              if (!existingCompEntry.rating && r.rating) existingCompEntry.rating = r.rating;
+              if (!existingCompEntry.remarks && r.remarks) existingCompEntry.remarks = r.remarks;
+            } else {
+              // First occurrence of this company in the uploaded sheet
+              const initialContacts = hasContact ? [{ ...contactObj, isPrimary: true }] : [];
+              const entry = {
+                ...r,
+                contacts: initialContacts,
+              };
+              compIndexMap.set(compKey, consolidatedRows.length);
+              consolidatedRows.push(entry);
+            }
+          } else {
+            // Row has no company name (individual prospect)
+            const initialContacts = hasContact ? [{ ...contactObj, isPrimary: true }] : [];
+            consolidatedRows.push({
+              ...r,
+              contacts: initialContacts,
+            });
+          }
+        });
+
+        // 2. Intra-sheet duplicate detection for standalone rows (rows without company name)
+        const seenStandalonePhones = new Set();
+        const seenStandaloneEmails = new Set();
+
+        const initialEnrichedRows = consolidatedRows.map((row) => {
           const comp = row.companyName ? row.companyName.toLowerCase() : '';
           const phone = row.mobileNo ? normalizePhone(row.mobileNo) : '';
           const email = row.emailId ? row.emailId.toLowerCase() : '';
@@ -746,22 +811,19 @@ export const ImportDataPage = ({ onNavigate }) => {
           let isSheetDup = false;
           const reasons = [];
 
-          if (comp && seenCompanies.has(comp)) {
-            isSheetDup = true;
-            reasons.push('Duplicate Company in sheet');
-          }
-          if (phone && seenPhones.has(phone)) {
-            isSheetDup = true;
-            reasons.push('Duplicate Mobile in sheet');
-          }
-          if (email && seenEmails.has(email)) {
-            isSheetDup = true;
-            reasons.push('Duplicate Email in sheet');
+          if (!comp) {
+            if (phone && seenStandalonePhones.has(phone)) {
+              isSheetDup = true;
+              reasons.push('Duplicate Mobile in sheet');
+            }
+            if (email && seenStandaloneEmails.has(email)) {
+              isSheetDup = true;
+              reasons.push('Duplicate Email in sheet');
+            }
           }
 
-          if (comp) seenCompanies.add(comp);
-          if (phone) seenPhones.add(phone);
-          if (email) seenEmails.add(email);
+          if (phone) seenStandalonePhones.add(phone);
+          if (email) seenStandaloneEmails.add(email);
 
           return {
             ...row,
@@ -770,7 +832,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           };
         });
 
-        // 2. Build index of existing workspace records
+        // 3. Build index of existing workspace records
         const existingCompMap = new Map();
         const existingPhoneMap = new Map();
         const existingEmailMap = new Map();
@@ -784,10 +846,10 @@ export const ImportDataPage = ({ onNavigate }) => {
           if (email && !existingEmailMap.has(email)) existingEmailMap.set(email, r);
         });
 
-        // 3. Check against existing CRM leads database in batch & classify rows
+        // 4. Check against existing CRM leads database in batch & classify rows
         let finalRows = initialEnrichedRows;
         try {
-          const dupRes = await leadsService.checkDuplicatesBatch(validRows);
+          const dupRes = await leadsService.checkDuplicatesBatch(consolidatedRows);
           const crmResultMap = (dupRes?.success && Array.isArray(dupRes.results))
             ? new Map(dupRes.results.map((r) => [r.id, r]))
             : new Map();
@@ -822,9 +884,41 @@ export const ImportDataPage = ({ onNavigate }) => {
             if (inCrm || matchedWorkspaceRec) {
               const leadId = crmRes?.leadId || matchedWorkspaceRec?.leadId || null;
               const isConverted = inCrm || Boolean(matchedWorkspaceRec?.isConvertedToLead);
-              const updateReason = inCrm
-                ? 'Matches existing Lead in CRM'
-                : 'Matches existing record in workspace';
+
+              // Check if incoming upload brings a new contact person for this existing company
+              let hasNewContact = false;
+              if (matchedWorkspaceRec) {
+                const exContacts = Array.isArray(matchedWorkspaceRec.contacts) && matchedWorkspaceRec.contacts.length > 0
+                  ? matchedWorkspaceRec.contacts
+                  : ((matchedWorkspaceRec.contactPerson || matchedWorkspaceRec.mobileNo || matchedWorkspaceRec.emailId)
+                    ? [{
+                        contactPerson: matchedWorkspaceRec.contactPerson || '',
+                        designation: matchedWorkspaceRec.designation || '',
+                        mobileNo: matchedWorkspaceRec.mobileNo || '',
+                        emailId: matchedWorkspaceRec.emailId || '',
+                      }]
+                    : []);
+
+                hasNewContact = (row.contacts || []).some((newC) => {
+                  const nPhone = normalizePhone(newC.mobileNo);
+                  const nEmail = (newC.emailId || '').toLowerCase();
+                  const nName = (newC.contactPerson || '').toLowerCase();
+                  return !exContacts.some((oldC) => {
+                    const oPhone = normalizePhone(oldC.mobileNo);
+                    const oEmail = (oldC.emailId || '').toLowerCase();
+                    const oName = (oldC.contactPerson || '').toLowerCase();
+                    return (nPhone && oPhone && nPhone === oPhone) ||
+                           (nEmail && oEmail && nEmail === oEmail) ||
+                           (nName && oName && nName === oName);
+                  });
+                });
+              }
+
+              const updateReason = hasNewContact
+                ? 'Adds new contact person to existing company'
+                : inCrm
+                  ? 'Matches existing Lead in CRM'
+                  : 'Matches existing record in workspace';
 
               return {
                 ...row,
@@ -877,6 +971,23 @@ export const ImportDataPage = ({ onNavigate }) => {
               (email && existingEmailMap.get(email)) ||
               null;
             if (matchedWorkspaceRec) {
+              const exContacts = Array.isArray(matchedWorkspaceRec.contacts) && matchedWorkspaceRec.contacts.length > 0
+                ? matchedWorkspaceRec.contacts
+                : [];
+              const hasNewContact = (row.contacts || []).some((newC) => {
+                const nPhone = normalizePhone(newC.mobileNo);
+                const nEmail = (newC.emailId || '').toLowerCase();
+                const nName = (newC.contactPerson || '').toLowerCase();
+                return !exContacts.some((oldC) => {
+                  const oPhone = normalizePhone(oldC.mobileNo);
+                  const oEmail = (oldC.emailId || '').toLowerCase();
+                  const oName = (oldC.contactPerson || '').toLowerCase();
+                  return (nPhone && oPhone && nPhone === oPhone) ||
+                         (nEmail && oEmail && nEmail === oEmail) ||
+                         (nName && oName && nName === oName);
+                });
+              });
+
               return {
                 ...row,
                 rowType: 'update',
@@ -886,7 +997,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                 isConvertedToLead: Boolean(matchedWorkspaceRec.isConvertedToLead),
                 leadId: matchedWorkspaceRec.leadId || null,
                 existingRecordId: matchedWorkspaceRec.id || null,
-                updateReason: 'Matches existing record in workspace',
+                updateReason: hasNewContact
+                  ? 'Adds new contact person to existing company'
+                  : 'Matches existing record in workspace',
               };
             }
             return {
@@ -988,16 +1101,68 @@ export const ImportDataPage = ({ onNavigate }) => {
           const newSource = uRow.source || uRow.leadSource || ex.source || ex.leadSource || '';
           const isConverted = newStatus.toLowerCase().includes('converted') || Boolean(uRow.isConvertedToLead || ex.isConvertedToLead);
 
+          // Consolidate & deduplicate contacts between existing record and incoming update
+          const existingContacts = Array.isArray(ex.contacts) && ex.contacts.length > 0
+            ? [...ex.contacts]
+            : ((ex.contactPerson || ex.mobileNo || ex.emailId)
+              ? [{
+                  contactPerson: ex.contactPerson || '',
+                  designation: ex.designation || '',
+                  mobileNo: ex.mobileNo || '',
+                  emailId: ex.emailId || '',
+                  isPrimary: true,
+                }]
+              : []);
+
+          const incomingContacts = Array.isArray(uRow.contacts) && uRow.contacts.length > 0
+            ? uRow.contacts
+            : ((uRow.contactPerson || uRow.mobileNo || uRow.emailId)
+              ? [{
+                  contactPerson: uRow.contactPerson || '',
+                  designation: uRow.designation || '',
+                  mobileNo: uRow.mobileNo || '',
+                  emailId: uRow.emailId || '',
+                  isPrimary: false,
+                }]
+              : []);
+
+          const mergedContacts = [...existingContacts];
+          incomingContacts.forEach((ic) => {
+            const icPhone = normalizePhone(ic.mobileNo);
+            const icEmail = (ic.emailId || '').trim().toLowerCase();
+            const icName = (ic.contactPerson || '').trim().toLowerCase();
+
+            const isDuplicateContact = mergedContacts.some((ec) => {
+              const ecPhone = normalizePhone(ec.mobileNo);
+              const ecEmail = (ec.emailId || '').trim().toLowerCase();
+              const ecName = (ec.contactPerson || '').trim().toLowerCase();
+              if (icPhone && ecPhone && icPhone === ecPhone) return true;
+              if (icEmail && ecEmail && icEmail === ecEmail) return true;
+              if (icName && ecName && icName === ecName && (!icPhone || !ecPhone)) return true;
+              return false;
+            });
+
+            if (!isDuplicateContact) {
+              mergedContacts.push({
+                ...ic,
+                isPrimary: mergedContacts.length === 0,
+              });
+            }
+          });
+
+          const primaryContact = mergedContacts.find((c) => c.isPrimary) || mergedContacts[0] || null;
+
           updatedList[matchIdx] = {
             ...ex,
             companyName: uRow.companyName || ex.companyName,
             industry: uRow.industry || ex.industry,
             address: uRow.address || ex.address,
             rating: uRow.rating || ex.rating,
-            contactPerson: uRow.contactPerson || ex.contactPerson,
-            designation: uRow.designation || ex.designation,
-            mobileNo: uRow.mobileNo || ex.mobileNo,
-            emailId: uRow.emailId || ex.emailId,
+            contactPerson: ex.contactPerson || primaryContact?.contactPerson || uRow.contactPerson || '',
+            designation: ex.designation || primaryContact?.designation || uRow.designation || '',
+            mobileNo: ex.mobileNo || primaryContact?.mobileNo || uRow.mobileNo || '',
+            emailId: ex.emailId || primaryContact?.emailId || uRow.emailId || '',
+            contacts: mergedContacts,
             remarks: uRow.remarks || ex.remarks,
             status: newStatus,
             leadStatus: newStatus,
@@ -1013,6 +1178,17 @@ export const ImportDataPage = ({ onNavigate }) => {
         } else {
           unshiftedUpdates.push({
             ...uRow,
+            contacts: Array.isArray(uRow.contacts) && uRow.contacts.length > 0
+              ? uRow.contacts
+              : ((uRow.contactPerson || uRow.mobileNo || uRow.emailId)
+                ? [{
+                    contactPerson: uRow.contactPerson || '',
+                    designation: uRow.designation || '',
+                    mobileNo: uRow.mobileNo || '',
+                    emailId: uRow.emailId || '',
+                    isPrimary: true,
+                  }]
+                : []),
             status: uRow.status || uRow.leadStatus || 'New',
             leadStatus: uRow.status || uRow.leadStatus || 'New',
             source: uRow.source || uRow.leadSource || '',
@@ -1027,6 +1203,17 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       const newRowsWithUser = newRows.map((r) => ({
         ...r,
+        contacts: Array.isArray(r.contacts) && r.contacts.length > 0
+          ? r.contacts
+          : ((r.contactPerson || r.mobileNo || r.emailId)
+            ? [{
+                contactPerson: r.contactPerson || '',
+                designation: r.designation || '',
+                mobileNo: r.mobileNo || '',
+                emailId: r.emailId || '',
+                isPrimary: true,
+              }]
+            : []),
         status: r.status || r.leadStatus || 'New',
         leadStatus: r.status || r.leadStatus || 'New',
         source: r.source || r.leadSource || '',
@@ -1298,35 +1485,55 @@ export const ImportDataPage = ({ onNavigate }) => {
         };
       });
 
-      // ── Add Data Rows ──────────────────────────────────────────────────
-      rowsToExport.forEach((row, index) => {
-        const rowData = {
-          sNo: index + 1,
-          companyName: row.companyName || '',
-          industry: row.industry || '',
-          address: row.address || '',
-          rating: row.rating || '',
-          contactPerson: row.contactPerson || '',
-          designation: row.designation || '',
-          mobileNo: row.mobileNo || '',
-          emailId: row.emailId || '',
-          remarks: row.remarks || '',
-          date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
-          status: row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New'),
-          source: row.leadSource || row.source || '',
-          importedBy: row.importedBy || '',
-        };
+      // ── Add Data Rows (multi-contact expansion) ─────────────────────────
+      let exportedRowCount = 0;
+      rowsToExport.forEach((row) => {
+        const rowContacts = Array.isArray(row.contacts) && row.contacts.length > 0
+          ? row.contacts
+          : ((row.contactPerson || row.mobileNo || row.emailId)
+            ? [{
+                contactPerson: row.contactPerson || '',
+                designation: row.designation || '',
+                mobileNo: row.mobileNo || '',
+                emailId: row.emailId || '',
+              }]
+            : [{
+                contactPerson: '',
+                designation: '',
+                mobileNo: '',
+                emailId: '',
+              }]);
 
-        const addedRow = worksheet.addRow(rowData);
-        addedRow.height = 22;
-        addedRow.alignment = { vertical: 'middle' };
-        addedRow.eachCell((cell) => {
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        rowContacts.forEach((contact) => {
+          exportedRowCount++;
+          const rowData = {
+            sNo: exportedRowCount,
+            companyName: row.companyName || '',
+            industry: row.industry || '',
+            address: row.address || '',
+            rating: row.rating || '',
+            contactPerson: contact.contactPerson || '',
+            designation: contact.designation || '',
+            mobileNo: contact.mobileNo || '',
+            emailId: contact.emailId || '',
+            remarks: row.remarks || '',
+            date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
+            status: row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New'),
+            source: row.leadSource || row.source || '',
+            importedBy: row.importedBy || '',
           };
+
+          const addedRow = worksheet.addRow(rowData);
+          addedRow.height = 22;
+          addedRow.alignment = { vertical: 'middle' };
+          addedRow.eachCell((cell) => {
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            };
+          });
         });
       });
 
@@ -1337,7 +1544,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         'Converted to Lead', 'Lost', 'Other',
       ];
       const exportStatusFormula = `"${exportStatusOptions.join(',')}"`;
-      for (let r = 2; r <= rowsToExport.length + 1; r++) {
+      for (let r = 2; r <= exportedRowCount + 1; r++) {
         worksheet.getCell(`L${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
@@ -1369,7 +1576,11 @@ export const ImportDataPage = ({ onNavigate }) => {
             dateFilter === '5days' ? 'Last 5 Days' :
               dateFilter === 'custom' ? 'Custom range' :
                 'All';
-      toast.success(`Exported ${rowsToExport.length} record${rowsToExport.length === 1 ? '' : 's'} (Filter: ${filterLabel}).`);
+      toast.success(
+        exportedRowCount === rowsToExport.length
+          ? `Exported ${exportedRowCount} record${exportedRowCount === 1 ? '' : 's'} (Filter: ${filterLabel}).`
+          : `Exported ${exportedRowCount} rows across ${rowsToExport.length} companies (Filter: ${filterLabel}).`
+      );
     } catch (err) {
       console.error('Export error:', err);
       toast.error('Failed to export database records. Please try again.');
@@ -2552,6 +2763,16 @@ export const ImportDataPage = ({ onNavigate }) => {
                                       New
                                     </span>
                                   )}
+
+                                  {row.contacts && row.contacts.length > 1 && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 ml-1 shrink-0"
+                                      title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
+                                    >
+                                      <Users className="w-3 h-3 text-violet-600" />
+                                      {row.contacts.length} Contacts
+                                    </span>
+                                  )}
                                 </div>
 
                                 {row.rowType === 'duplicate' && row.duplicateReason && (
@@ -2568,7 +2789,16 @@ export const ImportDataPage = ({ onNavigate }) => {
                               <td className="p-2.5 text-slate-700 whitespace-nowrap">{row.industry || '—'}</td>
                               <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
                               <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
-                              <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">{row.contactPerson || '—'}</td>
+                              <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{row.contactPerson || '—'}</span>
+                                  {row.contacts && row.contacts.length > 1 && (
+                                    <span className="text-[10px] font-normal text-violet-600 bg-violet-50 px-1 rounded border border-violet-100">
+                                      +{row.contacts.length - 1} more
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="p-2.5 text-slate-600 whitespace-nowrap">{row.designation || '—'}</td>
                               <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.mobileNo || '—'}</td>
                               <td className="p-2.5 text-slate-700 whitespace-nowrap font-mono">{row.emailId || '—'}</td>
@@ -3538,11 +3768,22 @@ export const ImportDataPage = ({ onNavigate }) => {
                                 {startEntry + idx}
                               </td>
                               <td className="p-3 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                  <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
-                                  <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                                    {row.companyName || '—'}
-                                  </span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="flex items-center gap-1.5">
+                                    <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+                                    <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                      {row.companyName || '—'}
+                                    </span>
+                                  </div>
+                                  {row.contacts && row.contacts.length > 1 && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200"
+                                      title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
+                                    >
+                                      <Users className="w-3 h-3 text-violet-600" />
+                                      {row.contacts.length} Contacts
+                                    </span>
+                                  )}
                                 </div>
                               </td>
                               <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
