@@ -30,6 +30,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
@@ -1230,53 +1231,134 @@ export const ImportDataDetailPage = ({
           <div className="space-y-6">
             {/* Primary Contact Person Card */}
             <Card padding="lg" className="space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                <User className="w-4 h-4 text-indigo-600" />
-                <h3 className="text-sm font-bold text-slate-900">Key Contact Details</h3>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Key Contact Details {record?.contacts && record.contacts.length > 1 ? `(${record.contacts.length})` : ''}
+                  </h3>
+                </div>
+                {record?.contacts && record.contacts.length > 1 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">
+                    <Users className="w-3 h-3 text-violet-600" />
+                    <span>Multiple Contacts</span>
+                  </span>
+                )}
               </div>
 
-              <div className="space-y-3 text-xs">
-                <div>
-                  <span className="text-slate-400 block font-medium">Contact Person</span>
-                  <p className="font-bold text-slate-900 text-sm">{record?.contactPerson || 'Not specified'}</p>
+              {record?.contacts && record.contacts.length > 0 ? (
+                <div className="space-y-4 divide-y divide-slate-100">
+                  {record.contacts.map((c, cIdx) => (
+                    <div key={cIdx} className={`space-y-2.5 text-xs ${cIdx > 0 ? 'pt-3.5' : ''}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-slate-400 block font-medium">Contact Person</span>
+                          <p className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                            <span>{c.contactPerson || 'Not specified'}</span>
+                            {c.isPrimary && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                Primary
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        {c.designation && (
+                          <div className="text-right">
+                            <span className="text-slate-400 block font-medium">Designation / Role</span>
+                            <p className="font-semibold text-slate-700">{c.designation}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {c.mobileNo && (
+                        <div>
+                          <span className="text-slate-400 block font-medium">Mobile Number</span>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="font-mono font-bold text-slate-800">{c.mobileNo}</span>
+                            <div className="flex items-center gap-1">
+                              <a
+                                href={`tel:${c.mobileNo.replace(/[^0-9+]/g, '')}`}
+                                className="p-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                                title="Call"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+                              <a
+                                href={`https://wa.me/${c.mobileNo.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1 rounded bg-teal-50 text-teal-700 hover:bg-teal-100 transition"
+                                title="WhatsApp"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {c.emailId && (
+                        <div>
+                          <span className="text-slate-400 block font-medium">Email Address</span>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-slate-700 font-medium truncate max-w-[180px]">{c.emailId}</span>
+                            <a
+                              href={`mailto:${c.emailId}`}
+                              className="p-1 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 transition"
+                              title="Email"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Designation / Role</span>
-                  <p className="font-semibold text-slate-700">{record?.designation || 'Decision Maker'}</p>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Mobile Number</span>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span className="font-mono font-bold text-slate-800">{record?.mobileNo || '—'}</span>
-                    {record?.mobileNo && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenOutreach('call')}
-                        className="p-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
-                        title="Call"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+              ) : (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 block font-medium">Contact Person</span>
+                    <p className="font-bold text-slate-900 text-sm">{record?.contactPerson || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">Designation / Role</span>
+                    <p className="font-semibold text-slate-700">{record?.designation || 'Decision Maker'}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">Mobile Number</span>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="font-mono font-bold text-slate-800">{record?.mobileNo || '—'}</span>
+                      {record?.mobileNo && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenOutreach('call')}
+                          className="p-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
+                          title="Call"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">Email Address</span>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="text-slate-700 font-medium truncate max-w-[180px]">{record?.emailId || record?.email || '—'}</span>
+                      {(record?.emailId || record?.email) && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenOutreach('email')}
+                          className="p-1 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 transition cursor-pointer"
+                          title="Email"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Email Address</span>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span className="text-slate-700 font-medium truncate max-w-[180px]">{record?.emailId || record?.email || '—'}</span>
-                    {(record?.emailId || record?.email) && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenOutreach('email')}
-                        className="p-1 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 transition cursor-pointer"
-                        title="Email"
-                      >
-                        <Mail className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
+              )}
             </Card>
 
             {/* Quick Outreach Status Card */}
