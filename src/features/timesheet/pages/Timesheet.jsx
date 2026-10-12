@@ -178,6 +178,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
     const [approvedLeaves, setApprovedLeaves] = useState([]);
     const [usersList, setUsersList] = useState([]); // List of users for dropdown
     const [weeklyOffs, setWeeklyOffs] = useState(['Sunday']);
+    const [customFlexibleOffDays, setCustomFlexibleOffDays] = useState([]);
     const [viewDiscussionModal, setViewDiscussionModal] = useState(null);
 
     // Searchable User Picker state
@@ -473,6 +474,41 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         handleEditClick(item.source);
     };
 
+    const effectiveFlexibleOffDays = useMemo(() => {
+        if (Array.isArray(customFlexibleOffDays) && customFlexibleOffDays.length > 0) {
+            return customFlexibleOffDays;
+        }
+        if (Array.isArray(viewUser?.customFlexibleOffDays) && viewUser.customFlexibleOffDays.length > 0) {
+            return viewUser.customFlexibleOffDays;
+        }
+        if (Array.isArray(user?.customFlexibleOffDays) && user.customFlexibleOffDays.length > 0) {
+            return user.customFlexibleOffDays;
+        }
+        return [];
+    }, [customFlexibleOffDays, viewUser?.customFlexibleOffDays, user?.customFlexibleOffDays]);
+
+    const isFlexibleOffDate = useCallback((day) => {
+        if (!effectiveFlexibleOffDays || effectiveFlexibleOffDays.length === 0) return false;
+        const dateKey = format(new Date(day), 'yyyy-MM-dd');
+        const dayName = format(new Date(day), 'EEEE').toLowerCase();
+
+        return effectiveFlexibleOffDays.some(item => {
+            if (!item) return false;
+            const rawVal = typeof item === 'object' && item?.date ? item.date : item;
+            const strVal = String(rawVal).trim().toLowerCase();
+            if (strVal === dayName) return true;
+            if (strVal === dateKey.toLowerCase()) return true;
+            try {
+                if (strVal.includes('-') && format(new Date(strVal), 'yyyy-MM-dd') === dateKey) {
+                    return true;
+                }
+            } catch {
+                // Ignore parse errors
+            }
+            return false;
+        });
+    }, [effectiveFlexibleOffDays]);
+
     const getLeaveForDate = (day) => {
         const targetTime = startOfDay(new Date(day)).getTime();
         return approvedLeaves.find((leave) => {
@@ -492,14 +528,22 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
     const getDayContext = (day) => {
         const dateKey = format(new Date(day), 'yyyy-MM-dd');
-        const holiday = holidays.find((item) => format(new Date(item.date), 'yyyy-MM-dd') === dateKey) || null;
+        const holiday = holidays.find((item) => {
+            try {
+                return format(new Date(item.date), 'yyyy-MM-dd') === dateKey;
+            } catch {
+                return false;
+            }
+        }) || null;
         const leave = getLeaveForDate(day);
-        const isWeeklyOff = weeklyOffs.includes(format(new Date(day), 'EEEE'));
-        return { holiday, leave, isWeeklyOff };
+        const dayName = format(new Date(day), 'EEEE');
+        const isWeeklyOff = (weeklyOffs || []).some(woff => String(woff).trim().toLowerCase() === dayName.toLowerCase());
+        const isFlexibleOff = isFlexibleOffDate(day);
+        return { holiday, leave, isWeeklyOff, isFlexibleOff };
     };
 
     const getDayStatusDetails = (day, record = null) => {
-        const { holiday, leave, isWeeklyOff } = getDayContext(day);
+        const { holiday, leave, isWeeklyOff, isFlexibleOff } = getDayContext(day);
 
         if (day > new Date()) {
             return {
@@ -512,9 +556,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
         if (holiday) {
             return {
-                label: holiday.name,
+                label: holiday.name ? `Holiday (${holiday.name})` : 'Holiday',
                 chipClass: holiday.isOptional ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700',
-                rowColor: 'FFD1F2EB',
+                rowColor: holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB',
                 shortLabel: 'HOL'
             };
         }
@@ -533,17 +577,26 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             return {
                 label: attendanceMeta.label,
                 chipClass: attendanceMeta.chipClass,
-                rowColor: 'FFEBF1DE',
+                rowColor: attendanceMeta.label === 'Incomplete' ? 'FFFEF3C7' : 'FFEBF1DE',
                 shortLabel: 'PRS'
             };
         }
 
         if (isWeeklyOff) {
             return {
-                label: 'Weekoff',
+                label: 'Week Off',
                 chipClass: 'bg-slate-100 text-slate-500',
                 rowColor: 'FFF2F2F2',
                 shortLabel: 'WO'
+            };
+        }
+
+        if (isFlexibleOff) {
+            return {
+                label: 'Flexible Off',
+                chipClass: 'bg-violet-100 text-violet-700',
+                rowColor: 'FFEDE9FE',
+                shortLabel: 'FO'
             };
         }
 
@@ -591,7 +644,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 const rowColor = dayStatus.rowColor;
 
                 const row = sheet.addRow([
-                    format(day, 'dd-MMM-yyyy'),
+                    format(day, 'dd-MM-yyyy'),
                     dayName,
                     status,
                     log ? getAttendanceTimeDisplay(log, 'clockIn') : '-',
@@ -1254,8 +1307,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                 leave => `${leave._id || `${leave.startDate}-${leave.endDate}`}:${leave.leaveType}:${leave.startDate}:${leave.endDate}:${leave.isHalfDay ? '1' : '0'}`
             ).join('|');
             const weeklyOffPart = (payload.weeklyOff || []).join('|');
+            const flexOffPart = (payload.customFlexibleOffDays || payload.timesheet?.userDetails?.customFlexibleOffDays || payload.timesheet?.user?.customFlexibleOffDays || []).join('|');
             const projectPart = (payload.projects || []).map(p => `${p._id}:${p.name}`).join('|');
-            return `${tsPart}#${logPart}#${holidayPart}#${leavePart}#${weeklyOffPart}#${projectPart}`;
+            return `${tsPart}#${logPart}#${holidayPart}#${leavePart}#${weeklyOffPart}#${flexOffPart}#${projectPart}`;
         };
 
         const applyData = (data) => {
@@ -1272,6 +1326,13 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
             if (payload.holidays) setHolidays(payload.holidays);
             if (payload.approvedLeaves) setApprovedLeaves(payload.approvedLeaves);
             if (payload.weeklyOff) setWeeklyOffs(payload.weeklyOff);
+            if (payload.customFlexibleOffDays) {
+                setCustomFlexibleOffDays(payload.customFlexibleOffDays);
+            } else if (payload.timesheet?.userDetails?.customFlexibleOffDays) {
+                setCustomFlexibleOffDays(payload.timesheet.userDetails.customFlexibleOffDays);
+            } else if (payload.timesheet?.user?.customFlexibleOffDays) {
+                setCustomFlexibleOffDays(payload.timesheet.user.customFlexibleOffDays);
+            }
             if (payload.usersList) setUsersList(payload.usersList);
         };
 
@@ -1805,10 +1866,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
 
                     task.logs.forEach(log => {
                         // Level 3: Work Log
+                        const logDate = log.date ? new Date(log.date) : null;
                         const lRow = wsLogs.addRow({
                             name: `      ${log.description || '(No Description)'}`,
                             status: log.status || 'Draft',
-                            date: format(new Date(log.date), 'yyyy-MM-dd'),
+                            date: logDate ? format(logDate, 'dd-MM-yyyy') : '-',
                             hours: log.hours,
                             start: log.startTime || '-',
                             end: log.endTime || '-',
@@ -1828,41 +1890,118 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
         });
 
         // Auto-Filter
-        wsLogs.autoFilter = { from: 'A1', to: { row: 1, column: 7 } };
+        wsLogs.autoFilter = { from: 'A5', to: { row: 5, column: 7 } };
 
 
-        // --- SHEET 2: ATTENDANCE (Same as before) ---
+        // --- SHEET 2: ATTENDANCE ---
         const wsAtt = workbook.addWorksheet('Attendance');
         wsAtt.columns = [
-            { header: 'Date', key: 'date', width: 15 },
-            { header: 'Check In', key: 'in', width: 15 },
-            { header: 'Check Out', key: 'out', width: 15 },
-            { header: 'Duration (Hrs)', key: 'duration', width: 15 },
-            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Date', key: 'date', width: 16 },
+            { header: 'Day', key: 'day', width: 16 },
+            { header: 'Status', key: 'status', width: 28 },
+            { header: 'Check In', key: 'in', width: 16 },
+            { header: 'Check Out', key: 'out', width: 16 },
+            { header: 'Duration (Hrs)', key: 'duration', width: 16 },
         ];
 
         const attHeader = wsAtt.getRow(1);
-        attHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        attHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF228B22' } }; // Green
+        attHeader.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+        attHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F497D' } };
         attHeader.alignment = { vertical: 'middle', horizontal: 'center' };
+        attHeader.height = 24;
 
-        attendanceLogs.forEach(log => {
-            const inTime = log.clockIn ? new Date(log.clockIn) : null;
-            const outTime = log.clockOut ? new Date(log.clockOut) : null;
-            const durationHours = getAttendanceHoursValue(log);
-
-            wsAtt.addRow({
-                date: format(new Date(log.date), 'yyyy-MM-dd'),
-                in: isPresentOnlyAttendance(log) ? 'Present' : (inTime ? format(inTime, 'HH:mm:ss') : '-'),
-                out: isPresentOnlyAttendance(log) ? 'Present' : (outTime ? format(outTime, 'HH:mm:ss') : '-'),
-                duration: isPresentOnlyAttendance(log) ? 'Present' : (durationHours > 0 ? durationHours.toFixed(2) : '-'),
-                status: isPresentOnlyAttendance(log) ? 'Present Only' : ((inTime && outTime) ? 'Present' : 'Incomplete')
+        visibleDays.forEach(day => {
+            const dateKey = format(day, 'yyyy-MM-dd');
+            const log = attendanceLogs.find(l => {
+                try {
+                    return format(new Date(l.date), 'yyyy-MM-dd') === dateKey;
+                } catch {
+                    return false;
+                }
             });
+            const dayName = format(day, 'EEEE');
+            const { holiday, leave, isWeeklyOff, isFlexibleOff } = getDayContext(day);
+
+            const joiningDate = u?.joiningDate ? startOfDay(new Date(u.joiningDate)) : null;
+            const isBeforeJoining = joiningDate && day < joiningDate;
+            const isFuture = day > new Date();
+
+            let status = 'Absent';
+            let rowColor = 'FFF2DCDB'; // Soft light red
+            let inDisplay = '-';
+            let outDisplay = '-';
+            let durationDisplay = '-';
+
+            const inTime = log?.clockIn ? new Date(log.clockIn) : null;
+            const outTime = log?.clockOut ? new Date(log.clockOut) : null;
+            const durationHours = log ? getAttendanceHoursValue(log) : 0;
+
+            if (isBeforeJoining) {
+                status = 'Not Applicable';
+                rowColor = 'FFFFFFFF';
+            } else if (isFuture) {
+                status = '-';
+                rowColor = 'FFFFFFFF';
+            } else if (log && (inTime || isPresentOnlyAttendance(log) || durationHours > 0)) {
+                if (isPresentOnlyAttendance(log)) {
+                    inDisplay = 'Present';
+                    outDisplay = 'Present';
+                    durationDisplay = 'Present';
+                    status = 'Present';
+                    rowColor = 'FFEBF1DE';
+                } else {
+                    inDisplay = inTime ? format(inTime, 'HH:mm:ss') : '-';
+                    outDisplay = outTime ? format(outTime, 'HH:mm:ss') : '-';
+                    durationDisplay = durationHours > 0 ? durationHours.toFixed(2) : '-';
+                    status = (inTime && outTime) ? 'Present' : (inTime ? 'Incomplete' : 'Present');
+                    rowColor = (inTime && outTime) ? 'FFEBF1DE' : 'FFFEF3C7';
+                }
+
+                if (leave) {
+                    status = `${status} / ${getLeaveLabel(leave)}`;
+                } else if (holiday) {
+                    status = `${status} / Holiday (${holiday.name})`;
+                } else if (isWeeklyOff) {
+                    status = `${status} / Week Off`;
+                } else if (isFlexibleOff) {
+                    status = `${status} / Flexible Off`;
+                }
+            } else if (holiday) {
+                status = holiday.name ? `Holiday (${holiday.name})` : 'Holiday';
+                rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
+            } else if (leave) {
+                status = getLeaveLabel(leave);
+                rowColor = 'FFF1E8FF';
+            } else if (isWeeklyOff) {
+                status = 'Week Off';
+                rowColor = 'FFF2F2F2';
+            } else if (isFlexibleOff) {
+                status = 'Flexible Off';
+                rowColor = 'FFEDE9FE';
+            } else {
+                status = 'Absent';
+                rowColor = 'FFF2DCDB';
+            }
+
+            const row = wsAtt.addRow({
+                date: format(day, 'dd-MM-yyyy'),
+                day: dayName,
+                status,
+                in: inDisplay,
+                out: outDisplay,
+                duration: durationDisplay
+            });
+
+            row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+            row.alignment = { vertical: 'middle', horizontal: 'center' };
         });
+
+        wsAtt.autoFilter = { from: 'A1', to: { row: 1, column: 6 } };
 
         // Export
         const buffer = await workbook.xlsx.writeBuffer();
-        const fileName = `Timesheet_${targetUserName || 'User'}_${format(viewDate, 'MMM_yyyy')}_Detailed.xlsx`;
+        const userDisplayName = u.firstName ? `${u.firstName}${u.lastName ? `_${u.lastName}` : ''}` : (targetUserName || 'User');
+        const fileName = `Timesheet_${userDisplayName}_${format(viewDate, 'MMM_yyyy')}_Detailed.xlsx`;
         saveAs(new Blob([buffer]), fileName);
     };
 
@@ -2320,9 +2459,9 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                 <span className="truncate block">Project / Task</span>
                                             </th>
                                             {visibleDays.map(day => {
-                                                const { holiday, leave, isWeeklyOff } = getDayContext(day);
+                                                const { holiday, leave, isWeeklyOff, isFlexibleOff } = getDayContext(day);
                                                 return (
-                                                    <th key={day.toString()} className={`p-1 sm:p-2 border-r border-slate-200 min-w-[44px] sm:min-w-[60px] text-center ${holiday ? 'bg-green-50' : leave ? 'bg-purple-50' : isWeeklyOff ? 'bg-slate-100/50' : ''}`}>
+                                                    <th key={day.toString()} className={`p-1 sm:p-2 border-r border-slate-200 min-w-[44px] sm:min-w-[60px] text-center ${holiday ? 'bg-green-50' : leave ? 'bg-purple-50' : isFlexibleOff ? 'bg-violet-50/70' : isWeeklyOff ? 'bg-slate-100/50' : ''}`}>
                                                         <div className="text-[9px] sm:text-[10px] text-slate-400">{format(day, 'EEE')}</div>
                                                         <div className={`font-bold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-slate-700'}`}>{format(day, 'd')}</div>
                                                         {holiday && (
@@ -2338,6 +2477,11 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         {!holiday && !leave && isWeeklyOff && (
                                                             <div className="text-[7px] sm:text-[8px] text-slate-500 font-bold truncate max-w-10 sm:max-w-12.5 mt-0.5" title="Weekoff">
                                                                 WO
+                                                            </div>
+                                                        )}
+                                                        {!holiday && !leave && !isWeeklyOff && isFlexibleOff && (
+                                                            <div className="text-[7px] sm:text-[8px] text-violet-600 font-bold truncate max-w-10 sm:max-w-12.5 mt-0.5" title="Flexible Off">
+                                                                FO
                                                             </div>
                                                         )}
                                                     </th>
@@ -2362,7 +2506,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                             {visibleDays.map(day => {
                                                 const dateKey = format(day, 'yyyy-MM-dd');
                                                 const log = attendanceLogs.find(l => format(new Date(l.date), 'yyyy-MM-dd') === dateKey);
-                                                const { holiday, leave, isWeeklyOff } = getDayContext(day);
+                                                const { holiday, leave, isWeeklyOff, isFlexibleOff } = getDayContext(day);
 
                                                 // Joining Date Check
                                                 const joiningDate = viewUser?.joiningDate ? startOfDay(new Date(viewUser.joiningDate)) : null;
@@ -2383,7 +2527,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                         }}
                                                         className={`p-1 border-r border-slate-200 text-center text-xs transition-colors ${isBeforeJoining || isLockedFutureDate
                                                             ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                            : `cursor-pointer hover:bg-blue-50 ${holiday ? 'bg-green-50/30' : leave ? 'bg-purple-50/40' : isWeeklyOff ? 'bg-slate-100/50' : ''}`
+                                                            : `cursor-pointer hover:bg-blue-50 ${holiday ? 'bg-green-50/30' : leave ? 'bg-purple-50/40' : isFlexibleOff ? 'bg-violet-50/50' : isWeeklyOff ? 'bg-slate-100/50' : ''}`
                                                             }`}
                                                         title={isBeforeJoining ? 'Before Joining Date' : isLockedFutureDate ? 'Future Date' : ''}
                                                     >
@@ -2415,6 +2559,10 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             <span className="font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[8px] sm:text-[9px] min-w-[28px] bg-slate-100 text-slate-500">
                                                                 WO
                                                             </span>
+                                                        ) : isFlexibleOff ? (
+                                                            <span className="font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[8px] sm:text-[9px] min-w-[28px] bg-violet-100 text-violet-700" title="Flexible Off">
+                                                                FO
+                                                            </span>
                                                         ) : (
                                                             <span className="text-slate-300">-</span>
                                                         )}
@@ -2444,7 +2592,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                             const dateKey = format(day, 'yyyy-MM-dd');
                                                             const hours = group.hours[dateKey];
                                                             const logs = group.logs[dateKey] || [];
-                                                            const { holiday, leave, isWeeklyOff } = getDayContext(day);
+                                                            const { holiday, leave, isWeeklyOff, isFlexibleOff } = getDayContext(day);
                                                             const dayStatusMeta = getDayStatusMeta(logs);
 
                                                             // Joining Date Check
@@ -2471,7 +2619,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                                                     className={`p-1 border-r border-slate-200 text-center transition-colors ${holiday ? 'bg-green-50/30 cursor-not-allowed'
                                                                         : leave ? 'bg-purple-50/40 cursor-default'
                                                                         : isBeforeJoining || isLockedFutureDate ? 'bg-slate-50 cursor-not-allowed opacity-50'
-                                                                            : `cursor-pointer hover:bg-blue-100 ${isWeeklyOff ? 'bg-slate-50/30' : ''}`
+                                                                            : `cursor-pointer hover:bg-blue-100 ${isFlexibleOff ? 'bg-violet-50/30' : isWeeklyOff ? 'bg-slate-50/30' : ''}`
                                                                         }`}
                                                                     title={isBeforeJoining ? 'Before Joining Date' : isLockedFutureDate ? 'Future Date' : ''}
                                                                 >
@@ -3221,7 +3369,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         const dateStr = format(day, 'yyyy-MM-dd');
                                         const record = attendanceLogs.find(h => format(new Date(h.date), 'yyyy-MM-dd') === dateStr);
                                         const isFuture = day > new Date();
-                                        const { holiday, leave, isWeeklyOff } = getDayContext(day);
+                                        const { holiday, leave, isWeeklyOff, isFlexibleOff } = getDayContext(day);
 
                                         // Status Logic
                                         let status = 'Absent';
@@ -3246,12 +3394,15 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                         } else if (isWeeklyOff) {
                                             status = 'Weekoff';
                                             statusColor = 'bg-slate-100 text-slate-500';
+                                        } else if (isFlexibleOff) {
+                                            status = 'Flexible Off';
+                                            statusColor = 'bg-violet-100 text-violet-700';
                                         }
 
                                         return (
                                             <tr key={dateStr} className="hover:bg-slate-50/50">
                                                 <td className="px-4 py-3">
-                                                    <div className="font-medium text-slate-700">{format(day, 'dd MMM yyyy')}</div>
+                                                    <div className="font-medium text-slate-700">{format(day, 'dd-MM-yyyy')}</div>
                                                     <div className="text-xs text-slate-400">{format(day, 'EEEE')}</div>
                                                 </td>
                                                 <td className="px-4 py-3">
@@ -3310,6 +3461,7 @@ const Timesheet = ({ propUserId, propUserName, initialTab, isEmbedded = false })
                                 }}
                                 user={viewUser}
                                 weeklyOffs={weeklyOffs}
+                                flexibleOffDays={effectiveFlexibleOffDays}
                                 holidays={holidays}
                                 approvedLeaves={approvedLeaves}
                                 date={viewDate}

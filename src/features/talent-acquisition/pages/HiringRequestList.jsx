@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '@/lib/apiClient';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { Plus, Filter, Settings, TrendingUp, ChevronRight, ArrowLeft, Share2 } from 'lucide-react';
+import { Plus, Filter, Settings, TrendingUp, ChevronRight, ArrowLeft, Share2, Search, X } from 'lucide-react';
 import { format } from 'date-fns';
 import Skeleton from '@/components/ui/Skeleton';
 import { createNoCacheRequestConfig } from '@/features/talent-acquisition/utils/taCache';
@@ -15,6 +15,8 @@ const HiringRequestList = () => {
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('Approved'); // Default to Approved
+    const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalRequests, setTotalRequests] = useState(0);
@@ -27,6 +29,14 @@ const HiringRequestList = () => {
         || user?.permissions?.includes('ta.requisition.manage.all')
         || user?.permissions?.includes('ta.create');
 
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+            setPage(1);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     const fetchRequests = useCallback(async () => {
         try {
             setLoading(true);
@@ -36,7 +46,8 @@ const HiringRequestList = () => {
                         status: filterStatus === 'All' ? '' : filterStatus,
                         page,
                         limit: 30,
-                        client: clientName ? decodeURIComponent(clientName) : ''
+                        client: clientName ? decodeURIComponent(clientName) : '',
+                        search: debouncedSearch.trim() || undefined
                     })
                 }),
                 api.get('/projects/clients', createNoCacheRequestConfig())
@@ -60,7 +71,7 @@ const HiringRequestList = () => {
         } finally {
             setLoading(false);
         }
-    }, [clientName, filterStatus, page]);
+    }, [clientName, filterStatus, page, debouncedSearch]);
 
     const handleFilterChange = (status) => {
         setFilterStatus(status === 'All' ? 'All' : status === 'Pending' ? 'Pending_Approval' : status);
@@ -70,6 +81,19 @@ const HiringRequestList = () => {
     useEffect(() => {
         fetchRequests();
     }, [fetchRequests]);
+
+    const displayRequests = useMemo(() => {
+        if (!searchTerm.trim()) return requests;
+        const term = searchTerm.trim().toLowerCase();
+        return requests.filter(req => {
+            const role = (req.roleDetails?.title || req.roleDetails?.jobTitle || '').toLowerCase();
+            const dept = (req.roleDetails?.department || '').toLowerCase();
+            const reqId = (req.requestId || '').toLowerCase();
+            const client = (req.client || '').toLowerCase();
+            const location = (req.roleDetails?.workLocation || req.workLocation || '').toLowerCase();
+            return role.includes(term) || dept.includes(term) || reqId.includes(term) || client.includes(term) || location.includes(term);
+        });
+    }, [requests, searchTerm]);
 
     const getClientIdByName = (name) => {
         const client = clients.find(c => c.name === name);
@@ -169,28 +193,52 @@ const HiringRequestList = () => {
 
             {/* Main Content */}
             <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                {/* Filter Section */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm mb-6">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                        <div className="flex items-center gap-2 text-slate-600 whitespace-nowrap">
-                            <Filter size={16} />
-                            <span className="text-sm font-medium">Filter by Status:</span>
+                {/* Filter & Search Section */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
+                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                            <div className="flex items-center gap-2 text-slate-600 whitespace-nowrap">
+                                <Filter size={16} />
+                                <span className="text-sm font-medium">Filter by Status:</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {['All', 'Pending', 'Draft', 'Approved', 'Closed'].map((status) => (
+                                    <button
+                                        key={status}
+                                        onClick={() => handleFilterChange(status)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${(filterStatus === status ||
+                                            (status === 'Pending' && filterStatus === 'Pending_Approval') ||
+                                            (status === 'All' && filterStatus === 'All'))
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                            }`}
+                                    >
+                                        {status}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            {['All', 'Pending', 'Draft', 'Approved', 'Closed'].map((status) => (
+
+                        {/* Search Bar */}
+                        <div className="relative w-full lg:w-72 sm:w-80">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Search positions, role, ID..."
+                                className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm placeholder-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all font-medium"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            {searchTerm && (
                                 <button
-                                    key={status}
-                                    onClick={() => handleFilterChange(status)}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${(filterStatus === status ||
-                                        (status === 'Pending' && filterStatus === 'Pending_Approval') ||
-                                        (status === 'All' && filterStatus === 'All'))
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
+                                    type="button"
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200/60 transition-colors"
+                                    title="Clear search"
                                 >
-                                    {status}
+                                    <X size={14} />
                                 </button>
-                            ))}
+                            )}
                         </div>
                     </div>
                 </div>
@@ -224,14 +272,14 @@ const HiringRequestList = () => {
                                         <td colSpan="8" className="p-4"><Skeleton className="h-8 w-full" /></td>
                                     </tr>
                                 ))
-                            ) : requests.length === 0 ? (
+                            ) : displayRequests.length === 0 ? (
                                 <tr>
                                     <td colSpan="8" className="p-8 text-center text-slate-500">
-                                        No hiring requests found for the selected filter.
+                                        {searchTerm ? 'No hiring requests found matching your search.' : 'No hiring requests found for the selected filter.'}
                                     </td>
                                 </tr>
                             ) : (
-                                requests.map(req => (
+                                displayRequests.map(req => (
                                     <tr
                                         key={req._id}
                                         className="hover:bg-slate-50 transition-colors group cursor-pointer text-xs"

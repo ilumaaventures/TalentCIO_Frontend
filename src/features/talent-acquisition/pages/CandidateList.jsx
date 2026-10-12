@@ -785,11 +785,9 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
         return basePhase2Candidates.filter(candidate => {
             const matchDecision = filterDecision === 'All' ||
-                (filterDecision === 'Shortlisted_Selected'
+                (filterDecision === 'Shortlisted_Selected' || filterDecision === 'Shortlisted'
                     ? (candidate.phase2Decision === 'Shortlisted' || candidate.phase2Decision === 'Selected')
-                    : filterDecision === 'Shortlisted'
-                        ? candidate.phase2Decision === 'Shortlisted'
-                        : (candidate.phase2Decision || 'None') === filterDecision);
+                    : (candidate.phase2Decision || 'None') === filterDecision);
             let matchInterviewStatus = true;
             if (filterInterviewStatus !== 'All') {
                 matchInterviewStatus = filterInterviewStatus === 'Scheduled'
@@ -841,8 +839,8 @@ const LegacyCandidateList = ({ hiringRequestId, positionName, isLegacyView = fal
         }
         return {
             totalShortlisted: structuralPhase2Candidates.length,
-            shortlisted: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted').length,
-            totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted').length,
+            shortlisted: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
+            totalScreened: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Shortlisted' || c.phase2Decision === 'Selected').length,
             selected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Selected').length,
             rejected: structuralPhase2Candidates.filter(c => c.phase2Decision === 'Rejected').length,
             interviewScheduled: structuralPhase2Candidates.filter(hasPhase2InterviewActivity).length

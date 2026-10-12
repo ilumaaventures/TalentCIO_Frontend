@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, ArrowRightLeft, Calendar, CheckCircle, Clock3, Download, Eye, FileText, Loader, Mail, Menu, MoreVertical, Plus, Search, SlidersHorizontal, ThumbsDown, ThumbsUp, Upload, Users, UserCheck, XCircle, BarChart3, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowRight, ArrowRightLeft, Calendar, CheckCircle, Clock3, Download, Eye, FileText, Loader, Mail, Menu, MoreVertical, Plus, Search, SlidersHorizontal, ThumbsDown, ThumbsUp, Upload, Users, UserCheck, XCircle, BarChart3, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, Share2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -1546,11 +1546,46 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                             <span className="rounded-lg bg-rose-50 p-2 text-rose-600">
                                                 <Mail size={15} />
                                             </span>
-                                            Send Mail
+                                            Send Mail To Candidate
                                         </span>
                                         <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">
                                             {selectedCandidateIds.length || phaseCandidates.length}
                                         </span>
+                                    </button>
+                                )}
+
+                                {Number(activePhaseOrder) === 2 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowToolbarMenu(false);
+                                            if (!selectedCandidateIds || selectedCandidateIds.length === 0) {
+                                                toast.error('Please select at least one Phase 2 candidate to share with client');
+                                                return;
+                                            }
+                                            const targetCandidateId = selectedCandidateIds[0];
+                                            const reqId = hiringRequest?._id || 'all';
+                                            navigate(`/ta/hiring-request/${reqId}/candidate/${targetCandidateId}/share-client?candidateIds=${selectedCandidateIds.join(',')}`, {
+                                                state: { selectedCandidateIds }
+                                            });
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                        title={selectedCandidateIds.length === 0 ? "Select candidate(s) to share with client" : "Share candidate details with client"}
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="rounded-lg bg-teal-50 p-2 text-teal-600">
+                                                <Share2 size={15} />
+                                            </span>
+                                            <span className="flex flex-col text-left">
+                                                <span className="font-semibold text-slate-800">Share with Client</span>
+                                                <span className="text-[11px] font-normal text-slate-500">Send mail to client</span>
+                                            </span>
+                                        </span>
+                                        {selectedCandidateIds.length > 0 && (
+                                            <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-bold text-teal-700">
+                                                {selectedCandidateIds.length}
+                                            </span>
+                                        )}
                                     </button>
                                 )}
 
@@ -1596,7 +1631,7 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                     </button>
                                 )}
 
-                                {canEdit && selectedCandidateIds.length > 0 && nextPhase && (
+                                {canEdit && selectedCandidateIds.length > 0 && nextPhase && Number(activePhaseOrder) !== 2 && (
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1669,7 +1704,7 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                     </div>
                                 )}
 
-                                {canManageTemplates && (
+                                {canManageTemplates && Number(activePhaseOrder) !== 1 && Number(activePhaseOrder) !== 2 && (
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1723,7 +1758,7 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                     </button>
                                 )}
 
-                                 {canImport && (
+                                 {canImport && Number(activePhaseOrder) !== 2 && (
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -2304,6 +2339,22 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                                                 <Calendar size={15} className="text-emerald-600" />
                                                                 Schedule Interview
                                                             </button>
+                                                            {(viewedPhase?.order === 2 || candidate.currentPhaseOrder === 2) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setActiveActionMenu(null);
+                                                                        const reqId = hiringRequest?._id || candidate.hiringRequestId?._id || candidate.hiringRequestId || 'all';
+                                                                        navigate(`/ta/hiring-request/${reqId}/candidate/${candidate._id}/share-client?candidateIds=${candidate._id}`, {
+                                                                            state: { selectedCandidateIds: [candidate._id] }
+                                                                        });
+                                                                    }}
+                                                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50"
+                                                                >
+                                                                    <Share2 size={15} className="text-indigo-600" />
+                                                                    Share with Client
+                                                                </button>
+                                                            )}
                                                             {canManualAdvance && (
                                                                 <>
                                                                     {isActiveInViewedPhase && previousPhase && (
@@ -2319,7 +2370,7 @@ const DynamicPhaseView = ({ hiringRequest, filterInterviewRound = '' }) => {
                                                                             Move to Previous Phase
                                                                         </button>
                                                                     )}
-                                                                    {isActiveInViewedPhase && nextPhase && (
+                                                                    {isActiveInViewedPhase && nextPhase && Number(activePhaseOrder) !== 2 && (
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => {

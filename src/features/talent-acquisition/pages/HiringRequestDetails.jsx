@@ -646,18 +646,7 @@ const HiringRequestDetails = () => {
                         </div>
 
                         {/* Right: Actions */}
-                        <div className="flex items-center justify-end gap-2 min-w-24">
-                            {isOwner && (
-                                <button
-                                    onClick={() => setShowShareModal(true)}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors shadow-2xs"
-                                    title="Share with another tenant"
-                                >
-                                    <Share2 size={14} />
-                                    <span className="hidden sm:inline">Share</span>
-                                </button>
-                            )}
-                        </div>
+                        <div className="flex items-center justify-end gap-2 min-w-24" />
                     </div>
                 </div>
             </div>
@@ -1195,6 +1184,38 @@ const HiringRequestDetails = () => {
                                                 )}
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Share Requisition Card */}
+                            {isOwner && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow duration-300">
+                                    <div className="flex items-center justify-between pb-3 border-b border-slate-50 mb-3">
+                                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                            <div className="p-1.5 rounded-md bg-indigo-100 text-indigo-600">
+                                                <Share2 size={14} />
+                                            </div>
+                                            Share Requisition
+                                        </h3>
+                                        {request?.sharedTenants?.length > 0 && (
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                {request.sharedTenants.length} Shared
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="space-y-3">
+                                        <p className="text-xs text-slate-500">
+                                            Share this hiring requisition and candidate pipeline with partner workspaces or client tenants.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowShareModal(true)}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow active:scale-[0.99]"
+                                        >
+                                            <Share2 size={15} />
+                                            Share Requisition
+                                        </button>
                                     </div>
                                 </div>
                             )}

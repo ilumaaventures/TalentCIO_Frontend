@@ -260,7 +260,10 @@ export const buildAttendanceWorkbook = async (targetUser, year, month, holidaysD
         } else if (holiday) {
             status = holiday.name || 'Holiday';
             rowColor = holiday.isOptional ? 'FFFFE0B2' : 'FFD1F2EB';
-        } else if (isWeeklyOff) {
+        } else if (isCustomFlexOff) {
+            status = 'Flexible Off';
+            rowColor = 'FFEDE9FE';
+        } else if (isCompanyWeeklyOff) {
             status = 'Week Off';
             rowColor = 'FFF2F2F2';
         } else if (isFuture) {
@@ -272,7 +275,7 @@ export const buildAttendanceWorkbook = async (targetUser, year, month, holidaysD
         }
 
         const row = sheet.addRow([
-            format(day, 'dd-MMM-yyyy'),
+            format(day, 'dd-MM-yyyy'),
             format(day, 'EEEE'),
             status,
             record ? formatTime(record.clockIn, record.clockInIST) : '-',
