@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, Plus, Trash2, Calendar, User, FileText, CheckCircle2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 export const TaskWorklog = ({
   task,
@@ -9,6 +10,7 @@ export const TaskWorklog = ({
   onDeleteWorkLog,
   submitting = false
 }) => {
+  const { user: currentUser } = useAuth();
   const [showLogForm, setShowLogForm] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [hours, setHours] = useState('');
@@ -220,19 +222,26 @@ export const TaskWorklog = ({
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
                       {log.hours}h
                     </span>
-                    {onDeleteWorkLog && (
-                      <button
-                        onClick={() => {
-                          if (window.confirm('Delete this work log?')) {
-                            onDeleteWorkLog(log._id);
-                          }
-                        }}
-                        className="text-slate-300 hover:text-rose-500 p-1 rounded-md transition-colors cursor-pointer"
-                        title="Delete log"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                    {onDeleteWorkLog && (() => {
+                      const logUserId = log.user?._id || log.user;
+                      const isOwner = currentUser?._id && String(logUserId) === String(currentUser._id);
+                      const isAdmin = currentUser?.roles?.some(r => (typeof r === 'string' ? r === 'Admin' : r?.name === 'Admin')) || currentUser?.permissions?.includes('*');
+                      if (!isOwner && !isAdmin) return null;
+
+                      return (
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Delete this work log?')) {
+                              onDeleteWorkLog(log._id);
+                            }
+                          }}
+                          className="text-slate-300 hover:text-rose-500 p-1 rounded-md transition-colors cursor-pointer"
+                          title="Delete log"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               );
