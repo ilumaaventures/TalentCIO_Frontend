@@ -23,6 +23,8 @@ import {
     sanitizeZipFileName,
     fetchFileBlob,
     isAttendanceApproved,
+    buildBulkTimesheetWorkbook,
+    buildBulkAttendanceWorkbook,
 } from '../utils/userExportUtils';
 import UsersTable from '../components/UsersTable';
 import UserExportModal from '../components/UserExportModal';
@@ -59,11 +61,13 @@ const Users = () => {
 
     // Export Options State
     const [showExportModal, setShowExportModal] = useState(false);
+    const [exportScope, setExportScope] = useState('selected'); // 'selected' | 'all'
     const [exportOptions, setExportOptions] = useState({
         status: true,
         checkInOut: true,
         duration: true,
         leaves: true,
+        timesheetBulk: false,
         documents: false,
         hrisProfiles: false,
         userDocuments: false
@@ -328,297 +332,93 @@ const Users = () => {
         }
     };
 
-    const handleExportTeamAttendance = async () => {
-        const toastId = toast.loading('Generating Team Report...');
+    const handleExportBulkTimesheet = async () => {
+        const toastId = toast.loading('Preparing Bulk Timesheets Excel...');
         try {
-            if (selectedEmployeeIds.length === 0) {
-                toast.error('Select at least one employee to export.', { id: toastId });
+            const isAll = exportScope === 'all';
+            let targetUserIds = [];
+
+            if (!isAll) {
+                if (selectedEmployeeIds.length === 0) {
+                    toast.error('Select at least one employee or switch scope to All Team Members.', { id: toastId });
+                    return;
+                }
+                targetUserIds = selectedEmployeeIds;
+            }
+
+            const res = await api.post('/timesheet/team-report', {
+                month: exportMonth,
+                userIds: targetUserIds
+            });
+
+            const { teamMembers, workLogsByUser, timesheets, startDate, endDate } = res.data;
+
+            if (!teamMembers || teamMembers.length === 0) {
+                toast.error('No employees found to export timesheet for in this period.', { id: toastId });
+                return;
+            }
+
+            const { buffer, fileName } = await buildBulkTimesheetWorkbook({
+                month: exportMonth,
+                teamMembers,
+                workLogsByUser,
+                timesheets,
+                startDate,
+                endDate
+            });
+
+            saveAs(new Blob([buffer]), fileName);
+            toast.success('Bulk Timesheets Excel downloaded successfully!', { id: toastId });
+        } catch (error) {
+            console.error('handleExportBulkTimesheet error:', error);
+            toast.error(error.response?.data?.message || 'Failed to export bulk timesheets', { id: toastId });
+        }
+    };
+
+    const handleExportTeamAttendance = async () => {
+        const toastId = toast.loading('Generating Attendance Report...');
+        try {
+            const isAll = exportScope === 'all';
+            if (!isAll && selectedEmployeeIds.length === 0) {
+                toast.error('Select at least one employee or switch to All Team Members.', { id: toastId });
                 return;
             }
 
             const [year, month] = exportMonth.split('-');
+            const targetIds = isAll ? [] : selectedEmployeeIds;
 
-            const res = await api.get(`/attendance/team-report?year=${year}&month=${month}`);
+            const res = await api.post('/attendance/team-report', {
+                year,
+                month,
+                userIds: targetIds
+            });
             const { teamMembers, attendanceRecords, leaveRecords, holidays, weeklyOff, flexWeeklyOff } = res.data;
 
-            if (!teamMembers || teamMembers.length === 0) {
-                toast.error('No team members found', { id: toastId });
+            let usersToExport = teamMembers || [];
+            if (!isAll) {
+                usersToExport = usersToExport.filter((teamMember) =>
+                    selectedEmployeeIds.some(id => String(id) === String(teamMember._id))
+                );
+            }
+
+            if (!usersToExport || usersToExport.length === 0) {
+                toast.error('No team members found for this attendance export.', { id: toastId });
                 return;
             }
 
-            const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet('Team Attendance');
-
-            const daysInMonth = new Date(year, month, 0).getDate();
-            const dateColumns = [];
-            for (let d = 1; d <= daysInMonth; d++) {
-                const date = new Date(year, month - 1, d);
-                const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                dateColumns.push({ header: `${String(d).padStart(2, '0')}-${dayName}`, key: `day_${d}`, width: 16 });
-            }
-
-            worksheet.columns = [
-                { header: 'Employee / Details', key: 'name', width: 35 },
-                ...dateColumns
-            ];
-
-            worksheet.views = [
-                { state: 'frozen', xSplit: 1, ySplit: 1 }
-            ];
-
-            const headerRow = worksheet.getRow(1);
-            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
-
-            const attendanceMap = {};
-            (attendanceRecords || []).forEach(record => {
-                const userId = (record.user?._id || record.user || '').toString();
-                const dateStr = toDateKey(record.date);
-                if (!attendanceMap[userId]) attendanceMap[userId] = {};
-                attendanceMap[userId][dateStr] = record;
+            const { buffer, fileName } = await buildBulkAttendanceWorkbook({
+                month: exportMonth,
+                teamMembers: usersToExport,
+                attendanceRecords,
+                holidays,
+                leaveRecords,
+                weeklyOff,
+                flexWeeklyOff,
+                exportOptions,
+                users
             });
-
-            const leaveMap = {};
-            if (leaveRecords && leaveRecords.length > 0) {
-                leaveRecords.forEach(leave => {
-                    const userId = (leave.user?._id || leave.user || '').toString();
-                    if (!leaveMap[userId]) leaveMap[userId] = {};
-
-                    const start = new Date(leave.startDate);
-                    const end = new Date(leave.endDate);
-                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                        const dStr = toDateKey(d);
-                        leaveMap[userId][dStr] = { type: leave.leaveType, sandwich: leave.sandwichRule };
-                    }
-                });
-            }
-
-            const holidayMap = {};
-            if (holidays && holidays.length > 0) {
-                holidays.forEach(h => {
-                    const dateStr = toDateKey(h.date);
-                    holidayMap[dateStr] = h.name;
-                });
-            }
-
-            const extractTime = (istString) => istString.split(',')[1]?.trim() || istString;
-            const formatTimeSimple = (date) => new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-
-            const usersToExport = teamMembers.filter((teamMember) =>
-                selectedEmployeeIds.some(id => String(id) === String(teamMember._id))
-            );
-
-            if (usersToExport.length === 0) {
-                toast.error('None of the selected employees are available in this export view.', { id: toastId });
-                return;
-            }
-
-            const todayIST = new Date();
-            todayIST.setHours(0, 0, 0, 0);
-
-            usersToExport.forEach(targetUser => {
-                const fullUser = users.find(u => String(u._id) === String(targetUser._id)) || targetUser;
-                const userLogs = attendanceMap[String(targetUser._id)] || {};
-                const userLeaves = leaveMap[String(targetUser._id)] || {};
-
-                const joiningDate = (fullUser.joiningDate || targetUser.joiningDate)
-                    ? new Date(fullUser.joiningDate || targetUser.joiningDate)
-                    : null;
-                if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
-
-                const dateOfLeaving = (fullUser.dateOfLeaving || targetUser.dateOfLeaving)
-                    ? new Date(fullUser.dateOfLeaving || targetUser.dateOfLeaving)
-                    : null;
-                if (dateOfLeaving) dateOfLeaving.setHours(23, 59, 59, 999);
-
-                const userFlexDays = Array.isArray(fullUser.customFlexibleOffDays)
-                    ? fullUser.customFlexibleOffDays
-                    : (Array.isArray(targetUser.customFlexibleOffDays) ? targetUser.customFlexibleOffDays : []);
-
-                const parentRow = worksheet.addRow({
-                    name: `${targetUser.firstName} ${targetUser.lastName || ''}${targetUser.employeeCode ? ` (${targetUser.employeeCode})` : ''}`
-                });
-                parentRow.font = { bold: true, size: 11, color: { argb: 'FF1E293B' } };
-                parentRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-
-                const rowsToAdd = [];
-                const statusRow = { name: '   ↳ Status' };
-                const checkInRow = { name: '   ↳ Check In' };
-                const checkOutRow = { name: '   ↳ Check Out' };
-                const durationRow = { name: '   ↳ Duration' };
-                const leavesRow = { name: '   ↳ Leaves' };
-                const approvedRow = { name: '   ↳ Approved' };
-
-                const statusStyles = {};
-
-                for (let d = 1; d <= daysInMonth; d++) {
-                    const dateObj = new Date(year, month - 1, d);
-                    const dayStart = new Date(year, month - 1, d);
-                    dayStart.setHours(0, 0, 0, 0);
-                    const dateStr = toDateKey(dateObj);
-                    const record = userLogs[dateStr];
-                    const colKey = `day_${d}`;
-
-                    const weeklyOffDays = weeklyOff || ['Saturday', 'Sunday'];
-                    const dayName = format(dateObj, 'EEEE');
-                    const isCompanyWeeklyOff = weeklyOffDays.some(woff => woff.trim().toLowerCase() === dayName.toLowerCase());
-                    const isCustomFlexOff = userFlexDays.some(flexDay => {
-                        const cleanFlex = String(flexDay || '').trim().toLowerCase();
-                        return cleanFlex === dateStr.toLowerCase() || cleanFlex === dayName.toLowerCase();
-                    });
-                    const isWeeklyOff = isCompanyWeeklyOff || isCustomFlexOff;
-
-                    const leaveData = userLeaves[dateStr];
-                    const holidayName = holidayMap[dateStr];
-
-                    const isFuture = dayStart > todayIST;
-                    const isBeforeJoining = joiningDate && dayStart < joiningDate;
-                    const isAfterLeaving = dateOfLeaving && dayStart > dateOfLeaving;
-
-                    const hasAttendance = Boolean(
-                        record && (
-                            record.clockIn ||
-                            record.clockInIST ||
-                            record.status === 'PRESENT' ||
-                            record.status === 'HALF_DAY' ||
-                            isAttendanceApproved(record)
-                        )
-                    );
-
-                    let durStr = '-';
-                    let isHalfDay = record?.status === 'HALF_DAY';
-
-                    if (record && (record.clockIn || record.clockInIST)) {
-                        const startTime = new Date(record.clockIn);
-                        const isToday = dateObj.toDateString() === new Date().toDateString();
-                        let endTime = record.clockOut ? new Date(record.clockOut) : (isToday ? new Date() : new Date(dateObj));
-                        if (!record.clockOut && !isToday) {
-                            endTime.setHours(23, 59, 59, 999);
-                        }
-
-                        if (record.clockIn) {
-                            const diffString = Math.max(0, endTime - startTime);
-                            const hours = Math.floor(diffString / (1000 * 60 * 60));
-                            const minutes = Math.floor((diffString % (1000 * 60 * 60)) / (1000 * 60));
-                            durStr = `${hours}h ${minutes}m`;
-                            const durHrs = diffString / 3600000;
-                            if (durHrs >= 4 && durHrs < 8) {
-                                durStr += ' (Half Day)';
-                                isHalfDay = true;
-                            }
-                        }
-                    }
-
-                    const isOffDay = !!holidayName || isWeeklyOff;
-                    const showLeave = leaveData && (!isOffDay || leaveData.sandwich);
-
-                    let statusText = '-';
-                    let cellBg = 'FFFFFFFF';
-                    let cellFg = 'FF64748B';
-
-                    if (isBeforeJoining || isAfterLeaving) {
-                        statusText = 'Not Applicable';
-                        cellBg = 'FFFFFFFF';
-                        cellFg = 'FF94A3B8';
-                    } else if (hasAttendance) {
-                        statusText = isHalfDay ? 'Half Day' : 'Present';
-                        cellBg = isHalfDay ? 'FFFEF3C7' : 'FFEBF1DE'; // Light Yellow / Light Green
-                        cellFg = isHalfDay ? 'FF92400E' : 'FF166534'; // Dark Yellow / Dark Green
-                    } else if (showLeave) {
-                        statusText = leaveData.type ? `Leave (${leaveData.type})` : 'Leave';
-                        cellBg = 'FFFFE0B2'; // Light Peach/Orange
-                        cellFg = 'FF9A3412'; // Rust/Brown
-                    } else if (holidayName) {
-                        statusText = holidayName.toLowerCase().includes('holiday') ? holidayName : `Holiday (${holidayName})`;
-                        cellBg = 'FFD1F2EB'; // Light Teal/Mint
-                        cellFg = 'FF115E59'; // Dark Teal
-                    } else if (isWeeklyOff) {
-                        statusText = 'Week Off';
-                        cellBg = 'FFF2F2F2'; // Light Gray
-                        cellFg = 'FF475569'; // Slate
-                    } else if (isFuture) {
-                        statusText = '-';
-                        cellBg = 'FFFFFFFF';
-                        cellFg = 'FF94A3B8';
-                    } else {
-                        // Past working day with no attendance
-                        statusText = 'Absent';
-                        cellBg = 'FFF2DCDB'; // Light Red/Pink
-                        cellFg = 'FF991B1B'; // Dark Red
-                    }
-
-                    statusStyles[colKey] = {
-                        bg: cellBg,
-                        fg: cellFg,
-                        bold: statusText !== '-' && statusText !== 'Not Applicable'
-                    };
-
-                    if (exportOptions.status) {
-                        statusRow[colKey] = statusText;
-                    }
-
-                    if (exportOptions.leaves) {
-                        leavesRow[colKey] = leaveData?.type || '-';
-                    }
-
-                    if (hasAttendance) {
-                        if (record.clockInIST) checkInRow[colKey] = extractTime(record.clockInIST);
-                        else if (record.clockIn) checkInRow[colKey] = formatTimeSimple(record.clockIn);
-                        else checkInRow[colKey] = '-';
-
-                        if (record.clockOutIST) checkOutRow[colKey] = extractTime(record.clockOutIST);
-                        else if (record.clockOut) checkOutRow[colKey] = formatTimeSimple(record.clockOut);
-                        else checkOutRow[colKey] = '-';
-
-                        durationRow[colKey] = durStr;
-                        approvedRow[colKey] = isAttendanceApproved(record) ? 'Approved' : '-';
-                    } else {
-                        checkInRow[colKey] = '-';
-                        checkOutRow[colKey] = '-';
-                        durationRow[colKey] = '-';
-                        approvedRow[colKey] = '-';
-                    }
-                }
-
-                if (exportOptions.status) rowsToAdd.push(statusRow);
-                if (exportOptions.checkInOut) {
-                    rowsToAdd.push(checkInRow);
-                    rowsToAdd.push(checkOutRow);
-                }
-                if (exportOptions.duration) rowsToAdd.push(durationRow);
-                if (exportOptions.leaves) rowsToAdd.push(leavesRow);
-                rowsToAdd.push(approvedRow);
-
-                rowsToAdd.forEach(rowData => {
-                    const row = worksheet.addRow(rowData);
-                    row.outlineLevel = 1;
-                    row.getCell('name').font = { italic: true, color: { argb: 'FF64748B' } };
-                    row.alignment = { horizontal: 'center' };
-                    row.getCell('name').alignment = { horizontal: 'left' };
-
-                    if (rowData.name === '   ↳ Status') {
-                        for (let d = 1; d <= daysInMonth; d++) {
-                            const colKey = `day_${d}`;
-                            const style = statusStyles[colKey];
-                            if (style) {
-                                const cell = row.getCell(colKey);
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: style.bg } };
-                                cell.font = { bold: style.bold, color: { argb: style.fg } };
-                            }
-                        }
-                    }
-                });
-            });
-
-            worksheet.properties.outlineProperties = {
-                summaryBelow: false,
-                summaryRight: false,
-            };
-
-            const buffer = await workbook.xlsx.writeBuffer();
-            const fileName = `Team_Attendance_${format(new Date(year, month - 1), 'MMMM_yyyy')}.xlsx`;
             saveAs(new Blob([buffer]), fileName);
-            toast.success('Downloaded', { id: toastId });
+            toast.success('Attendance Excel downloaded successfully!', { id: toastId });
 
         } catch (error) {
             console.error(error);
@@ -631,13 +431,18 @@ const Users = () => {
             || exportOptions.checkInOut
             || exportOptions.duration
             || exportOptions.leaves;
+        const shouldDownloadTimesheet = exportOptions.timesheetBulk;
         const shouldDownloadDocuments = hasAttendanceDocumentFeature && exportOptions.documents;
         const shouldDownloadHRIS = canExportHRIS && exportOptions.hrisProfiles;
         const shouldDownloadUserDocuments = exportOptions.userDocuments;
 
-        if (!hasAttendanceSelection && !shouldDownloadDocuments && !shouldDownloadHRIS && !shouldDownloadUserDocuments) {
+        if (!hasAttendanceSelection && !shouldDownloadTimesheet && !shouldDownloadDocuments && !shouldDownloadHRIS && !shouldDownloadUserDocuments) {
             toast.error('Select at least one export option before downloading.');
             return;
+        }
+
+        if (shouldDownloadTimesheet) {
+            await handleExportBulkTimesheet();
         }
 
         if (hasAttendanceSelection) {
@@ -649,12 +454,16 @@ const Users = () => {
         }
 
         if (shouldDownloadHRIS) {
+            const isAll = exportScope === 'all';
+            const targetIds = isAll ? users.map(u => u._id) : selectedEmployeeIds;
             const sectionsToExport = hrisSections.size === ALL_HRIS_SECTIONS.length ? undefined : hrisSections;
-            await exportCandidateHRIS(selectedEmployeeIds, sectionsToExport);
+            await exportCandidateHRIS(targetIds, sectionsToExport);
         }
 
         if (shouldDownloadUserDocuments) {
-            await handleDownloadEmployeeDocumentsZip();
+            const isAll = exportScope === 'all';
+            const targetUsers = isAll ? users : users.filter(u => selectedEmployeeIds.includes(u._id));
+            await handleDownloadEmployeeDocumentsZip(targetUsers);
         }
 
         setShowExportModal(false);
@@ -1357,6 +1166,9 @@ const Users = () => {
                     setExportMonth={setExportMonth}
                     exportOptions={exportOptions}
                     setExportOptions={setExportOptions}
+                    exportScope={exportScope}
+                    setExportScope={setExportScope}
+                    totalUsersCount={users.length}
                     hrisSections={hrisSections}
                     setHrisSections={setHrisSections}
                     hasSelection={hasSelection}

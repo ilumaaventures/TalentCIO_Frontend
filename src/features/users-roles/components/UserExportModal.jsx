@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, X } from 'lucide-react';
+import { Download, X, Clock, Users, FileSpreadsheet, Calendar } from 'lucide-react';
 import { ALL_HRIS_SECTIONS } from '../utils/userExportUtils';
 import MonthPicker from '@/components/ui/MonthPicker';
 
@@ -10,6 +10,9 @@ const UserExportModal = ({
     setExportMonth,
     exportOptions,
     setExportOptions,
+    exportScope = 'selected',
+    setExportScope = () => { },
+    totalUsersCount = 0,
     hrisSections,
     setHrisSections,
     hasSelection,
@@ -20,6 +23,22 @@ const UserExportModal = ({
 }) => {
     if (!showExportModal) return null;
 
+    const isScopeAll = exportScope === 'all';
+    const effectiveHasSelection = isScopeAll || hasSelection;
+
+    const hasAttendanceSelection = exportOptions.status
+        || exportOptions.checkInOut
+        || exportOptions.duration
+        || exportOptions.leaves;
+
+    const hasAnyOptionSelected = Boolean(
+        exportOptions.timesheetBulk
+        || hasAttendanceSelection
+        || exportOptions.documents
+        || exportOptions.hrisProfiles
+        || exportOptions.userDocuments
+    );
+
     return (
         <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -29,7 +48,7 @@ const UserExportModal = ({
             <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
 
                 {/* Modal Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-emerald-50 via-teal-50 to-white">
                     <div className="flex items-center gap-3">
                         <div className="h-9 w-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
                             <Download size={18} />
@@ -37,9 +56,11 @@ const UserExportModal = ({
                         <div>
                             <h2 className="text-base font-bold text-slate-800">Custom Export</h2>
                             <p className="text-xs text-slate-500">
-                                {hasSelection
-                                    ? `Exporting data for ${selectedEmployeeIds.length} selected employee${selectedEmployeeIds.length !== 1 ? 's' : ''}`
-                                    : 'Select employees in the table first, then choose what to export'}
+                                {isScopeAll
+                                    ? `Exporting for all ${totalUsersCount || 'team'} members`
+                                    : (hasSelection
+                                        ? `Exporting for ${selectedEmployeeIds.length} selected employee${selectedEmployeeIds.length !== 1 ? 's' : ''}`
+                                        : 'Choose export target and options below')}
                             </p>
                         </div>
                     </div>
@@ -54,42 +75,97 @@ const UserExportModal = ({
                 {/* Modal Body */}
                 <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-                    {/* Export Period */}
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Export Period</p>
-                        <div className="flex items-center gap-3">
-                            <div className="flex-1">
-                                <label className="block text-xs font-medium text-slate-600 mb-1">Select Month</label>
-                                <MonthPicker
-                                    value={exportMonth}
-                                    onChange={setExportMonth}
-                                />
+                    {/* Scope & Period Section */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">1. Export Target (Scope)</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setExportScope('selected')}
+                                    className={`flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all ${exportScope === 'selected'
+                                            ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
+                                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                        }`}
+                                >
+                                    <Users size={16} className={exportScope === 'selected' ? 'text-emerald-600' : 'text-slate-400'} />
+                                    <div>
+                                        <div className="text-xs font-bold">Selected Employees</div>
+                                        <div className="text-[11px] text-slate-400">
+                                            {selectedEmployeeIds.length} employee{selectedEmployeeIds.length !== 1 ? 's' : ''} checked in table
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setExportScope('all')}
+                                    className={`flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all ${exportScope === 'all'
+                                            ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
+                                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                        }`}
+                                >
+                                    <Users size={16} className={exportScope === 'all' ? 'text-emerald-600' : 'text-slate-400'} />
+                                    <div>
+                                        <div className="text-xs font-bold">All Team Members</div>
+                                        <div className="text-[11px] text-slate-400">
+                                            Entire team ({totalUsersCount || 'All'} employees)
+                                        </div>
+                                    </div>
+                                </button>
                             </div>
-                            <p className="text-xs text-slate-400 pt-5">Used for Attendance &amp; Timesheet data</p>
+                        </div>
+
+                        {/* Export Period */}
+                        <div className="pt-2 border-t border-slate-200">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">2. Export Period</p>
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">Select Month</label>
+                                    <MonthPicker
+                                        value={exportMonth}
+                                        onChange={setExportMonth}
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-400 pt-5">Used for Attendance &amp; Timesheet data</p>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Attendance Columns */}
+                    {/* Attendance Columns & Format */}
                     <div className="border border-slate-200 rounded-xl overflow-hidden">
-                        <div className="bg-blue-50 px-4 py-2.5 flex items-center gap-2 border-b border-slate-200">
-                            <div className="h-5 w-5 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">A</div>
-                            <span className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Attendance Columns</span>
+                        <div className="bg-blue-50 px-4 py-2.5 flex items-center justify-between border-b border-slate-200">
+                            <div className="flex items-center gap-2">
+                                <div className="h-5 w-5 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">A</div>
+                                <span className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Attendance Report</span>
+                            </div>
+                            <span className="text-[10px] text-blue-700 font-medium">Date format: <span className="font-bold">DD-MM-YYYY</span></span>
                         </div>
-                        <div className="p-4 grid grid-cols-2 gap-2">
-                            {[
-                                { key: 'status', label: 'Status (Present / Absent)', desc: 'Daily attendance status' },
-                                { key: 'checkInOut', label: 'Check-In & Check-Out', desc: 'Clock-in and clock-out times' },
-                                { key: 'duration', label: 'Total Duration', desc: 'Total working hours logged' },
-                                { key: 'leaves', label: 'Leaves (SL, CL)', desc: 'Sick and casual leave counts' },
-                            ].map(({ key, label, desc }) => (
-                                <label key={key} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${exportOptions[key] ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                                    <input type="checkbox" checked={exportOptions[key]} onChange={e => setExportOptions({ ...exportOptions, [key]: e.target.checked })} className="h-4 w-4 mt-0.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 shrink-0" />
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-semibold text-slate-700 leading-tight">{label}</div>
-                                        <div className="text-[11px] text-slate-400 leading-snug mt-0.5">{desc}</div>
-                                    </div>
-                                </label>
-                            ))}
+
+                        {/* Column Checkboxes */}
+                        <div className="p-4">
+                            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Attendance Fields to Include:</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    { key: 'status', label: 'Status (Present / Absent)', desc: 'Present, Half Day, Absent, Week Offs & Holidays' },
+                                    { key: 'checkInOut', label: 'Check-In & Check-Out', desc: 'Clock-in and clock-out timestamps' },
+                                    { key: 'duration', label: 'Total Duration', desc: 'Total working hours logged' },
+                                    { key: 'leaves', label: 'Leaves (SL, CL, EL)', desc: 'Approved leaves with leave type' },
+                                ].map(({ key, label, desc }) => (
+                                    <label key={key} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${exportOptions[key] ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={exportOptions[key]}
+                                            onChange={e => setExportOptions({ ...exportOptions, [key]: e.target.checked })}
+                                            className="h-4 w-4 mt-0.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 shrink-0"
+                                        />
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-semibold text-slate-700 leading-tight">{label}</div>
+                                            <div className="text-[11px] text-slate-400 leading-snug mt-0.5">{desc}</div>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
@@ -212,10 +288,40 @@ const UserExportModal = ({
                         </div>
                     </div>
 
+                    {/* Timesheet Bulk Export Card (At the last of the page) */}
+                    <div className="border border-indigo-200 rounded-xl overflow-hidden bg-indigo-50/20">
+                        <div className="bg-indigo-50 px-4 py-2.5 flex items-center justify-between border-b border-indigo-100">
+                            <div className="flex items-center gap-2">
+                                <div className="h-5 w-5 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">T</div>
+                                <span className="text-xs font-semibold text-indigo-900 uppercase tracking-wide">Timesheet Export</span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">Single Excel (.xlsx)</span>
+                        </div>
+                        <div className="p-4">
+                            <label className={`flex items-start gap-3 p-3.5 rounded-lg border cursor-pointer transition-all ${exportOptions.timesheetBulk ? 'border-indigo-400 bg-indigo-50/70 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                                <input
+                                    type="checkbox"
+                                    checked={exportOptions.timesheetBulk}
+                                    onChange={e => setExportOptions({ ...exportOptions, timesheetBulk: e.target.checked })}
+                                    className="h-4 w-4 mt-0.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 shrink-0"
+                                />
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <Clock size={15} className="text-indigo-600" />
+                                        <span className="text-sm font-bold text-slate-800">Download Timesheet (Separate Sheet per Employee)</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                                        Exports complete timesheet logs for each employee in a separate sheet inside a single Excel file.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
                     {/* No-selection warning */}
-                    {!hasSelection && (
+                    {!effectiveHasSelection && (
                         <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                            <span>⚠</span> No employees selected — go back and check at least one employee row before exporting.
+                            <span>⚠</span> No employees selected. Check employee rows in the table or switch target to <strong>"All Team Members"</strong> above.
                         </div>
                     )}
                 </div>
@@ -225,22 +331,20 @@ const UserExportModal = ({
                     <div className="text-xs text-slate-400 truncate">
                         {(() => {
                             const parts = [
-                                exportOptions.status && 'Status',
-                                exportOptions.checkInOut && 'Check-In/Out',
-                                exportOptions.duration && 'Duration',
-                                exportOptions.leaves && 'Leaves',
-                                exportOptions.documents && 'Att.Docs',
-                                exportOptions.hrisProfiles && `HRIS (${hrisSections.size} section${hrisSections.size !== 1 ? 's' : ''})`,
-                                exportOptions.userDocuments && 'Emp.Docs',
+                                exportOptions.timesheetBulk && 'Bulk Timesheets (Excel)',
+                                hasAttendanceSelection && 'Attendance (Single Excel)',
+                                exportOptions.documents && 'Att.Docs ZIP',
+                                exportOptions.hrisProfiles && `HRIS (${hrisSections.size} sections)`,
+                                exportOptions.userDocuments && 'Emp.Docs ZIP',
                             ].filter(Boolean);
-                            return parts.length === 0 ? 'No sections selected' : `${parts.join(', ')} will be exported`;
+                            return parts.length === 0 ? 'No options selected' : `${parts.join(', ')} will be exported`;
                         })()}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <button onClick={() => setShowExportModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition">Cancel</button>
                         <button
                             onClick={handleExportDownload}
-                            disabled={!hasSelection || (exportOptions.hrisProfiles && hrisSections.size === 0)}
+                            disabled={!effectiveHasSelection || !hasAnyOptionSelected || (exportOptions.hrisProfiles && hrisSections.size === 0)}
                             className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow transition-all"
                         >
                             <Download size={14} /> Download Export
@@ -253,3 +357,4 @@ const UserExportModal = ({
 };
 
 export default UserExportModal;
+
