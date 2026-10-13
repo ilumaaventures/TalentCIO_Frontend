@@ -27,6 +27,9 @@ const getPageMetadata = (pathname) => {
     if (pathname === '/ess/reimbursements/approvals') {
         return { title: 'Approval Queue', subtitle: 'Reimbursement claims awaiting action', back: '/ess', backLabel: 'My Space' };
     }
+    if (pathname === '/ess/performance') {
+        return { title: 'My Performance', subtitle: 'Appraisals, goals, continuous feedback & growth', back: '/ess', backLabel: 'My Space' };
+    }
     if (pathname === '/leaves') {
         return { title: 'Leave Management', subtitle: 'Apply and track leave requests', back: '/ess', backLabel: 'My Space' };
     }
@@ -128,6 +131,9 @@ const getPageMetadata = (pathname) => {
     }
     if (pathname === '/crm' || pathname.startsWith('/crm')) {
         return { title: 'Sales CRM', subtitle: 'Pipeline, leads & deals workspace' };
+    }
+    if (pathname === '/performance' || pathname.startsWith('/performance')) {
+        return { title: 'Performance Management', subtitle: 'Cycles, appraisals, goals, calibration & analytics' };
     }
     if (pathname === '/bin') {
         return { title: 'Recycle Bin', subtitle: 'Deleted items & recovery' };

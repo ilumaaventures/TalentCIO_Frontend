@@ -121,3 +121,40 @@ export const canAccessCrm = (user) => (
     )
 );
 
+export const PMS_ACCESS_PERMISSIONS = [
+    'pms.view',
+    'pms.cycle.manage',
+    'pms.kra.manage',
+    'pms.kpi.manage',
+    'pms.goal.create',
+    'pms.self_review.submit',
+    'pms.manager_review.submit',
+    'pms.feedback_360.manage',
+    'pms.calibration.manage',
+    'pms.ratings.publish',
+    'pms.pip.manage',
+    'pms.dev_plan.manage',
+    'pms.continuous_feedback.use',
+    'pms.reports.view',
+    'pms.admin'
+];
+
+export const canAccessPms = (user) => (
+    hasModuleEnabled(user?.company?.enabledModules || [], 'performance')
+    && (
+        isAdminUser(user)
+        || Boolean(user)
+        || hasAnyPermission(user, PMS_ACCESS_PERMISSIONS)
+        || (Array.isArray(user?.permissions) && user.permissions.some((p) => typeof p === 'string' && p.startsWith('pms.')))
+    )
+);
+
+export const canManagePms = (user) => (
+    hasModuleEnabled(user?.company?.enabledModules || [], 'performance')
+    && (
+        isAdminUser(user)
+        || hasAnyPermission(user, ['pms.admin', 'pms.cycle.manage', 'pms.calibration.manage', 'pms.ratings.publish'])
+    )
+);
+
+

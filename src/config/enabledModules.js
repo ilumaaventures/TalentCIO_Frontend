@@ -26,6 +26,13 @@ export const normalizeEnabledModules = (moduleIds = []) => {
     normalizedIds.add('mySpace');
   }
 
+  if (normalizedIds.has('pms')) {
+    normalizedIds.add('performance');
+  }
+  if (normalizedIds.has('performance')) {
+    normalizedIds.add('pms');
+  }
+
   return Array.from(normalizedIds);
 };
 
@@ -42,6 +49,10 @@ export const hasModuleEnabled = (moduleIds = [], targetModuleId = '') => {
 
   if (targetModuleId === 'leave' || targetModuleId === 'leaves') {
     return normalizedIds.includes('leaves') || normalizedIds.includes('leave');
+  }
+
+  if (targetModuleId === 'pms' || targetModuleId === 'performance') {
+    return normalizedIds.includes('performance') || normalizedIds.includes('pms');
   }
 
   return normalizedIds.includes(targetModuleId);
