@@ -289,9 +289,14 @@ const Sidebar = ({ isOpen, onClose }) => {
     || user?.permissions?.includes('*')
     || user?.permissions?.some((p) => typeof p === 'string' && p.startsWith('crm.'))
   );
+  const showPms = (hasModule('performance') || hasModule('pms')) && (
+    isAdmin
+    || user?.permissions?.includes('*')
+    || user?.permissions?.some((p) => typeof p === 'string' && (p.startsWith('pms.') || p.startsWith('performance.')))
+  );
   const showOrgChart = hasModule('organization') && Boolean(user);
   const showOrgStructureSection = showOrgChart;
-  const showMainSection = showDashboard || showEss || showMeetings || canAccessTA || showCrm;
+  const showMainSection = showDashboard || showEss || showMeetings || canAccessTA || showCrm || showPms;
   const showOrganizationSection = showEmployees || showTalent || showOnboarding || showOffboarding || showHREmail;
   const showProjectManagementSection = showBusinessUnits || showClients || showProjects;
   const showEmailSettings = isAdmin
@@ -611,6 +616,17 @@ const Sidebar = ({ isOpen, onClose }) => {
                 >
                   <TrendingUp size={18} />
                   <span>Sales CRM</span>
+                </Link>
+              )}
+
+              {showPms && (
+                <Link
+                  to="/performance"
+                  className={getSidebarLinkClass(location.pathname === '/performance' || location.pathname.startsWith('/performance/'))}
+                  onClick={onClose}
+                >
+                  <Target size={18} />
+                  <span>Performance</span>
                 </Link>
               )}
 

@@ -5,7 +5,7 @@ import {
     CalendarDays, CheckCircle2,
     ChevronRight, Loader, LogOut,
     Banknote, Eye, EyeOff, Plus, ArrowRight,
-    Briefcase, AlertCircle, Megaphone, Pin
+    Briefcase, AlertCircle, Megaphone, Pin, Award
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -909,6 +909,34 @@ const AnnouncementsTile = () => {
     );
 };
 
+// ─── Performance & Goals Tile ───────────────────────────────────────────────
+
+const PerformanceTile = () => {
+    return (
+        <PremiumCard to="/ess/performance">
+            <CardHeader
+                icon={Award}
+                title="Performance & Goals"
+                to="/ess/performance"
+                iconGradient="from-blue-600 to-indigo-600"
+                action={<CardActionLink to="/ess/performance" label="My Reviews" />}
+            />
+            <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-xl bg-blue-50/70 border border-blue-100 p-2.5">
+                    <span className="text-xs font-bold text-blue-900">Appraisal & Goals</span>
+                    <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[9px] font-extrabold text-white uppercase tracking-wider">
+                        Active Cycle
+                    </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
+                    <span>Self-Review & Check-ins</span>
+                    <span className="font-bold text-blue-600">Track & Submit →</span>
+                </div>
+            </div>
+        </PremiumCard>
+    );
+};
+
 // ─── Main ESS Dashboard Component ─────────────────────────────────────────────
 
 const EssDashboard = () => {
@@ -927,12 +955,14 @@ const EssDashboard = () => {
     const showAnnouncements = hasModule('announcements') || user?.company?.enabledModules?.includes('announcements');
     const showHelpdesk      = hasModule('helpdesk');
     const showHolidays      = hasModule('holidays');
+    const showPerformance   = hasModule('performance') || hasModule('pms') || user?.company?.enabledModules?.includes('performance') || user?.company?.enabledModules?.includes('pms');
 
     return (
         <div className="bg-[#F8FAFC] min-h-[calc(100vh-4rem)] p-3 sm:p-5 lg:p-6">
             <div className="mx-auto max-w-6xl">
                 {/* Compact Responsive Grid */}
                 <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {showPerformance    && <PerformanceTile />}
                     {showAttendance     && <AttendanceTile />}
                     {showTimesheet      && <TimesheetTile />}
                     {showLeave          && <LeaveTile />}

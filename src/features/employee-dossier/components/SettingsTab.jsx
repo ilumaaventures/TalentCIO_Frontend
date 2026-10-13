@@ -111,6 +111,13 @@ export const SettingsTab = ({
                 setIsCompanySettingsOpen(true);
                 scrollToCompanySettings();
             }
+        },
+        {
+            key: 'pms',
+            visible: true,
+            label: 'Performance & Approval Workflows',
+            description: 'Configure appraisal approval stages, continuous feedback, 360 settings, and rating scales.',
+            route: '/performance?tab=settings'
         }
     ].filter((card) => card.visible);
 

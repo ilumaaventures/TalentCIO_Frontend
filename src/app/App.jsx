@@ -76,6 +76,8 @@ const CompanyDocuments = lazy(() => import('@/features/ess-documents/pages/Compa
 const MyPayslips       = lazy(() => import('@/features/ess/pages/MyPayslips'));
 const TalentPage       = lazy(() => import('@/features/talent/TalentPage'));
 const CrmApp          = lazy(() => import('@/features/crm/pages/CrmApp'));
+const PerformanceApp   = lazy(() => import('@/features/performance/pages/PerformanceApp'));
+const MySpacePerformance = lazy(() => import('@/features/ess/pages/MySpacePerformance'));
 
 // Client Portal Pages
 const ClientLogin = lazy(() => import('@/features/client-portal/pages/ClientLogin'));
@@ -117,7 +119,8 @@ import {
   canAccessTAAnalytics,
   canAccessUsers,
   canAccessOrgChart,
-  canAccessCrm
+  canAccessCrm,
+  canAccessPms
 } from '@/config/accessPolicies';
 
 import { Provider } from 'react-redux';
@@ -440,6 +443,18 @@ function App() {
                       </ProtectedRoute>
                     )} />
 
+                    {/* Performance Management System (PMS) */}
+                    <Route path="/performance/*" element={(
+                      <ProtectedRoute moduleName="performance" check={canAccessPms} redirectTo="/">
+                        <PerformanceApp />
+                      </ProtectedRoute>
+                    )} />
+                    <Route path="/performance" element={(
+                      <ProtectedRoute moduleName="performance" check={canAccessPms} redirectTo="/">
+                        <PerformanceApp />
+                      </ProtectedRoute>
+                    )} />
+
                     {/* Users Management */}
                     <Route element={<ProtectedRoute moduleName="userManagement" redirectTo="/" />}>
                       <Route path="/users" element={(
@@ -468,6 +483,11 @@ function App() {
                       <Route element={<ProtectedRoute moduleName="essDocuments" redirectTo="/ess" />}>
                         <Route path="/ess/documents" element={<CompanyDocuments />} />
                       </Route>
+                      <Route path="/ess/performance" element={(
+                        <ProtectedRoute moduleName="performance" redirectTo="/ess">
+                          <MySpacePerformance />
+                        </ProtectedRoute>
+                      )} />
                     </Route>
 
                     <Route path="/unauthorized" element={<Unauthorized />} />
