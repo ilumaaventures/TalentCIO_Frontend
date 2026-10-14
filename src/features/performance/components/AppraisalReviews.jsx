@@ -123,7 +123,10 @@ export default function AppraisalReviews({ defaultAppraisalId, defaultScope = 's
       else params.scope = 'all';
 
       const res = await pmsApi.getAppraisals(params);
-      if (res.data?.success) setAppraisals(res.data.data);
+      if (res.data?.success) {
+        const raw = res.data.data || [];
+        setAppraisals(raw.filter((a) => a.employeeId && a.employeeId.isActive !== false));
+      }
     } catch (err) {
       toast.error('Failed to load appraisals');
     } finally {

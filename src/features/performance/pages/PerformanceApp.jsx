@@ -164,8 +164,25 @@ export default function PerformanceApp() {
     { name: 'Not Started', value: goalSummary.notStarted, color: '#94a3b8' },
   ];
 
-  // Real Top Performers from appraisals/users
-  const topPerformers = dashboardData?.topPerformers || [];
+  // Real Top Performers from appraisals/users (strictly active)
+  const topPerformers = (dashboardData?.topPerformers || [])
+    .filter((tp) => {
+      const u = tp.employeeId || tp;
+      return u && u.isActive !== false && u.status !== 'Inactive' && u.status !== 'inactive';
+    })
+    .map((tp) => {
+      const u = tp.employeeId || tp;
+      const firstName = u.firstName || '';
+      const lastName = u.lastName || '';
+      const fullName = (firstName && lastName ? `${firstName} ${lastName}` : u.name || u.email || 'Employee').trim();
+      return {
+        _id: u._id || tp._id,
+        name: fullName,
+        role: u.designation || u.department || 'Employee',
+        score: tp.scores?.calculatedFinalScore || tp.score || 0,
+        band: tp.scores?.ratingBand || tp.band || 'Pending Review',
+      };
+    });
 
   // ─── TAB 2: CYCLES STATE (100% LIVE REAL DATA) ────────────────────────────
   const [cyclesList, setCyclesList] = useState([]);
