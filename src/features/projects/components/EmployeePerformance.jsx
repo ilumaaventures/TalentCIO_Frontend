@@ -7,7 +7,6 @@ import {
   Briefcase,
   ArrowLeft,
   ExternalLink,
-  FileText,
   FolderGit2,
   MessageSquare,
   CheckSquare
@@ -373,56 +372,6 @@ export const EmployeePerformance = ({ userId, employee: initialEmployee = null, 
         )}
       </div>
 
-      {/* Recent Work Logs Table */}
-      {recentLogs.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <FileText size={17} className="text-slate-600" />
-                Recent Work Logs & Time Entries
-              </h4>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Detailed breakdown of recent hours submitted by this user
-              </p>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
-                <tr>
-                  <th className="py-3 px-5">Date</th>
-                  <th className="py-3 px-4">Project</th>
-                  <th className="py-3 px-4">Task</th>
-                  <th className="py-3 px-4">Hours</th>
-                  <th className="py-3 px-5">Description</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentLogs.map((log) => (
-                  <tr key={log._id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3 px-5 text-slate-500 font-medium whitespace-nowrap">
-                      {log.date ? new Date(log.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">
-                      {log.projectName}
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      {log.taskTitle}
-                    </td>
-                    <td className="py-3 px-4 font-bold text-blue-600">
-                      {log.hours}h
-                    </td>
-                    <td className="py-3 px-5 text-slate-500 max-w-xs truncate">
-                      {log.description || '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

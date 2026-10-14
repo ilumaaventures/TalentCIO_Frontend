@@ -1115,13 +1115,16 @@ const Attendance = () => {
             setShowDossierModal(true);
             return;
         }
-        const attSettings = user?.company?.settings?.attendance || {};
-        const isLocationRequired = attSettings.requireLocationCheckIn || attSettings.locationCheck;
 
-        const executeClockIn = async (locationData = null) => {
+        if (!navigator.geolocation) {
+            toast.error(`Geolocation is not supported by your browser. Please use a modern browser to ${attendanceStartActionText}.`);
+            return;
+        }
+
+        const executeClockIn = async (locationData) => {
             setLoadingLocation(true);
             try {
-                const payload = locationData ? { location: locationData } : {};
+                const payload = { location: locationData };
                 const { data: attendanceRecord } = await api.post('/attendance/clock-in', payload);
                 applyImmediateAttendanceUpdate(attendanceRecord);
                 toast.success(isPresentOnlyMode ? 'Present Marked Successfully' : 'Clocked In Successfully');
@@ -1136,34 +1139,6 @@ const Attendance = () => {
             }
         };
 
-        if (!isLocationRequired) {
-            // If location is not strictly required, try to get it best-effort but don't block
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        executeClockIn({
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude,
-                            accuracy: position.coords.accuracy
-                        });
-                    },
-                    () => {
-                        executeClockIn();
-                    },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                );
-            } else {
-                executeClockIn();
-            }
-            return;
-        }
-
-        // Strictly required flow
-        if (!navigator.geolocation) {
-            toast.error(`Geolocation is not supported by your browser. Please use a modern browser to ${attendanceStartActionText}.`);
-            return;
-        }
-
         setLoadingLocation(true);
         navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -1177,9 +1152,17 @@ const Attendance = () => {
                     setLoadingLocation(false);
                 });
             },
-            () => {
-                toast.error(`Please enable location to proceed with ${attendanceStartActionText} (required by your company).`);
+            (err) => {
                 setLoadingLocation(false);
+                if (err.code === 1) {
+                    toast.error(`Location permission is denied. Please allow location access in your browser to ${attendanceStartActionText}.`);
+                } else if (err.code === 2) {
+                    toast.error(`Location unavailable. Please turn on your system/device location service to ${attendanceStartActionText}.`);
+                } else if (err.code === 3) {
+                    toast.error(`Location request timed out. Please ensure GPS/location is enabled and try again.`);
+                } else {
+                    toast.error(`Please enable location to proceed with ${attendanceStartActionText}.`);
+                }
             },
             {
                 enableHighAccuracy: true,
@@ -1194,13 +1177,11 @@ const Attendance = () => {
             setShowDossierModal(true);
             return;
         }
-        const attSettings = user?.company?.settings?.attendance || {};
-        const isLocationRequired = attSettings.requireLocationCheckOut || attSettings.locationCheck;
 
-        const executeClockOut = async (locationData = null) => {
+        const executeClockOut = async (locationData) => {
             setLoadingLocation(true);
             try {
-                const payload = locationData ? { location: locationData } : {};
+                const payload = { location: locationData };
                 const { data: attendanceRecord } = await api.post('/attendance/clock-out', payload);
                 applyImmediateAttendanceUpdate(attendanceRecord);
                 toast.success('Clocked Out Successfully');
@@ -1242,25 +1223,6 @@ const Attendance = () => {
                         onClick={async () => {
                             toast.dismiss(t.id);
 
-                            if (!isLocationRequired) {
-                                if (navigator.geolocation) {
-                                    navigator.geolocation.getCurrentPosition(
-                                        (position) => executeClockOut({
-                                            lat: position.coords.latitude,
-                                            lng: position.coords.longitude,
-                                            accuracy: position.coords.accuracy
-                                        }),
-                                        () => {
-                                            executeClockOut();
-                                        },
-                                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                                    );
-                                } else {
-                                    executeClockOut();
-                                }
-                                return;
-                            }
-
                             if (!navigator.geolocation) {
                                 toast.error('Geolocation is not supported by your browser.');
                                 return;
@@ -1279,9 +1241,17 @@ const Attendance = () => {
                                         setLoadingLocation(false);
                                     });
                                 },
-                                () => {
-                                    toast.error('Please Enable location to proceed with checkout (Required by your company).');
+                                (err) => {
                                     setLoadingLocation(false);
+                                    if (err.code === 1) {
+                                        toast.error('Location permission is denied. Please allow location access in your browser to check out.');
+                                    } else if (err.code === 2) {
+                                        toast.error('Location unavailable. Please turn on your system/device location service to check out.');
+                                    } else if (err.code === 3) {
+                                        toast.error('Location request timed out. Please ensure GPS/location is enabled and try again.');
+                                    } else {
+                                        toast.error('Please enable location to proceed with check out.');
+                                    }
                                 },
                                 {
                                     enableHighAccuracy: true,
