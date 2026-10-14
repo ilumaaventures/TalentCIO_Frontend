@@ -43,11 +43,23 @@ export const DOSSIER_ALLOWED_FILE_TYPES = new Set([
 
 // Helper Components defined outside to prevent re-renders
 export const Field = ({ label, value, section, field, type = "text", options = null, isEditing, hideIfEmpty, onChangeOverride, valueOverride, placeholder, formData, onChange, maxLength, error, required, dateFormat = "dd MMM yyyy" }) => {
-    if (!isEditing && !value && hideIfEmpty) return null;
-
     const rawCurrentValue = valueOverride !== undefined ? valueOverride : formData?.[section]?.[field];
     const currentValue = rawCurrentValue ?? '';
     const handleChange = onChangeOverride || ((e) => onChange(section, field, e.target.value));
+
+    const displayValue = (value !== undefined && value !== null && value !== '') ? value : (rawCurrentValue ?? '');
+    const isEmpty = displayValue === null || displayValue === undefined || displayValue === '';
+
+    if (!isEditing && isEmpty && hideIfEmpty) return null;
+
+    const formatDisplay = (v) => {
+        if (v === null || v === undefined || v === '') return 'Not Set';
+        if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+        if (type === 'date') {
+            try { return format(new Date(v), dateFormat); } catch { return String(v); }
+        }
+        return String(v);
+    };
 
     return (
         <div>
@@ -78,8 +90,8 @@ export const Field = ({ label, value, section, field, type = "text", options = n
                     {error && <p className="text-xs text-red-500 mt-1 flex items-center"><span className="mr-1">⚠️</span> {error}</p>}
                 </>
             ) : (
-                <div className={`text-sm font-medium ${!value ? 'text-slate-400 italic' : 'text-slate-800'}`}>
-                    {type === 'date' && value ? format(new Date(value), dateFormat) : value || 'Not Set'}
+                <div className={`text-sm font-medium ${isEmpty ? 'text-slate-400 italic' : 'text-slate-800'}`}>
+                    {formatDisplay(displayValue)}
                 </div>
             )}
         </div>
