@@ -494,51 +494,53 @@ export const HrisTab = ({
                     { label: 'Bank Name', old: live.compensation?.bankDetails?.bankName, new: pend.compensation?.bankDetails?.bankName },
                     { label: 'Account Holder Name', old: live.compensation?.bankDetails?.accountHolderName, new: pend.compensation?.bankDetails?.accountHolderName },
                     { label: 'Branch Address', old: live.compensation?.bankDetails?.branchAddress, new: pend.compensation?.bankDetails?.branchAddress },
-                    {
-                        label: 'PF Enabled',
-                        old: live.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No',
-                        new: pend.compensation?.salaryBreakup?.pfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No')
-                    },
-                    {
-                        label: 'Include PF in CTC',
-                        old: live.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No',
-                        new: pend.compensation?.salaryBreakup?.includePfInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No')
-                    },
-                    {
-                        label: 'ESI Enabled',
-                        old: live.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No',
-                        new: pend.compensation?.salaryBreakup?.esiEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No')
-                    },
-                    {
-                        label: 'PT Enabled',
-                        old: live.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No',
-                        new: pend.compensation?.salaryBreakup?.ptEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No')
-                    },
-                    {
-                        label: 'LWF Enabled',
-                        old: live.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No',
-                        new: pend.compensation?.salaryBreakup?.lwfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No')
-                    },
-                    {
-                        label: 'Gratuity Enabled',
-                        old: live.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No',
-                        new: pend.compensation?.salaryBreakup?.gratuityEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No')
-                    },
-                    {
-                        label: 'Include Gratuity in CTC',
-                        old: live.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No',
-                        new: pend.compensation?.salaryBreakup?.includeGratuityInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No')
-                    },
-                    {
-                        label: 'Basic Override %',
-                        old: live.compensation?.salaryBreakup?.basicPercent !== undefined ? `${live.compensation.salaryBreakup.basicPercent}%` : '50%',
-                        new: pend.compensation?.salaryBreakup?.basicPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.basicPercent}%`
-                    },
-                    {
-                        label: 'HRA Override %',
-                        old: live.compensation?.salaryBreakup?.hraPercent !== undefined ? `${live.compensation.salaryBreakup.hraPercent}%` : '50%',
-                        new: pend.compensation?.salaryBreakup?.hraPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.hraPercent}%`
-                    }
+                    ...(live.compensation?.salaryBreakup || pend.compensation?.salaryBreakup ? [
+                        {
+                            label: 'PF Enabled',
+                            old: live.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No',
+                            new: pend.compensation?.salaryBreakup?.pfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.pfEnabled !== false ? 'Yes' : 'No')
+                        },
+                        {
+                            label: 'Include PF in CTC',
+                            old: live.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No',
+                            new: pend.compensation?.salaryBreakup?.includePfInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includePfInCTC ? 'Yes' : 'No')
+                        },
+                        {
+                            label: 'ESI Enabled',
+                            old: live.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No',
+                            new: pend.compensation?.salaryBreakup?.esiEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.esiEnabled !== false ? 'Yes' : 'No')
+                        },
+                        {
+                            label: 'PT Enabled',
+                            old: live.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No',
+                            new: pend.compensation?.salaryBreakup?.ptEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.ptEnabled !== false ? 'Yes' : 'No')
+                        },
+                        {
+                            label: 'LWF Enabled',
+                            old: live.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No',
+                            new: pend.compensation?.salaryBreakup?.lwfEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.lwfEnabled !== false ? 'Yes' : 'No')
+                        },
+                        {
+                            label: 'Gratuity Enabled',
+                            old: live.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No',
+                            new: pend.compensation?.salaryBreakup?.gratuityEnabled === undefined ? undefined : (pend.compensation?.salaryBreakup?.gratuityEnabled !== false ? 'Yes' : 'No')
+                        },
+                        {
+                            label: 'Include Gratuity in CTC',
+                            old: live.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No',
+                            new: pend.compensation?.salaryBreakup?.includeGratuityInCTC === undefined ? undefined : (pend.compensation?.salaryBreakup?.includeGratuityInCTC !== false ? 'Yes' : 'No')
+                        },
+                        {
+                            label: 'Basic Override %',
+                            old: live.compensation?.salaryBreakup?.basicPercent !== undefined ? `${live.compensation.salaryBreakup.basicPercent}%` : '50%',
+                            new: pend.compensation?.salaryBreakup?.basicPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.basicPercent}%`
+                        },
+                        {
+                            label: 'HRA Override %',
+                            old: live.compensation?.salaryBreakup?.hraPercent !== undefined ? `${live.compensation.salaryBreakup.hraPercent}%` : '50%',
+                            new: pend.compensation?.salaryBreakup?.hraPercent === undefined ? undefined : `${pend.compensation.salaryBreakup.hraPercent}%`
+                        }
+                    ] : [])
                 ];
 
                 const safeFormatDate = (dStr) => {
