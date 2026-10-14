@@ -24,7 +24,7 @@ const AVAILABLE_STAGE_TEMPLATES = [
   { key: 'department_head_review', label: 'Department Head Review', assigneeType: 'department_head', canEditRatings: true },
   { key: 'hr_evaluation', label: 'HR Evaluation & Calibration', assigneeType: 'hr_group', canEditRatings: true },
   { key: 'final_approval', label: 'Final Leadership Approval', assigneeType: 'company_admin', canEditRatings: false },
-  { key: 'published', label: 'Rating Publication', assigneeType: 'company_admin', canEditRatings: false },
+  { key: 'published', label: 'Rating Published', assigneeType: 'company_admin', canEditRatings: false },
 ];
 
 export default function PmsSettings() {
@@ -159,7 +159,7 @@ export default function PmsSettings() {
       toast.error(`Stage "${template.label}" already exists in the approval workflow.`);
       return;
     }
-    // Insert before 'published' if present
+    // Insert before 'published' if present, unless we are adding 'published'
     const pubIndex = stages.findIndex((s) => s.key === 'published');
     const newStage = {
       ...template,
@@ -167,7 +167,7 @@ export default function PmsSettings() {
       isRequired: true,
     };
 
-    if (pubIndex !== -1) {
+    if (template.key !== 'published' && pubIndex !== -1) {
       stages.splice(pubIndex, 0, newStage);
     } else {
       stages.push(newStage);
@@ -183,17 +183,17 @@ export default function PmsSettings() {
 
   const removeStage = (index) => {
     const stages = [...(settings.approvalWorkflow?.stages || [])];
-    const stageToRemove = stages[index];
-    if (stageToRemove.key === 'self_review' || stageToRemove.key === 'manager_review' || stageToRemove.key === 'published') {
-      toast.error(`Core stage "${stageToRemove.label}" cannot be removed.`);
+    if (stages.length <= 1) {
+      toast.error('Workflow must contain at least one stage.');
       return;
     }
-    stages.splice(index, 1);
+    const removed = stages.splice(index, 1)[0];
     const reordered = stages.map((s, idx) => ({ ...s, order: idx + 1 }));
     setSettings((prev) => ({
       ...prev,
       approvalWorkflow: { ...prev.approvalWorkflow, stages: reordered },
     }));
+    toast.success(`Removed "${removed?.label || 'Stage'}"`);
   };
 
   if (loading) {
@@ -286,7 +286,7 @@ export default function PmsSettings() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold text-slate-500">Add Optional Stage:</span>
+                <span className="text-[11px] font-semibold text-slate-500">Add Stage:</span>
                 {AVAILABLE_STAGE_TEMPLATES.map((tmpl) => {
                   const isPresent = stages.some((s) => s.key === tmpl.key);
                   if (isPresent) return null;
@@ -361,7 +361,7 @@ export default function PmsSettings() {
                         onClick={() => moveStage(idx, -1)}
                         disabled={idx === 0}
                         title="Move Up"
-                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
                       >
                         <ArrowUp size={14} />
                       </button>
@@ -370,20 +370,18 @@ export default function PmsSettings() {
                         onClick={() => moveStage(idx, 1)}
                         disabled={idx === stages.length - 1}
                         title="Move Down"
-                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
                       >
                         <ArrowDown size={14} />
                       </button>
-                      {stage.key !== 'self_review' && stage.key !== 'manager_review' && stage.key !== 'published' && (
-                        <button
-                          type="button"
-                          onClick={() => removeStage(idx)}
-                          title="Remove Stage"
-                          className="rounded-md p-1.5 text-rose-400 hover:bg-rose-50 hover:text-rose-600"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeStage(idx)}
+                        title={`Remove ${stage.label || 'Stage'}`}
+                        className="rounded-md p-1.5 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 </div>

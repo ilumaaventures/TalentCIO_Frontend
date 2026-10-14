@@ -6,6 +6,7 @@ export const pmsApi = {
   getCycle: (id) => api.get(`/performance/cycles/${id}`),
   createCycle: (data) => api.post('/performance/cycles', data),
   updateCycle: (id, data) => api.put(`/performance/cycles/${id}`, data),
+  deleteCycle: (id) => api.delete(`/performance/cycles/${id}`),
   changeCycleStatus: (id, status) => api.patch(`/performance/cycles/${id}/status`, { status }),
   reopenCycle: (id, data) => api.post(`/performance/cycles/${id}/reopen`, data),
   syncCycleParticipants: (id) => api.post(`/performance/cycles/${id}/sync-participants`),

@@ -177,9 +177,28 @@ export default function PerformanceApp() {
     cycleType: 'annual',
     startDate: new Date().toISOString().slice(0, 10),
     endDate: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
-    reviewStartDate: new Date().toISOString().slice(0, 10),
-    reviewEndDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
     description: 'Enterprise appraisal cycle with direct manager rating, HR sign-off, and admin approval.',
+    // Step 2: Template
+    ratingScale: '1-5',
+    kraWeight: 40,
+    kpiWeight: 20,
+    goalWeight: 20,
+    competencyWeight: 20,
+    allowSelfAppraisal: true,
+    allow360Feedback: true,
+    requireGoalApproval: true,
+    // Step 3: Participants
+    participantScope: 'all',
+    applicableDepartments: [],
+    // Step 4: Reviewers & Timeline
+    selfAppraisalDeadline: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
+    managerReviewDeadline: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+    calibrationDeadline: new Date(Date.now() + 45 * 86400000).toISOString().slice(0, 10),
+    publishingDate: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10),
+    requireManagerReview: true,
+    requireDeptHeadReview: false,
+    requireHrEvaluation: true,
+    requireFinalApproval: true,
   });
 
   useEffect(() => {
@@ -211,6 +230,25 @@ export default function PerformanceApp() {
         endDate: cycleForm.endDate,
         description: cycleForm.description,
         status: 'in_progress',
+        applicableDepartments: cycleForm.participantScope === 'departments' ? cycleForm.applicableDepartments : [],
+        timeline: {
+          selfAppraisalDeadline: cycleForm.selfAppraisalDeadline,
+          managerReviewDeadline: cycleForm.managerReviewDeadline,
+          calibrationEnd: cycleForm.calibrationDeadline,
+          publishingDate: cycleForm.publishingDate,
+        },
+        settings: {
+          ratingScale: cycleForm.ratingScale || '1-5',
+          weightageModel: {
+            kraWeight: Number(cycleForm.kraWeight || 0),
+            kpiWeight: Number(cycleForm.kpiWeight || 0),
+            goalWeight: Number(cycleForm.goalWeight || 0),
+            competencyWeight: Number(cycleForm.competencyWeight || 0),
+          },
+          allowSelfAppraisal: cycleForm.allowSelfAppraisal,
+          allow360Feedback: cycleForm.allow360Feedback,
+          requireGoalApproval: cycleForm.requireGoalApproval,
+        },
       };
       const res = await pmsApi.createCycle(payload);
       if (res.data?.success) {
@@ -228,6 +266,94 @@ export default function PerformanceApp() {
     }
   };
 
+  // ─── Edit & Delete Cycle Handlers ──────────────────────────────────────────
+  const [editingCycle, setEditingCycle] = useState(null);
+  const [showEditCycleModal, setShowEditCycleModal] = useState(false);
+  const [cycleToDelete, setCycleToDelete] = useState(null);
+  const [showDeleteCycleModal, setShowDeleteCycleModal] = useState(false);
+  const [isSubmittingCycle, setIsSubmittingCycle] = useState(false);
+
+  const handleOpenEditCycle = (cycle) => {
+    setEditingCycle({
+      _id: cycle._id,
+      name: cycle.name || '',
+      cycleType: cycle.cycleType || 'annual',
+      status: cycle.status || 'in_progress',
+      startDate: cycle.startDate ? new Date(cycle.startDate).toISOString().slice(0, 10) : '',
+      endDate: cycle.endDate ? new Date(cycle.endDate).toISOString().slice(0, 10) : '',
+      description: cycle.description || '',
+    });
+    setShowEditCycleModal(true);
+  };
+
+  const handleSaveEditCycle = async (e) => {
+    if (e) e.preventDefault();
+    if (!editingCycle?.name?.trim()) {
+      toast.error('Cycle name is required');
+      return;
+    }
+    if (!editingCycle?.startDate || !editingCycle?.endDate) {
+      toast.error('Start date and end date are required');
+      return;
+    }
+    if (new Date(editingCycle.startDate) > new Date(editingCycle.endDate)) {
+      toast.error('Start date cannot be after end date');
+      return;
+    }
+
+    try {
+      setIsSubmittingCycle(true);
+      const payload = {
+        name: editingCycle.name.trim(),
+        cycleType: editingCycle.cycleType,
+        status: editingCycle.status,
+        startDate: editingCycle.startDate,
+        endDate: editingCycle.endDate,
+        description: editingCycle.description,
+      };
+      const res = await pmsApi.updateCycle(editingCycle._id, payload);
+      if (res.data?.success) {
+        toast.success('Performance cycle updated successfully!');
+        setShowEditCycleModal(false);
+        setEditingCycle(null);
+        fetchCycles();
+        fetchDashboard();
+      } else {
+        toast.error(res.data?.message || 'Failed to update cycle');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Error updating cycle');
+    } finally {
+      setIsSubmittingCycle(false);
+    }
+  };
+
+  const handleConfirmDeleteCycle = (cycle) => {
+    setCycleToDelete(cycle);
+    setShowDeleteCycleModal(true);
+  };
+
+  const handleDeleteCycle = async () => {
+    if (!cycleToDelete?._id) return;
+    try {
+      setIsSubmittingCycle(true);
+      const res = await pmsApi.deleteCycle(cycleToDelete._id);
+      if (res.data?.success) {
+        toast.success('Performance cycle deleted successfully!');
+        setShowDeleteCycleModal(false);
+        setCycleToDelete(null);
+        fetchCycles();
+        fetchDashboard();
+      } else {
+        toast.error(res.data?.message || 'Failed to delete cycle');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Error deleting cycle');
+    } finally {
+      setIsSubmittingCycle(false);
+    }
+  };
+
   // ─── TAB 3: KRA & KPI STATE (100% LIVE REAL DATA) ─────────────────────────
   const [krasList, setKrasList] = useState([]);
   const [loadingKras, setLoadingKras] = useState(false);
@@ -235,19 +361,25 @@ export default function PerformanceApp() {
   const [kraSearch, setKraSearch] = useState('');
   const [selectedDept, setSelectedDept] = useState('All');
   const [showAddKraModal, setShowAddKraModal] = useState(false);
+  const [showEditKraModal, setShowEditKraModal] = useState(false);
+  const [editingKra, setEditingKra] = useState(null);
+  const [showDeleteKraModal, setShowDeleteKraModal] = useState(false);
+  const [kraToDelete, setKraToDelete] = useState(null);
+  const [isSubmittingKra, setIsSubmittingKra] = useState(false);
   const [newKraForm, setNewKraForm] = useState({
     name: '',
     description: '',
     category: 'Productivity & Delivery',
     weightage: 20,
     applicableDepartments: [],
+    assignmentType: 'by_role',
   });
 
   useEffect(() => {
     if (currentTab === 'kras') {
       fetchKras();
     }
-  }, [currentTab, kraSearch, selectedDept]);
+  }, [currentTab, kraSearch, selectedDept, kraSubTab]);
 
   const fetchKras = async () => {
     try {
@@ -255,6 +387,7 @@ export default function PerformanceApp() {
       const params = {};
       if (kraSearch) params.search = kraSearch;
       if (selectedDept && selectedDept !== 'All') params.department = selectedDept;
+      if (kraSubTab) params.assignmentType = kraSubTab;
       const res = await pmsApi.getKras(params);
       if (res.data?.success) {
         setKrasList(res.data.data || []);
@@ -273,12 +406,14 @@ export default function PerformanceApp() {
       return;
     }
     try {
+      setIsSubmittingKra(true);
       const payload = {
         name: newKraForm.name.trim(),
         description: newKraForm.description,
         category: newKraForm.category,
         weightage: Number(newKraForm.weightage) || 20,
         applicableDepartments: newKraForm.applicableDepartments,
+        assignmentType: newKraForm.assignmentType || kraSubTab || 'by_role',
         cycleId: dashboardData?.activeCycle?._id || null,
       };
       const res = await pmsApi.createKra(payload);
@@ -291,11 +426,94 @@ export default function PerformanceApp() {
           category: 'Productivity & Delivery',
           weightage: 20,
           applicableDepartments: [],
+          assignmentType: kraSubTab || 'by_role',
         });
         fetchKras();
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save KRA');
+    } finally {
+      setIsSubmittingKra(false);
+    }
+  };
+
+  const handleOpenEditKra = (kra) => {
+    let defaultType = kra.assignmentType;
+    if (!defaultType) {
+      if (kra.isTemplate) defaultType = 'kra_library';
+      else if (kra.applicableEmployees?.length) defaultType = 'by_employee';
+      else if (kra.applicableDepartments?.length) defaultType = 'by_department';
+      else defaultType = 'by_role';
+    }
+
+    setEditingKra({
+      _id: kra._id,
+      name: kra.name || '',
+      category: kra.category || 'Productivity & Delivery',
+      weightage: kra.weightage ?? 20,
+      description: kra.description || '',
+      applicableDepartments: Array.isArray(kra.applicableDepartments) ? kra.applicableDepartments : [],
+      assignmentType: defaultType,
+      status: kra.status || 'active',
+    });
+    setShowEditKraModal(true);
+  };
+
+  const handleSaveEditKra = async (e) => {
+    e.preventDefault();
+    if (!editingKra?.name?.trim()) {
+      toast.error('KRA name is required');
+      return;
+    }
+    try {
+      setIsSubmittingKra(true);
+      const payload = {
+        name: editingKra.name.trim(),
+        category: editingKra.category,
+        weightage: Number(editingKra.weightage) || 0,
+        description: editingKra.description || '',
+        applicableDepartments: editingKra.applicableDepartments || [],
+        assignmentType: editingKra.assignmentType || 'by_role',
+        status: editingKra.status || 'active',
+      };
+      const res = await pmsApi.updateKra(editingKra._id, payload);
+      if (res.data?.success) {
+        toast.success('KRA updated successfully!');
+        setShowEditKraModal(false);
+        setEditingKra(null);
+        fetchKras();
+      } else {
+        toast.error(res.data?.message || 'Failed to update KRA');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Error updating KRA');
+    } finally {
+      setIsSubmittingKra(false);
+    }
+  };
+
+  const handleConfirmDeleteKra = (kra) => {
+    setKraToDelete(kra);
+    setShowDeleteKraModal(true);
+  };
+
+  const handleDeleteKra = async () => {
+    if (!kraToDelete?._id) return;
+    try {
+      setIsSubmittingKra(true);
+      const res = await pmsApi.deleteKra(kraToDelete._id);
+      if (res.data?.success) {
+        toast.success('KRA deleted successfully!');
+        setShowDeleteKraModal(false);
+        setKraToDelete(null);
+        fetchKras();
+      } else {
+        toast.error(res.data?.message || 'Failed to delete KRA');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Error deleting KRA');
+    } finally {
+      setIsSubmittingKra(false);
     }
   };
 
@@ -307,6 +525,7 @@ export default function PerformanceApp() {
   const [newGoalForm, setNewGoalForm] = useState({
     title: '',
     description: '',
+    scope: 'individual',
     weightage: 20,
     priority: 'high',
     dueDate: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
@@ -326,6 +545,8 @@ export default function PerformanceApp() {
         params.scope = 'self';
       } else if (goalSubTab === 'team_goals') {
         params.scope = 'my_team';
+      } else if (goalSubTab === 'company_goals') {
+        params.scope = 'company_goals';
       }
       const res = await pmsApi.getGoals(params);
       if (res.data?.success) {
@@ -359,14 +580,27 @@ export default function PerformanceApp() {
       if (res.data?.success) {
         toast.success('Goal created successfully!');
         setShowAddGoalModal(false);
+        const targetSubTab =
+          newGoalForm.scope === 'team'
+            ? 'team_goals'
+            : newGoalForm.scope === 'company'
+            ? 'company_goals'
+            : 'my_goals';
+
         setNewGoalForm({
           title: '',
           description: '',
+          scope: newGoalForm.scope,
           weightage: 20,
           priority: 'high',
           dueDate: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
         });
-        fetchGoals();
+
+        if (goalSubTab !== targetSubTab) {
+          setGoalSubTab(targetSubTab);
+        } else {
+          fetchGoals();
+        }
         fetchDashboard();
       }
     } catch (err) {
@@ -736,7 +970,7 @@ export default function PerformanceApp() {
                 className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
               >
                 <Plus size={14} />
-                <span>+ Create Cycle</span>
+                <span>Create Cycle</span>
               </button>
             </div>
 
@@ -745,7 +979,7 @@ export default function PerformanceApp() {
               <div className="py-12 text-center text-xs text-slate-400">Loading cycles from database...</div>
             ) : cyclesList.length === 0 ? (
               <div className="py-12 text-center text-xs text-slate-400">
-                No performance cycles found. Click &quot;+ Create Cycle&quot; to initialize your first cycle.
+                No performance cycles found. Click &quot;Create Cycle&quot; to initialize your first cycle.
               </div>
             ) : (
               <div className="space-y-3">
@@ -757,24 +991,50 @@ export default function PerformanceApp() {
                     <div className="flex-1 min-w-[240px]">
                       <div className="flex items-center gap-2">
                         <h4 className="text-xs font-bold text-slate-900">{cycle.name}</h4>
-                        <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                          {cycle.cycleType}
+                        <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700 capitalize">
+                          {String(cycle.cycleType || '').replace('_', ' ')}
                         </span>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           cycle.status === 'in_progress'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : cycle.status === 'published'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : cycle.status === 'closed'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
                             : 'bg-slate-100 text-slate-600'
                         }`}>
-                          {cycle.status}
+                          {String(cycle.status || '').replace('_', ' ')}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-1">{cycle.description}</p>
                     </div>
 
-                    <div className="text-xs font-semibold text-slate-600">
-                      <div>Period: {new Date(cycle.startDate).toLocaleDateString()} - {new Date(cycle.endDate).toLocaleDateString()}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        Participants: {cycle.stats?.totalAppraisals || 0} | Published: {cycle.stats?.published || 0}
+                    <div className="flex items-center gap-4">
+                      <div className="text-xs font-semibold text-slate-600 text-right">
+                        <div>Period: {new Date(cycle.startDate).toLocaleDateString()} - {new Date(cycle.endDate).toLocaleDateString()}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Participants: {cycle.stats?.totalAppraisals || 0} | Published: {cycle.stats?.published || 0}
+                        </div>
+                      </div>
+
+                      {/* Edit & Delete Action Buttons */}
+                      <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditCycle(cycle)}
+                          title="Edit Cycle"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition"
+                        >
+                          <Edit size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmDeleteCycle(cycle)}
+                          title="Delete Cycle"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition"
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -797,7 +1057,7 @@ export default function PerformanceApp() {
                   </button>
                 </div>
 
-                {/* 5-Step Stepper Bar */}
+                {/* 5-Step Stepper Bar (Clickable / Editable Tabs) */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                   {[
                     { step: 1, label: 'Basic Details' },
@@ -806,33 +1066,48 @@ export default function PerformanceApp() {
                     { step: 4, label: 'Reviewers' },
                     { step: 5, label: 'Summary' },
                   ].map((s) => (
-                    <div key={s.step} className="flex items-center gap-1.5">
+                    <button
+                      key={s.step}
+                      type="button"
+                      onClick={() => setCycleStep(s.step)}
+                      className="group flex items-center gap-1.5 focus:outline-hidden transition text-left cursor-pointer"
+                    >
                       <div
-                        className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${
+                        className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
                           cycleStep === s.step
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-blue-600 text-white shadow-xs'
                             : cycleStep > s.step
                             ? 'bg-emerald-500 text-white'
-                            : 'bg-slate-100 text-slate-400'
+                            : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-600'
                         }`}
                       >
                         {cycleStep > s.step ? <Check size={12} /> : s.step}
                       </div>
-                      <span className={`text-[11px] font-bold ${cycleStep === s.step ? 'text-blue-600' : 'text-slate-500'}`}>
+                      <span
+                        className={`text-[11px] font-bold transition-colors ${
+                          cycleStep === s.step
+                            ? 'text-blue-600'
+                            : cycleStep > s.step
+                            ? 'text-slate-700'
+                            : 'text-slate-400 group-hover:text-slate-600'
+                        }`}
+                      >
                         {s.label}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
 
                 {/* Form Fields for Step */}
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                  {/* STEP 1: BASIC DETAILS */}
                   {cycleStep === 1 && (
                     <div className="space-y-3">
                       <div>
                         <label className="block text-xs font-bold text-slate-700">Cycle Name *</label>
                         <input
                           type="text"
+                          required
                           value={cycleForm.name}
                           onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })}
                           className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
@@ -840,18 +1115,20 @@ export default function PerformanceApp() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-bold text-slate-700">Start Date</label>
+                          <label className="block text-xs font-bold text-slate-700">Start Date *</label>
                           <input
                             type="date"
+                            required
                             value={cycleForm.startDate}
                             onChange={(e) => setCycleForm({ ...cycleForm, startDate: e.target.value })}
                             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700">End Date</label>
+                          <label className="block text-xs font-bold text-slate-700">End Date *</label>
                           <input
                             type="date"
+                            required
                             value={cycleForm.endDate}
                             onChange={(e) => setCycleForm({ ...cycleForm, endDate: e.target.value })}
                             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs"
@@ -863,11 +1140,14 @@ export default function PerformanceApp() {
                         <select
                           value={cycleForm.cycleType}
                           onChange={(e) => setCycleForm({ ...cycleForm, cycleType: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium"
+                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
                         >
                           <option value="annual">Annual</option>
                           <option value="half_yearly">Half-Yearly</option>
                           <option value="quarterly">Quarterly</option>
+                          <option value="monthly">Monthly</option>
+                          <option value="probationary">Probationary</option>
+                          <option value="custom">Custom</option>
                         </select>
                       </div>
                       <div>
@@ -876,38 +1156,375 @@ export default function PerformanceApp() {
                           rows={2}
                           value={cycleForm.description}
                           onChange={(e) => setCycleForm({ ...cycleForm, description: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium"
+                          placeholder="Cycle objectives and context..."
+                          className="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
                         />
                       </div>
                     </div>
                   )}
 
+                  {/* STEP 2: TEMPLATE & WEIGHTAGES */}
                   {cycleStep === 2 && (
-                    <div className="p-4 bg-slate-50 rounded-xl space-y-2 text-xs">
-                      <span className="font-bold text-slate-800">Review Template Configuration:</span>
-                      <p className="text-slate-600">Standard 5-Star Enterprise Evaluation Template will be linked, scoring KRAs, KPIs, and Manager Review.</p>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700">Rating Scale</label>
+                        <select
+                          value={cycleForm.ratingScale}
+                          onChange={(e) => setCycleForm({ ...cycleForm, ratingScale: e.target.value })}
+                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
+                        >
+                          <option value="1-5">Standard 5-Point Rating Scale (1 to 5 Stars)</option>
+                          <option value="1-4">4-Point Scale (1 to 4)</option>
+                          <option value="1-10">10-Point Scale (1 to 10)</option>
+                          <option value="custom">Custom Percentage Band (0 - 100%)</option>
+                        </select>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-800">Section Weightages (Must sum to 100%)</label>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              Number(cycleForm.kraWeight || 0) +
+                                Number(cycleForm.kpiWeight || 0) +
+                                Number(cycleForm.goalWeight || 0) +
+                                Number(cycleForm.competencyWeight || 0) === 100
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            Total: {Number(cycleForm.kraWeight || 0) +
+                              Number(cycleForm.kpiWeight || 0) +
+                              Number(cycleForm.goalWeight || 0) +
+                              Number(cycleForm.competencyWeight || 0)}%
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">KRA Weight (%)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={cycleForm.kraWeight}
+                              onChange={(e) => setCycleForm({ ...cycleForm, kraWeight: Number(e.target.value) })}
+                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">KPI Weight (%)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={cycleForm.kpiWeight}
+                              onChange={(e) => setCycleForm({ ...cycleForm, kpiWeight: Number(e.target.value) })}
+                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">Goals & OKRs (%)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={cycleForm.goalWeight}
+                              onChange={(e) => setCycleForm({ ...cycleForm, goalWeight: Number(e.target.value) })}
+                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">Competencies (%)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={cycleForm.competencyWeight}
+                              onChange={(e) => setCycleForm({ ...cycleForm, competencyWeight: Number(e.target.value) })}
+                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2.5 pt-1">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={cycleForm.allowSelfAppraisal}
+                            onChange={(e) => setCycleForm({ ...cycleForm, allowSelfAppraisal: e.target.checked })}
+                            className="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>Allow Employee Self-Appraisal before Manager Review</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={cycleForm.allow360Feedback}
+                            onChange={(e) => setCycleForm({ ...cycleForm, allow360Feedback: e.target.checked })}
+                            className="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>Enable 360° Multi-Rater Peer & Subordinate Feedback</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={cycleForm.requireGoalApproval}
+                            onChange={(e) => setCycleForm({ ...cycleForm, requireGoalApproval: e.target.checked })}
+                            className="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>Require Reporting Manager Approval for Goals and Milestones</span>
+                        </label>
+                      </div>
                     </div>
                   )}
 
+                  {/* STEP 3: PARTICIPANTS */}
                   {cycleStep === 3 && (
-                    <div className="p-4 bg-slate-50 rounded-xl space-y-2 text-xs">
-                      <span className="font-bold text-slate-800">Participant Selection:</span>
-                      <p className="text-slate-600">All {totalEmployees} active company employees will be automatically enrolled and appraisals initialized.</p>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-2">Participant Scope</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div
+                            onClick={() => setCycleForm({ ...cycleForm, participantScope: 'all', applicableDepartments: [] })}
+                            className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+                              cycleForm.participantScope === 'all'
+                                ? 'border-blue-600 bg-blue-50/50'
+                                : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="participantScope"
+                              checked={cycleForm.participantScope === 'all'}
+                              onChange={() => setCycleForm({ ...cycleForm, participantScope: 'all', applicableDepartments: [] })}
+                              className="mt-0.5 text-blue-600"
+                            />
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">All Company Employees</div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Automatically enroll all active staff across the entire company ({totalEmployees} employees)
+                              </p>
+                            </div>
+                          </div>
+
+                          <div
+                            onClick={() => setCycleForm({ ...cycleForm, participantScope: 'departments' })}
+                            className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+                              cycleForm.participantScope === 'departments'
+                                ? 'border-blue-600 bg-blue-50/50'
+                                : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="participantScope"
+                              checked={cycleForm.participantScope === 'departments'}
+                              onChange={() => setCycleForm({ ...cycleForm, participantScope: 'departments' })}
+                              className="mt-0.5 text-blue-600"
+                            />
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">Specific Departments</div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Limit this evaluation cycle to selected business departments only
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {cycleForm.participantScope === 'departments' && (
+                        <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-slate-50/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700">Select Participating Departments:</span>
+                            <span className="text-[11px] font-semibold text-blue-600">
+                              {cycleForm.applicableDepartments.length} selected
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              'Engineering',
+                              'Product',
+                              'Design',
+                              'Sales',
+                              'Marketing',
+                              'Human Resources',
+                              'Finance',
+                              'Operations',
+                            ].map((dept) => {
+                              const isChecked = cycleForm.applicableDepartments.includes(dept);
+                              return (
+                                <label
+                                  key={dept}
+                                  className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer p-1.5 rounded-lg hover:bg-white"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setCycleForm({
+                                          ...cycleForm,
+                                          applicableDepartments: [...cycleForm.applicableDepartments, dept],
+                                        });
+                                      } else {
+                                        setCycleForm({
+                                          ...cycleForm,
+                                          applicableDepartments: cycleForm.applicableDepartments.filter((d) => d !== dept),
+                                        });
+                                      }
+                                    }}
+                                    className="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span>{dept}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
+                  {/* STEP 4: REVIEWERS & WORKFLOW */}
                   {cycleStep === 4 && (
-                    <div className="p-4 bg-slate-50 rounded-xl space-y-2 text-xs">
-                      <span className="font-bold text-slate-800">Approval Workflow:</span>
-                      <p className="text-slate-600">Direct Reporting Manager evaluates first, followed by HR Review, and final HR Admin sign-off.</p>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-2">Stage Deadlines</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">Self-Review Deadline</span>
+                            <input
+                              type="date"
+                              value={cycleForm.selfAppraisalDeadline}
+                              onChange={(e) => setCycleForm({ ...cycleForm, selfAppraisalDeadline: e.target.value })}
+                              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">Manager Review Deadline</span>
+                            <input
+                              type="date"
+                              value={cycleForm.managerReviewDeadline}
+                              onChange={(e) => setCycleForm({ ...cycleForm, managerReviewDeadline: e.target.value })}
+                              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">Calibration End Date</span>
+                            <input
+                              type="date"
+                              value={cycleForm.calibrationDeadline}
+                              onChange={(e) => setCycleForm({ ...cycleForm, calibrationDeadline: e.target.value })}
+                              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[11px] font-semibold text-slate-600">Publishing Date</span>
+                            <input
+                              type="date"
+                              value={cycleForm.publishingDate}
+                              onChange={(e) => setCycleForm({ ...cycleForm, publishingDate: e.target.value })}
+                              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2.5">
+                        <label className="block text-xs font-bold text-slate-800">Workflow Approval Stages</label>
+                        <div className="space-y-2 text-xs">
+                          <label className="flex items-center gap-2 cursor-pointer text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={cycleForm.requireManagerReview}
+                              onChange={(e) => setCycleForm({ ...cycleForm, requireManagerReview: e.target.checked })}
+                              className="h-4 w-4 rounded-sm border-slate-300 text-blue-600"
+                            />
+                            <span>Stage 1: Direct Reporting Manager Evaluation (Required)</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={cycleForm.requireDeptHeadReview}
+                              onChange={(e) => setCycleForm({ ...cycleForm, requireDeptHeadReview: e.target.checked })}
+                              className="h-4 w-4 rounded-sm border-slate-300 text-blue-600"
+                            />
+                            <span>Stage 2: Department Head Review</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={cycleForm.requireHrEvaluation}
+                              onChange={(e) => setCycleForm({ ...cycleForm, requireHrEvaluation: e.target.checked })}
+                              className="h-4 w-4 rounded-sm border-slate-300 text-blue-600"
+                            />
+                            <span>Stage 3: HR Evaluation & Calibration</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={cycleForm.requireFinalApproval}
+                              onChange={(e) => setCycleForm({ ...cycleForm, requireFinalApproval: e.target.checked })}
+                              className="h-4 w-4 rounded-sm border-slate-300 text-blue-600"
+                            />
+                            <span>Stage 4: Final Leadership Sign-Off & Release</span>
+                          </label>
+                        </div>
+                      </div>
                     </div>
                   )}
 
+                  {/* STEP 5: SUMMARY & LAUNCH */}
                   {cycleStep === 5 && (
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-2 text-xs">
-                      <span className="font-bold text-blue-900">Ready to Launch Cycle!</span>
-                      <p className="text-blue-700">Cycle name: <strong>{cycleForm.name}</strong> ({cycleForm.cycleType})</p>
-                      <p className="text-blue-700">All participants will receive access to enter evaluations.</p>
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 space-y-3 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-blue-950 text-sm">{cycleForm.name}</span>
+                          <span className="rounded-full bg-blue-600 px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                            {cycleForm.cycleType}
+                          </span>
+                        </div>
+                        <p className="text-slate-600 text-[11px]">{cycleForm.description || 'Enterprise appraisal cycle'}</p>
+
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-blue-100 text-[11px]">
+                          <div>
+                            <span className="text-slate-500 block">Cycle Period:</span>
+                            <span className="font-bold text-slate-800">{cycleForm.startDate} to {cycleForm.endDate}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">Scale:</span>
+                            <span className="font-bold text-slate-800">{cycleForm.ratingScale}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">Participants:</span>
+                            <span className="font-bold text-slate-800">
+                              {cycleForm.participantScope === 'all'
+                                ? `All ${totalEmployees} Employees`
+                                : cycleForm.applicableDepartments.length > 0
+                                ? cycleForm.applicableDepartments.join(', ')
+                                : 'All Departments'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">Weights:</span>
+                            <span className="font-bold text-slate-800">
+                              KRA {cycleForm.kraWeight}% | KPI {cycleForm.kpiWeight}% | Goal {cycleForm.goalWeight}% | Comp {cycleForm.competencyWeight}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2 text-xs">
+                        <span className="font-bold text-slate-800 block">Key Deadlines:</span>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                          <div>Self-Review: <strong>{cycleForm.selfAppraisalDeadline}</strong></div>
+                          <div>Manager Review: <strong>{cycleForm.managerReviewDeadline}</strong></div>
+                          <div>Calibration: <strong>{cycleForm.calibrationDeadline}</strong></div>
+                          <div>Publishing: <strong>{cycleForm.publishingDate}</strong></div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -938,6 +1555,177 @@ export default function PerformanceApp() {
               </div>
             </div>
           )}
+
+          {/* Edit Cycle Modal */}
+          {showEditCycleModal && editingCycle && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Edit Performance Cycle</h3>
+                    <p className="text-xs text-slate-500">Update schedule, cycle type, or details</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditCycleModal(false);
+                      setEditingCycle(null);
+                    }}
+                    className="rounded-lg p-1 hover:bg-slate-100 text-slate-400"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveEditCycle} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700">Cycle Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingCycle.name}
+                      onChange={(e) => setEditingCycle({ ...editingCycle, name: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">Cycle Type</label>
+                      <select
+                        value={editingCycle.cycleType}
+                        onChange={(e) => setEditingCycle({ ...editingCycle, cycleType: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
+                      >
+                        <option value="annual">Annual</option>
+                        <option value="half_yearly">Half-Yearly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="probationary">Probationary</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">Status</label>
+                      <select
+                        value={editingCycle.status}
+                        onChange={(e) => setEditingCycle({ ...editingCycle, status: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="self_review">Self Review</option>
+                        <option value="manager_review">Manager Review</option>
+                        <option value="calibration">Calibration</option>
+                        <option value="published">Published</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">Start Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={editingCycle.startDate}
+                        onChange={(e) => setEditingCycle({ ...editingCycle, startDate: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">End Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={editingCycle.endDate}
+                        onChange={(e) => setEditingCycle({ ...editingCycle, endDate: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700">Description</label>
+                    <textarea
+                      rows={3}
+                      value={editingCycle.description}
+                      onChange={(e) => setEditingCycle({ ...editingCycle, description: e.target.value })}
+                      placeholder="Cycle description and objectives..."
+                      className="mt-1 w-full rounded-xl border border-slate-200 p-3 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      disabled={isSubmittingCycle}
+                      onClick={() => {
+                        setShowEditCycleModal(false);
+                        setEditingCycle(null);
+                      }}
+                      className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingCycle}
+                      className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition disabled:opacity-50"
+                    >
+                      {isSubmittingCycle ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Cycle Confirmation Modal */}
+          {showDeleteCycleModal && cycleToDelete && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+                    <AlertCircle size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Delete Performance Cycle</h3>
+                    <p className="text-xs text-slate-500">This action cannot be undone.</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Are you sure you want to delete <span className="font-bold text-slate-900">&quot;{cycleToDelete.name}&quot;</span>? This will also remove any appraisals associated with this cycle.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={isSubmittingCycle}
+                    onClick={() => {
+                      setShowDeleteCycleModal(false);
+                      setCycleToDelete(null);
+                    }}
+                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmittingCycle}
+                    onClick={handleDeleteCycle}
+                    className="rounded-xl bg-rose-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition disabled:opacity-50"
+                  >
+                    {isSubmittingCycle ? 'Deleting...' : 'Delete Cycle'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -955,8 +1743,18 @@ export default function PerformanceApp() {
 
               {(isAdmin || isHr) && (
                 <button
-                  onClick={() => setShowAddKraModal(true)}
-                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+                  onClick={() => {
+                    setNewKraForm({
+                      name: '',
+                      description: '',
+                      category: 'Productivity & Delivery',
+                      weightage: 20,
+                      applicableDepartments: selectedDept !== 'All' ? [selectedDept] : [],
+                      assignmentType: kraSubTab || 'by_role',
+                    });
+                    setShowAddKraModal(true);
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition cursor-pointer"
                 >
                   <Plus size={14} />
                   <span>+ Add KRA</span>
@@ -966,17 +1764,22 @@ export default function PerformanceApp() {
 
             {/* Subtabs Matching Mockup */}
             <div className="flex items-center gap-2 border-b border-slate-100 pb-2 text-xs font-bold">
-              {['by_role', 'by_department', 'by_employee', 'kra_library'].map((st) => (
+              {[
+                { id: 'by_role', label: 'By Role' },
+                { id: 'by_department', label: 'By Department' },
+                { id: 'by_employee', label: 'By Employee' },
+                { id: 'kra_library', label: 'Kra Library' },
+              ].map((st) => (
                 <button
-                  key={st}
-                  onClick={() => setKraSubTab(st)}
-                  className={`rounded-lg px-3 py-1.5 transition ${
-                    kraSubTab === st
-                      ? 'bg-blue-50 text-blue-700'
+                  key={st.id}
+                  onClick={() => setKraSubTab(st.id)}
+                  className={`rounded-lg px-3 py-1.5 transition cursor-pointer ${
+                    kraSubTab === st.id
+                      ? 'bg-blue-50 text-blue-700 font-extrabold shadow-2xs'
                       : 'text-slate-500 hover:bg-slate-50'
                   }`}
                 >
-                  {st.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                  {st.label}
                 </button>
               ))}
             </div>
@@ -1018,16 +1821,27 @@ export default function PerformanceApp() {
                     <th className="py-3 px-4">Category</th>
                     <th className="py-3 px-4">Weightage</th>
                     <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {loadingKras ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-400">Loading KRAs...</td>
+                      <td colSpan={6} className="py-8 text-center text-slate-400">Loading KRAs...</td>
                     </tr>
                   ) : krasList.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-400">No KRAs found. Click &quot;+ Add KRA&quot; to define a new one.</td>
+                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                        No KRAs found under &quot;{
+                          kraSubTab === 'by_role'
+                            ? 'By Role'
+                            : kraSubTab === 'by_department'
+                            ? 'By Department'
+                            : kraSubTab === 'by_employee'
+                            ? 'By Employee'
+                            : 'Kra Library'
+                        }&quot;. Click &quot;+ Add KRA&quot; to define a new one.
+                      </td>
                     </tr>
                   ) : (
                     krasList.map((k) => (
@@ -1037,9 +1851,35 @@ export default function PerformanceApp() {
                         <td className="py-3.5 px-4 text-slate-700 font-medium">{k.category}</td>
                         <td className="py-3.5 px-4 font-bold text-slate-800">{k.weightage}%</td>
                         <td className="py-3.5 px-4">
-                          <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
-                            Active
+                          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold capitalize ${
+                            k.status === 'inactive'
+                              ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                              : k.status === 'draft'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                          }`}>
+                            {k.status || 'Active'}
                           </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditKra(k)}
+                              title="Edit KRA"
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition cursor-pointer"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDeleteKra(k)}
+                              title="Delete KRA"
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1059,6 +1899,64 @@ export default function PerformanceApp() {
                     <X size={18} />
                   </button>
                 </div>
+
+                {/* Assignment / Category Target Tab */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Target Tab / Assignment Scope *
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'by_role', label: 'By Role' },
+                      { id: 'by_department', label: 'By Department' },
+                      { id: 'by_employee', label: 'By Employee' },
+                      { id: 'kra_library', label: 'Kra Library' },
+                    ].map((tab) => {
+                      const isSelected = (newKraForm.assignmentType || 'by_role') === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setNewKraForm({ ...newKraForm, assignmentType: tab.id })}
+                          className={`rounded-xl py-2 px-2 text-xs font-bold border transition text-center cursor-pointer ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-2xs ring-1 ring-blue-600'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {newKraForm.assignmentType === 'by_department' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700">Applicable Department *</label>
+                    <select
+                      value={newKraForm.applicableDepartments?.[0] || (selectedDept !== 'All' ? selectedDept : 'Engineering')}
+                      onChange={(e) => setNewKraForm({ ...newKraForm, applicableDepartments: [e.target.value] })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
+                    >
+                      <option value="Engineering">Engineering</option>
+                      <option value="Product">Product</option>
+                      <option value="Sales">Sales</option>
+                      <option value="Marketing">Marketing</option>
+                      <option value="Design">Design</option>
+                      <option value="Human Resources">Human Resources</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Operations">Operations</option>
+                    </select>
+                  </div>
+                )}
+
+                {newKraForm.assignmentType === 'kra_library' && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 text-[11px] text-blue-800">
+                    💡 This KRA will be added directly into the organizational <strong>KRA Library</strong> as a reusable template.
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700">KRA Name *</label>
                   <input
@@ -1082,7 +1980,10 @@ export default function PerformanceApp() {
                     <option value="Team Collaboration">Team Collaboration</option>
                     <option value="Operational Efficiency">Operational Efficiency</option>
                     <option value="Customer Satisfaction">Customer Satisfaction</option>
+                    <option value="Revenue & Sales">Revenue & Sales</option>
                     <option value="Leadership & Mentorship">Leadership & Mentorship</option>
+                    <option value="Learning & Development">Learning & Development</option>
+                    <option value="General">General</option>
                   </select>
                 </div>
                 <div>
@@ -1105,9 +2006,10 @@ export default function PerformanceApp() {
                     className="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-xs"
                   />
                 </div>
-                <div className="flex items-center justify-end gap-2 pt-2">
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
+                    disabled={isSubmittingKra}
                     onClick={() => setShowAddKraModal(false)}
                     className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
                   >
@@ -1115,12 +2017,219 @@ export default function PerformanceApp() {
                   </button>
                   <button
                     type="submit"
-                    className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700"
+                    disabled={isSubmittingKra}
+                    className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Save KRA
+                    {isSubmittingKra ? 'Saving...' : 'Save KRA'}
                   </button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {/* Edit KRA Modal */}
+          {showEditKraModal && editingKra && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+              <form onSubmit={handleSaveEditKra} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-slate-900">Edit KRA</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditKraModal(false);
+                      setEditingKra(null);
+                    }}
+                    className="rounded-lg p-1 hover:bg-slate-100 text-slate-400"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Assignment / Category Target Tab */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Target Tab / Assignment Scope *
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'by_role', label: 'By Role' },
+                      { id: 'by_department', label: 'By Department' },
+                      { id: 'by_employee', label: 'By Employee' },
+                      { id: 'kra_library', label: 'Kra Library' },
+                    ].map((tab) => {
+                      const isSelected = (editingKra.assignmentType || 'by_role') === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setEditingKra({ ...editingKra, assignmentType: tab.id })}
+                          className={`rounded-xl py-2 px-2 text-xs font-bold border transition text-center cursor-pointer ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-2xs ring-1 ring-blue-600'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {editingKra.assignmentType === 'by_department' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700">Applicable Department *</label>
+                    <select
+                      value={editingKra.applicableDepartments?.[0] || 'Engineering'}
+                      onChange={(e) => setEditingKra({ ...editingKra, applicableDepartments: [e.target.value] })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
+                    >
+                      <option value="Engineering">Engineering</option>
+                      <option value="Product">Product</option>
+                      <option value="Sales">Sales</option>
+                      <option value="Marketing">Marketing</option>
+                      <option value="Design">Design</option>
+                      <option value="Human Resources">Human Resources</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Operations">Operations</option>
+                    </select>
+                  </div>
+                )}
+
+                {editingKra.assignmentType === 'kra_library' && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 text-[11px] text-blue-800">
+                    💡 This KRA is stored in the organizational <strong>KRA Library</strong> as a reusable template.
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">KRA Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingKra.name}
+                    onChange={(e) => setEditingKra({ ...editingKra, name: e.target.value })}
+                    placeholder="e.g. Code Quality & Architecture"
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700">Category</label>
+                    <select
+                      value={editingKra.category}
+                      onChange={(e) => setEditingKra({ ...editingKra, category: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
+                    >
+                      <option value="Productivity & Delivery">Productivity & Delivery</option>
+                      <option value="Quality of Work">Quality of Work</option>
+                      <option value="Team Collaboration">Team Collaboration</option>
+                      <option value="Operational Efficiency">Operational Efficiency</option>
+                      <option value="Customer Satisfaction">Customer Satisfaction</option>
+                      <option value="Revenue & Sales">Revenue & Sales</option>
+                      <option value="Leadership & Mentorship">Leadership & Mentorship</option>
+                      <option value="Learning & Development">Learning & Development</option>
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700">Weightage (%)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={editingKra.weightage}
+                      onChange={(e) => setEditingKra({ ...editingKra, weightage: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">Status</label>
+                  <select
+                    value={editingKra.status}
+                    onChange={(e) => setEditingKra({ ...editingKra, status: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium bg-white focus:border-blue-500 focus:outline-hidden"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="draft">Draft</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">Description</label>
+                  <textarea
+                    rows={3}
+                    value={editingKra.description}
+                    onChange={(e) => setEditingKra({ ...editingKra, description: e.target.value })}
+                    placeholder="Description and expectations for this KRA..."
+                    className="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={isSubmittingKra}
+                    onClick={() => {
+                      setShowEditKraModal(false);
+                      setEditingKra(null);
+                    }}
+                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingKra}
+                    className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    {isSubmittingKra ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Delete KRA Confirmation Modal */}
+          {showDeleteKraModal && kraToDelete && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-50 text-rose-600 shrink-0">
+                    <AlertCircle size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Delete KRA</h3>
+                    <p className="text-xs text-slate-500">This action cannot be undone.</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Are you sure you want to delete <span className="font-bold text-slate-900">&quot;{kraToDelete.name}&quot;</span>? Linked KPIs and evaluation associations will also be removed.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={isSubmittingKra}
+                    onClick={() => {
+                      setShowDeleteKraModal(false);
+                      setKraToDelete(null);
+                    }}
+                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmittingKra}
+                    onClick={handleDeleteKra}
+                    className="rounded-xl bg-rose-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition disabled:opacity-50"
+                  >
+                    {isSubmittingKra ? 'Deleting...' : 'Delete KRA'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1139,7 +2248,16 @@ export default function PerformanceApp() {
               </div>
 
               <button
-                onClick={() => setShowAddGoalModal(true)}
+                onClick={() => {
+                  const defaultScope =
+                    goalSubTab === 'team_goals'
+                      ? 'team'
+                      : goalSubTab === 'company_goals'
+                      ? 'company'
+                      : 'individual';
+                  setNewGoalForm((prev) => ({ ...prev, scope: defaultScope }));
+                  setShowAddGoalModal(true);
+                }}
                 className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
               >
                 <Plus size={14} />
@@ -1199,8 +2317,19 @@ export default function PerformanceApp() {
                     className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs hover:shadow-xs transition"
                   >
                     <div className="flex-1 min-w-[240px]">
-                      <h4 className="text-xs font-bold text-slate-900">{g.title}</h4>
-                      <p className="text-[11px] text-slate-500">{g.description || 'Target performance goal'}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-xs font-bold text-slate-900">{g.title}</h4>
+                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                          g.scope === 'team'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : g.scope === 'company' || g.scope === 'strategic'
+                            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        }`}>
+                          {g.scope === 'team' ? 'Team Goal' : g.scope === 'company' || g.scope === 'strategic' ? 'Company Goal' : 'My Goal'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{g.description || 'Target performance goal'}</p>
                       {g.employeeId?.name && (
                         <span className="text-[10px] text-slate-400 mt-0.5 block">Owner: {g.employeeId.name}</span>
                       )}
@@ -1245,6 +2374,37 @@ export default function PerformanceApp() {
                     <X size={18} />
                   </button>
                 </div>
+
+                {/* Goal Level / Category Field */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Goal Level / Category *
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'individual', label: 'My Goals' },
+                      { id: 'team', label: 'Team Goals' },
+                      { id: 'company', label: 'Company Goals' },
+                    ].map((sc) => {
+                      const isSelected = (newGoalForm.scope || 'individual') === sc.id;
+                      return (
+                        <button
+                          key={sc.id}
+                          type="button"
+                          onClick={() => setNewGoalForm({ ...newGoalForm, scope: sc.id })}
+                          className={`rounded-xl py-2 px-2 text-xs font-bold border transition text-center cursor-pointer ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-2xs ring-1 ring-blue-600'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                          }`}
+                        >
+                          {sc.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700">Goal Title *</label>
                   <input
