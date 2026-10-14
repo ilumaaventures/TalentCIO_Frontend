@@ -585,27 +585,45 @@ export const HrisTab = ({
                 const isAdminViewer = canApprove && !isSelf;
 
                 return (
-                    <div className={`rounded-xl border-2 p-5 mb-4 ${hrisStatus === 'Pending Approval' ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                    <div className={`rounded-xl border-2 p-5 mb-4 ${
+                        hrisStatus === 'Pending Approval' 
+                            ? 'border-amber-300 bg-amber-50/50' 
+                            : hrisStatus === 'Rejected'
+                            ? 'border-red-200 bg-red-50/30'
+                            : 'border-slate-200 bg-slate-50'
+                    }`}>
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <GitCompare size={18} className="text-amber-600" />
+                                <GitCompare size={18} className={hrisStatus === 'Rejected' ? 'text-red-600' : 'text-amber-600'} />
                                 <h3 className="font-bold text-slate-800 text-sm">
-                                    {isAdminViewer ? 'Proposed Changes — Review Required' : 'Your Pending Changes'}
+                                    {isAdminViewer 
+                                        ? (hrisStatus === 'Rejected' ? 'Previously Rejected Submission' : 'Proposed Changes — Review Required') 
+                                        : (hrisStatus === 'Rejected' ? 'Saved Submission (Rejected — Edit & Resubmit)' : 'Your Pending Changes')}
                                 </h3>
                             </div>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600 bg-amber-100 px-2 py-1 rounded-full border border-amber-200">
-                                Awaiting Approval
-                            </span>
+                            {hrisStatus === 'Rejected' ? (
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-red-700 bg-red-100 px-2 py-1 rounded-full border border-red-200">
+                                    Rejected
+                                </span>
+                            ) : (
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600 bg-amber-100 px-2 py-1 rounded-full border border-amber-200">
+                                    Awaiting Approval
+                                </span>
+                            )}
                         </div>
 
                         {isAdminViewer && (
                             <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                                The employee has submitted changes. Review each field below (🔴 old → 🟢 new) before approving or rejecting.
+                                {hrisStatus === 'Rejected'
+                                    ? 'This submission was rejected. The employee can edit and resubmit their details.'
+                                    : 'The employee has submitted changes. Review each field below (🔴 old → 🟢 new) before approving or rejecting.'}
                             </p>
                         )}
                         {!isAdminViewer && (
                             <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                                These changes are awaiting HR approval. Your profile currently shows your last approved values — the new values will go live once approved.
+                                {hrisStatus === 'Rejected'
+                                    ? 'Your previous submission was rejected. All your filled fields are preserved below. Click "Edit Form" above to adjust any field and resubmit for approval.'
+                                    : 'These changes are awaiting HR approval. Your profile currently shows your last approved values — the new values will go live once approved.'}
                             </p>
                         )}
 

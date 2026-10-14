@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '@/lib/apiClient';
 import { Plus, Minus, Trash2, Save, X, AlertCircle, ArrowRight, ShieldAlert, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
+import SearchableUserSelect from '@/components/common/SearchableUserSelect';
 
 const HelpdeskWorkflows = () => {
     const [queryTypes, setQueryTypes] = useState([]);
@@ -11,6 +12,7 @@ const HelpdeskWorkflows = () => {
 
     // Editor State
     const [editingId, setEditingId] = useState(null); // 'new' or ID
+    const [editingType, setEditingType] = useState(null); // full query type object when editing
     const [formData, setFormData] = useState({
         name: '',
         assignedRole: '',
@@ -31,12 +33,15 @@ const HelpdeskWorkflows = () => {
             setLoading(true);
             const [typesRes, usersRes, rolesRes] = await Promise.all([
                 api.get('/helpdesk/types'),
-                api.get('/admin/users'),
+                api.get('/admin/users?active=true'),
                 api.get('/admin/roles')
             ]);
-            setQueryTypes(typesRes.data.data);
-            setUsers(usersRes.data);
-            setRoles(rolesRes.data);
+            setQueryTypes(typesRes.data?.data || []);
+            const rawUsers = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.users || []);
+            // Defense-in-depth: strictly filter for active, non-deleted users
+            const activeOnly = rawUsers.filter(u => u && u.isActive !== false && !u.isDeleted);
+            setUsers(activeOnly);
+            setRoles(rolesRes.data || []);
         } catch (error) {
             console.error('Failed to fetch data', error);
             toast.error('Failed to load configuration data');
@@ -48,6 +53,7 @@ const HelpdeskWorkflows = () => {
     const handleConfigure = (type = null) => {
         if (type) {
             setEditingId(type._id);
+            setEditingType(type);
 
             let parsedLevels = [];
             if (Array.isArray(type.escalationLevels) && type.escalationLevels.length > 0) {
@@ -80,6 +86,7 @@ const HelpdeskWorkflows = () => {
             });
         } else {
             setEditingId('new');
+            setEditingType(null);
             setFormData({
                 name: '',
                 assignedRole: '',
@@ -95,6 +102,7 @@ const HelpdeskWorkflows = () => {
 
     const handleCancel = () => {
         setEditingId(null);
+        setEditingType(null);
         setFormData({
             name: '',
             assignedRole: '',
@@ -157,6 +165,12 @@ const HelpdeskWorkflows = () => {
         if (!formData.name.trim()) return toast.error('Query Type Name is required');
         if (!formData.assignedPerson) return toast.error('Assigned Responsible Person is required');
 
+        // Verify initial assigned person is active
+        const assignedUser = users.find(u => u._id === formData.assignedPerson);
+        if (!assignedUser || assignedUser.isActive === false) {
+            return toast.error('Assigned Responsible Person must be an active team member. Please select an active user.');
+        }
+
         if (formData.enableEscalation) {
             if (!formData.escalationLevels || formData.escalationLevels.length === 0) {
                 return toast.error('Please add at least one escalation tier or disable escalation.');
@@ -166,6 +180,10 @@ const HelpdeskWorkflows = () => {
                 const lvl = formData.escalationLevels[i];
                 if (!lvl.escalationPerson) {
                     return toast.error(`Please select a designated escalation person for Level ${i + 1}`);
+                }
+                const escUser = users.find(u => u._id === lvl.escalationPerson);
+                if (!escUser || escUser.isActive === false) {
+                    return toast.error(`Level ${i + 1} Designated Escalation Person must be an active user.`);
                 }
                 if (!lvl.escalationDays || Number(lvl.escalationDays) < 1) {
                     return toast.error(`Level ${i + 1} requires a valid SLA threshold (at least 1 day).`);
@@ -207,7 +225,8 @@ const HelpdeskWorkflows = () => {
 
     if (loading) return <div className="p-6 text-slate-500 font-medium">Loading configuration...</div>;
 
-    const assignedUserObj = users.find(u => u._id === formData.assignedPerson);
+    const assignedUserObj = users.find(u => u._id === formData.assignedPerson) ||
+        (editingType?.assignedPerson?._id === formData.assignedPerson ? editingType.assignedPerson : null);
 
     return (
         <div className="space-y-4">
@@ -276,19 +295,14 @@ const HelpdeskWorkflows = () => {
 
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Initial Responsible Resolver *</label>
-                                <select
+                                <SearchableUserSelect
+                                    users={users.filter(u => !formData.assignedRole || u.roles?.some(r => (r._id || r) === formData.assignedRole))}
                                     value={formData.assignedPerson}
-                                    onChange={(e) => setFormData({ ...formData, assignedPerson: e.target.value })}
-                                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none font-medium text-slate-700 bg-white"
-                                >
-                                    <option value="">Select User...</option>
-                                    {users
-                                        .filter(u => !formData.assignedRole || u.roles?.some(r => (r._id || r) === formData.assignedRole))
-                                        .map(u => (
-                                            <option key={u._id} value={u._id}>{u.firstName} {u.lastName} ({u.email})</option>
-                                        ))
-                                    }
-                                </select>
+                                    onChange={(val) => setFormData({ ...formData, assignedPerson: val })}
+                                    selectedUserFallback={editingType?.assignedPerson}
+                                    placeholder="Search & select active user..."
+                                    emptyMessage={formData.assignedRole ? "No active users found with selected role" : "No active users found"}
+                                />
                             </div>
                         </div>
                     </div>
@@ -430,19 +444,17 @@ const HelpdeskWorkflows = () => {
                                                         <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
                                                             Designated Escalation Person *
                                                         </label>
-                                                        <select
+                                                        <SearchableUserSelect
+                                                            users={users.filter(u => !lvl.escalationRole || u.roles?.some(r => (r._id || r) === lvl.escalationRole))}
                                                             value={lvl.escalationPerson}
-                                                            onChange={(e) => updateEscalationLevel(index, 'escalationPerson', e.target.value)}
-                                                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none font-medium text-slate-700 bg-white"
-                                                        >
-                                                            <option value="">Select User...</option>
-                                                            {users
-                                                                .filter(u => !lvl.escalationRole || u.roles?.some(r => (r._id || r) === lvl.escalationRole))
-                                                                .map(u => (
-                                                                    <option key={u._id} value={u._id}>{u.firstName} {u.lastName} ({u.email})</option>
-                                                                ))
+                                                            onChange={(val) => updateEscalationLevel(index, 'escalationPerson', val)}
+                                                            selectedUserFallback={
+                                                                editingType?.escalationLevels?.[index]?.escalationPerson ||
+                                                                (index === 0 ? editingType?.escalationPerson : null)
                                                             }
-                                                        </select>
+                                                            placeholder="Search & select escalation user..."
+                                                            emptyMessage={lvl.escalationRole ? "No active users found for selected role" : "No active users found"}
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>
@@ -459,11 +471,17 @@ const HelpdeskWorkflows = () => {
                                     <div className="flex flex-wrap items-center gap-2 text-xs">
                                         <div className="bg-white border border-indigo-200 px-2.5 py-1.5 rounded-lg font-bold text-slate-700 shadow-xs">
                                             <span className="text-[10px] text-slate-400 block font-semibold uppercase">Initial Resolver</span>
-                                            {assignedUserObj ? `${assignedUserObj.firstName} ${assignedUserObj.lastName}` : 'Assigned User'}
+                                            <div className="flex items-center gap-1">
+                                                <span>{assignedUserObj ? `${assignedUserObj.firstName} ${assignedUserObj.lastName}` : 'Assigned User'}</span>
+                                                {assignedUserObj?.isActive === false && (
+                                                    <span className="text-[9px] text-rose-500 font-bold bg-rose-50 px-1 py-0.2 rounded border border-rose-200">Inactive</span>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {formData.escalationLevels.map((lvl, idx) => {
-                                            const escUser = users.find(u => u._id === lvl.escalationPerson);
+                                            const escUser = users.find(u => u._id === lvl.escalationPerson) ||
+                                                (editingType?.escalationLevels?.[idx]?.escalationPerson?._id === lvl.escalationPerson ? editingType.escalationLevels[idx].escalationPerson : null);
                                             return (
                                                 <React.Fragment key={idx}>
                                                     <div className="flex flex-col items-center justify-center px-1">
@@ -477,7 +495,12 @@ const HelpdeskWorkflows = () => {
                                                     </div>
                                                     <div className="bg-white border border-rose-200 px-2.5 py-1.5 rounded-lg font-bold text-slate-800 shadow-xs">
                                                         <span className="text-[10px] text-rose-500 block font-semibold uppercase">Level {lvl.level || idx + 1}</span>
-                                                        {escUser ? `${escUser.firstName} ${escUser.lastName}` : `Level ${idx + 1} Contact`}
+                                                        <div className="flex items-center gap-1">
+                                                            <span>{escUser ? `${escUser.firstName} ${escUser.lastName}` : `Level ${idx + 1} Contact`}</span>
+                                                            {escUser?.isActive === false && (
+                                                                <span className="text-[9px] text-rose-500 font-bold bg-rose-50 px-1 py-0.2 rounded border border-rose-200">Inactive</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </React.Fragment>
                                             );
@@ -532,7 +555,18 @@ const HelpdeskWorkflows = () => {
                                             )}
                                         </td>
                                         <td className="px-5 py-4 text-slate-600 font-medium text-sm">
-                                            {qt.assignedPerson ? `${qt.assignedPerson.firstName} ${qt.assignedPerson.lastName}` : <span className="text-red-500 text-xs">Unassigned</span>}
+                                            {qt.assignedPerson ? (
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>{qt.assignedPerson.firstName} {qt.assignedPerson.lastName}</span>
+                                                    {qt.assignedPerson.isActive === false && (
+                                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200">
+                                                            Inactive
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-red-500 text-xs">Unassigned</span>
+                                            )}
                                         </td>
                                         <td className="px-5 py-4">
                                             {qt.enableEscalation && levelsCount > 0 ? (

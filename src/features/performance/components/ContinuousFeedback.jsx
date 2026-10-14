@@ -49,7 +49,8 @@ export default function ContinuousFeedback() {
     try {
       const res = await api.get('/admin/users?limit=200').catch(() => api.get('/admin/users/team'));
       const list = res.data?.users || (Array.isArray(res.data) ? res.data : []);
-      setUsersList(list);
+      const activeOnly = list.filter((u) => u.isActive !== false && u.status !== 'Inactive' && u.status !== 'inactive' && !u.isDeleted);
+      setUsersList(activeOnly);
     } catch (e) {
       console.error('Failed to load users:', e);
     }

@@ -51,10 +51,16 @@ export default function PipDevPlans() {
       setLoading(true);
       if (subTab === 'pip') {
         const res = await pmsApi.getPips();
-        if (res.data?.success) setPips(res.data.data);
+        if (res.data?.success) {
+          const raw = res.data.data || [];
+          setPips(raw.filter((p) => p.employeeId && p.employeeId.isActive !== false));
+        }
       } else {
         const res = await pmsApi.getDevPlans();
-        if (res.data?.success) setDevPlans(res.data.data);
+        if (res.data?.success) {
+          const raw = res.data.data || [];
+          setDevPlans(raw.filter((d) => d.employeeId && d.employeeId.isActive !== false));
+        }
       }
     } catch (err) {
       toast.error('Failed to load records');

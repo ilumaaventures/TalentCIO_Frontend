@@ -77,7 +77,10 @@ export default function GoalsManagement() {
         if (res.data?.success) setTreeGoals(res.data.data);
       } else {
         const res = await pmsApi.getGoals({ cycleId: selectedCycle, search });
-        if (res.data?.success) setGoals(res.data.data);
+        if (res.data?.success) {
+          const raw = res.data.data || [];
+          setGoals(raw.filter((g) => g.scope !== 'individual' || (g.employeeId && g.employeeId.isActive !== false)));
+        }
       }
     } catch (err) {
       toast.error('Failed to load goals');

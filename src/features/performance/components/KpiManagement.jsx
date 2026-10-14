@@ -58,7 +58,10 @@ export default function KpiManagement() {
         pmsApi.getKpis({ search }),
         pmsApi.getKras(),
       ]);
-      if (kpiRes.data?.success) setKpis(kpiRes.data.data);
+      if (kpiRes.data?.success) {
+        const raw = kpiRes.data.data || [];
+        setKpis(raw.filter((k) => k.scope !== 'individual' || (k.employeeId && k.employeeId.isActive !== false)));
+      }
       if (kraRes.data?.success) setKras(kraRes.data.data);
     } catch (err) {
       toast.error('Failed to load KPIs');

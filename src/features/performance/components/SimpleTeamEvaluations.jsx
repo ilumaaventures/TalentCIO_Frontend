@@ -32,6 +32,15 @@ const RATING_LABELS = {
   5: 'Exceptional Performance',
 };
 
+const getRatingLabel = (score) => {
+  const num = Math.round(Number(score) || 0);
+  if (num >= 5) return 'Exceptional Performance';
+  if (num >= 4) return 'Exceeds Expectations';
+  if (num >= 3) return 'Meets Expectations';
+  if (num >= 2) return 'Developing';
+  return 'Needs Improvement';
+};
+
 const RATING_COLORS = {
   1: 'text-rose-600 bg-rose-50 border-rose-200',
   2: 'text-amber-600 bg-amber-50 border-amber-200',
@@ -95,7 +104,9 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
       setLoading(true);
       const res = await pmsApi.getEvaluations({ scope });
       if (res.data?.success) {
-        setEvaluations(res.data.data || []);
+        const rawList = res.data.data || [];
+        const activeOnly = rawList.filter((e) => e.user?.isActive !== false && e.user?.status !== 'Inactive' && e.user?.status !== 'inactive');
+        setEvaluations(activeOnly);
         setMeta(res.data.meta);
       }
     } catch (err) {
@@ -124,13 +135,44 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
     });
   };
 
+  const calculateOverallFromKras = () => {
+    if (!reviewForm.kraRatings || reviewForm.kraRatings.length === 0) return;
+    let totalWeight = 0;
+    let weightedSum = 0;
+    reviewForm.kraRatings.forEach((k) => {
+      const weight = Number(k.weightage) || 25;
+      const score = Number(k.score) || 0;
+      weightedSum += score * weight;
+      totalWeight += weight;
+    });
+    if (totalWeight > 0) {
+      const computed = Math.round((weightedSum / totalWeight) * 10) / 10;
+      setReviewForm((prev) => ({ ...prev, rating: computed }));
+      toast.success(`Calculated overall score: ${computed}`);
+    }
+  };
+
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!selectedEval) return;
 
+    const numericRating = parseFloat(Number(reviewForm.rating).toFixed(1));
+    if (isNaN(numericRating) || numericRating < 1 || numericRating > 5) {
+      toast.error('Please enter a valid rating between 1.0 and 5.0');
+      return;
+    }
+
     try {
       setSubmitting(true);
-      const res = await pmsApi.submitEvaluationReview(selectedEval.employeeId, reviewForm);
+      const payload = {
+        ...reviewForm,
+        rating: numericRating,
+        kraRatings: (reviewForm.kraRatings || []).map((k) => ({
+          ...k,
+          score: parseFloat(Number(k.score || numericRating).toFixed(1)),
+        })),
+      };
+      const res = await pmsApi.submitEvaluationReview(selectedEval.employeeId, payload);
       if (res.data?.success) {
         toast.success(res.data.message || 'Evaluation submitted successfully!');
         setSelectedEval(null);
@@ -466,60 +508,178 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
 
               {/* Star Rating Picker */}
               <div>
-                <label className="block text-xs font-bold text-slate-700">
-                  Overall Performance Rating (1 to 5 Stars) *
-                </label>
-                <div className="mt-2 flex items-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Overall Performance Rating (1.0 to 5.0) *
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-slate-400">Score:</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="5"
+                      value={reviewForm.rating}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setReviewForm({ ...reviewForm, rating: '' });
+                          return;
+                        }
+                        const num = parseFloat(val);
+                        setReviewForm({ ...reviewForm, rating: isNaN(num) ? val : num });
+                      }}
+                      onBlur={() => {
+                        let num = parseFloat(reviewForm.rating);
+                        if (isNaN(num) || num < 1) num = 1;
+                        if (num > 5) num = 5;
+                        setReviewForm({ ...reviewForm, rating: Math.round(num * 10) / 10 });
+                      }}
+                      className="w-16 rounded-xl border border-slate-300 px-2.5 py-1 text-center text-sm font-black text-slate-800 shadow-2xs focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      placeholder="4.5"
+                    />
+                    <span className="text-xs font-bold text-slate-500">/ 5.0</span>
+                  </div>
+                </div>
+
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const cur = Number(reviewForm.rating) || 0;
+                      const fillPercent = Math.max(0, Math.min(100, Math.round((cur - (star - 1)) * 100)));
+                      return (
+                        <button
+                          type="button"
+                          key={star}
+                          onClick={() => {
+                            if (Number(reviewForm.rating) === star) {
+                              setReviewForm({ ...reviewForm, rating: star - 0.5 });
+                            } else {
+                              setReviewForm({ ...reviewForm, rating: star });
+                            }
+                          }}
+                          title={`Click for ${star} (click again for ${star - 0.5})`}
+                          className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white hover:border-amber-300 transition shadow-2xs"
+                        >
+                          {/* Empty star background */}
+                          <Star size={20} className="text-slate-200" />
+                          {/* Partial/Full filled star overlay */}
+                          {fillPercent > 0 && (
+                            <div
+                              className="absolute inset-0 flex items-center justify-center overflow-hidden"
+                              style={{ clipPath: `inset(0 ${100 - fillPercent}% 0 0)` }}
+                            >
+                              <Star size={20} className="fill-amber-400 text-amber-500" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <span className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">
+                    {Number(reviewForm.rating || 0).toFixed(1)} / 5 — {getRatingLabel(reviewForm.rating)}
+                  </span>
+                </div>
+
+                {/* Quick Select Decimal Presets */}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-400 mr-1">Quick Presets:</span>
+                  {[3.0, 3.5, 4.0, 4.2, 4.5, 4.7, 5.0].map((val) => (
                     <button
                       type="button"
-                      key={star}
-                      onClick={() => setReviewForm({ ...reviewForm, rating: star })}
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl border transition ${
-                        reviewForm.rating >= star
-                          ? 'border-amber-400 bg-amber-50 text-amber-500 shadow-xs'
-                          : 'border-slate-200 text-slate-300 hover:border-slate-300'
+                      key={val}
+                      onClick={() => setReviewForm({ ...reviewForm, rating: val })}
+                      className={`rounded-lg px-2 py-0.5 text-[11px] font-bold transition border ${
+                        Number(reviewForm.rating) === val
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      <Star size={20} className={reviewForm.rating >= star ? 'fill-amber-400' : ''} />
+                      {val.toFixed(1)}
                     </button>
                   ))}
-                  <span className="ml-2 rounded-xl bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                    {reviewForm.rating} / 5 — {RATING_LABELS[reviewForm.rating]}
-                  </span>
                 </div>
               </div>
 
               {/* KRAs Breakdown (if available) */}
               {selectedEval.kras && selectedEval.kras.length > 0 && (
                 <div>
-                  <label className="block text-xs font-bold text-slate-700">Rate Key Result Areas (KRAs)</label>
-                  <div className="mt-2 space-y-2 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-700">Rate Key Result Areas (KRAs)</label>
+                    <button
+                      type="button"
+                      onClick={calculateOverallFromKras}
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition"
+                      title="Calculate weighted average from KRAs into Overall Rating"
+                    >
+                      <Sparkles size={12} />
+                      Auto-calculate Overall
+                    </button>
+                  </div>
+                  <div className="mt-2 space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
                     {reviewForm.kraRatings.map((k, idx) => (
                       <div key={k.kraId} className="flex items-center justify-between gap-3 text-xs">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <span className="font-semibold text-slate-800">{k.name}</span>
                           <span className="text-[10px] text-slate-400 ml-1">({k.weightage}%)</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          {[1, 2, 3, 4, 5].map((score) => (
-                            <button
-                              type="button"
-                              key={score}
-                              onClick={() => {
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* 1 to 5 integer buttons */}
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((score) => (
+                              <button
+                                type="button"
+                                key={score}
+                                onClick={() => {
+                                  const updated = [...reviewForm.kraRatings];
+                                  updated[idx].score = score;
+                                  setReviewForm({ ...reviewForm, kraRatings: updated });
+                                }}
+                                className={`h-6 w-6 rounded-md text-[10px] font-bold transition ${
+                                  Number(k.score) === score
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                {score}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Direct decimal input (e.g. 4.5, 4.7) */}
+                          <div className="flex items-center gap-1 pl-1.5 border-l border-slate-200">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="1"
+                              max="5"
+                              value={k.score}
+                              onChange={(e) => {
+                                const val = e.target.value;
                                 const updated = [...reviewForm.kraRatings];
-                                updated[idx].score = score;
+                                if (val === '') {
+                                  updated[idx].score = '';
+                                } else {
+                                  const num = parseFloat(val);
+                                  updated[idx].score = isNaN(num) ? val : num;
+                                }
                                 setReviewForm({ ...reviewForm, kraRatings: updated });
                               }}
-                              className={`h-6 w-6 rounded-md text-[10px] font-bold ${
-                                k.score === score
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              {score}
-                            </button>
-                          ))}
+                              onBlur={() => {
+                                const updated = [...reviewForm.kraRatings];
+                                let num = parseFloat(updated[idx].score);
+                                if (isNaN(num) || num < 1) num = 1;
+                                if (num > 5) num = 5;
+                                updated[idx].score = Math.round(num * 10) / 10;
+                                setReviewForm({ ...reviewForm, kraRatings: updated });
+                              }}
+                              className="h-6 w-14 rounded-md border border-slate-300 bg-white px-1 text-center text-[11px] font-bold text-slate-800 shadow-2xs focus:border-blue-500 focus:outline-hidden"
+                              placeholder="4.5"
+                              title="Enter exact decimal score (e.g. 4.5, 4.7)"
+                            />
+                            <span className="text-[10px] font-semibold text-slate-400">/ 5</span>
+                          </div>
                         </div>
                       </div>
                     ))}

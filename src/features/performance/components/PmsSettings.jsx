@@ -24,7 +24,7 @@ const AVAILABLE_STAGE_TEMPLATES = [
   { key: 'department_head_review', label: 'Department Head Review', assigneeType: 'department_head', canEditRatings: true },
   { key: 'hr_evaluation', label: 'HR Evaluation & Calibration', assigneeType: 'hr_group', canEditRatings: true },
   { key: 'final_approval', label: 'Final Leadership Approval', assigneeType: 'company_admin', canEditRatings: false },
-  { key: 'published', label: 'Rating Publication', assigneeType: 'company_admin', canEditRatings: false },
+  { key: 'published', label: 'Rating Published', assigneeType: 'company_admin', canEditRatings: false },
 ];
 
 export default function PmsSettings() {
@@ -159,7 +159,7 @@ export default function PmsSettings() {
       toast.error(`Stage "${template.label}" already exists in the approval workflow.`);
       return;
     }
-    // Insert before 'published' if present
+    // Insert before 'published' if present, unless we are adding 'published'
     const pubIndex = stages.findIndex((s) => s.key === 'published');
     const newStage = {
       ...template,
@@ -167,7 +167,7 @@ export default function PmsSettings() {
       isRequired: true,
     };
 
-    if (pubIndex !== -1) {
+    if (template.key !== 'published' && pubIndex !== -1) {
       stages.splice(pubIndex, 0, newStage);
     } else {
       stages.push(newStage);
@@ -183,17 +183,44 @@ export default function PmsSettings() {
 
   const removeStage = (index) => {
     const stages = [...(settings.approvalWorkflow?.stages || [])];
-    const stageToRemove = stages[index];
-    if (stageToRemove.key === 'self_review' || stageToRemove.key === 'manager_review' || stageToRemove.key === 'published') {
-      toast.error(`Core stage "${stageToRemove.label}" cannot be removed.`);
+    if (stages.length <= 1) {
+      toast.error('Workflow must contain at least one stage.');
       return;
     }
-    stages.splice(index, 1);
+    const removed = stages.splice(index, 1)[0];
     const reordered = stages.map((s, idx) => ({ ...s, order: idx + 1 }));
     setSettings((prev) => ({
       ...prev,
       approvalWorkflow: { ...prev.approvalWorkflow, stages: reordered },
     }));
+    toast.success(`Removed "${removed?.label || 'Stage'}"`);
+  };
+
+  const handleAddBellCurveTier = () => {
+    const current = settings.bellCurveTargetDistribution || [];
+    const newTier = {
+      label: `Rating Tier ${current.length + 1}`,
+      targetPercentage: 10,
+    };
+    setSettings((prev) => ({
+      ...prev,
+      bellCurveTargetDistribution: [...current, newTier],
+    }));
+    toast.success('Added new rating tier');
+  };
+
+  const handleDeleteBellCurveTier = (index) => {
+    const current = [...(settings.bellCurveTargetDistribution || [])];
+    if (current.length <= 1) {
+      toast.error('Guidelines must contain at least one tier.');
+      return;
+    }
+    const removed = current.splice(index, 1)[0];
+    setSettings((prev) => ({
+      ...prev,
+      bellCurveTargetDistribution: current,
+    }));
+    toast.success(`Removed "${removed?.label || 'Tier'}"`);
   };
 
   if (loading) {
@@ -208,6 +235,10 @@ export default function PmsSettings() {
   const currentTotal = (weights.kraWeight || 0) + (weights.kpiWeight || 0) + (weights.goalWeight || 0) + (weights.competencyWeight || 0);
   const stages = settings.approvalWorkflow?.stages || [];
   const feedbackSettings = settings.continuousFeedbackSettings || {};
+  const bellCurveTotal = (settings.bellCurveTargetDistribution || []).reduce(
+    (acc, item) => acc + (Number(item.targetPercentage) || 0),
+    0
+  );
 
   return (
     <div className="space-y-6 max-w-4xl font-sans">
@@ -286,7 +317,7 @@ export default function PmsSettings() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold text-slate-500">Add Optional Stage:</span>
+                <span className="text-[11px] font-semibold text-slate-500">Add Stage:</span>
                 {AVAILABLE_STAGE_TEMPLATES.map((tmpl) => {
                   const isPresent = stages.some((s) => s.key === tmpl.key);
                   if (isPresent) return null;
@@ -361,7 +392,7 @@ export default function PmsSettings() {
                         onClick={() => moveStage(idx, -1)}
                         disabled={idx === 0}
                         title="Move Up"
-                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
                       >
                         <ArrowUp size={14} />
                       </button>
@@ -370,20 +401,18 @@ export default function PmsSettings() {
                         onClick={() => moveStage(idx, 1)}
                         disabled={idx === stages.length - 1}
                         title="Move Down"
-                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
                       >
                         <ArrowDown size={14} />
                       </button>
-                      {stage.key !== 'self_review' && stage.key !== 'manager_review' && stage.key !== 'published' && (
-                        <button
-                          type="button"
-                          onClick={() => removeStage(idx)}
-                          title="Remove Stage"
-                          className="rounded-md p-1.5 text-rose-400 hover:bg-rose-50 hover:text-rose-600"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeStage(idx)}
+                        title={`Remove ${stage.label || 'Stage'}`}
+                        className="rounded-md p-1.5 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -694,37 +723,87 @@ export default function PmsSettings() {
       {activeTab === 'bellcurve' && (
         <div className="space-y-6">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Bell Curve Target Guidelines</h3>
-              <p className="text-xs text-slate-500">
-                Recommended distribution quotas across rating tiers for moderation & calibration analysis.
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Bell Curve Target Guidelines</h3>
+                <p className="text-xs text-slate-500">
+                  Recommended distribution quotas across rating tiers for moderation & calibration analysis.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                    bellCurveTotal === 100
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}
+                >
+                  Total: {bellCurveTotal}%
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddBellCurveTier}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition cursor-pointer"
+                >
+                  <Plus size={13} />
+                  <span>Add Tier</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
-              {(settings.bellCurveTargetDistribution || []).map((band, idx) => (
-                <div
-                  key={band.label || idx}
-                  className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50/50 p-3"
-                >
-                  <span className="text-xs font-semibold text-slate-800">{band.label}</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={band.targetPercentage}
-                      onChange={(e) => {
-                        const updated = [...settings.bellCurveTargetDistribution];
-                        updated[idx].targetPercentage = Number(e.target.value);
-                        setSettings((prev) => ({ ...prev, bellCurveTargetDistribution: updated }));
-                      }}
-                      className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-right font-bold text-slate-900"
-                    />
-                    <span className="text-xs text-slate-500 font-semibold">%</span>
-                  </div>
+              {(settings.bellCurveTargetDistribution || []).length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  No distribution tiers configured. Click &quot;Add Tier&quot; to define guidelines.
                 </div>
-              ))}
+              ) : (
+                (settings.bellCurveTargetDistribution || []).map((band, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50/50 p-3 hover:bg-slate-50 transition"
+                  >
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={band.label}
+                        onChange={(e) => {
+                          const updated = [...settings.bellCurveTargetDistribution];
+                          updated[idx] = { ...updated[idx], label: e.target.value };
+                          setSettings((prev) => ({ ...prev, bellCurveTargetDistribution: updated }));
+                        }}
+                        placeholder="Tier Label"
+                        className="w-full max-w-sm rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-xs font-semibold text-slate-800 hover:border-slate-200 focus:border-blue-500 focus:bg-white focus:outline-hidden transition"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={band.targetPercentage}
+                          onChange={(e) => {
+                            const updated = [...settings.bellCurveTargetDistribution];
+                            updated[idx] = { ...updated[idx], targetPercentage: Number(e.target.value) };
+                            setSettings((prev) => ({ ...prev, bellCurveTargetDistribution: updated }));
+                          }}
+                          className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-right font-bold text-slate-900 focus:border-blue-500 focus:outline-hidden"
+                        />
+                        <span className="text-xs text-slate-500 font-semibold">%</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBellCurveTier(idx)}
+                        title={`Delete ${band.label || 'Tier'}`}
+                        className="rounded-lg p-1.5 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
