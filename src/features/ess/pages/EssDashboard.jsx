@@ -105,11 +105,17 @@ const AttendanceTile = () => {
     const handleClockIn = async (e) => {
         e?.preventDefault();
         e?.stopPropagation();
+
+        if (!navigator.geolocation) {
+            toast.error('Geolocation is not supported by your browser.');
+            return;
+        }
+
         setActionLoading(true);
 
-        const execute = async (loc = null) => {
+        const execute = async (loc) => {
             try {
-                const payload = loc ? { location: loc } : {};
+                const payload = { location: loc };
                 const res = await api.post('/attendance/clock-in', payload);
                 setToday(res.data?.attendance || res.data);
                 toast.success('Checked in successfully.');
@@ -121,25 +127,38 @@ const AttendanceTile = () => {
             }
         };
 
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => execute({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-                () => execute(),
-                { enableHighAccuracy: true, timeout: 8000 }
-            );
-        } else {
-            execute();
-        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => execute({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+            (err) => {
+                setActionLoading(false);
+                if (err.code === 1) {
+                    toast.error('Location permission is denied. Please allow location access in your browser to check in.');
+                } else if (err.code === 2) {
+                    toast.error('Location is unavailable. Please turn on your system/device location service to check in.');
+                } else if (err.code === 3) {
+                    toast.error('Location request timed out. Please ensure GPS/location is enabled and try again.');
+                } else {
+                    toast.error('Location is required to check in. Please enable location.');
+                }
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     };
 
     const handleClockOut = async (e) => {
         e?.preventDefault();
         e?.stopPropagation();
+
+        if (!navigator.geolocation) {
+            toast.error('Geolocation is not supported by your browser.');
+            return;
+        }
+
         setActionLoading(true);
 
-        const execute = async (loc = null) => {
+        const execute = async (loc) => {
             try {
-                const payload = loc ? { location: loc } : {};
+                const payload = { location: loc };
                 const res = await api.post('/attendance/clock-out', payload);
                 setToday(res.data?.attendance || res.data);
                 toast.success('Checked out successfully.');
@@ -151,15 +170,22 @@ const AttendanceTile = () => {
             }
         };
 
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => execute({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-                () => execute(),
-                { enableHighAccuracy: true, timeout: 8000 }
-            );
-        } else {
-            execute();
-        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => execute({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+            (err) => {
+                setActionLoading(false);
+                if (err.code === 1) {
+                    toast.error('Location permission is denied. Please allow location access in your browser to check out.');
+                } else if (err.code === 2) {
+                    toast.error('Location is unavailable. Please turn on your system/device location service to check out.');
+                } else if (err.code === 3) {
+                    toast.error('Location request timed out. Please ensure GPS/location is enabled and try again.');
+                } else {
+                    toast.error('Location is required to check out. Please enable location.');
+                }
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     };
 
     const isClockedIn  = today?.clockIn && !today?.clockOut;
