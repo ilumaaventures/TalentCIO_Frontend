@@ -264,7 +264,9 @@ const ClientForm = ({ isOpen, onClose, clientId, onSuccess }) => {
                                         {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Business Unit</label>
+                                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
+                                            Business Unit <span className="text-red-500">*</span>
+                                        </label>
                                         <select name="businessUnit" value={formData.businessUnit} onChange={handleChange} className="zoho-input">
                                             <option value="">Select Business Unit</option>
                                             {businessUnits.map(bu => (
