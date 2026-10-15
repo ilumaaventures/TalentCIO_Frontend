@@ -5,19 +5,38 @@ import {
   Play,
   RotateCcw,
   CheckCircle,
-  Clock,
-  Settings2,
-  ChevronRight,
-  Filter,
   Search,
   X,
   AlertTriangle,
   Edit,
   Trash2,
+  Users,
+  Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import pmsApi from '../api/pmsApi';
+
+const safeFormatDate = (dateVal, formatStr = 'dd MMM yyyy') => {
+  if (!dateVal) return '—';
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return '—';
+    return format(d, formatStr);
+  } catch {
+    return '—';
+  }
+};
+
+const toInputDate = (dateVal) => {
+  if (!dateVal) return '';
+  try {
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+};
 
 const CYCLE_STATUSES = [
   'draft',
@@ -41,6 +60,9 @@ export default function CyclesManagement() {
   const [selectedCycle, setSelectedCycle] = useState(null);
   const [reopenReason, setReopenReason] = useState('');
   const [search, setSearch] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [syncingId, setSyncingId] = useState(null);
+  const [advancingId, setAdvancingId] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -92,6 +114,7 @@ export default function CyclesManagement() {
       return;
     }
     try {
+      setIsSubmitting(true);
       const res = await pmsApi.createCycle(formData);
       if (res.data?.success) {
         toast.success('Appraisal cycle created');
@@ -100,11 +123,14 @@ export default function CyclesManagement() {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create cycle');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleAdvanceStatus = async (cycle, nextStatus) => {
     try {
+      setAdvancingId(cycle._id);
       const res = await pmsApi.changeCycleStatus(cycle._id, nextStatus);
       if (res.data?.success) {
         toast.success(`Cycle transitioned to ${nextStatus.replace(/_/g, ' ')}`);
@@ -112,6 +138,23 @@ export default function CyclesManagement() {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update status');
+    } finally {
+      setAdvancingId(null);
+    }
+  };
+
+  const handleSyncParticipants = async (cycle) => {
+    try {
+      setSyncingId(cycle._id);
+      const res = await pmsApi.syncCycleParticipants(cycle._id);
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Participants synchronized successfully');
+        fetchCycles();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to sync participants');
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -122,6 +165,7 @@ export default function CyclesManagement() {
       return;
     }
     try {
+      setIsSubmitting(true);
       const res = await pmsApi.reopenCycle(selectedCycle._id, { reason: reopenReason });
       if (res.data?.success) {
         toast.success('Cycle reopened successfully');
@@ -131,6 +175,8 @@ export default function CyclesManagement() {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to reopen cycle');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -139,7 +185,6 @@ export default function CyclesManagement() {
   const [editingCycle, setEditingCycle] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [cycleToDelete, setCycleToDelete] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleOpenEdit = (cycle) => {
     setEditingCycle({
@@ -149,8 +194,12 @@ export default function CyclesManagement() {
       description: cycle.description || '',
       cycleType: cycle.cycleType || 'annual',
       status: cycle.status || 'draft',
-      startDate: cycle.startDate ? new Date(cycle.startDate).toISOString().slice(0, 10) : '',
-      endDate: cycle.endDate ? new Date(cycle.endDate).toISOString().slice(0, 10) : '',
+      startDate: toInputDate(cycle.startDate),
+      endDate: toInputDate(cycle.endDate),
+      timeline: {
+        selfAppraisalDeadline: toInputDate(cycle.timeline?.selfAppraisalDeadline),
+        managerReviewDeadline: toInputDate(cycle.timeline?.managerReviewDeadline),
+      },
     });
     setShowEditModal(true);
   };
@@ -284,11 +333,22 @@ export default function CyclesManagement() {
                       {getStatusBadge(cycle.status)}
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
-                      {cycle.cycleType?.toUpperCase()} • {format(new Date(cycle.startDate), 'dd MMM yyyy')} — {format(new Date(cycle.endDate), 'dd MMM yyyy')}
+                      {cycle.cycleType?.toUpperCase()} • {safeFormatDate(cycle.startDate)} — {safeFormatDate(cycle.endDate)}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1">
+                    {cycle.status !== 'closed' && (
+                      <button
+                        type="button"
+                        onClick={() => handleSyncParticipants(cycle)}
+                        title="Sync Participants (Enroll new joiners & update manager changes)"
+                        disabled={syncingId === cycle._id}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition disabled:opacity-50"
+                      >
+                        <Users size={15} className={syncingId === cycle._id ? 'animate-pulse text-indigo-600' : ''} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleOpenEdit(cycle)}
@@ -317,13 +377,13 @@ export default function CyclesManagement() {
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase font-bold">Self-Review Due</span>
                     <span className="font-semibold text-slate-700">
-                      {cycle.timeline?.selfAppraisalDeadline ? format(new Date(cycle.timeline.selfAppraisalDeadline), 'dd MMM yyyy') : '—'}
+                      {safeFormatDate(cycle.timeline?.selfAppraisalDeadline)}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase font-bold">Manager Review Due</span>
                     <span className="font-semibold text-slate-700">
-                      {cycle.timeline?.managerReviewDeadline ? format(new Date(cycle.timeline.managerReviewDeadline), 'dd MMM yyyy') : '—'}
+                      {safeFormatDate(cycle.timeline?.managerReviewDeadline)}
                     </span>
                   </div>
                 </div>
@@ -349,10 +409,15 @@ export default function CyclesManagement() {
                     </button>
                   ) : nextStatus ? (
                     <button
+                      disabled={advancingId === cycle._id}
                       onClick={() => handleAdvanceStatus(cycle, nextStatus)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 transition"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 transition disabled:opacity-50"
                     >
-                      <Play size={12} />
+                      {advancingId === cycle._id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Play size={12} />
+                      )}
                       <span>Advance to {nextStatus.replace(/_/g, ' ')} →</span>
                     </button>
                   ) : (
@@ -481,6 +546,7 @@ export default function CyclesManagement() {
               <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setShowModal(false)}
                   className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
                 >
@@ -488,9 +554,11 @@ export default function CyclesManagement() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"
                 >
-                  Create Cycle
+                  {isSubmitting && <Loader2 size={13} className="animate-spin" />}
+                  <span>{isSubmitting ? 'Creating...' : 'Create Cycle'}</span>
                 </button>
               </div>
             </form>
@@ -526,6 +594,7 @@ export default function CyclesManagement() {
               <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setShowReopenModal(false)}
                   className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
                 >
@@ -533,11 +602,18 @@ export default function CyclesManagement() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-amber-700"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-amber-700 disabled:opacity-50"
                 >
-                  Confirm Reopen
+                  {isSubmitting && <Loader2 size={13} className="animate-spin" />}
+                  <span>{isSubmitting ? 'Reopening...' : 'Confirm Reopen'}</span>
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Edit Cycle Modal */}
       {showEditModal && editingCycle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -623,6 +699,37 @@ export default function CyclesManagement() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">Self-Appraisal Deadline</label>
+                  <input
+                    type="date"
+                    value={editingCycle.timeline?.selfAppraisalDeadline || ''}
+                    onChange={(e) =>
+                      setEditingCycle({
+                        ...editingCycle,
+                        timeline: { ...editingCycle.timeline, selfAppraisalDeadline: e.target.value },
+                      })
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">Manager Review Deadline</label>
+                  <input
+                    type="date"
+                    value={editingCycle.timeline?.managerReviewDeadline || ''}
+                    onChange={(e) =>
+                      setEditingCycle({
+                        ...editingCycle,
+                        timeline: { ...editingCycle.timeline, managerReviewDeadline: e.target.value },
+                      })
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700">Description</label>
                 <textarea
@@ -648,9 +755,10 @@ export default function CyclesManagement() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                  {isSubmitting && <Loader2 size={13} className="animate-spin" />}
+                  <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
                 </button>
               </div>
             </form>
@@ -692,9 +800,10 @@ export default function CyclesManagement() {
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleDelete}
-                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50"
               >
-                {isSubmitting ? 'Deleting...' : 'Delete Cycle'}
+                {isSubmitting && <Loader2 size={13} className="animate-spin" />}
+                <span>{isSubmitting ? 'Deleting...' : 'Delete Cycle'}</span>
               </button>
             </div>
           </div>
