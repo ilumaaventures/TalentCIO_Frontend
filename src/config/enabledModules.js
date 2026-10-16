@@ -33,6 +33,10 @@ export const normalizeEnabledModules = (moduleIds = []) => {
     normalizedIds.add('pms');
   }
 
+  if (normalizedIds.has('talentcard')) {
+    normalizedIds.add('talentCard');
+  }
+
   return Array.from(normalizedIds);
 };
 
@@ -53,6 +57,10 @@ export const hasModuleEnabled = (moduleIds = [], targetModuleId = '') => {
 
   if (targetModuleId === 'pms' || targetModuleId === 'performance') {
     return normalizedIds.includes('performance') || normalizedIds.includes('pms');
+  }
+
+  if (targetModuleId === 'talentCard' || targetModuleId === 'talentcard') {
+    return normalizedIds.includes('talentCard') || normalizedIds.includes('talentcard');
   }
 
   return normalizedIds.includes(targetModuleId);

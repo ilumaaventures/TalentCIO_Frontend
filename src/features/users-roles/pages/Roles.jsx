@@ -198,7 +198,8 @@ const Roles = () => {
             'EMPLOYEE DOSSIER': 'employeeDossier',
             'DOSSIER': 'employeeDossier',
             'HELP DESK': 'helpdesk',
-            'LEAVES': 'leaves'
+            'LEAVES': 'leaves',
+            'TALENT CARD': 'talentCard'
         };
 
         const moduleKey = moduleMapping[groupName];
@@ -429,7 +430,8 @@ const Roles = () => {
                                             'EMPLOYEE DOSSIER': 'employeeDossier',
                                             'DOSSIER': 'employeeDossier',
                                             'HELP DESK': 'helpdesk',
-                                            'LEAVES': 'leaves'
+                                            'LEAVES': 'leaves',
+                                            'TALENT CARD': 'talentCard'
                                         };
 
                                         const moduleKey = moduleMapping[moduleName];

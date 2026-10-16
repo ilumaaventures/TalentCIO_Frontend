@@ -242,7 +242,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const showMeetings = user?.company?.enabledModules?.includes('meetingsOfMinutes');
   const showHelpDesk = user?.company?.enabledModules?.includes('helpdesk');
   const showEss = hasModule('mySpace');
-  const showTalent = isAdmin;
+  const showTalent = (hasModule('talentCard') || hasModule('talentcard')) && isAdmin;
   const showEmployees = user?.company?.enabledModules?.includes('userManagement') && (isAdmin || user?.permissions?.includes('user.read') || user?.directReportsCount > 0);
   const showOnboarding = user?.company?.enabledModules?.includes('onboarding') && (
     isAdmin

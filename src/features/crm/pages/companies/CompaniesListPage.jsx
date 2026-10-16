@@ -54,23 +54,32 @@ export const CompaniesListPage = ({ onOpenCompanyDetail }) => {
       title: 'Company Name',
       key: 'name',
       sortable: true,
+      width: 210,
+      className: 'w-[210px] min-w-[180px] max-w-[220px]',
       render: (val) => (
-        <div className="font-semibold text-slate-900 flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-indigo-600" />
-          <span>{val}</span>
+        <div className="font-semibold text-slate-900 flex items-start gap-2 max-w-[200px]">
+          <Building2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+          <span className="whitespace-normal break-words leading-snug">{val}</span>
         </div>
       ),
     },
     {
       title: 'GSTIN',
       key: 'gstin',
+      width: 130,
       render: (val) => <span className="text-xs font-mono text-slate-700">{val || '—'}</span>,
     },
     {
       title: 'Industry',
       key: 'industry',
       sortable: true,
-      render: (val) => <span className="text-xs text-slate-600">{val || '—'}</span>,
+      width: 150,
+      className: 'w-[150px] min-w-[130px] max-w-[160px]',
+      render: (val) => (
+        <div className="max-w-[140px]">
+          <span className="text-xs text-slate-600 whitespace-normal break-words leading-snug">{val || '—'}</span>
+        </div>
+      ),
     },
     {
       title: 'Health Score',

@@ -225,9 +225,11 @@ export const LeadsListPage = ({ onNavigate, onOpenLeadDetail }) => {
       title: 'Company',
       key: 'companyName',
       sortable: true,
+      width: 210,
+      className: 'w-[210px] min-w-[180px] max-w-[220px]',
       render: (val, row) => (
-        <div>
-          <div className="font-medium text-slate-900">{val || <span className="text-slate-400">—</span>}</div>
+        <div className="max-w-[200px]">
+          <div className="font-medium text-slate-900 whitespace-normal break-words leading-snug">{val || <span className="text-slate-400">—</span>}</div>
           {row.address?.city && (
             <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
               <span>{row.address.city}{row.address.state ? `, ${row.address.state}` : ''}</span>
@@ -250,7 +252,13 @@ export const LeadsListPage = ({ onNavigate, onOpenLeadDetail }) => {
       title: 'Source',
       key: 'source',
       sortable: true,
-      render: (val) => <span className="text-xs text-slate-600 font-medium">{val}</span>,
+      width: 140,
+      className: 'w-[140px] min-w-[120px] max-w-[150px]',
+      render: (val) => (
+        <div className="max-w-[135px]">
+          <span className="text-xs text-slate-600 font-medium whitespace-normal break-words leading-snug">{val}</span>
+        </div>
+      ),
     },
     {
       title: 'Status',
