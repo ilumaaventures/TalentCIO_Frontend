@@ -429,4 +429,21 @@ export const crmAdminService = {
     const res = await api.get('/crm/data/rep-activities', { params });
     return res.data;
   },
+  saveExcelFile: async (data) => {
+    const res = await api.post('/crm/data/excel-files', data);
+    return res.data;
+  },
+  getExcelFiles: async (params = {}) => {
+    const res = await api.get('/crm/data/excel-files', { params });
+    return res.data;
+  },
+  getExcelFileById: async (id) => {
+    const res = await api.get(`/crm/data/excel-files/${id}`);
+    return res.data;
+  },
+  deleteExcelFile: async (id) => {
+    const res = await api.delete(`/crm/data/excel-files/${id}`);
+    return res.data;
+  },
 };
+

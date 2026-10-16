@@ -62,7 +62,12 @@ export const dataService = {
   getImportDataById: (id, params) => crmAdminService.getImportDataById(id, params),
   getRepPerformance: (params) => crmAdminService.getRepPerformance(params),
   getRepActivities: (params) => crmAdminService.getRepActivities(params),
+  saveExcelFile: (data) => crmAdminService.saveExcelFile(data),
+  getExcelFiles: (params) => crmAdminService.getExcelFiles(params),
+  getExcelFileById: (id) => crmAdminService.getExcelFileById(id),
+  deleteExcelFile: (id) => crmAdminService.deleteExcelFile(id),
 };
+
 
 export const authService = {
   getMe: async () => ({ success: true }),

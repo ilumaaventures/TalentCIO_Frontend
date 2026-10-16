@@ -630,19 +630,52 @@ export const ImportDataPage = ({ onNavigate }) => {
   const handleFileUpload = (file) => {
     if (!file) return;
 
+    const toDataUrl = (fileBlob) =>
+      new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => resolve('');
+        r.readAsDataURL(fileBlob);
+      });
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        const fileDataUrl = await toDataUrl(file);
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
+
+        // Populate merged cells so rows with merged company names retain the value across all contact rows
+        if (worksheet && worksheet['!merges']) {
+          worksheet['!merges'].forEach((range) => {
+            const startCellRef = XLSX.utils.encode_cell(range.s);
+            const masterCell = worksheet[startCellRef];
+            if (masterCell && masterCell.v !== undefined) {
+              for (let R = range.s.r; R <= range.e.r; ++R) {
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                  const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                  if (!worksheet[cellRef] || worksheet[cellRef].v === undefined || worksheet[cellRef].v === '') {
+                    worksheet[cellRef] = { ...masterCell };
+                  }
+                }
+              }
+            }
+          });
+        }
+
         const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
         if (!rawJson || rawJson.length === 0) {
           toast.error('The uploaded sheet is empty.');
           return;
         }
+
+        // Total data rows fetched from the uploaded sheet
+        const totalRowsFetched = rawJson.filter((r) =>
+          Object.values(r).some((v) => v !== null && v !== undefined && String(v).trim() !== '')
+        ).length || rawJson.length;
 
         const parsedRows = rawJson.map((row, idx) => {
           // Normalize row keys to match specified headers
@@ -1020,6 +1053,9 @@ export const ImportDataPage = ({ onNavigate }) => {
         setStagedData({
           fileName: file.name,
           fileSize: `${(file.size / 1024).toFixed(1)} KB`,
+          fileSizeBytes: file.size,
+          fileData: fileDataUrl || '',
+          totalRowsFetched,
           rows: finalRows,
           newCount,
           updateCount,
@@ -1030,11 +1066,11 @@ export const ImportDataPage = ({ onNavigate }) => {
 
         if (dupCount > 0 || updateCount > 0) {
           toast(
-            `Excel parsed: ${newCount} new, ${updateCount} to update${dupCount > 0 ? `, ${dupCount} duplicate(s) in sheet skipped` : ''}.`,
+            `Excel parsed: ${totalRowsFetched} rows fetched (${newCount} new, ${updateCount} to update${dupCount > 0 ? `, ${dupCount} duplicate(s) in sheet skipped` : ''}).`,
             { icon: 'ℹ️', duration: 4000 }
           );
         } else {
-          toast.success(`File ready: all ${newCount} rows are new!`);
+          toast.success(`File ready: ${totalRowsFetched} rows fetched (${newCount} new)!`);
         }
       } catch (err) {
         console.error('Failed to parse Excel file:', err);
@@ -1233,6 +1269,58 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       return combined;
     });
+
+    // Persist Excel file record when user hits confirm import (store once)
+    if (stagedData && !stagedData._isSaving) {
+      stagedData._isSaving = true;
+
+      const fileRecordToSave = {
+        fileName: stagedData.fileName,
+        fileSize: stagedData.fileSize || '',
+        fileSizeBytes: stagedData.fileSizeBytes || 0,
+        totalRowsFetched: stagedData.totalRowsFetched || stagedData.rows?.length || 0,
+        totalCompanies: stagedData.rows?.length || 0,
+        newCount: newRows.length,
+        updateCount: updateRows.length,
+        duplicateCount: stagedData.duplicateCount || 0,
+        importedBy: currentUserName,
+        importMode: mode,
+        fileData: stagedData.fileData || '',
+        createdAt: new Date().toISOString(),
+      };
+
+      // Save directly to backend database
+      dataService.saveExcelFile(fileRecordToSave)
+        .then((res) => {
+          if (res && res.data) {
+            // Keep local storage in sync using the real MongoDB record ID (prevent duplicate entries)
+            try {
+              const storedKey = 'crm_stored_excel_files';
+              const existing = JSON.parse(localStorage.getItem(storedKey) || '[]');
+              const filtered = existing.filter(
+                (item) => item._id !== res.data._id && item.fileName !== fileRecordToSave.fileName
+              );
+              localStorage.setItem(storedKey, JSON.stringify([res.data, ...filtered]));
+            } catch {
+              // ignore
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('Backend save failed, saving to local cache as offline fallback:', err);
+          try {
+            const storedKey = 'crm_stored_excel_files';
+            const existing = JSON.parse(localStorage.getItem(storedKey) || '[]');
+            const filtered = existing.filter((item) => item.fileName !== fileRecordToSave.fileName);
+            localStorage.setItem(
+              storedKey,
+              JSON.stringify([{ _id: 'local_' + Date.now(), ...fileRecordToSave }, ...filtered])
+            );
+          } catch {
+            // ignore
+          }
+        });
+    }
 
     setFileName(stagedData.fileName);
     setSelectedIds([]);
@@ -1487,7 +1575,9 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       // ── Add Data Rows (multi-contact expansion) ─────────────────────────
       let exportedRowCount = 0;
+      let companySNo = 0;
       rowsToExport.forEach((row) => {
+        companySNo++;
         const rowContacts = Array.isArray(row.contacts) && row.contacts.length > 0
           ? row.contacts
           : ((row.contactPerson || row.mobileNo || row.emailId)
@@ -1504,11 +1594,16 @@ export const ImportDataPage = ({ onNavigate }) => {
                 emailId: '',
               }]);
 
-        rowContacts.forEach((contact) => {
+        const startRowIndex = worksheet.rowCount + 1;
+
+        rowContacts.forEach((contact, contactIdx) => {
           exportedRowCount++;
+          // For a company with multiple contact persons, show S.No and Company Name only on the first contact row
+          const isFirstContact = contactIdx === 0;
+
           const rowData = {
-            sNo: exportedRowCount,
-            companyName: row.companyName || '',
+            sNo: isFirstContact ? companySNo : '',
+            companyName: isFirstContact ? (row.companyName || '') : '',
             industry: row.industry || '',
             address: row.address || '',
             rating: row.rating || '',
@@ -1526,6 +1621,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           const addedRow = worksheet.addRow(rowData);
           addedRow.height = 22;
           addedRow.alignment = { vertical: 'middle' };
+          addedRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
           addedRow.eachCell((cell) => {
             cell.border = {
               top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
@@ -1535,6 +1631,20 @@ export const ImportDataPage = ({ onNavigate }) => {
             };
           });
         });
+
+        const endRowIndex = worksheet.rowCount;
+        // If there are multiple contact persons for this company:
+        // 1. Merge S.No. cells vertically (Column 1)
+        // 2. Merge Company Name cells vertically (Column 2)
+        if (rowContacts.length > 1 && endRowIndex >= startRowIndex) {
+          worksheet.mergeCells(startRowIndex, 1, endRowIndex, 1);
+          const mergedSNoCell = worksheet.getCell(startRowIndex, 1);
+          mergedSNoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          worksheet.mergeCells(startRowIndex, 2, endRowIndex, 2);
+          const mergedCompCell = worksheet.getCell(startRowIndex, 2);
+          mergedCompCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        }
       });
 
       // ── Status dropdown on every data row (column L = col 12) ──────────
@@ -2506,24 +2616,30 @@ export const ImportDataPage = ({ onNavigate }) => {
           {/* 2. File Selected - PREVIEW STAGE & IMPORT CONFIRMATION */}
           {stagedData && (
             <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden p-6 space-y-5 animate-in fade-in duration-200">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                    <FileSpreadsheet className="w-6 h-6" />
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <FileSpreadsheet className="w-5 h-5" />
                   </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-bold text-slate-900">{stagedData.fileName}</h3>
-                      <Badge variant="blue" size="sm">
-                        {stagedData.rows.length} total
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate max-w-xs sm:max-w-md" title={stagedData.fileName}>
+                        {stagedData.fileName}
+                      </h3>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+                        {stagedData.totalRowsFetched || stagedData.rows.length} rows fetched
+                      </span>
+                      <Badge variant="blue" size="sm" className="whitespace-nowrap">
+                        {stagedData.rows.length} {stagedData.rows.length === 1 ? 'company' : 'companies'} ({stagedData.rows.length} total)
                       </Badge>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
                         <CheckCircle2 className="w-3 h-3" />
                         {stagedData.newCount} new
                       </span>
                       {stagedData.updateCount > 0 && (
                         <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap"
                           title="Existing records in CRM or workspace to update"
                         >
                           <RefreshCw className="w-3 h-3 text-amber-600" />
@@ -2532,7 +2648,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                       )}
                       {stagedData.duplicateCount > 0 && (
                         <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap"
                           title="Duplicate company name, mobile, or email within sheet"
                         >
                           <AlertTriangle className="w-3 h-3 text-rose-500" />
@@ -2541,75 +2657,73 @@ export const ImportDataPage = ({ onNavigate }) => {
                       )}
                     </div>
                     <p className="text-xs text-slate-500 mt-1">
-                      File Size: {stagedData.fileSize} • Duplicates in sheet are skipped. New data will upload, and existing records will be updated.
+                      File Size: {stagedData.fileSize} • {stagedData.totalRowsFetched || stagedData.rows.length} total rows fetched from sheet • Duplicates in sheet are skipped. New data will upload, and existing records will be updated.
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    icon={showPreview ? EyeOff : Eye}
+                {/* Right Button Toolbar - Sleek, Unified, Single-Row Aligned */}
+                <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap pt-1 lg:pt-0">
+                  <button
+                    type="button"
                     onClick={() => setShowPreview((prev) => !prev)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 shadow-2xs transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-slate-300"
                   >
+                    {showPreview ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
                     {showPreview ? 'Hide Preview' : 'Show Preview'}
-                  </Button>
+                  </button>
 
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={X}
+                  <button
+                    type="button"
                     onClick={handleCancelStaged}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 active:bg-rose-100 text-slate-600 shadow-2xs transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-rose-200"
                   >
+                    <X className="w-3.5 h-3.5" />
                     Cancel
-                  </Button>
+                  </button>
 
                   {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
                     <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        icon={CheckCircle2}
+                      <button
+                        type="button"
                         onClick={() => handleConfirmImport('new')}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 shadow-2xs transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-emerald-400"
                         title="Import only new rows"
                       >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                         Import New Only ({stagedData.newCount})
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        icon={RefreshCw}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleConfirmImport('all')}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
                         title="Import new rows and update existing records"
                       >
+                        <RefreshCw className="w-3.5 h-3.5" />
                         Import & Update All ({stagedData.newCount + stagedData.updateCount} rows)
-                      </Button>
+                      </button>
                     </>
                   ) : stagedData.updateCount > 0 ? (
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      icon={RefreshCw}
+                    <button
+                      type="button"
                       onClick={() => handleConfirmImport('update')}
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-xs"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-sm shadow-amber-600/25 transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
                     >
+                      <RefreshCw className="w-3.5 h-3.5" />
                       Update Existing ({stagedData.updateCount} rows)
-                    </Button>
+                    </button>
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      icon={CheckCircle2}
+                    <button
+                      type="button"
                       disabled={stagedData.newCount === 0}
                       onClick={() => handleConfirmImport('new')}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
                       {stagedData.newCount > 0
                         ? `Import New Data (${stagedData.newCount} rows)`
                         : 'No New Data (All Duplicates)'}
-                    </Button>
+                    </button>
                   )}
                 </div>
               </div>
@@ -2621,7 +2735,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
                         <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                        Excel Preview ({visibleStagedRows.length} rows)
+                        Excel Preview ({visibleStagedRows.length} rows{stagedData.totalRowsFetched && stagedData.totalRowsFetched !== visibleStagedRows.length ? ` / ${stagedData.totalRowsFetched} fetched` : ''})
                       </span>
 
                       {/* Filter tabs inside preview: All, New, Update, Duplicates */}
@@ -2844,45 +2958,42 @@ export const ImportDataPage = ({ onNavigate }) => {
                   <div className="flex justify-end items-center gap-2 pt-2">
                     {stagedData.updateCount > 0 && stagedData.newCount > 0 ? (
                       <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          icon={CheckCircle2}
+                        <button
+                          type="button"
                           onClick={() => handleConfirmImport('new')}
+                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 shadow-2xs transition-all cursor-pointer whitespace-nowrap"
                         >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                           Import New Only ({stagedData.newCount} rows)
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          icon={RefreshCw}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleConfirmImport('all')}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+                          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap"
                         >
+                          <RefreshCw className="w-3.5 h-3.5" />
                           Confirm & Import All ({stagedData.newCount + stagedData.updateCount} rows)
-                        </Button>
+                        </button>
                       </>
                     ) : stagedData.updateCount > 0 ? (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        icon={RefreshCw}
+                      <button
+                        type="button"
                         onClick={() => handleConfirmImport('update')}
-                        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-xs"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-sm shadow-amber-600/25 transition-all cursor-pointer whitespace-nowrap"
                       >
+                        <RefreshCw className="w-3.5 h-3.5" />
                         Confirm & Update ({stagedData.updateCount} rows)
-                      </Button>
+                      </button>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        icon={CheckCircle2}
+                      <button
+                        type="button"
                         disabled={stagedData.newCount === 0}
                         onClick={() => handleConfirmImport('new')}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm shadow-indigo-600/25 transition-all cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                       >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
                         Confirm & Import New Data ({stagedData.newCount} rows)
-                      </Button>
+                      </button>
                     )}
                   </div>
                 </div>
