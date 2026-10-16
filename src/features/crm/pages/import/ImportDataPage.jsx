@@ -688,6 +688,15 @@ export const ImportDataPage = ({ onNavigate }) => {
           // Match specific columns from image
           const sNo = normalized['sno'] || normalized['srno'] || normalized['serialno'] || String(idx + 1);
           const companyName = normalized['companyname'] || normalized['company'] || '';
+          const gstin = String(
+            normalized['gstin'] ||
+            normalized['gst'] ||
+            normalized['gstno'] ||
+            normalized['gstnumber'] ||
+            normalized['taxid'] ||
+            normalized['tin'] ||
+            ''
+          ).trim().toUpperCase();
           const industry = normalized['industry'] || '';
           const address = normalized['address'] || normalized['location'] || '';
           const rating = normalized['rating'] || '';
@@ -724,6 +733,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           // document rather than always inserting a new one.
           const stableKey = [
             String(companyName).trim().toLowerCase(),
+            String(gstin).trim().toUpperCase(),
             String(mobileNo).trim().replace(/\D/g, '').slice(-10),
             String(emailId).trim().toLowerCase(),
           ].join('|');
@@ -739,6 +749,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             id: `row_${stableId}`,
             sNo: String(sNo),
             companyName: String(companyName).trim(),
+            gstin,
             industry: String(industry).trim(),
             address: String(address).trim(),
             rating: String(rating).trim(),
@@ -808,6 +819,7 @@ export const ImportDataPage = ({ onNavigate }) => {
               }
 
               // Supplement any empty company metadata from subsequent row
+              if (!existingCompEntry.gstin && r.gstin) existingCompEntry.gstin = r.gstin;
               if (!existingCompEntry.industry && r.industry) existingCompEntry.industry = r.industry;
               if (!existingCompEntry.address && r.address) existingCompEntry.address = r.address;
               if (!existingCompEntry.rating && r.rating) existingCompEntry.rating = r.rating;
@@ -832,19 +844,37 @@ export const ImportDataPage = ({ onNavigate }) => {
           }
         });
 
-        // 2. Intra-sheet duplicate detection for standalone rows (rows without company name)
+        // 2. Intra-sheet duplicate detection with Unique GSTIN enforcement
         const seenStandalonePhones = new Set();
         const seenStandaloneEmails = new Set();
+        const seenGstins = new Map(); // gstin -> companyName
+        let sheetGstinDuplicatesCount = 0;
 
         const initialEnrichedRows = consolidatedRows.map((row) => {
-          const comp = row.companyName ? row.companyName.toLowerCase() : '';
+          const comp = row.companyName ? row.companyName.trim() : '';
+          const compLower = comp.toLowerCase();
           const phone = row.mobileNo ? normalizePhone(row.mobileNo) : '';
           const email = row.emailId ? row.emailId.toLowerCase() : '';
+          const gstin = (row.gstin || '').trim().toUpperCase();
 
           let isSheetDup = false;
           const reasons = [];
 
-          if (!comp) {
+          // Unique GSTIN check: GSTIN must be unique for each company
+          if (gstin) {
+            if (seenGstins.has(gstin)) {
+              const previousCompany = seenGstins.get(gstin);
+              if (previousCompany && comp && previousCompany.toLowerCase() !== compLower) {
+                isSheetDup = true;
+                sheetGstinDuplicatesCount++;
+                reasons.push(`Duplicate GSTIN: "${gstin}" is already assigned to "${previousCompany}" in this sheet`);
+              }
+            } else {
+              seenGstins.set(gstin, comp || row.contactPerson || 'Another Entry');
+            }
+          }
+
+          if (!compLower) {
             if (phone && seenStandalonePhones.has(phone)) {
               isSheetDup = true;
               reasons.push('Duplicate Mobile in sheet');
@@ -865,18 +895,21 @@ export const ImportDataPage = ({ onNavigate }) => {
           };
         });
 
-        // 3. Build index of existing workspace records
+        // 3. Build index of existing workspace records (including GSTIN index)
         const existingCompMap = new Map();
         const existingPhoneMap = new Map();
         const existingEmailMap = new Map();
+        const existingGstinMap = new Map();
 
         (records || []).forEach((r) => {
           const comp = (r.companyName || '').trim().toLowerCase();
           const phone = normalizePhone(r.mobileNo);
           const email = (r.emailId || '').trim().toLowerCase();
+          const gstin = (r.gstin || '').trim().toUpperCase();
           if (comp && !existingCompMap.has(comp)) existingCompMap.set(comp, r);
           if (phone && !existingPhoneMap.has(phone)) existingPhoneMap.set(phone, r);
           if (email && !existingEmailMap.has(email)) existingEmailMap.set(email, r);
+          if (gstin && !existingGstinMap.has(gstin)) existingGstinMap.set(gstin, r);
         });
 
         // 4. Check against existing CRM leads database in batch & classify rows
@@ -891,6 +924,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             const comp = row.companyName ? row.companyName.toLowerCase() : '';
             const phone = row.mobileNo ? normalizePhone(row.mobileNo) : '';
             const email = row.emailId ? row.emailId.toLowerCase() : '';
+            const gstin = (row.gstin || '').trim().toUpperCase();
 
             // Case A: Duplicate within uploaded Excel sheet
             if (row.isSheetDup) {
@@ -905,11 +939,30 @@ export const ImportDataPage = ({ onNavigate }) => {
               };
             }
 
-            // Case B: Existing record in CRM or in workspace (Update)
+            // Case B: Cross-database GSTIN conflict (same GSTIN used for a different company)
+            const matchedByGstin = gstin ? existingGstinMap.get(gstin) : null;
+            if (matchedByGstin) {
+              const existingCompLower = (matchedByGstin.companyName || '').trim().toLowerCase();
+              if (comp && existingCompLower && comp !== existingCompLower) {
+                return {
+                  ...row,
+                  rowType: 'duplicate',
+                  isDuplicate: true,
+                  isUpdate: false,
+                  isNew: false,
+                  isConvertedToLead: false,
+                  leadId: null,
+                  duplicateReason: `Duplicate GSTIN: "${gstin}" already belongs to existing company "${matchedByGstin.companyName}" in database`,
+                };
+              }
+            }
+
+            // Case C: Existing record in CRM or in workspace (Update)
             const crmRes = crmResultMap.get(row.id);
             const inCrm = Boolean(crmRes?.existsInCrm || crmRes?.reason?.toLowerCase().includes('in crm'));
             const matchedWorkspaceRec =
               (comp && existingCompMap.get(comp)) ||
+              (gstin && matchedByGstin) ||
               (phone && existingPhoneMap.get(phone)) ||
               (email && existingEmailMap.get(email)) ||
               null;
@@ -1191,6 +1244,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           updatedList[matchIdx] = {
             ...ex,
             companyName: uRow.companyName || ex.companyName,
+            gstin: uRow.gstin || ex.gstin || '',
             industry: uRow.industry || ex.industry,
             address: uRow.address || ex.address,
             rating: uRow.rating || ex.rating,
@@ -1359,6 +1413,7 @@ export const ImportDataPage = ({ onNavigate }) => {
       worksheet.columns = [
         { header: 'S No', key: 'sNo', width: 8 },
         { header: 'Company Name', key: 'companyName', width: 32 },
+        { header: 'GSTIN', key: 'gstin', width: 22 },
         { header: 'Industry', key: 'industry', width: 24 },
         { header: 'Address', key: 'address', width: 36 },
         { header: 'Rating', key: 'rating', width: 10 },
@@ -1396,6 +1451,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         {
           sNo: 1,
           companyName: 'Infosys Limited',
+          gstin: '29AABCI1234A1Z5',
           industry: 'Information Technology',
           address: 'Electronics City, Hosur Road, Bangalore',
           rating: '4.5',
@@ -1411,6 +1467,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         {
           sNo: 2,
           companyName: 'Tata Consultancy Services',
+          gstin: '27AABCT5678B1Z2',
           industry: 'Consulting & IT',
           address: 'TCS House, Raveline Street, Fort, Mumbai',
           rating: '4.8',
@@ -1426,6 +1483,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         {
           sNo: 3,
           companyName: '',
+          gstin: '',
           industry: '',
           address: '',
           rating: '',
@@ -1540,6 +1598,7 @@ export const ImportDataPage = ({ onNavigate }) => {
       worksheet.columns = [
         { header: 'S No', key: 'sNo', width: 8 },
         { header: 'Company Name', key: 'companyName', width: 32 },
+        { header: 'GSTIN', key: 'gstin', width: 22 },
         { header: 'Industry', key: 'industry', width: 24 },
         { header: 'Address', key: 'address', width: 36 },
         { header: 'Rating', key: 'rating', width: 10 },
@@ -1598,24 +1657,25 @@ export const ImportDataPage = ({ onNavigate }) => {
 
         rowContacts.forEach((contact, contactIdx) => {
           exportedRowCount++;
-          // For a company with multiple contact persons, show S.No and Company Name only on the first contact row
+          // For a company with multiple contact persons, show company-level attributes (S.No, Company Name, GSTIN, Remarks, Date, Status, Source, Imported By, etc.) once on the first contact row
           const isFirstContact = contactIdx === 0;
 
           const rowData = {
             sNo: isFirstContact ? companySNo : '',
             companyName: isFirstContact ? (row.companyName || '') : '',
-            industry: row.industry || '',
-            address: row.address || '',
-            rating: row.rating || '',
+            gstin: isFirstContact ? (row.gstin || '') : '',
+            industry: isFirstContact ? (row.industry || '') : '',
+            address: isFirstContact ? (row.address || '') : '',
+            rating: isFirstContact ? (row.rating || '') : '',
             contactPerson: contact.contactPerson || '',
             designation: contact.designation || '',
             mobileNo: contact.mobileNo || '',
             emailId: contact.emailId || '',
-            remarks: row.remarks || '',
-            date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
-            status: row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New'),
-            source: row.leadSource || row.source || '',
-            importedBy: row.importedBy || '',
+            remarks: isFirstContact ? (row.remarks || '') : '',
+            date: isFirstContact ? (row.date ? new Date(row.date).toISOString().split('T')[0] : '') : '',
+            status: isFirstContact ? (row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New')) : '',
+            source: isFirstContact ? (row.leadSource || row.source || '') : '',
+            importedBy: isFirstContact ? (row.importedBy || '') : '',
           };
 
           const addedRow = worksheet.addRow(rowData);
@@ -1633,21 +1693,32 @@ export const ImportDataPage = ({ onNavigate }) => {
         });
 
         const endRowIndex = worksheet.rowCount;
-        // If there are multiple contact persons for this company:
-        // 1. Merge S.No. cells vertically (Column 1)
-        // 2. Merge Company Name cells vertically (Column 2)
+        // If there are multiple contact persons for this company, merge company-level cells vertically
+        // so S.No, Company Name, GSTIN, Industry, Address, Rating, Remarks, Date, Status, Source, and Imported By
+        // are neatly displayed once per company across all contact person rows.
         if (rowContacts.length > 1 && endRowIndex >= startRowIndex) {
-          worksheet.mergeCells(startRowIndex, 1, endRowIndex, 1);
-          const mergedSNoCell = worksheet.getCell(startRowIndex, 1);
-          mergedSNoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+          const companyColsToMerge = [
+            { col: 1, align: { vertical: 'middle', horizontal: 'center' } }, // S No
+            { col: 2, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Company Name
+            { col: 3, align: { vertical: 'middle', horizontal: 'center' } }, // GSTIN
+            { col: 4, align: { vertical: 'middle', horizontal: 'left' } }, // Industry
+            { col: 5, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Address
+            { col: 6, align: { vertical: 'middle', horizontal: 'center' } }, // Rating
+            { col: 11, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Remarks
+            { col: 12, align: { vertical: 'middle', horizontal: 'center' } }, // Date
+            { col: 13, align: { vertical: 'middle', horizontal: 'center' } }, // Status
+            { col: 14, align: { vertical: 'middle', horizontal: 'left' } }, // Source
+            { col: 15, align: { vertical: 'middle', horizontal: 'left' } }, // Imported By
+          ];
 
-          worksheet.mergeCells(startRowIndex, 2, endRowIndex, 2);
-          const mergedCompCell = worksheet.getCell(startRowIndex, 2);
-          mergedCompCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+          companyColsToMerge.forEach(({ col, align }) => {
+            worksheet.mergeCells(startRowIndex, col, endRowIndex, col);
+            worksheet.getCell(startRowIndex, col).alignment = align;
+          });
         }
       });
 
-      // ── Status dropdown on every data row (column L = col 12) ──────────
+      // ── Status dropdown on every data row (column M = col 13) ──────────
       const exportStatusOptions = [
         'New', 'Interested', 'Not Interested', 'Callback Requested',
         'Did not turn up', 'Not picking', 'Meeting Scheduled',
@@ -1655,7 +1726,7 @@ export const ImportDataPage = ({ onNavigate }) => {
       ];
       const exportStatusFormula = `"${exportStatusOptions.join(',')}"`;
       for (let r = 2; r <= exportedRowCount + 1; r++) {
-        worksheet.getCell(`L${r}`).dataValidation = {
+        worksheet.getCell(`M${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
           showDropDown: false, // false = always show the arrow in Excel
@@ -2405,6 +2476,21 @@ export const ImportDataPage = ({ onNavigate }) => {
       return;
     }
 
+    const gstinVal = (editingRow.gstin || '').trim().toUpperCase();
+    if (gstinVal) {
+      const existingWithGstin = records.find(
+        (r) =>
+          r.id !== editingRow.id &&
+          (r._id !== editingRow._id || !editingRow._id) &&
+          (r.gstin || '').trim().toUpperCase() === gstinVal &&
+          (r.companyName || '').trim().toLowerCase() !== compName.toLowerCase()
+      );
+      if (existingWithGstin) {
+        toast.error(`Duplicate GSTIN: "${gstinVal}" is already registered to "${existingWithGstin.companyName}". GSTIN must be unique per company.`);
+        return;
+      }
+    }
+
     setIsSavingEdit(true);
     try {
       const contactName = (editingRow.contactPerson || '').trim();
@@ -2459,6 +2545,7 @@ export const ImportDataPage = ({ onNavigate }) => {
       const updatedRowData = {
         ...editingRow,
         companyName: compName,
+        gstin: gstinVal,
         contactPerson: (editingRow.contactPerson || '').trim(),
         designation: (editingRow.designation || '').trim(),
         mobileNo: (editingRow.mobileNo || '').trim(),
@@ -2798,6 +2885,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                         <tr>
                           <th className="p-2.5 text-center w-12 whitespace-nowrap">#</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Company Name</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">GSTIN</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Industry</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Address</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Rating</th>
@@ -2816,7 +2904,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                       <tbody className="divide-y divide-slate-100">
                         {visibleStagedRows.length === 0 ? (
                           <tr>
-                            <td colSpan={15} className="py-8 text-center text-slate-400">
+                            <td colSpan={16} className="py-8 text-center text-slate-400">
                               No {previewTab} records to display in this sheet.
                             </td>
                           </tr>
@@ -2900,6 +2988,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   </div>
                                 )}
                               </td>
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono">{row.gstin || '—'}</td>
                               <td className="p-2.5 text-slate-700 whitespace-nowrap">{row.industry || '—'}</td>
                               <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
                               <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
@@ -3817,6 +3906,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                         </th>
                         <th className="p-3 border-l border-slate-200 text-center w-12 whitespace-nowrap">S.NO</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap">Company Name</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">GSTIN</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap">Industry</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap">Source</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap">Status</th>
@@ -3842,7 +3932,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <tbody className="divide-y divide-slate-100">
                       {totalMatchingRecords === 0 ? (
                         <tr>
-                          <td colSpan={9} className="py-12 text-center text-slate-400">
+                          <td colSpan={10} className="py-12 text-center text-slate-400">
                             <div className="flex flex-col items-center justify-center">
                               <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
                               <p className="font-semibold text-slate-600">
@@ -3896,6 +3986,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                                     </span>
                                   )}
                                 </div>
+                              </td>
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono">
+                                {row.gstin || '—'}
                               </td>
                               <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                                 {row.industry ? (
@@ -4178,6 +4271,15 @@ export const ImportDataPage = ({ onNavigate }) => {
                   setEditingRow((prev) => ({ ...prev, companyName: e.target.value }))
                 }
                 placeholder="e.g. Acme Corp"
+              />
+
+              <Input
+                label="GSTIN"
+                value={editingRow.gstin || ''}
+                onChange={(e) =>
+                  setEditingRow((prev) => ({ ...prev, gstin: e.target.value.toUpperCase() }))
+                }
+                placeholder="e.g. 29AABCI1234A1Z5"
               />
 
               <Input

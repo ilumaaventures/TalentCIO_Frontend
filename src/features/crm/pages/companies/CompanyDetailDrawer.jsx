@@ -311,6 +311,10 @@ export const CompanyDetailDrawer = ({
                     <span className="font-semibold text-slate-800">{company.phone || '—'}</span>
                   </div>
                   <div>
+                    <span className="text-slate-400 block mb-0.5">GSTIN</span>
+                    <span className="font-semibold text-slate-800 font-mono">{company.gstin || '—'}</span>
+                  </div>
+                  <div>
                     <span className="text-slate-400 block mb-0.5">Annual Revenue</span>
                     <span className="font-semibold text-slate-800">{company.annualRevenue || '₹50Cr - ₹100Cr'}</span>
                   </div>
