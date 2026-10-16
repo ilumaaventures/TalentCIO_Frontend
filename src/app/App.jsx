@@ -426,7 +426,7 @@ function App() {
 
                     {/* Talent Management (Admin-Only) */}
                     <Route path="/talent" element={(
-                      <ProtectedRoute requiredRoles={ADMIN_ROLES} allowAllPermissions redirectTo="/">
+                      <ProtectedRoute moduleName="talentCard" requiredRoles={ADMIN_ROLES} allowAllPermissions redirectTo="/">
                         <TalentPage />
                       </ProtectedRoute>
                     )} />
