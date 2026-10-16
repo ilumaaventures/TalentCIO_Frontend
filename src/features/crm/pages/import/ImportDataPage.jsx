@@ -637,6 +637,25 @@ export const ImportDataPage = ({ onNavigate }) => {
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
+
+        // Populate merged cells so rows with merged company names retain the value across all contact rows
+        if (worksheet && worksheet['!merges']) {
+          worksheet['!merges'].forEach((range) => {
+            const startCellRef = XLSX.utils.encode_cell(range.s);
+            const masterCell = worksheet[startCellRef];
+            if (masterCell && masterCell.v !== undefined) {
+              for (let R = range.s.r; R <= range.e.r; ++R) {
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                  const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                  if (!worksheet[cellRef] || worksheet[cellRef].v === undefined || worksheet[cellRef].v === '') {
+                    worksheet[cellRef] = { ...masterCell };
+                  }
+                }
+              }
+            }
+          });
+        }
+
         const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
         if (!rawJson || rawJson.length === 0) {
@@ -1487,7 +1506,9 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       // ── Add Data Rows (multi-contact expansion) ─────────────────────────
       let exportedRowCount = 0;
+      let companySNo = 0;
       rowsToExport.forEach((row) => {
+        companySNo++;
         const rowContacts = Array.isArray(row.contacts) && row.contacts.length > 0
           ? row.contacts
           : ((row.contactPerson || row.mobileNo || row.emailId)
@@ -1504,11 +1525,16 @@ export const ImportDataPage = ({ onNavigate }) => {
                 emailId: '',
               }]);
 
-        rowContacts.forEach((contact) => {
+        const startRowIndex = worksheet.rowCount + 1;
+
+        rowContacts.forEach((contact, contactIdx) => {
           exportedRowCount++;
+          // For a company with multiple contact persons, show S.No and Company Name only on the first contact row
+          const isFirstContact = contactIdx === 0;
+
           const rowData = {
-            sNo: exportedRowCount,
-            companyName: row.companyName || '',
+            sNo: isFirstContact ? companySNo : '',
+            companyName: isFirstContact ? (row.companyName || '') : '',
             industry: row.industry || '',
             address: row.address || '',
             rating: row.rating || '',
@@ -1526,6 +1552,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           const addedRow = worksheet.addRow(rowData);
           addedRow.height = 22;
           addedRow.alignment = { vertical: 'middle' };
+          addedRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
           addedRow.eachCell((cell) => {
             cell.border = {
               top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
@@ -1535,6 +1562,20 @@ export const ImportDataPage = ({ onNavigate }) => {
             };
           });
         });
+
+        const endRowIndex = worksheet.rowCount;
+        // If there are multiple contact persons for this company:
+        // 1. Merge S.No. cells vertically (Column 1)
+        // 2. Merge Company Name cells vertically (Column 2)
+        if (rowContacts.length > 1 && endRowIndex >= startRowIndex) {
+          worksheet.mergeCells(startRowIndex, 1, endRowIndex, 1);
+          const mergedSNoCell = worksheet.getCell(startRowIndex, 1);
+          mergedSNoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          worksheet.mergeCells(startRowIndex, 2, endRowIndex, 2);
+          const mergedCompCell = worksheet.getCell(startRowIndex, 2);
+          mergedCompCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        }
       });
 
       // ── Status dropdown on every data row (column L = col 12) ──────────
