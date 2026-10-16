@@ -417,8 +417,9 @@ export const crmAdminService = {
     const res = await api.post(`/crm/data/import-data/${id}/follow-up`, data);
     return res.data;
   },
-  updateImportDataStatus: async (id, status) => {
-    const res = await api.patch(`/crm/data/import-data/${id}/status`, { status });
+  updateImportDataStatus: async (id, status, note = '') => {
+    const payload = typeof status === 'object' && status !== null ? status : { status, note };
+    const res = await api.patch(`/crm/data/import-data/${id}/status`, payload);
     return res.data;
   },
   getRepPerformance: async (params = {}) => {

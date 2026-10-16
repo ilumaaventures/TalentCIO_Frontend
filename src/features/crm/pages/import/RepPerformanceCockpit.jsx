@@ -13,6 +13,7 @@ import {
   Users,
   Target,
   CalendarCheck,
+  History,
 } from 'lucide-react';
 import { dataService } from '../../services/api';
 
@@ -23,6 +24,10 @@ export const RepPerformanceCockpit = ({
   onOpenUserHistory,
   onOpenMetricHistory,
   onToggleConvertedFilter,
+  onToggleStatusChangedFilter,
+  isConvertedActive = false,
+  isStatusChangedActive = false,
+  statusChangesCount: statusChangesCountProp,
   defaultExpanded = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -97,6 +102,10 @@ export const RepPerformanceCockpit = ({
         onOpenMetricHistory({ channelType: 'all', outcome: 'all', dateRange, rep: targetRep });
       } else if (onOpenUserHistory) {
         onOpenUserHistory(targetRep, false, { channelType: 'all', outcome: 'all', dateRange });
+      }
+    } else if (metricKey === 'status_changes') {
+      if (onToggleStatusChangedFilter) {
+        onToggleStatusChangedFilter();
       }
     }
   };
@@ -179,27 +188,27 @@ export const RepPerformanceCockpit = ({
       {/* Expanded Metrics Content */}
       {isExpanded && (
         <div className="p-4 bg-slate-50/60 border-t border-slate-200/90 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
             {/* Metric 1: Total Calls */}
             <div
               onClick={() => handleMetricClick('calls')}
               role="button"
               tabIndex={0}
-              className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-indigo-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
+              className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-indigo-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
               title="Click to view detailed Call logs and recordings in Telemetry Ledger"
             >
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span className="group-hover:text-indigo-600 font-semibold transition-colors">Calls Made</span>
-                <PhoneCall className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+              <div className="flex items-center justify-between text-[11.5px] text-slate-500 font-medium">
+                <span className="group-hover:text-indigo-600 font-semibold transition-colors truncate">Calls Made</span>
+                <PhoneCall className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 transition-transform shrink-0" />
               </div>
-              <p className="text-xl font-extrabold text-slate-900 mt-1">
+              <p className="text-lg font-bold text-slate-900 mt-0.5">
                 {summary.totalCalls || 0}
               </p>
-              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80">
-                <p className="text-[11px] text-slate-400 truncate">
-                  {canViewAll ? 'Logged across all prospects' : 'Logged by your account'}
+              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80 gap-1">
+                <p className="text-[10px] text-slate-400 truncate">
+                  {canViewAll ? 'All prospects' : 'Your account'}
                 </p>
-                <span className="text-[10px] font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                <span className="text-[10px] font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                   View Logs →
                 </span>
               </div>
@@ -210,24 +219,24 @@ export const RepPerformanceCockpit = ({
               onClick={() => handleMetricClick('whatsapp_email')}
               role="button"
               tabIndex={0}
-              className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-blue-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
+              className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-blue-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
               title="Click to view WhatsApp and Email outreach history"
             >
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span className="group-hover:text-blue-600 font-semibold transition-colors">WhatsApp / Email</span>
-                <div className="flex items-center gap-1 group-hover:scale-110 transition-transform">
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                  <Mail className="w-3.5 h-3.5 text-blue-600" />
+              <div className="flex items-center justify-between text-[11.5px] text-slate-500 font-medium">
+                <span className="group-hover:text-blue-600 font-semibold transition-colors truncate">WhatsApp / Email</span>
+                <div className="flex items-center gap-1 group-hover:scale-110 transition-transform shrink-0">
+                  <MessageSquare className="w-3 h-3 text-emerald-600" />
+                  <Mail className="w-3 h-3 text-blue-600" />
                 </div>
               </div>
-              <p className="text-xl font-extrabold text-blue-700 mt-1">
+              <p className="text-lg font-bold text-blue-700 mt-0.5">
                 {(summary.totalWhatsApps || 0) + (summary.totalEmails || 0)}
               </p>
-              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80">
-                <p className="text-[11px] text-slate-400 truncate">
-                  {summary.totalWhatsApps || 0} WA • {summary.totalEmails || 0} Emails
+              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80 gap-1">
+                <p className="text-[10px] text-slate-400 truncate">
+                  {summary.totalWhatsApps || 0} WA • {summary.totalEmails || 0} Mail
                 </p>
-                <span className="text-[10px] font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                <span className="text-[10px] font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                   View Logs →
                 </span>
               </div>
@@ -238,21 +247,21 @@ export const RepPerformanceCockpit = ({
               onClick={() => handleMetricClick('positive')}
               role="button"
               tabIndex={0}
-              className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-amber-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
+              className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-amber-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
               title="Click to view all Interested clients and Scheduled Meetings"
             >
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span className="group-hover:text-amber-600 font-semibold transition-colors">Positive Outcomes</span>
-                <Target className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform" />
+              <div className="flex items-center justify-between text-[11.5px] text-slate-500 font-medium">
+                <span className="group-hover:text-amber-600 font-semibold transition-colors truncate">Positive Outcomes</span>
+                <Target className="w-3.5 h-3.5 text-amber-600 group-hover:scale-110 transition-transform shrink-0" />
               </div>
-              <p className="text-xl font-extrabold text-amber-700 mt-1">
+              <p className="text-lg font-bold text-amber-700 mt-0.5">
                 {summary.positiveOutcomes || 0}
               </p>
-              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80">
-                <p className="text-[11px] text-slate-400 truncate">
-                  Interested or demo requested
+              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80 gap-1">
+                <p className="text-[10px] text-slate-400 truncate">
+                  Interested / demo
                 </p>
-                <span className="text-[10px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                <span className="text-[10px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                   View Logs →
                 </span>
               </div>
@@ -263,21 +272,21 @@ export const RepPerformanceCockpit = ({
               onClick={() => handleMetricClick('followup')}
               role="button"
               tabIndex={0}
-              className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-orange-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
+              className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-orange-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
               title="Click to view scheduled follow-ups in detail"
             >
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span className="group-hover:text-orange-600 font-semibold transition-colors">Follow-ups</span>
-                <CalendarCheck className="w-4 h-4 text-orange-600 group-hover:scale-110 transition-transform" />
+              <div className="flex items-center justify-between text-[11.5px] text-slate-500 font-medium">
+                <span className="group-hover:text-orange-600 font-semibold transition-colors truncate">Follow-ups</span>
+                <CalendarCheck className="w-3.5 h-3.5 text-orange-600 group-hover:scale-110 transition-transform shrink-0" />
               </div>
-              <p className="text-xl font-extrabold text-orange-700 mt-1">
+              <p className="text-lg font-bold text-orange-700 mt-0.5">
                 {summary.totalFollowUps || 0}
               </p>
-              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80">
-                <p className="text-[11px] text-slate-400 truncate">
-                  {canViewAll ? 'Scheduled across team' : 'Your scheduled follow-ups'}
+              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80 gap-1">
+                <p className="text-[10px] text-slate-400 truncate">
+                  {canViewAll ? 'Team scheduled' : 'Your scheduled'}
                 </p>
-                <span className="text-[10px] font-bold text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                <span className="text-[10px] font-bold text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                   View Details →
                 </span>
               </div>
@@ -288,21 +297,55 @@ export const RepPerformanceCockpit = ({
               onClick={() => handleMetricClick('converted')}
               role="button"
               tabIndex={0}
-              className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs hover:border-purple-400 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative"
+              className={`p-3 rounded-xl bg-white border shadow-2xs hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative ${
+                isConvertedActive
+                  ? 'border-purple-500 ring-2 ring-purple-400/40 bg-purple-50/40'
+                  : 'border-slate-200 hover:border-purple-400'
+              }`}
               title="Click to filter table and view all Converted Leads"
             >
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span className="group-hover:text-purple-600 font-semibold transition-colors">Converted to Leads</span>
+              <div className="flex items-center justify-between text-[11.5px] text-slate-500 font-medium">
+                <span className="group-hover:text-purple-600 font-semibold transition-colors truncate">Converted to Leads</span>
+                <Award className="w-3.5 h-3.5 text-purple-600 group-hover:scale-110 transition-transform shrink-0" />
               </div>
-              <p className="text-xl font-extrabold text-purple-700 mt-1">
+              <p className="text-lg font-bold text-purple-700 mt-0.5">
                 {summary.convertedRows || 0}
               </p>
-              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80">
-                <p className="text-[11px] text-slate-400 truncate">
-                  {canViewAll ? 'Graduated to active pipeline' : 'Your graduated prospects'}
+              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80 gap-1">
+                <p className="text-[10px] text-slate-400 truncate">
+                  {canViewAll ? 'Graduated leads' : 'Your graduated'}
                 </p>
-                <span className="text-[10px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
-                  Filter Table →
+                <span className="text-[10px] font-bold text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  {isConvertedActive ? 'Clear ✕' : 'Filter Table →'}
+                </span>
+              </div>
+            </div>
+
+            {/* Metric 6: Status Changes */}
+            <div
+              onClick={() => handleMetricClick('status_changes')}
+              role="button"
+              tabIndex={0}
+              className={`p-3 rounded-xl bg-white border shadow-2xs hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer group select-none relative ${
+                isStatusChangedActive
+                  ? 'border-indigo-500 ring-2 ring-indigo-400/40 bg-indigo-50/40'
+                  : 'border-slate-200 hover:border-indigo-400'
+              }`}
+              title="Click to filter table and show companies whose status has changed from initial"
+            >
+              <div className="flex items-center justify-between text-[11.5px] text-slate-500 font-medium">
+                <span className="group-hover:text-indigo-600 font-semibold transition-colors truncate">Status Changes</span>
+                <History className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 group-hover:rotate-12 transition-transform shrink-0" />
+              </div>
+              <p className="text-lg font-bold text-indigo-700 mt-0.5">
+                {statusChangesCountProp !== undefined ? statusChangesCountProp : (summary.statusChangesCount || 0)}
+              </p>
+              <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100/80 gap-1">
+                <p className="text-[10px] text-slate-400 truncate">
+                  {canViewAll ? 'Status shifted' : 'Your shifts'}
+                </p>
+                <span className="text-[10px] font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  {isStatusChangedActive ? 'Clear ✕' : 'Show →'}
                 </span>
               </div>
             </div>

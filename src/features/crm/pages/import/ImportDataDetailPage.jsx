@@ -30,6 +30,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -42,6 +43,29 @@ import { Select } from '../../components/ui/Select';
 import { dataService, leadsService, tasksService } from '../../services/api';
 import { LogOutreachModal } from './LogOutreachModal';
 import { CrmMailComposerModal } from '../../components/communication/CrmMailComposerModal';
+
+const STATUS_OPTIONS = [
+  'New',
+  'Interested',
+  'Not Interested',
+  'Callback Requested',
+  'Not picking',
+  'Did not turn up',
+  'Meeting Scheduled',
+  'Lost',
+  'Other',
+];
+
+const getStatusBadgeStyle = (val) => {
+  const s = String(val || '').toLowerCase().trim();
+  if (s === 'interested') return 'bg-emerald-50 text-emerald-700 border-emerald-300 focus:ring-emerald-400';
+  if (s === 'not interested' || s === 'notinterested' || s === 'lost') return 'bg-rose-50 text-rose-700 border-rose-300 focus:ring-rose-400';
+  if (s.includes('converted')) return 'bg-teal-50 text-teal-700 border-teal-300 focus:ring-teal-400';
+  if (s.includes('turn up') || s.includes('not picking') || s.includes('callback') || s.includes('rnr')) return 'bg-amber-50 text-amber-700 border-amber-300 focus:ring-amber-400';
+  if (s === 'meeting scheduled') return 'bg-purple-50 text-purple-700 border-purple-300 focus:ring-purple-400';
+  if (s === 'new') return 'bg-blue-50 text-blue-700 border-blue-300 focus:ring-blue-400';
+  return 'bg-slate-50 text-slate-700 border-slate-300 focus:ring-slate-400';
+};
 
 const parseEmailActivity = (act) => {
   if (!act) return null;
@@ -169,6 +193,12 @@ export const ImportDataDetailPage = ({
     category: 'Follow-up',
     description: '',
   });
+
+  // Status Change Modal state
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [newStatusValue, setNewStatusValue] = useState('');
+  const [statusChangeNote, setStatusChangeNote] = useState('');
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const recordId = record?._id || record?.id;
   const cleanPhone = (record?.mobileNo || record?.phone || '').replace(/\D/g, '').slice(-10);
@@ -320,6 +350,83 @@ export const ImportDataDetailPage = ({
     setIsOutreachOpen(true);
   };
 
+  const handleOpenStatusModal = (targetStatus) => {
+    if (targetStatus === 'Converted to Lead') {
+      if (onConvert) onConvert();
+      return;
+    }
+    setNewStatusValue(targetStatus || record?.status || record?.leadStatus || 'New');
+    setStatusChangeNote('');
+    setIsStatusModalOpen(true);
+  };
+
+  const handleConfirmStatusChange = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!newStatusValue) return;
+
+    if (newStatusValue === 'Converted to Lead') {
+      setIsStatusModalOpen(false);
+      if (onConvert) onConvert();
+      return;
+    }
+
+    const oldStatus = record?.status || record?.leadStatus || 'New';
+    const rowId = record?._id || record?.id;
+
+    setIsUpdatingStatus(true);
+    const nowIso = new Date().toISOString();
+    const newEntry = {
+      status: newStatusValue,
+      previousStatus: oldStatus,
+      changedAt: nowIso,
+      changedBy: 'You',
+      note: statusChangeNote.trim(),
+    };
+
+    const existingHistory = Array.isArray(record?.statusHistory) ? [...record.statusHistory] : [];
+    if (existingHistory.length === 0 && oldStatus && oldStatus !== newStatusValue) {
+      existingHistory.push({
+        status: oldStatus,
+        previousStatus: '',
+        changedAt: record?.createdAt || record?.date || nowIso,
+        changedBy: record?.importedBy || 'Initial Import',
+        note: 'Initial status on data import',
+      });
+    }
+    existingHistory.push(newEntry);
+
+    const updatedRecord = {
+      ...record,
+      status: newStatusValue,
+      leadStatus: newStatusValue,
+      updatedAt: nowIso,
+      statusHistory: existingHistory,
+    };
+    setRecord(updatedRecord);
+
+    if (onUpdateRecordRef.current) {
+      onUpdateRecordRef.current(updatedRecord);
+    }
+
+    try {
+      const res = await dataService.updateImportDataStatus(rowId, newStatusValue, statusChangeNote.trim());
+      if (res?.data?.statusHistory) {
+        setRecord((prev) => ({
+          ...prev,
+          statusHistory: res.data.statusHistory,
+        }));
+      }
+      toast.success(`Status updated to "${newStatusValue}"`);
+      setIsStatusModalOpen(false);
+      loadActivitiesAndFollowUps();
+    } catch (err) {
+      console.error('Failed to update status on server:', err);
+      toast.error('Failed to update status on server');
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   const handleOutreachSuccess = (updatedData) => {
     if (updatedData) {
       const merged = { ...record, ...updatedData };
@@ -432,6 +539,25 @@ export const ImportDataDetailPage = ({
                     Source: {record?.source || record?.leadSource}
                   </Badge>
                 )}
+
+                {/* Status Selector Dropdown Badge */}
+                <div className="relative inline-flex items-center gap-1">
+                  <select
+                    value={record?.status || record?.leadStatus || 'New'}
+                    onChange={(e) => handleOpenStatusModal(e.target.value)}
+                    className={`appearance-none inline-flex items-center pl-2.5 pr-6 py-0.5 rounded-full text-xs font-bold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-2xs ${getStatusBadgeStyle(
+                      record?.status || record?.leadStatus || 'New'
+                    )}`}
+                    title="Click to change company status / interest"
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} className="bg-white text-slate-800 text-xs font-normal">
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
+                </div>
                 {record?.rating && (
                   <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 shrink-0">
                     <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
@@ -1365,6 +1491,134 @@ export const ImportDataDetailPage = ({
               )}
             </Card>
 
+            {/* Status History & Lifecycle Card */}
+            <Card padding="lg" className="space-y-4 border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-600" />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Status History</h3>
+                    <p className="text-[11px] text-slate-500">Lifecycle audit trail & interest stage changes</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenStatusModal(record?.status || record?.leadStatus || 'New')}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100/70 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                >
+                  <Edit3 className="w-3 h-3" />
+                  <span>Change Status</span>
+                </button>
+              </div>
+
+              {/* Current Status Banner */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                    Current Status
+                  </span>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusBadgeStyle(record?.status || record?.leadStatus || 'New')}`}>
+                    {record?.status || record?.leadStatus || 'New'}
+                  </span>
+                </div>
+                <div className="text-right text-[11px] text-slate-500">
+                  <span className="block font-medium">
+                    {Array.isArray(record?.statusHistory) && record.statusHistory.length > 0
+                      ? `${record.statusHistory.length} status change(s)`
+                      : 'Initial Status'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {record?.updatedAt ? new Date(record.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Imported'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Timeline of Status Changes */}
+              <div className="space-y-3 pt-1">
+                {(() => {
+                  const historyList = Array.isArray(record?.statusHistory) && record.statusHistory.length > 0
+                    ? [...record.statusHistory].reverse()
+                    : [];
+
+                  if (historyList.length === 0) {
+                    return (
+                      <div className="py-4 text-center">
+                        <Clock className="w-6 h-6 text-slate-300 mx-auto mb-1.5" />
+                        <p className="text-xs font-semibold text-slate-600">Initial Status: {record?.status || record?.leadStatus || 'New'}</p>
+                        <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
+                          No status changes recorded yet. Click "Change Status" above to update client interest or stage.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="relative pl-5 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                      {historyList.map((entry, idx) => {
+                        const isLatest = idx === 0;
+                        const changedDate = entry.changedAt ? new Date(entry.changedAt) : null;
+                        return (
+                          <div key={idx} className="relative group">
+                            {/* Timeline node dot */}
+                            <div
+                              className={`absolute -left-5 top-1 w-2.5 h-2.5 rounded-full border-2 border-white shadow-2xs ${
+                                isLatest ? 'bg-indigo-600 ring-4 ring-indigo-50' : 'bg-slate-400'
+                              }`}
+                            />
+                            <div className="bg-white rounded-lg p-2.5 border border-slate-200/80 shadow-2xs space-y-1.5 hover:border-slate-300 transition">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  {entry.previousStatus && entry.previousStatus !== entry.status ? (
+                                    <div className="flex items-center gap-1 text-xs">
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(entry.previousStatus)}`}>
+                                        {entry.previousStatus}
+                                      </span>
+                                      <span className="text-slate-400 font-bold">→</span>
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeStyle(entry.status)}`}>
+                                        {entry.status}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeStyle(entry.status)}`}>
+                                      {entry.status} {entry.note?.includes('Initial') ? '(Initial)' : ''}
+                                    </span>
+                                  )}
+                                </div>
+                                {isLatest && (
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">
+                                    Current
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                                <span>
+                                  by <strong className="text-slate-700 font-semibold">{entry.changedBy || 'User'}</strong>
+                                </span>
+                                {changedDate && (
+                                  <span title={changedDate.toLocaleString()} className="text-[10px] text-slate-400 font-mono">
+                                    {changedDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} at{' '}
+                                    {changedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+
+                              {entry.note && (
+                                <div className="text-xs text-slate-600 bg-slate-50/70 p-2 rounded border border-slate-100 whitespace-pre-wrap leading-relaxed mt-1">
+                                  <span className="font-semibold text-slate-700">Note: </span>
+                                  {entry.note}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            </Card>
+
             {/* Quick Outreach Status Card */}
             <Card padding="lg" className="space-y-3 bg-gradient-to-br from-indigo-50/50 via-white to-slate-50 border-indigo-100">
               <div className="flex items-center justify-between">
@@ -2101,6 +2355,96 @@ export const ImportDataDetailPage = ({
               </div>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Update Company Status Modal */}
+      {isStatusModalOpen && (
+        <Modal
+          isOpen={isStatusModalOpen}
+          onClose={() => setIsStatusModalOpen(false)}
+          title="Update Company Status"
+          subtitle={`Company: ${record?.companyName || 'Prospect'} • Change interest & lifecycle stage`}
+          maxWidth="max-w-md"
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsStatusModalOpen(false)}
+                disabled={isUpdatingStatus}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmStatusChange}
+                disabled={isUpdatingStatus}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+              >
+                {isUpdatingStatus ? 'Updating...' : 'Save Status Change'}
+              </Button>
+            </div>
+          }
+        >
+          <form onSubmit={handleConfirmStatusChange} className="space-y-4">
+            {/* Status Transition Preview */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Current Status
+                </span>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusBadgeStyle(record?.status || record?.leadStatus || 'New')}`}>
+                  {record?.status || record?.leadStatus || 'New'}
+                </span>
+              </div>
+              <span className="text-slate-400 font-bold text-base">→</span>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  New Status
+                </span>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusBadgeStyle(newStatusValue)}`}>
+                  {newStatusValue || 'Select'}
+                </span>
+              </div>
+            </div>
+
+            {/* Select Status */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Select Status / Stage <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={newStatusValue}
+                onChange={(e) => setNewStatusValue(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                required
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Optional Note / Reason */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Reason / Note (Optional)
+              </label>
+              <textarea
+                value={statusChangeNote}
+                onChange={(e) => setStatusChangeNote(e.target.value)}
+                placeholder="e.g. Spoke with decision maker, requested demo next week..."
+                rows={3}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs leading-relaxed"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                This note will be logged in the company's status history audit trail.
+              </p>
+            </div>
+          </form>
         </Modal>
       )}
     </div>

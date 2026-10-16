@@ -216,6 +216,7 @@ export const ImportDataPage = ({ onNavigate }) => {
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
   const [showConvertedOnly, setShowConvertedOnly] = useState(false);
+  const [showStatusChangedOnly, setShowStatusChangedOnly] = useState(false);
 
   // Expanded remarks state (row ID -> boolean) to dynamically expand row height
   const [expandedRemarks, setExpandedRemarks] = useState({});
@@ -305,7 +306,25 @@ export const ImportDataPage = ({ onNavigate }) => {
     setShowConvertedOnly((prev) => {
       const next = !prev;
       if (next) {
+        setShowStatusChangedOnly(false);
         toast.success('Filtering table by Converted Leads');
+      } else {
+        toast('Showing all imported records');
+      }
+      return next;
+    });
+    const tableEl = document.querySelector('table');
+    if (tableEl) {
+      tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleToggleStatusChangedFilter = () => {
+    setShowStatusChangedOnly((prev) => {
+      const next = !prev;
+      if (next) {
+        setShowConvertedOnly(false);
+        toast.success('Filtering table by Companies with Status Changes');
       } else {
         toast('Showing all imported records');
       }
@@ -1771,6 +1790,25 @@ export const ImportDataPage = ({ onNavigate }) => {
   // Helper to check if a row is converted to lead in CRM
   const isConvertedLead = (row) => Boolean(row?.isConvertedToLead);
 
+  // Helper to check if a row has had an actual status change (excluding untouched initial status)
+  const isStatusChangedRecord = (row) => {
+    if (!row || !Array.isArray(row.statusHistory) || row.statusHistory.length === 0) {
+      return false;
+    }
+    // Only return true if there is an actual transition from an initial status to another status
+    return row.statusHistory.some((h) => {
+      if (!h) return false;
+      // Exclude baseline initial status entries
+      if (h.note === 'Initial status on import' || h.previousStatus === '') {
+        return false;
+      }
+      if (h.previousStatus && h.status && h.previousStatus !== h.status) {
+        return true;
+      }
+      return Boolean(h.previousStatus);
+    });
+  };
+
   // Format local date as YYYY-MM-DD
   const formatLocalDate = (d) => {
     const year = d.getFullYear();
@@ -1938,6 +1976,10 @@ export const ImportDataPage = ({ onNavigate }) => {
     return dateFilteredRecords.filter(isConvertedLead).length;
   }, [dateFilteredRecords]);
 
+  const dateFilteredStatusChangedCount = useMemo(() => {
+    return dateFilteredRecords.filter(isStatusChangedRecord).length;
+  }, [dateFilteredRecords]);
+
   // Check if any non-default filters are applied
   const hasActiveFilters = useMemo(() => {
     return (
@@ -1947,9 +1989,10 @@ export const ImportDataPage = ({ onNavigate }) => {
       Boolean(searchQuery.trim()) ||
       Boolean(fromDate) ||
       Boolean(toDate) ||
-      showConvertedOnly
+      showConvertedOnly ||
+      showStatusChangedOnly
     );
-  }, [dateFilter, dateFilterType, selectedUsers, searchQuery, fromDate, toDate, showConvertedOnly]);
+  }, [dateFilter, dateFilterType, selectedUsers, searchQuery, fromDate, toDate, showConvertedOnly, showStatusChangedOnly]);
 
   // Reset all filters to default state (Today, Updated At)
   const handleClearAllFilters = () => {
@@ -1960,6 +2003,7 @@ export const ImportDataPage = ({ onNavigate }) => {
     setSelectedUsers([]);
     setSearchQuery('');
     setShowConvertedOnly(false);
+    setShowStatusChangedOnly(false);
     toast.success('Filters cleared (Reset to Today, Updated At)');
   };
 
@@ -1969,6 +2013,11 @@ export const ImportDataPage = ({ onNavigate }) => {
       .filter((item) => {
         // Filter by Converted to Lead if card filter is active
         if (showConvertedOnly && !isConvertedLead(item)) {
+          return false;
+        }
+
+        // Filter by Status Changes if card filter is active
+        if (showStatusChangedOnly && !isStatusChangedRecord(item)) {
           return false;
         }
 
@@ -1999,12 +2048,12 @@ export const ImportDataPage = ({ onNavigate }) => {
         const dateB = getDateForSort(b);
         return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
       });
-  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly, dateFilterType]);
+  }, [dateFilteredRecords, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly, dateFilterType]);
 
   // Reset to first page when any filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, dateFilterType, fromDate, toDate, selectedUsers, searchQuery, sortDirection, showConvertedOnly]);
+  }, [dateFilter, dateFilterType, fromDate, toDate, selectedUsers, searchQuery, sortDirection, showConvertedOnly, showStatusChangedOnly]);
 
   // Pagination calculation
   const totalMatchingRecords = filteredAndSortedRecords.length;
@@ -2047,8 +2096,23 @@ export const ImportDataPage = ({ onNavigate }) => {
     // Optimistically update local state & localStorage
     setRecords((prev) => {
       const nowIso = new Date().toISOString();
+      const historyEntry = {
+        status: newStatus,
+        previousStatus: oldStatus,
+        changedAt: nowIso,
+        changedBy: currentUserName || 'You',
+        note: '',
+      };
       const next = prev.map((r) =>
-        r.id === row.id ? { ...r, status: newStatus, leadStatus: newStatus, updatedAt: nowIso } : r
+        r.id === row.id
+          ? {
+              ...r,
+              status: newStatus,
+              leadStatus: newStatus,
+              updatedAt: nowIso,
+              statusHistory: [historyEntry, ...(Array.isArray(r.statusHistory) ? r.statusHistory : [])],
+            }
+          : r
       );
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -2142,11 +2206,26 @@ export const ImportDataPage = ({ onNavigate }) => {
     // Optimistic update
     setRecords((prev) => {
       const nowIso = new Date().toISOString();
-      const next = prev.map((r) =>
-        selectedIds.includes(r.id) && !r.isDuplicate
-          ? { ...r, status: statusToApply, leadStatus: statusToApply, updatedAt: nowIso }
-          : r
-      );
+      const next = prev.map((r) => {
+        if (selectedIds.includes(r.id) && !r.isDuplicate) {
+          const oldStatus = r.status || r.leadStatus || 'New';
+          const historyEntry = {
+            status: statusToApply,
+            previousStatus: oldStatus,
+            changedAt: nowIso,
+            changedBy: currentUserName || 'You',
+            note: 'Bulk status update',
+          };
+          return {
+            ...r,
+            status: statusToApply,
+            leadStatus: statusToApply,
+            updatedAt: nowIso,
+            statusHistory: [historyEntry, ...(Array.isArray(r.statusHistory) ? r.statusHistory : [])],
+          };
+        }
+        return r;
+      });
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (_) { }
       return next;
     });
@@ -2621,9 +2700,13 @@ export const ImportDataPage = ({ onNavigate }) => {
           }}
           onUpdateRecord={(updated) => {
             if (!updated) return;
-            setRecords((prev) =>
-              prev.map((r) => (r.id === updated.id || r._id === updated._id ? { ...r, ...updated } : r))
-            );
+            setRecords((prev) => {
+              const next = prev.map((r) => (r.id === updated.id || r._id === updated._id ? { ...r, ...updated } : r));
+              try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+              } catch (_) {}
+              return next;
+            });
           }}
         />
       ) : (
@@ -2884,9 +2967,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                       <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
                         <tr>
                           <th className="p-2.5 text-center w-12 whitespace-nowrap">#</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Company Name</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">GSTIN</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Industry</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[210px] min-w-[180px] max-w-[220px]">Company Name</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">GSTIN</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[150px] min-w-[130px] max-w-[160px]">Industry</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Address</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Rating</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Contact Person</th>
@@ -2896,7 +2979,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Remarks</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Date</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Status</th>
-                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Source</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[140px] min-w-[120px] max-w-[150px]">Source</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Imported By</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap text-center">Action</th>
                         </tr>
@@ -2922,74 +3005,78 @@ export const ImportDataPage = ({ onNavigate }) => {
                               <td className="p-2.5 text-center font-semibold text-slate-500 whitespace-nowrap">
                                 {idx + 1}
                               </td>
-                              <td className="p-2.5 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span>{row.companyName || '—'}</span>
+                              <td className="p-2.5 border-l border-slate-200 font-bold text-slate-900 w-[210px] min-w-[180px] max-w-[220px]">
+                                <div className="w-full max-w-[210px] flex flex-col gap-1 py-0.5">
+                                  <div className="flex items-start gap-1.5">
+                                    <span className="font-semibold text-slate-900 whitespace-normal break-words leading-snug">{row.companyName || '—'}</span>
+                                  </div>
 
-                                  {/* Badges */}
-                                  {row.rowType === 'update' && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 ml-1 shrink-0 shadow-2xs"
-                                      title={row.updateReason || 'Matches existing record'}
-                                    >
-                                      <RefreshCw className="w-3 h-3 text-amber-600" />
-                                      Update
-                                    </span>
-                                  )}
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    {/* Badges */}
+                                    {row.rowType === 'update' && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0 shadow-2xs"
+                                        title={row.updateReason || 'Matches existing record'}
+                                      >
+                                        <RefreshCw className="w-3 h-3 text-amber-600" />
+                                        Update
+                                      </span>
+                                    )}
 
-                                  {row.isConvertedToLead && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 ml-1 shrink-0 shadow-2xs"
-                                      title="Converted to Lead in CRM"
-                                    >
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                      Converted to Lead
-                                    </span>
-                                  )}
+                                    {row.isConvertedToLead && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 shadow-2xs"
+                                        title="Converted to Lead in CRM"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                        Converted to Lead
+                                      </span>
+                                    )}
 
-                                  {row.rowType === 'duplicate' && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 ml-1 shrink-0"
-                                      title={row.duplicateReason || 'Duplicate in sheet'}
-                                    >
-                                      <AlertTriangle className="w-3 h-3 text-rose-500" />
-                                      Duplicate in Sheet
-                                    </span>
-                                  )}
+                                    {row.rowType === 'duplicate' && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0"
+                                        title={row.duplicateReason || 'Duplicate in sheet'}
+                                      >
+                                        <AlertTriangle className="w-3 h-3 text-rose-500" />
+                                        Duplicate in Sheet
+                                      </span>
+                                    )}
 
-                                  {row.rowType === 'new' && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 ml-1 shrink-0"
-                                    >
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                      New
-                                    </span>
-                                  )}
+                                    {row.rowType === 'new' && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                        New
+                                      </span>
+                                    )}
 
-                                  {row.contacts && row.contacts.length > 1 && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 ml-1 shrink-0"
-                                      title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
-                                    >
-                                      <Users className="w-3 h-3 text-violet-600" />
-                                      {row.contacts.length} Contacts
-                                    </span>
-                                  )}
+                                    {row.contacts && row.contacts.length > 1 && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 shrink-0"
+                                        title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
+                                      >
+                                        <Users className="w-3 h-3 text-violet-600" />
+                                        {row.contacts.length} Contacts
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {row.rowType === 'duplicate' && row.duplicateReason && (
-                                  <div className="text-[10px] text-rose-600 font-normal mt-0.5">
+                                  <div className="text-[10px] text-rose-600 font-normal mt-0.5 break-words whitespace-normal">
                                     {row.duplicateReason}
                                   </div>
                                 )}
                                 {row.rowType === 'update' && row.updateReason && !row.isConvertedToLead && (
-                                  <div className="text-[10px] text-amber-600 font-normal mt-0.5">
+                                  <div className="text-[10px] text-amber-600 font-normal mt-0.5 break-words whitespace-normal">
                                     {row.updateReason}
                                   </div>
                                 )}
                               </td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono">{row.gstin || '—'}</td>
-                              <td className="p-2.5 text-slate-700 whitespace-nowrap">{row.industry || '—'}</td>
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[110px] max-w-[140px]">{row.gstin || '—'}</td>
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-normal break-words w-[150px] min-w-[130px] max-w-[160px] leading-snug">{row.industry || '—'}</td>
                               <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
                               <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
                               <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">
@@ -3014,8 +3101,10 @@ export const ImportDataPage = ({ onNavigate }) => {
                                   {row.status || row.leadStatus || 'New'}
                                 </span>
                               </td>
-                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
-                                {row.source || row.leadSource || '—'}
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 font-medium w-[140px] min-w-[120px] max-w-[150px]">
+                                <div className="w-full max-w-[135px]">
+                                  <span className="whitespace-normal break-words leading-snug block">{row.source || row.leadSource || '—'}</span>
+                                </div>
                               </td>
                               <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
                                 <div className="flex items-center gap-1.5">
@@ -3318,6 +3407,10 @@ export const ImportDataPage = ({ onNavigate }) => {
                 onOpenUserHistory={handleOpenUserHistory}
                 onOpenMetricHistory={handleOpenMetricHistory}
                 onToggleConvertedFilter={handleToggleConvertedFilter}
+                onToggleStatusChangedFilter={handleToggleStatusChangedFilter}
+                isConvertedActive={showConvertedOnly}
+                isStatusChangedActive={showStatusChangedOnly}
+                statusChangesCount={dateFilteredStatusChangedCount}
               />
 
               {/* Controls Bar: Date Filter + Sort Arrow + Search + Send to Leads Action */}
@@ -3822,6 +3915,21 @@ export const ImportDataPage = ({ onNavigate }) => {
                     </span>
                   )}
 
+                  {showStatusChangedOnly && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 ml-1">
+                      <History className="w-3 h-3 text-indigo-600" />
+                      Status Changed Only ({totalMatchingRecords})
+                      <button
+                        type="button"
+                        onClick={() => setShowStatusChangedOnly(false)}
+                        className="ml-1 text-indigo-700 hover:text-indigo-950 hover:bg-indigo-200 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold"
+                        title="Clear status changed filter and show all"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+
                   {selectedIds.length > 0 && (
                     <button
                       type="button"
@@ -3905,10 +4013,10 @@ export const ImportDataPage = ({ onNavigate }) => {
                           />
                         </th>
                         <th className="p-3 border-l border-slate-200 text-center w-12 whitespace-nowrap">S.NO</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Company Name</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">GSTIN</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Industry</th>
-                        <th className="p-3 border-l border-slate-200 whitespace-nowrap">Source</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[210px] min-w-[180px] max-w-[220px]">Company Name</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">GSTIN</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[150px] min-w-[130px] max-w-[160px]">Industry</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[140px] min-w-[120px] max-w-[150px]">Source</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap">Status</th>
                         <th
                           className="p-3 border-l border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-200 transition-colors"
@@ -3968,39 +4076,51 @@ export const ImportDataPage = ({ onNavigate }) => {
                               <td className="p-3 border-l border-slate-200 text-center font-semibold text-slate-500 whitespace-nowrap">
                                 {startEntry + idx}
                               </td>
-                              <td className="p-3 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <div className="flex items-center gap-1.5">
-                                    <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
-                                    <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                              <td className="p-3 border-l border-slate-200 font-bold text-slate-900 w-[210px] min-w-[180px] max-w-[220px]">
+                                <div className="w-full max-w-[210px] flex flex-col gap-1.5 py-0.5">
+                                  <div className="flex items-start gap-1.5">
+                                    <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0 mt-0.5" />
+                                    <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors whitespace-normal break-words leading-snug">
                                       {row.companyName || '—'}
                                     </span>
                                   </div>
                                   {row.contacts && row.contacts.length > 1 && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200"
-                                      title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
-                                    >
-                                      <Users className="w-3 h-3 text-violet-600" />
-                                      {row.contacts.length} Contacts
-                                    </span>
+                                    <div className="pl-[22px]">
+                                      <span
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 shrink-0"
+                                        title={row.contacts.map((c) => `${c.contactPerson || 'Contact'} (${c.designation || '—'}) • ${c.mobileNo || 'No phone'} • ${c.emailId || 'No email'}`).join('\n')}
+                                      >
+                                        <Users className="w-3 h-3 text-violet-600" />
+                                        {row.contacts.length} Contacts
+                                      </span>
+                                    </div>
                                   )}
                                 </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono">
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[110px] max-w-[140px]">
                                 {row.gstin || '—'}
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap">
-                                {row.industry ? (
-                                  <Badge variant="neutral" size="sm">
-                                    {row.industry}
-                                  </Badge>
-                                ) : (
-                                  '—'
-                                )}
+                              <td className="p-3 border-l border-slate-200 text-slate-700 w-[150px] min-w-[130px] max-w-[160px]">
+                                <div className="w-full max-w-[145px]">
+                                  {row.industry ? (
+                                    <Badge
+                                      variant="neutral"
+                                      size="sm"
+                                      className="whitespace-normal break-words leading-snug py-1 px-2.5 text-center justify-center flex-wrap"
+                                    >
+                                      {row.industry}
+                                    </Badge>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </div>
                               </td>
-                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-medium">
-                                {row.source || row.leadSource || '—'}
+                              <td className="p-3 border-l border-slate-200 text-slate-700 font-medium w-[140px] min-w-[120px] max-w-[150px]">
+                                <div className="w-full max-w-[135px]">
+                                  <span className="whitespace-normal break-words leading-snug block">
+                                    {row.source || row.leadSource || '—'}
+                                  </span>
+                                </div>
                               </td>
                               <td className="p-3 border-l border-slate-200 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                 {row.isDuplicate ? (
@@ -4047,6 +4167,20 @@ export const ImportDataPage = ({ onNavigate }) => {
                                       </select>
                                       <ChevronDown className="w-3 h-3 absolute right-2 pointer-events-none opacity-60" />
                                     </div>
+                                    {row.statusHistory && row.statusHistory.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRowClick(row);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition shrink-0"
+                                        title={`Status changed ${row.statusHistory.length} time(s). Latest: from "${row.statusHistory[0]?.previousStatus || 'New'}" to "${row.statusHistory[0]?.status}". Click to view company history.`}
+                                      >
+                                        <History className="w-3 h-3 text-indigo-600" />
+                                        <span>{row.statusHistory.length}</span>
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </td>

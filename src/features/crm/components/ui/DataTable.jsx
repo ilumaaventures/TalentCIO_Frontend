@@ -66,10 +66,10 @@ export const DataTable = ({
                 <th
                   key={col.key || col.title}
                   onClick={() => col.sortable && onSort && onSort(col.key)}
-                  className={`px-4 py-3.5 whitespace-nowrap select-none ${
+                  className={`px-4 py-3.5 select-none ${col.className ? col.className : 'whitespace-nowrap'} ${
                     col.sortable ? 'cursor-pointer hover:text-slate-900' : ''
                   } ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'}`}
-                  style={{ width: col.width }}
+                  style={{ width: col.width, minWidth: col.minWidth, maxWidth: col.maxWidth }}
                 >
                   <div className={`inline-flex items-center gap-1.5 ${col.align === 'right' ? 'justify-end' : ''}`}>
                     <span>{col.title}</span>
@@ -120,9 +120,10 @@ export const DataTable = ({
                   {columns.map((col) => (
                     <td
                       key={col.key || col.title}
-                      className={`px-4 py-3.5 whitespace-nowrap ${
+                      className={`px-4 py-3.5 ${col.className ? col.className : 'whitespace-nowrap'} ${
                         col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
                       }`}
+                      style={{ width: col.width, minWidth: col.minWidth, maxWidth: col.maxWidth }}
                     >
                       {col.render ? col.render(row[col.key], row) : row[col.key] || '—'}
                     </td>
