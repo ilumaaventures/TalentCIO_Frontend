@@ -124,9 +124,32 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
           'User';
         const selectedSource = (formData.source || 'Website').trim();
         const selectedStatus = (formData.status || 'New').trim();
+        const gstinVal = (formData.gstin || '').trim().toUpperCase();
+
+        const STORAGE_KEY = 'crm_imported_excel_records';
+        let existing = [];
+        try {
+          existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        } catch (_) {}
+
+        if (gstinVal) {
+          const compNameTrim = (formData.companyName || '').trim().toLowerCase();
+          const match = existing.find(
+            (r) =>
+              (r.gstin || '').trim().toUpperCase() === gstinVal &&
+              (r.companyName || '').trim().toLowerCase() !== compNameTrim
+          );
+          if (match) {
+            throw new Error(
+              `Duplicate GSTIN: "${gstinVal}" is already registered to "${match.companyName}". GSTIN must be unique per company.`
+            );
+          }
+        }
+
         const newRecord = {
           id: `row_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           companyName: (formData.companyName || '').trim(),
+          gstin: gstinVal,
           contactPerson: (formData.contactPerson || '').trim(),
           designation: (formData.designation || '').trim(),
           mobileNo: (formData.mobileNo || formData.phone || '').trim(),
@@ -145,8 +168,6 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
 
         await dataService.syncImportData([newRecord]);
         try {
-          const STORAGE_KEY = 'crm_imported_excel_records';
-          const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
           const updated = [newRecord, ...existing];
           localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         } catch (_) {}
@@ -531,24 +552,38 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
                 placeholder="e.g. Acme FinTech India"
               />
               <Input
+                label="GSTIN"
+                value={formData.gstin || ''}
+                onChange={(e) => handleInputChange('gstin', e.target.value.toUpperCase())}
+                placeholder="e.g. 29AABCI1234A1Z5"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
                 label="Contact Person"
                 value={formData.contactPerson || ''}
                 onChange={(e) => handleInputChange('contactPerson', e.target.value)}
                 placeholder="e.g. Rahul Verma"
               />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Designation / Job Title"
                 value={formData.designation || ''}
                 onChange={(e) => handleInputChange('designation', e.target.value)}
                 placeholder="e.g. VP Sales"
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Industry"
                 value={formData.industry || ''}
                 onChange={(e) => handleInputChange('industry', e.target.value)}
                 placeholder="e.g. Real Estate, IT, Finance"
+              />
+              <Input
+                label="Rating"
+                value={formData.rating || ''}
+                onChange={(e) => handleInputChange('rating', e.target.value)}
+                placeholder="e.g. 4.5"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -665,24 +700,18 @@ export const QuickCreateModal = ({ isOpen, onClose, initialType = 'lead', onSucc
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Rating"
-                value={formData.rating || ''}
-                onChange={(e) => handleInputChange('rating', e.target.value)}
-                placeholder="e.g. 4.5"
-              />
-              <Input
                 label="Date"
                 type="date"
                 value={formData.date || new Date().toISOString().split('T')[0]}
                 onChange={(e) => handleInputChange('date', e.target.value)}
               />
+              <Input
+                label="Address / Location"
+                value={formData.address || ''}
+                onChange={(e) => handleInputChange('address', e.target.value)}
+                placeholder="e.g. Unit 402, Cyber City, Gurugram"
+              />
             </div>
-            <Input
-              label="Address / Location"
-              value={formData.address || ''}
-              onChange={(e) => handleInputChange('address', e.target.value)}
-              placeholder="e.g. Unit 402, Cyber City, Gurugram"
-            />
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
                 Remarks / Notes

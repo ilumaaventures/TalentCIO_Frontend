@@ -686,6 +686,10 @@ export const ImportDataDetailPage = ({
                   <p className="font-semibold text-slate-800 text-sm">{record.companyName || '—'}</p>
                 </div>
                 <div>
+                  <span className="text-slate-400 block font-medium mb-0.5">GSTIN</span>
+                  <p className="font-semibold text-slate-800 font-mono">{record.gstin || '—'}</p>
+                </div>
+                <div>
                   <span className="text-slate-400 block font-medium mb-0.5">Industry / Domain</span>
                   <p className="font-semibold text-slate-800">{record.industry || '—'}</p>
                 </div>

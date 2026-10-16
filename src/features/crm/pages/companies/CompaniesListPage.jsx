@@ -16,7 +16,7 @@ export const CompaniesListPage = ({ onOpenCompanyDetail }) => {
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState(null);
-  const [formData, setFormData] = useState({ name: '', industry: 'Technology', website: '', phone: '', companySize: '51-200' });
+  const [formData, setFormData] = useState({ name: '', gstin: '', industry: 'Technology', website: '', phone: '', companySize: '51-200' });
 
   const fetchCompanies = async () => {
     setIsLoading(true);
@@ -42,7 +42,7 @@ export const CompaniesListPage = ({ onOpenCompanyDetail }) => {
     try {
       await companiesService.createCompany(formData);
       setIsModalOpen(false);
-      setFormData({ name: '', industry: 'Technology', website: '', phone: '', companySize: '51-200' });
+      setFormData({ name: '', gstin: '', industry: 'Technology', website: '', phone: '', companySize: '51-200' });
       fetchCompanies();
     } catch (err) {
       alert(err.message);
@@ -60,6 +60,11 @@ export const CompaniesListPage = ({ onOpenCompanyDetail }) => {
           <span>{val}</span>
         </div>
       ),
+    },
+    {
+      title: 'GSTIN',
+      key: 'gstin',
+      render: (val) => <span className="text-xs font-mono text-slate-700">{val || '—'}</span>,
     },
     {
       title: 'Industry',
@@ -151,6 +156,12 @@ export const CompaniesListPage = ({ onOpenCompanyDetail }) => {
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             placeholder="e.g. Acme Technologies India"
+          />
+          <Input
+            label="GSTIN"
+            value={formData.gstin}
+            onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
+            placeholder="e.g. 29AABCI1234A1Z5"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
