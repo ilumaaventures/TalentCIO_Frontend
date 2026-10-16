@@ -271,7 +271,7 @@ function CrmWorkspaceContent() {
           {activePage === 'ai-insights' && <AiInsightsPage onNavigate={handleNavigate} />}
 
           {activePage === 'audit-logs' && <AuditLogsPage />}
-          {activePage === 'data-tools' && <DataToolsPage />}
+          {activePage === 'data-tools' && <DataToolsPage onNavigate={handleNavigate} />}
           {activePage === 'settings' && <SettingsPage />}
         </>
       )}

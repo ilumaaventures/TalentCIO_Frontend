@@ -630,9 +630,18 @@ export const ImportDataPage = ({ onNavigate }) => {
   const handleFileUpload = (file) => {
     if (!file) return;
 
+    const toDataUrl = (fileBlob) =>
+      new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => resolve('');
+        r.readAsDataURL(fileBlob);
+      });
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        const fileDataUrl = await toDataUrl(file);
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
@@ -1044,6 +1053,8 @@ export const ImportDataPage = ({ onNavigate }) => {
         setStagedData({
           fileName: file.name,
           fileSize: `${(file.size / 1024).toFixed(1)} KB`,
+          fileSizeBytes: file.size,
+          fileData: fileDataUrl || '',
           totalRowsFetched,
           rows: finalRows,
           newCount,
@@ -1258,6 +1269,58 @@ export const ImportDataPage = ({ onNavigate }) => {
 
       return combined;
     });
+
+    // Persist Excel file record when user hits confirm import (store once)
+    if (stagedData && !stagedData._isSaving) {
+      stagedData._isSaving = true;
+
+      const fileRecordToSave = {
+        fileName: stagedData.fileName,
+        fileSize: stagedData.fileSize || '',
+        fileSizeBytes: stagedData.fileSizeBytes || 0,
+        totalRowsFetched: stagedData.totalRowsFetched || stagedData.rows?.length || 0,
+        totalCompanies: stagedData.rows?.length || 0,
+        newCount: newRows.length,
+        updateCount: updateRows.length,
+        duplicateCount: stagedData.duplicateCount || 0,
+        importedBy: currentUserName,
+        importMode: mode,
+        fileData: stagedData.fileData || '',
+        createdAt: new Date().toISOString(),
+      };
+
+      // Save directly to backend database
+      dataService.saveExcelFile(fileRecordToSave)
+        .then((res) => {
+          if (res && res.data) {
+            // Keep local storage in sync using the real MongoDB record ID (prevent duplicate entries)
+            try {
+              const storedKey = 'crm_stored_excel_files';
+              const existing = JSON.parse(localStorage.getItem(storedKey) || '[]');
+              const filtered = existing.filter(
+                (item) => item._id !== res.data._id && item.fileName !== fileRecordToSave.fileName
+              );
+              localStorage.setItem(storedKey, JSON.stringify([res.data, ...filtered]));
+            } catch {
+              // ignore
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('Backend save failed, saving to local cache as offline fallback:', err);
+          try {
+            const storedKey = 'crm_stored_excel_files';
+            const existing = JSON.parse(localStorage.getItem(storedKey) || '[]');
+            const filtered = existing.filter((item) => item.fileName !== fileRecordToSave.fileName);
+            localStorage.setItem(
+              storedKey,
+              JSON.stringify([{ _id: 'local_' + Date.now(), ...fileRecordToSave }, ...filtered])
+            );
+          } catch {
+            // ignore
+          }
+        });
+    }
 
     setFileName(stagedData.fileName);
     setSelectedIds([]);
