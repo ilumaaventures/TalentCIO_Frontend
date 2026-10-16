@@ -1598,24 +1598,24 @@ export const ImportDataPage = ({ onNavigate }) => {
 
         rowContacts.forEach((contact, contactIdx) => {
           exportedRowCount++;
-          // For a company with multiple contact persons, show S.No and Company Name only on the first contact row
+          // For a company with multiple contact persons, show company-level attributes (S.No, Company Name, Remarks, Date, Status, Source, Imported By, etc.) once on the first contact row
           const isFirstContact = contactIdx === 0;
 
           const rowData = {
             sNo: isFirstContact ? companySNo : '',
             companyName: isFirstContact ? (row.companyName || '') : '',
-            industry: row.industry || '',
-            address: row.address || '',
-            rating: row.rating || '',
+            industry: isFirstContact ? (row.industry || '') : '',
+            address: isFirstContact ? (row.address || '') : '',
+            rating: isFirstContact ? (row.rating || '') : '',
             contactPerson: contact.contactPerson || '',
             designation: contact.designation || '',
             mobileNo: contact.mobileNo || '',
             emailId: contact.emailId || '',
-            remarks: row.remarks || '',
-            date: row.date ? new Date(row.date).toISOString().split('T')[0] : '',
-            status: row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New'),
-            source: row.leadSource || row.source || '',
-            importedBy: row.importedBy || '',
+            remarks: isFirstContact ? (row.remarks || '') : '',
+            date: isFirstContact ? (row.date ? new Date(row.date).toISOString().split('T')[0] : '') : '',
+            status: isFirstContact ? (row.status || row.leadStatus || (row.isConvertedToLead ? 'Converted to Lead' : row.isDuplicate ? 'Duplicate' : 'New')) : '',
+            source: isFirstContact ? (row.leadSource || row.source || '') : '',
+            importedBy: isFirstContact ? (row.importedBy || '') : '',
           };
 
           const addedRow = worksheet.addRow(rowData);
@@ -1633,17 +1633,27 @@ export const ImportDataPage = ({ onNavigate }) => {
         });
 
         const endRowIndex = worksheet.rowCount;
-        // If there are multiple contact persons for this company:
-        // 1. Merge S.No. cells vertically (Column 1)
-        // 2. Merge Company Name cells vertically (Column 2)
+        // If there are multiple contact persons for this company, merge company-level cells vertically
+        // so S.No, Company Name, Industry, Address, Rating, Remarks, Date, Status, Source, and Imported By
+        // are neatly displayed once per company across all contact person rows.
         if (rowContacts.length > 1 && endRowIndex >= startRowIndex) {
-          worksheet.mergeCells(startRowIndex, 1, endRowIndex, 1);
-          const mergedSNoCell = worksheet.getCell(startRowIndex, 1);
-          mergedSNoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+          const companyColsToMerge = [
+            { col: 1, align: { vertical: 'middle', horizontal: 'center' } }, // S No
+            { col: 2, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Company Name
+            { col: 3, align: { vertical: 'middle', horizontal: 'left' } }, // Industry
+            { col: 4, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Address
+            { col: 5, align: { vertical: 'middle', horizontal: 'center' } }, // Rating
+            { col: 10, align: { vertical: 'middle', horizontal: 'left', wrapText: true } }, // Remarks
+            { col: 11, align: { vertical: 'middle', horizontal: 'center' } }, // Date
+            { col: 12, align: { vertical: 'middle', horizontal: 'center' } }, // Status
+            { col: 13, align: { vertical: 'middle', horizontal: 'left' } }, // Source
+            { col: 14, align: { vertical: 'middle', horizontal: 'left' } }, // Imported By
+          ];
 
-          worksheet.mergeCells(startRowIndex, 2, endRowIndex, 2);
-          const mergedCompCell = worksheet.getCell(startRowIndex, 2);
-          mergedCompCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+          companyColsToMerge.forEach(({ col, align }) => {
+            worksheet.mergeCells(startRowIndex, col, endRowIndex, col);
+            worksheet.getCell(startRowIndex, col).alignment = align;
+          });
         }
       });
 
