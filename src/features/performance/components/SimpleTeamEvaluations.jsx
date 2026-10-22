@@ -606,7 +606,14 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
               {selectedEval.kras && selectedEval.kras.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-slate-700">Rate Key Result Areas (KRAs)</label>
+                    <div className="flex items-center gap-1.5">
+                      <label className="block text-xs font-bold text-slate-700">Rate Key Result Areas (KRAs)</label>
+                      {selectedEval.user?.department && (
+                        <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                          {selectedEval.user.department}
+                        </span>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={calculateOverallFromKras}
