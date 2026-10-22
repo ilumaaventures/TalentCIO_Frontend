@@ -139,15 +139,26 @@ export const PMS_ACCESS_PERMISSIONS = [
     'pms.admin'
 ];
 
-export const canAccessPms = (user) => (
-    hasModuleEnabled(user?.company?.enabledModules || [], 'performance')
-    && (
-        isAdminUser(user)
-        || Boolean(user)
-        || hasAnyPermission(user, PMS_ACCESS_PERMISSIONS)
-        || (Array.isArray(user?.permissions) && user.permissions.some((p) => typeof p === 'string' && p.startsWith('pms.')))
-    )
-);
+export const canAccessPms = (user) => {
+    if (!hasModuleEnabled(user?.company?.enabledModules || [], 'performance')) return false;
+    if (isAdminUser(user)) return true;
+    const userRoles = Array.isArray(user?.roles) ? user.roles : [];
+    const roleNames = userRoles.map((r) => (typeof r === 'string' ? r : r?.name || '')).filter(Boolean);
+    const isHrOrManager = roleNames.some((r) => /admin|hr|manager/i.test(r)) || (Number(user?.directReportsCount) > 0);
+    if (isHrOrManager) return true;
+    return hasAnyPermission(user, [
+        'pms.admin',
+        'pms.view.all',
+        'pms.can.edit.all',
+        'pms.manage.team',
+        'pms.cycle.manage',
+        'pms.kra.manage',
+        'pms.kpi.manage',
+        'pms.calibration.manage',
+        'pms.ratings.publish',
+        'pms.reports.view',
+    ]);
+};
 
 export const canManagePms = (user) => (
     hasModuleEnabled(user?.company?.enabledModules || [], 'performance')

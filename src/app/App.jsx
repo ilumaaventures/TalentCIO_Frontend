@@ -445,12 +445,12 @@ function App() {
 
                     {/* Performance Management System (PMS) */}
                     <Route path="/performance/*" element={(
-                      <ProtectedRoute moduleName="performance" check={canAccessPms} redirectTo="/">
+                      <ProtectedRoute moduleName="performance" check={canAccessPms} redirectTo="/ess/performance">
                         <PerformanceApp />
                       </ProtectedRoute>
                     )} />
                     <Route path="/performance" element={(
-                      <ProtectedRoute moduleName="performance" check={canAccessPms} redirectTo="/">
+                      <ProtectedRoute moduleName="performance" check={canAccessPms} redirectTo="/ess/performance">
                         <PerformanceApp />
                       </ProtectedRoute>
                     )} />
