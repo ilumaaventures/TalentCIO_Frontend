@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import {
+  ArrowLeft,
   LayoutDashboard,
   Calendar,
   Layers,
@@ -83,26 +84,6 @@ export default function PerformanceApp() {
     isHr ||
     user?.permissions?.includes('pms.manage.team') ||
     roleNames.some((r) => /manager/i.test(r));
-
-  const roleBadgeLabel = isAdmin
-    ? 'HR Admin'
-    : isHr
-    ? 'HR Manager'
-    : isManager
-    ? 'Manager'
-    : 'Employee';
-
-  const userDisplayName =
-    user?.firstName && user?.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user?.name || user?.email || 'User';
-
-  const userInitials = userDisplayName
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 
   const setTab = (tabId) => {
     setSearchParams({ tab: tabId });
@@ -730,6 +711,13 @@ export default function PerformanceApp() {
       {/* ─── Top Header Matching Zoho HR Reference ──────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
         <div>
+          <Link
+            to="/ess/performance"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition mb-1.5"
+          >
+            <ArrowLeft size={14} />
+            <span>Back to My Performance</span>
+          </Link>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">
             Performance Management
           </h1>
@@ -739,17 +727,6 @@ export default function PerformanceApp() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* User Profile Capsule */}
-          <div className="flex items-center gap-2.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-2xs">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-[11px] font-bold text-white">
-              {userInitials}
-            </div>
-            <div className="text-left text-xs leading-tight">
-              <span className="font-bold text-slate-900 block">{userDisplayName}</span>
-              <span className="text-[10px] font-semibold text-blue-600">{roleBadgeLabel}</span>
-            </div>
-          </div>
-
           {/* Primary Action Button (Permission Aware) */}
           {(isAdmin || isHr) && (
             <button
@@ -791,8 +768,8 @@ export default function PerformanceApp() {
           { id: 'goals', label: 'Goals (OKRs)' },
           { id: 'reviews', label: 'Reviews' },
           { id: '360', label: '360° Feedback' },
-          { id: 'kras', label: 'KRA & KPI' },
-          { id: 'reports', label: 'Reports' },
+          ...(isAdmin || isHr || isManager || user?.permissions?.includes('pms.kra.manage') ? [{ id: 'kras', label: 'KRA & KPI' }] : []),
+          ...(isAdmin || isHr || user?.permissions?.includes('pms.reports.view') ? [{ id: 'reports', label: 'Reports' }] : []),
           ...(isAdmin ? [{ id: 'settings', label: 'Settings' }] : []),
         ].map((tab) => {
           const isActive = currentTab === tab.id;
@@ -1749,7 +1726,7 @@ export default function PerformanceApp() {
       {/* ══════════════════════════════════════════════════════════════════════
           PANEL 3: KRA & KPI MANAGEMENT (100% REAL DATA FROM MONGODB)
       ══════════════════════════════════════════════════════════════════════ */}
-      {currentTab === 'kras' && (
+      {currentTab === 'kras' && (isAdmin || isHr || isManager || user?.permissions?.includes('pms.kra.manage')) && (
         <div className="space-y-6">
           <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -2648,7 +2625,7 @@ export default function PerformanceApp() {
       {/* ══════════════════════════════════════════════════════════════════════
           PANEL 7: REPORTS (100% REAL DATA FROM MONGODB)
       ══════════════════════════════════════════════════════════════════════ */}
-      {currentTab === 'reports' && (
+      {currentTab === 'reports' && (isAdmin || isHr || user?.permissions?.includes('pms.reports.view')) && (
         <div className="space-y-6">
           <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4">

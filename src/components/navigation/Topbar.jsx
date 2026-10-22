@@ -133,7 +133,12 @@ const getPageMetadata = (pathname) => {
         return { title: 'Sales CRM', subtitle: 'Pipeline, leads & deals workspace' };
     }
     if (pathname === '/performance' || pathname.startsWith('/performance')) {
-        return { title: 'Performance Management', subtitle: 'Cycles, appraisals, goals, calibration & analytics' };
+        return {
+            title: 'Performance Management',
+            subtitle: 'Cycles, appraisals, goals, calibration & analytics',
+            back: '/ess/performance',
+            backLabel: 'My Performance'
+        };
     }
     if (pathname === '/bin') {
         return { title: 'Recycle Bin', subtitle: 'Deleted items & recovery' };

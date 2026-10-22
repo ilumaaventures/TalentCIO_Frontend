@@ -13,10 +13,14 @@ import GoalsManagement from '@/features/performance/components/GoalsManagement';
 import ContinuousFeedback from '@/features/performance/components/ContinuousFeedback';
 import PipDevPlans from '@/features/performance/components/PipDevPlans';
 import KraManagement from '@/features/performance/components/KraManagement';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import { canAccessPms } from '@/config/accessPolicies';
 
 export default function MySpacePerformance() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'appraisals';
+  const canAccessWorkspace = canAccessPms(user);
 
   return (
     <div className="min-h-screen bg-slate-50/60 p-4 sm:p-6 lg:p-8 space-y-6">
@@ -39,12 +43,14 @@ export default function MySpacePerformance() {
           </p>
         </div>
 
-        <Link
-          to="/performance"
-          className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
-        >
-          Open Full PMS Workspace →
-        </Link>
+        {canAccessWorkspace && (
+          <Link
+            to="/performance"
+            className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+          >
+            Open Full PMS Workspace →
+          </Link>
+        )}
       </div>
 
       {/* Tabs */}
