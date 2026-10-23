@@ -55,7 +55,12 @@ import pmsApi from '../api/pmsApi';
 
 // Subcomponents
 import SimpleTeamEvaluations from '../components/SimpleTeamEvaluations';
+import AppraisalReviews from '../components/AppraisalReviews';
+import CalibrationWorkspace from '../components/CalibrationWorkspace';
 import PmsSettings from '../components/PmsSettings';
+import KpiManagement from '../components/KpiManagement';
+import PmsDashboard from '../components/PmsDashboard';
+import PmsReports from '../components/PmsReports';
 
 const COLORS = ['#10b981', '#3b82f6', '#6366f1', '#f59e0b', '#ef4444'];
 
@@ -88,6 +93,8 @@ export default function PerformanceApp() {
   const setTab = (tabId) => {
     setSearchParams({ tab: tabId });
   };
+
+  const [reviewViewMode, setReviewViewMode] = useState('full');
 
   // ─── TAB 1: OVERVIEW STATE (100% LIVE REAL DATA) ──────────────────────────
   const [dashboardData, setDashboardData] = useState(null);
@@ -767,8 +774,16 @@ export default function PerformanceApp() {
           ...(isAdmin || isHr ? [{ id: 'cycles', label: 'Cycles' }] : []),
           { id: 'goals', label: 'Goals (OKRs)' },
           { id: 'reviews', label: 'Reviews' },
+          ...(isAdmin || isHr || user?.permissions?.includes('pms.calibration.manage')
+            ? [{ id: 'calibration', label: 'Calibration' }]
+            : []),
           { id: '360', label: '360° Feedback' },
-          ...(isAdmin || isHr || isManager || user?.permissions?.includes('pms.kra.manage') ? [{ id: 'kras', label: 'KRA & KPI' }] : []),
+          ...(isAdmin || isHr || isManager || user?.permissions?.includes('pms.kra.manage')
+            ? [
+                { id: 'kras', label: 'KRAs' },
+                { id: 'kpis', label: 'KPI Management' },
+              ]
+            : []),
           ...(isAdmin || isHr || user?.permissions?.includes('pms.reports.view') ? [{ id: 'reports', label: 'Reports' }] : []),
           ...(isAdmin ? [{ id: 'settings', label: 'Settings' }] : []),
         ].map((tab) => {
@@ -793,158 +808,7 @@ export default function PerformanceApp() {
           PANEL 1: PMS DASHBOARD (100% REAL DATA FROM MONGODB)
       ══════════════════════════════════════════════════════════════════════ */}
       {currentTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Top 4 Summary Cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Card 1: Total Employees */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-              <span className="text-xs font-semibold text-slate-500">Total Employees</span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-slate-900">{totalEmployees}</span>
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-600">
-                  Active
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] text-slate-400">Under Review Cycle</p>
-            </div>
-
-            {/* Card 2: Completed Reviews */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-              <span className="text-xs font-semibold text-slate-500">Completed Reviews</span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-slate-900">{completedReviews}</span>
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[11px] font-bold text-blue-600">
-                  {totalEmployees > 0 ? Math.round((completedReviews / totalEmployees) * 100) : 0}%
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] text-slate-400">Published & Evaluated</p>
-            </div>
-
-            {/* Card 3: Pending Reviews */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-              <span className="text-xs font-semibold text-slate-500">Pending Reviews</span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-slate-900">{pendingReviews}</span>
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-50 px-1.5 py-0.5 text-[11px] font-bold text-rose-600">
-                  In Queue
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] text-slate-400">Awaiting Manager / HR Action</p>
-            </div>
-
-            {/* Card 4: Average Rating */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-              <span className="text-xs font-semibold text-slate-500">Average Rating</span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-slate-900">{avgRating} / 5</span>
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-600">
-                  ★ Score
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] text-slate-400">across organization</p>
-            </div>
-          </div>
-
-          {/* 3 Widgets Row Matching Zoho HR Mockup */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Widget 1: Rating Distribution (Real Aggregates) */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-              <h3 className="text-sm font-bold text-slate-900">Performance Rating Distribution</h3>
-              <div className="mt-4 h-60 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={ratingDistribution} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="rating" stroke="#64748b" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} allowDecimals={false} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
-                    />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                      {ratingDistribution.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Widget 2: Goal Completion Rate (Real Goals Summary) */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-              <h3 className="text-sm font-bold text-slate-900">Goal Completion Rate</h3>
-              <div className="mt-2 flex flex-col items-center justify-center">
-                <div className="relative h-44 w-44">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={goalCompletionData}
-                        dataKey="value"
-                        innerRadius={55}
-                        outerRadius={75}
-                        paddingAngle={3}
-                      >
-                        {goalCompletionData.map((entry, index) => (
-                          <Cell key={`donut-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <span className="text-2xl font-black text-slate-900">
-                      {goalSummary.achievedPercent}%
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-semibold">Goals Achieved</span>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs w-full px-4">
-                  {goalCompletionData.map((item) => (
-                    <div key={item.name} className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-slate-600 font-medium">{item.name}</span>
-                      <strong className="text-slate-900 ml-auto">{item.value}</strong>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Widget 3: Top Performers (Real Users from MongoDB) */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-900">Top Performers</h3>
-                <button onClick={() => setTab('reviews')} className="text-xs font-bold text-blue-600 hover:underline">
-                  View All
-                </button>
-              </div>
-              <div className="mt-4 divide-y divide-slate-100">
-                {topPerformers.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400">
-                    No evaluated users yet. Complete reviews in the Reviews tab.
-                  </div>
-                ) : (
-                  topPerformers.map((person) => (
-                    <div key={person._id || person.name} className="flex items-center justify-between py-2.5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700 text-xs">
-                          {person.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-slate-900">{person.name}</h4>
-                          <p className="text-[11px] text-slate-500">{person.role}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 font-bold text-xs text-amber-500">
-                        <Star size={13} className="fill-amber-400" />
-                        <span>{person.score ? Number(person.score).toFixed(1) : person.band}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <PmsDashboard onNavigateTab={setTab} />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -1735,25 +1599,36 @@ export default function PerformanceApp() {
                 <p className="text-xs text-slate-500">Define evaluation pillars and measurement metrics by role and department.</p>
               </div>
 
-              {(isAdmin || isHr) && (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    setNewKraForm({
-                      name: '',
-                      description: '',
-                      category: 'Productivity & Delivery',
-                      weightage: 20,
-                      applicableDepartments: selectedDept !== 'All' ? [selectedDept] : [],
-                      assignmentType: kraSubTab || 'by_role',
-                    });
-                    setShowAddKraModal(true);
-                  }}
-                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition cursor-pointer"
+                  type="button"
+                  onClick={() => setTab('kpis')}
+                  className="flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 transition cursor-pointer"
                 >
-                  <Plus size={14} />
-                  <span>+ Add KRA</span>
+                  <Target size={14} />
+                  <span>Go to Department KPIs →</span>
                 </button>
-              )}
+
+                {(isAdmin || isHr) && (
+                  <button
+                    onClick={() => {
+                      setNewKraForm({
+                        name: '',
+                        description: '',
+                        category: 'Productivity & Delivery',
+                        weightage: 20,
+                        applicableDepartments: selectedDept !== 'All' ? [selectedDept] : [],
+                        assignmentType: kraSubTab || 'by_role',
+                      });
+                      setShowAddKraModal(true);
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition cursor-pointer"
+                  >
+                    <Plus size={14} />
+                    <span>+ Add KRA</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Subtabs Matching Mockup */}
@@ -2230,6 +2105,35 @@ export default function PerformanceApp() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
+          PANEL: DEPARTMENT-WISE KPI MANAGEMENT (TEMPLATES, ASSIGNMENT & RATINGS)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {currentTab === 'kpis' && (isAdmin || isHr || isManager || user?.permissions?.includes('pms.kra.manage')) && (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">Department-wise KPI Management</h2>
+                <p className="text-xs text-slate-500">
+                  Configure reusable KPI templates by department and designation, assign them to employees, and evaluate performance.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setTab('kras')}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <Layers size={14} />
+                <span>← View Organizational KRAs</span>
+              </button>
+            </div>
+
+            <KpiManagement />
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
           PANEL 4: EMPLOYEE GOAL SETTING (100% REAL DATA FROM MONGODB)
       ══════════════════════════════════════════════════════════════════════ */}
       {currentTab === 'goals' && (
@@ -2453,7 +2357,52 @@ export default function PerformanceApp() {
           PANEL 5: REVIEWS (100% REAL DATA FROM MONGODB)
       ══════════════════════════════════════════════════════════════════════ */}
       {currentTab === 'reviews' && (
-        <SimpleTeamEvaluations onNavigateSettings={() => setTab('settings')} />
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setReviewViewMode('full')}
+                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
+                  reviewViewMode === 'full'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Multi-Stage Workflow Queues
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewViewMode('quick')}
+                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
+                  reviewViewMode === 'quick'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Direct Team Evaluations
+              </button>
+            </div>
+            <span className="text-[11px] text-slate-400 font-medium">
+              {reviewViewMode === 'full'
+                ? 'Manage Self-Appraisal, Manager Review, Department Head, HR Evaluation & Final Approval'
+                : 'Quick scorecards and direct performance ratings'}
+            </span>
+          </div>
+
+          {reviewViewMode === 'full' ? (
+            <AppraisalReviews defaultScope={isManager && !isAdmin && !isHr ? 'team' : 'self'} />
+          ) : (
+            <SimpleTeamEvaluations onNavigateSettings={() => setTab('settings')} />
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          PANEL 5B: CALIBRATION WORKSPACE
+      ══════════════════════════════════════════════════════════════════════ */}
+      {currentTab === 'calibration' && (isAdmin || isHr || user?.permissions?.includes('pms.calibration.manage')) && (
+        <CalibrationWorkspace />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -2626,114 +2575,7 @@ export default function PerformanceApp() {
           PANEL 7: REPORTS (100% REAL DATA FROM MONGODB)
       ══════════════════════════════════════════════════════════════════════ */}
       {currentTab === 'reports' && (isAdmin || isHr || user?.permissions?.includes('pms.reports.view')) && (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-black text-slate-900">Performance Reports</h2>
-                <p className="text-xs text-slate-500">Organization-wide ratings, 9-box talent matrix, and department progress.</p>
-              </div>
-
-              <button
-                onClick={() => {
-                  const url = pmsApi.exportAppraisalsUrl();
-                  window.open(url, '_blank');
-                  toast.success('Downloading Excel Report...');
-                }}
-                className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition"
-              >
-                <Download size={14} />
-                <span>Export (.xlsx)</span>
-              </button>
-            </div>
-
-            {/* 4 Performance Band Summary Cards Calculated from Real Appraisals */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
-                <span className="text-[11px] font-semibold text-emerald-700">High Performers (★ 4.5+)</span>
-                <div className="text-xl font-black text-emerald-900">{talentBands.high} ({highPercent}%)</div>
-              </div>
-              <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
-                <span className="text-[11px] font-semibold text-blue-700">Meets Expectations (3.0 - 4.4)</span>
-                <div className="text-xl font-black text-blue-900">{talentBands.meets} ({meetsPercent}%)</div>
-              </div>
-              <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3">
-                <span className="text-[11px] font-semibold text-amber-700">Needs Improvement (2.0 - 2.9)</span>
-                <div className="text-xl font-black text-amber-900">{talentBands.needsImp} ({needsImpPercent}%)</div>
-              </div>
-              <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3">
-                <span className="text-[11px] font-semibold text-rose-700">Low Performers (&lt; 2.0)</span>
-                <div className="text-xl font-black text-rose-900">{talentBands.low} ({lowPercent}%)</div>
-              </div>
-            </div>
-
-            {/* 9-Box Grid & Department Score Bars */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {/* 9-Box Matrix */}
-              <div className="rounded-xl border border-slate-200/80 p-5">
-                <h4 className="text-xs font-bold text-slate-900 mb-3">Performance vs Potential Matrix (9-Box Grid)</h4>
-                <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-bold">
-                  <div className="rounded-lg bg-amber-50 p-3 text-amber-800 border border-amber-200">
-                    High Potential<br />Low Performance
-                  </div>
-                  <div className="rounded-lg bg-blue-50 p-3 text-blue-800 border border-blue-200">
-                    High Potential<br />Medium Perf
-                  </div>
-                  <div className="rounded-lg bg-emerald-100 p-3 text-emerald-900 border border-emerald-300">
-                    ★ Top Talent / Star<br />({talentBands.high} Employees)
-                  </div>
-
-                  <div className="rounded-lg bg-slate-50 p-3 text-slate-700 border border-slate-200">
-                    Med Potential<br />Low Perf
-                  </div>
-                  <div className="rounded-lg bg-blue-100 p-3 text-blue-900 border border-blue-300">
-                    Core Performer<br />({talentBands.meets} Employees)
-                  </div>
-                  <div className="rounded-lg bg-emerald-50 p-3 text-emerald-800 border border-emerald-200">
-                    High Performer
-                  </div>
-
-                  <div className="rounded-lg bg-rose-50 p-3 text-rose-800 border border-rose-200">
-                    Risk ({talentBands.low} Employees)
-                  </div>
-                  <div className="rounded-lg bg-slate-50 p-3 text-slate-700 border border-slate-200">
-                    Effective ({talentBands.needsImp} Employees)
-                  </div>
-                  <div className="rounded-lg bg-slate-100 p-3 text-slate-800 border border-slate-300">
-                    Trusted Professional
-                  </div>
-                </div>
-              </div>
-
-              {/* Department Scores Horizontal Bars From Real Mongo Aggregates */}
-              <div className="rounded-xl border border-slate-200/80 p-5">
-                <h4 className="text-xs font-bold text-slate-900 mb-3">Department Performance (Out of 5.0)</h4>
-                {deptPerformanceData.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400">
-                    No departmental performance scores yet. Complete evaluations in the Reviews tab.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {deptPerformanceData.map((d) => (
-                      <div key={d.department} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs font-bold">
-                          <span className="text-slate-700">{d.department}</span>
-                          <span className="text-blue-600">{d.averageScore} / 5.0</span>
-                        </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className="h-full bg-blue-600 rounded-full"
-                            style={{ width: `${(d.averageScore / 5) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <PmsReports onNavigateTab={setTab} />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════

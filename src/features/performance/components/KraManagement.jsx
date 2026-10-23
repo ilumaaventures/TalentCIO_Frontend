@@ -10,6 +10,10 @@ import {
   Filter,
   X,
   Building,
+  Target,
+  Eye,
+  Info,
+  ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import pmsApi from '../api/pmsApi';
@@ -26,13 +30,19 @@ const CATEGORIES = [
   'General',
 ];
 
-export default function KraManagement() {
+export default function KraManagement({ onNavigateToKpis }) {
   const [kras, setKras] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editKra, setEditKra] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+
+  // Linked KPIs Drawer / Modal state
+  const [showLinkedKpiModal, setShowLinkedKpiModal] = useState(false);
+  const [selectedKraForKpis, setSelectedKraForKpis] = useState(null);
+  const [linkedKpisData, setLinkedKpisData] = useState(null);
+  const [loadingLinkedKpis, setLoadingLinkedKpis] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -102,6 +112,23 @@ export default function KraManagement() {
     }
   };
 
+  const handleOpenLinkedKpis = async (kra) => {
+    setSelectedKraForKpis(kra);
+    setShowLinkedKpiModal(true);
+    try {
+      setLoadingLinkedKpis(true);
+      const res = await pmsApi.getKpisByKra(kra._id);
+      if (res.data?.success) {
+        setLinkedKpisData(res.data.data);
+      }
+    } catch (err) {
+      console.error('[Error fetching linked KPIs]:', err);
+      toast.error('Failed to load linked KPIs for this KRA');
+    } finally {
+      setLoadingLinkedKpis(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Live Weightage Total Validation Bar */}
@@ -118,11 +145,11 @@ export default function KraManagement() {
           </div>
           <div>
             <div className="text-xs font-bold uppercase tracking-wider">
-              {isWeightageValid ? 'Weightage Balanced' : 'Weightage Validation Notice'}
+              {isWeightageValid ? 'KRA Weightage Balanced' : 'KRA Weightage Notice'}
             </div>
             <div className="text-xs font-semibold">
-              Current total weightage: <span className="font-extrabold text-sm">{totalWeightage}%</span>
-              {isWeightageValid ? ' (100% total satisfied)' : ' — standard evaluation requires KRA weights to total 100%'}
+              Current total organizational KRA weightage: <span className="font-extrabold text-sm">{totalWeightage}%</span>
+              {isWeightageValid ? ' (100% total satisfied)' : ' — standard appraisal models require organizational KRA weights to total 100%'}
             </div>
           </div>
         </div>
@@ -179,7 +206,7 @@ export default function KraManagement() {
             });
             setShowModal(true);
           }}
-          className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+          className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition cursor-pointer"
         >
           <Plus size={16} />
           <span>Add New KRA</span>
@@ -207,7 +234,7 @@ export default function KraManagement() {
                     {kra.category}
                   </span>
                   <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-extrabold text-slate-900">
-                    {kra.weightage}% Weight
+                    {kra.weightage}% KRA Weight
                   </span>
                 </div>
 
@@ -224,9 +251,14 @@ export default function KraManagement() {
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-[11px] text-slate-400 font-semibold">
-                  {kra.kpiCount || 0} linked KPIs
-                </span>
+                <button
+                  type="button"
+                  onClick={() => handleOpenLinkedKpis(kra)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition cursor-pointer"
+                >
+                  <Target size={13} className="text-blue-600" />
+                  <span>View Linked KPIs</span>
+                </button>
 
                 <div className="flex items-center gap-2">
                   <button
@@ -235,13 +267,15 @@ export default function KraManagement() {
                       setFormData(kra);
                       setShowModal(true);
                     }}
-                    className="p-1 text-slate-400 hover:text-blue-600 transition"
+                    className="p-1 text-slate-400 hover:text-blue-600 transition cursor-pointer"
+                    title="Edit KRA"
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(kra._id)}
-                    className="p-1 text-slate-400 hover:text-rose-600 transition"
+                    className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                    title="Delete KRA"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -252,7 +286,7 @@ export default function KraManagement() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal 1: Add / Edit KRA */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
@@ -334,12 +368,137 @@ export default function KraManagement() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700"
+                  className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 cursor-pointer"
                 >
                   {editKra ? 'Update KRA' : 'Create KRA'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: View Linked KPIs for Selected KRA */}
+      {showLinkedKpiModal && selectedKraForKpis && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase text-blue-700">
+                    {selectedKraForKpis.category}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                    {selectedKraForKpis.weightage}% KRA Weight
+                  </span>
+                </div>
+                <h3 className="mt-1 text-base font-bold text-slate-900">{selectedKraForKpis.name}</h3>
+                <p className="text-xs text-slate-500">Associated Department-wise Key Performance Indicators</p>
+              </div>
+              <button
+                onClick={() => setShowLinkedKpiModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {loadingLinkedKpis ? (
+              <div className="flex min-h-[200px] items-center justify-center">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+              </div>
+            ) : !linkedKpisData || linkedKpisData.templates.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center">
+                <Target size={36} className="mx-auto text-slate-300" />
+                <h4 className="mt-2 text-xs font-bold text-slate-700">No KPIs Linked Yet</h4>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Create and associate KPI templates under this KRA in the KPI Management module.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Weightage Summary Bar */}
+                <div className={`rounded-xl border p-3 flex flex-wrap items-center justify-between gap-2 text-xs ${
+                  linkedKpisData.weightageSummary?.isOverAllocated
+                    ? 'border-rose-200 bg-rose-50 text-rose-900'
+                    : linkedKpisData.weightageSummary?.isFull
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                    : 'border-blue-200 bg-blue-50 text-blue-900'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Info size={16} />
+                    <span>
+                      Total KPI Weightage allocated under this KRA: <strong>{linkedKpisData.weightageSummary?.totalWeightage}%</strong>
+                      {' • '}
+                      Remaining: <strong>{linkedKpisData.weightageSummary?.remainingWeightage}%</strong>
+                    </span>
+                  </div>
+                  <span className="font-extrabold text-[10px] uppercase">
+                    {linkedKpisData.weightageSummary?.isFull
+                      ? '100% Balanced'
+                      : linkedKpisData.weightageSummary?.isOverAllocated
+                      ? 'Over-allocated'
+                      : 'Weightage Available'}
+                  </span>
+                </div>
+
+                {/* Table of Linked KPIs */}
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase text-slate-500">
+                        <th className="py-2.5 px-3">KPI Name</th>
+                        <th className="py-2.5 px-3">Department / Role</th>
+                        <th className="py-2.5 px-3">Target</th>
+                        <th className="py-2.5 px-3">Weightage</th>
+                        <th className="py-2.5 px-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {linkedKpisData.templates.map((tpl) => (
+                        <tr key={tpl._id} className="hover:bg-slate-50/60">
+                          <td className="py-2.5 px-3">
+                            <div className="font-bold text-slate-800">{tpl.name}</div>
+                            {tpl.code && <span className="font-mono text-[9px] text-slate-400">[{tpl.code}]</span>}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-semibold text-slate-700">{tpl.department}</div>
+                            <div className="text-[10px] text-slate-400">{tpl.designation || 'All Roles'}</div>
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-800">
+                            {tpl.targetValue} {tpl.unitOfMeasurement}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-800">
+                              {tpl.weightage}%
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                              tpl.status === 'active'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {tpl.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowLinkedKpiModal(false)}
+                className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
