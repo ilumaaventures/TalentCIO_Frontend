@@ -1499,22 +1499,6 @@ export const ImportDataPage = ({ onNavigate }) => {
           status: 'Not picking',
           source: 'Cold Call',
         },
-        {
-          sNo: 3,
-          companyName: '',
-          gstin: '',
-          industry: '',
-          address: '',
-          rating: '',
-          contactPerson: '',
-          designation: '',
-          mobileNo: '',
-          emailId: '',
-          remarks: '',
-          date: today,
-          status: '',
-          source: '',
-        },
       ];
 
       sampleRows.forEach((rowData) => {
@@ -1531,18 +1515,19 @@ export const ImportDataPage = ({ onNavigate }) => {
         });
       });
 
-      // ── Status Dropdown Data Validation on Column L (rows 2–1000) ─────────
-      // Options: New, Interested, Not Interested, Did not turn up, Not picking, Other
-      const statusOptions = ['New', 'Interested', 'Not Interested', 'Callback Requested', 'Did not turn up', 'Not picking', 'Meeting Scheduled', 'Other'];
+      // ── Status Dropdown Data Validation on Column M (rows 2–1000) ─────────
+      // Column M corresponds to "Status" (Col 13)
+      const statusOptions = ['New', 'Interested', 'Not Interested', 'Callback Requested', 'Not picking', 'Did not turn up', 'Meeting Scheduled', 'Lost', 'Other'];
       const statusFormula = `"${statusOptions.join(',')}"`;
 
-      // ── Source Dropdown Data Validation on Column M (rows 2–1000) ─────────
+      // ── Source Dropdown Data Validation on Column N (rows 2–1000) ─────────
+      // Column N corresponds to "Source" (Col 14)
       const sourceOptions = ['LinkedIn', 'Cold Call', 'Website', 'Referral', 'Email Campaign', 'WhatsApp', 'Direct', 'Other'];
       const sourceFormula = `"${sourceOptions.join(',')}"`;
 
       for (let r = 2; r <= 1000; r++) {
-        // Column L: Status dropdown
-        worksheet.getCell(`L${r}`).dataValidation = {
+        // Column M: Status dropdown
+        worksheet.getCell(`M${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
           showErrorMessage: true,
@@ -1552,8 +1537,8 @@ export const ImportDataPage = ({ onNavigate }) => {
           formulae: [statusFormula],
         };
 
-        // Column M: Source dropdown
-        worksheet.getCell(`M${r}`).dataValidation = {
+        // Column N: Source dropdown
+        worksheet.getCell(`N${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
           showErrorMessage: false,
