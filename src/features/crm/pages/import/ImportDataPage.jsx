@@ -70,6 +70,7 @@ const normalizePhone = (p) => {
 
 const STATUS_OPTIONS = [
   'New',
+  'Connected',
   'Interested',
   'Not Interested',
   'Callback Requested',
@@ -82,6 +83,7 @@ const STATUS_OPTIONS = [
 
 const getStatusBadgeStyle = (val) => {
   const s = String(val || '').toLowerCase().trim();
+  if (s === 'connected') return 'bg-sky-50 text-sky-700 border-sky-300 focus:ring-sky-400';
   if (s === 'interested') return 'bg-emerald-50 text-emerald-700 border-emerald-300 focus:ring-emerald-400';
   if (s === 'not interested' || s === 'notinterested' || s === 'lost') return 'bg-rose-50 text-rose-700 border-rose-300 focus:ring-rose-400';
   if (s.includes('converted')) return 'bg-teal-50 text-teal-700 border-teal-300 focus:ring-teal-400';
@@ -646,6 +648,30 @@ export const ImportDataPage = ({ onNavigate }) => {
     return new Date();
   };
 
+  // Parse excel date of registration helper (returns empty string if missing)
+  const parseRegistrationDate = (val) => {
+    if (val === null || val === undefined || String(val).trim() === '') return '';
+    if (val instanceof Date && !isNaN(val.getTime())) {
+      return val.toISOString().split('T')[0];
+    }
+    if (typeof val === 'number') {
+      const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+      return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
+    }
+    const str = String(val).trim();
+    if (!str) return '';
+    const match = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (match) {
+      const d = new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
+      return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : str;
+    }
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+    return str;
+  };
+
   const handleFileUpload = (file) => {
     if (!file) return;
 
@@ -716,6 +742,15 @@ export const ImportDataPage = ({ onNavigate }) => {
             normalized['tin'] ||
             ''
           ).trim().toUpperCase();
+          const rawDateOfReg =
+            normalized['dateofregistration'] ||
+            normalized['registrationdate'] ||
+            normalized['dateofreg'] ||
+            normalized['regdate'] ||
+            normalized['incorporationdate'] ||
+            normalized['dateofincorporation'] ||
+            '';
+          const dateOfRegistration = parseRegistrationDate(rawDateOfReg);
           const industry = normalized['industry'] || '';
           const address = normalized['address'] || normalized['location'] || '';
           const rating = normalized['rating'] || '';
@@ -769,6 +804,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             sNo: String(sNo),
             companyName: String(companyName).trim(),
             gstin,
+            dateOfRegistration,
             industry: String(industry).trim(),
             address: String(address).trim(),
             rating: String(rating).trim(),
@@ -839,6 +875,7 @@ export const ImportDataPage = ({ onNavigate }) => {
 
               // Supplement any empty company metadata from subsequent row
               if (!existingCompEntry.gstin && r.gstin) existingCompEntry.gstin = r.gstin;
+              if (!existingCompEntry.dateOfRegistration && r.dateOfRegistration) existingCompEntry.dateOfRegistration = r.dateOfRegistration;
               if (!existingCompEntry.industry && r.industry) existingCompEntry.industry = r.industry;
               if (!existingCompEntry.address && r.address) existingCompEntry.address = r.address;
               if (!existingCompEntry.rating && r.rating) existingCompEntry.rating = r.rating;
@@ -1264,6 +1301,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             ...ex,
             companyName: uRow.companyName || ex.companyName,
             gstin: uRow.gstin || ex.gstin || '',
+            dateOfRegistration: uRow.dateOfRegistration !== undefined ? uRow.dateOfRegistration : (ex.dateOfRegistration || ''),
             industry: uRow.industry || ex.industry,
             address: uRow.address || ex.address,
             rating: uRow.rating || ex.rating,
@@ -1433,6 +1471,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         { header: 'S No', key: 'sNo', width: 8 },
         { header: 'Company Name', key: 'companyName', width: 32 },
         { header: 'GSTIN', key: 'gstin', width: 22 },
+        { header: 'Date of Registration', key: 'dateOfRegistration', width: 22 },
         { header: 'Industry', key: 'industry', width: 24 },
         { header: 'Address', key: 'address', width: 36 },
         { header: 'Rating', key: 'rating', width: 10 },
@@ -1471,6 +1510,7 @@ export const ImportDataPage = ({ onNavigate }) => {
           sNo: 1,
           companyName: 'Infosys Limited',
           gstin: '29AABCI1234A1Z5',
+          dateOfRegistration: '1981-07-02',
           industry: 'Information Technology',
           address: 'Electronics City, Hosur Road, Bangalore',
           rating: '4.5',
@@ -1480,13 +1520,14 @@ export const ImportDataPage = ({ onNavigate }) => {
           emailId: 'rahul.sharma@infosys.example',
           remarks: 'Interested in enterprise talent pipeline',
           date: today,
-          status: 'Interested',
+          status: 'Connected',
           source: 'LinkedIn',
         },
         {
           sNo: 2,
           companyName: 'Tata Consultancy Services',
           gstin: '27AABCT5678B1Z2',
+          dateOfRegistration: '',
           industry: 'Consulting & IT',
           address: 'TCS House, Raveline Street, Fort, Mumbai',
           rating: '4.8',
@@ -1496,8 +1537,8 @@ export const ImportDataPage = ({ onNavigate }) => {
           emailId: 'priya.nair@tcs.example',
           remarks: 'Needs executive search services',
           date: yesterday,
-          status: 'Not picking',
-          source: 'Cold Call',
+          status: 'New',
+          source: '',
         },
       ];
 
@@ -1515,19 +1556,14 @@ export const ImportDataPage = ({ onNavigate }) => {
         });
       });
 
-      // ── Status Dropdown Data Validation on Column M (rows 2–1000) ─────────
-      // Column M corresponds to "Status" (Col 13)
-      const statusOptions = ['New', 'Interested', 'Not Interested', 'Callback Requested', 'Not picking', 'Did not turn up', 'Meeting Scheduled', 'Lost', 'Other'];
+      // ── Status Dropdown Data Validation on Column N (rows 2–1000) ─────────
+      // Column N corresponds to "Status" (Col 14)
+      const statusOptions = ['New', 'Connected', 'Interested', 'Not Interested', 'Callback Requested', 'Not picking', 'Did not turn up', 'Meeting Scheduled', 'Lost', 'Other'];
       const statusFormula = `"${statusOptions.join(',')}"`;
 
-      // ── Source Dropdown Data Validation on Column N (rows 2–1000) ─────────
-      // Column N corresponds to "Source" (Col 14)
-      const sourceOptions = ['LinkedIn', 'Cold Call', 'Website', 'Referral', 'Email Campaign', 'WhatsApp', 'Direct', 'Other'];
-      const sourceFormula = `"${sourceOptions.join(',')}"`;
-
       for (let r = 2; r <= 1000; r++) {
-        // Column M: Status dropdown
-        worksheet.getCell(`M${r}`).dataValidation = {
+        // Column N: Status dropdown
+        worksheet.getCell(`N${r}`).dataValidation = {
           type: 'list',
           allowBlank: true,
           showErrorMessage: true,
@@ -1535,14 +1571,6 @@ export const ImportDataPage = ({ onNavigate }) => {
           errorTitle: 'Invalid Status',
           error: `Please choose one of the options: ${statusOptions.join(', ')}`,
           formulae: [statusFormula],
-        };
-
-        // Column N: Source dropdown
-        worksheet.getCell(`N${r}`).dataValidation = {
-          type: 'list',
-          allowBlank: true,
-          showErrorMessage: false,
-          formulae: [sourceFormula],
         };
       }
 
@@ -1603,6 +1631,7 @@ export const ImportDataPage = ({ onNavigate }) => {
         { header: 'S No', key: 'sNo', width: 8 },
         { header: 'Company Name', key: 'companyName', width: 32 },
         { header: 'GSTIN', key: 'gstin', width: 22 },
+        { header: 'Date of Registration', key: 'dateOfRegistration', width: 22 },
         { header: 'Industry', key: 'industry', width: 24 },
         { header: 'Address', key: 'address', width: 36 },
         { header: 'Rating', key: 'rating', width: 10 },
@@ -1668,6 +1697,7 @@ export const ImportDataPage = ({ onNavigate }) => {
             sNo: isFirstContact ? companySNo : '',
             companyName: isFirstContact ? (row.companyName || '') : '',
             gstin: isFirstContact ? (row.gstin || '') : '',
+            dateOfRegistration: isFirstContact ? (row.dateOfRegistration || '') : '',
             industry: isFirstContact ? (row.industry || '') : '',
             address: isFirstContact ? (row.address || '') : '',
             rating: isFirstContact ? (row.rating || '') : '',
@@ -2954,6 +2984,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                           <th className="p-2.5 text-center w-12 whitespace-nowrap">#</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[210px] min-w-[180px] max-w-[220px]">Company Name</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">GSTIN</th>
+                          <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[110px] max-w-[140px]">Date of Reg.</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap w-[150px] min-w-[130px] max-w-[160px]">Industry</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Address</th>
                           <th className="p-2.5 border-l border-slate-200 whitespace-nowrap">Rating</th>
@@ -2972,7 +3003,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                       <tbody className="divide-y divide-slate-100">
                         {visibleStagedRows.length === 0 ? (
                           <tr>
-                            <td colSpan={16} className="py-8 text-center text-slate-400">
+                            <td colSpan={17} className="py-8 text-center text-slate-400">
                               No {previewTab} records to display in this sheet.
                             </td>
                           </tr>
@@ -3061,6 +3092,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                                 )}
                               </td>
                               <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[110px] max-w-[140px]">{row.gstin || '—'}</td>
+                              <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono text-xs w-[130px] min-w-[110px] max-w-[140px]">{row.dateOfRegistration || ''}</td>
                               <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-normal break-words w-[150px] min-w-[130px] max-w-[160px] leading-snug">{row.industry || '—'}</td>
                               <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.address || '—'}</td>
                               <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.rating || '—'}</td>
@@ -3088,7 +3120,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                               </td>
                               <td className="p-2.5 border-l border-slate-200 text-slate-700 font-medium w-[140px] min-w-[120px] max-w-[150px]">
                                 <div className="w-full max-w-[135px]">
-                                  <span className="whitespace-normal break-words leading-snug block">{row.source || row.leadSource || '—'}</span>
+                                  <span className="whitespace-normal break-words leading-snug block">{row.source || row.leadSource || ''}</span>
                                 </div>
                               </td>
                               <td className="p-2.5 border-l border-slate-200 text-slate-700 whitespace-nowrap">
@@ -3984,7 +4016,7 @@ export const ImportDataPage = ({ onNavigate }) => {
               {/* Main Table */}
               <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
                 <div className="overflow-x-auto max-h-[600px] min-h-[260px]">
-                  <table className="w-full min-w-[1280px] text-left border-collapse text-xs">
+                  <table className="w-full min-w-[1410px] text-left border-collapse text-xs">
                     {/* Grey Table Header */}
                     <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200">
                       <tr>
@@ -4000,6 +4032,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                         <th className="p-3 border-l border-slate-200 text-center w-14 min-w-[56px] whitespace-nowrap">S.NO</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[240px] min-w-[210px]">Company Name</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px]">GSTIN</th>
+                        <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px]">Date of Reg.</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[130px] min-w-[120px] max-w-[140px]">Industry</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[160px] min-w-[140px]">Source</th>
                         <th className="p-3 border-l border-slate-200 whitespace-nowrap w-[180px] min-w-[170px]">Status</th>
@@ -4025,7 +4058,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                     <tbody className="divide-y divide-slate-100">
                       {totalMatchingRecords === 0 ? (
                         <tr>
-                          <td colSpan={10} className="py-12 text-center text-slate-400">
+                          <td colSpan={11} className="py-12 text-center text-slate-400">
                             <div className="flex flex-col items-center justify-center">
                               <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
                               <p className="font-semibold text-slate-600">
@@ -4085,6 +4118,9 @@ export const ImportDataPage = ({ onNavigate }) => {
                               <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono w-[130px] min-w-[120px]">
                                 {row.gstin || '—'}
                               </td>
+                              <td className="p-3 border-l border-slate-200 text-slate-700 whitespace-nowrap font-mono text-xs w-[130px] min-w-[120px]">
+                                {row.dateOfRegistration || ''}
+                              </td>
                               <td className="p-3 border-l border-slate-200 text-slate-700 w-[130px] min-w-[120px] max-w-[140px]">
                                 <div className="w-full">
                                   <span className="text-slate-800 font-medium whitespace-normal break-words leading-snug block text-xs">
@@ -4095,7 +4131,7 @@ export const ImportDataPage = ({ onNavigate }) => {
                               <td className="p-3 border-l border-slate-200 text-slate-700 font-medium w-[160px] min-w-[140px]">
                                 <div className="w-full">
                                   <span className="whitespace-normal break-words leading-relaxed block text-xs">
-                                    {row.source || row.leadSource || '—'}
+                                    {row.source || row.leadSource || ''}
                                   </span>
                                 </div>
                               </td>
