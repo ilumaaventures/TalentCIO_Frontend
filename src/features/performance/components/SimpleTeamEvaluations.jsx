@@ -19,10 +19,12 @@ import {
   Building,
   Briefcase,
   AlertCircle,
+  FolderGit2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import pmsApi from '../api/pmsApi';
+import EmployeeWorkDashboard from './EmployeeWorkDashboard';
 
 const RATING_LABELS = {
   1: 'Needs Improvement',
@@ -56,6 +58,7 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState('default');
   const [selectedEval, setSelectedEval] = useState(null);
+  const [activeUserDashboard, setActiveUserDashboard] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [meta, setMeta] = useState(null);
 
@@ -200,6 +203,37 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
     );
   });
 
+  // If a user is selected, render the dedicated User Projects & Hours Dashboard
+  if (activeUserDashboard) {
+    return (
+      <EmployeeWorkDashboard
+        evaluationItem={activeUserDashboard}
+        onBack={() => setActiveUserDashboard(null)}
+        onReviewSubmitted={(updated) => {
+          setActiveUserDashboard((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              ratings: {
+                ...prev.ratings,
+                managerRating: updated.rating,
+                finalScore: updated.rating,
+                managerComments: updated.feedback,
+                managerStrengths: updated.strengths,
+                managerImprovements: updated.improvements,
+              },
+            };
+          });
+          fetchEvaluations();
+        }}
+        isAdmin={isAdmin}
+        isHr={isHr}
+        isManager={isManager}
+        currentUser={user}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Scope Switcher */}
@@ -329,7 +363,9 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
             return (
               <div
                 key={item.employeeId}
-                className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs transition hover:shadow-md"
+                onClick={() => setActiveUserDashboard(item)}
+                className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs transition hover:shadow-md hover:border-blue-300 cursor-pointer group"
+                title="Click to open user projects and hours dashboard"
               >
                 <div>
                   {/* User Profile Info */}
@@ -338,16 +374,16 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
                       <img
                         src={u.profilePicture}
                         alt={u.name}
-                        className="h-12 w-12 rounded-2xl object-cover ring-2 ring-slate-100"
+                        className="h-12 w-12 rounded-2xl object-cover ring-2 ring-slate-100 group-hover:ring-blue-200 transition"
                       />
                     ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-sm font-bold text-white shadow-xs">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-sm font-bold text-white shadow-xs group-hover:scale-105 transition-transform">
                         {u.name?.slice(0, 2).toUpperCase()}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <h4 className="truncate text-sm font-bold text-slate-900">{u.name}</h4>
+                        <h4 className="truncate text-sm font-bold text-slate-900 group-hover:text-blue-600 transition">{u.name}</h4>
                         {u.isManager && (
                           <span className="rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-200">
                             Manager
@@ -432,22 +468,30 @@ export default function SimpleTeamEvaluations({ onNavigateSettings }) {
 
                 {/* Card Actions */}
                 <div className="mt-4 flex items-center gap-2 pt-3 border-t border-slate-100">
-                  {canUserRateThisPerson ? (
-                    <button
-                      onClick={() => handleOpenReviewModal(item)}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
-                    >
-                      <Star size={13} />
-                      <span>{hasRating ? 'Update Rating & Feedback' : 'Give Feedback & Rating'}</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleOpenReviewModal(item)}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
-                    >
-                      <span>View Scorecard</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveUserDashboard(item);
+                    }}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-100 hover:text-blue-600 transition cursor-pointer"
+                    title="View projects, worklogs, and total hours"
+                  >
+                    <FolderGit2 size={13} className="text-blue-600" />
+                    <span>Projects & Hours</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveUserDashboard(item);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition cursor-pointer"
+                  >
+                    <Star size={13} className="fill-white" />
+                    <span>{hasRating ? 'Update Rating' : 'Give Feedback & Rating'}</span>
+                  </button>
                 </div>
               </div>
             );
