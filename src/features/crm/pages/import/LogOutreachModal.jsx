@@ -11,7 +11,9 @@ import {
   ExternalLink,
   User,
   Building2,
-  Maximize2
+  Maximize2,
+  Paperclip,
+  Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../../components/ui/Modal';
@@ -20,7 +22,6 @@ import { dataService } from '../../services/api';
 import { crmEmailTemplateService } from '../../services/crmApi';
 import {
   CRM_EMAIL_TEMPLATE_PLACEHOLDERS,
-  renderTemplateBody,
   resolveTemplate,
   formatTemplateBodyAsHtml
 } from '@/features/email/utils/templatePlaceholders';
@@ -56,12 +57,44 @@ export const LogOutreachModal = ({
   const [emailSubject, setEmailSubject] = useState('');
   const [emailNotes, setEmailNotes] = useState('');
   const [sendViaPlatform, setSendViaPlatform] = useState(true);
+  const [emailAttachments, setEmailAttachments] = useState([]);
+  const emailFileInputRef = React.useRef(null);
+
+  const handleEmailFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'ppt', 'pptx', 'zip', 'rar', '7z'];
+    const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+
+    const updated = [...emailAttachments];
+    for (const f of files) {
+      if (updated.length >= 5) {
+        toast.error('Maximum 5 attachments allowed.');
+        break;
+      }
+      const ext = f.name.split('.').pop()?.toLowerCase() || '';
+      if (!allowed.includes(ext)) {
+        toast.error(`"${f.name}" is not supported. Allowed: Photos, PDF, Docs, PPT, ZIP.`);
+        continue;
+      }
+      if (f.size > maxSizeBytes) {
+        toast.error(`"${f.name}" exceeds the 5MB maximum file limit.`);
+        continue;
+      }
+      if (updated.some(existing => existing.name === f.name && existing.size === f.size)) {
+        continue;
+      }
+      updated.push(f);
+    }
+    setEmailAttachments(updated);
+    if (emailFileInputRef.current) emailFileInputRef.current.value = '';
+  };
 
   // Follow-up scheduling
   const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpType, setFollowUpType] = useState('call');
-  const [followUpPriority, setFollowUpPriority] = useState('Medium');
+  const [followUpPriority] = useState('Medium');
   const [followUpNotes, setFollowUpNotes] = useState('');
 
   // Load senders & templates
@@ -285,17 +318,31 @@ export const LogOutreachModal = ({
         }
 
         if (sendViaPlatform) {
-          // Send real email via company sender account
-          await crmEmailTemplateService.sendEmail({
-            to: targetEmail,
-            recipientName: row.contactPerson || row.companyName || targetEmail,
-            subject: emailSubject,
-            htmlBody: formatTemplateBodyAsHtml(emailNotes),
-            plainBody: emailNotes,
-            emailAccountId: selectedSenderId || 'platform',
-            prospectId: recordId,
-            templateId: selectedTemplateId || undefined
-          });
+          if (emailAttachments.length > 0) {
+            const formData = new FormData();
+            formData.append('to', targetEmail);
+            formData.append('recipientName', row.contactPerson || row.companyName || targetEmail);
+            formData.append('subject', emailSubject);
+            formData.append('htmlBody', formatTemplateBodyAsHtml(emailNotes));
+            formData.append('plainBody', emailNotes);
+            formData.append('emailAccountId', selectedSenderId || 'platform');
+            formData.append('prospectId', recordId);
+            if (selectedTemplateId) formData.append('templateId', selectedTemplateId);
+            emailAttachments.forEach((file) => formData.append('attachments', file));
+            await crmEmailTemplateService.sendEmail(formData);
+          } else {
+            // Send real email via company sender account
+            await crmEmailTemplateService.sendEmail({
+              to: targetEmail,
+              recipientName: row.contactPerson || row.companyName || targetEmail,
+              subject: emailSubject,
+              htmlBody: formatTemplateBodyAsHtml(emailNotes),
+              plainBody: emailNotes,
+              emailAccountId: selectedSenderId || 'platform',
+              prospectId: recordId,
+              templateId: selectedTemplateId || undefined
+            });
+          }
         } else {
           // Offline logging
           const payload = {
@@ -706,6 +753,52 @@ export const LogOutreachModal = ({
                     placeholder="Compose outreach email message..."
                     className="w-full p-2.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-sans leading-relaxed"
                   />
+
+                  {/* Attachment controls */}
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => emailFileInputRef.current?.click()}
+                      disabled={emailAttachments.length >= 5}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 cursor-pointer disabled:opacity-50 transition"
+                    >
+                      <Paperclip className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Attach File (Photos, PDF, Docs, PPT, ZIP - Max 5MB)</span>
+                    </button>
+                    {emailAttachments.length > 0 && (
+                      <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+                        {emailAttachments.length} file{emailAttachments.length > 1 ? 's' : ''} attached
+                      </span>
+                    )}
+                  </div>
+
+                  <input
+                    ref={emailFileInputRef}
+                    type="file"
+                    multiple
+                    accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.pdf,.doc,.docx,.txt,.rtf,.odt,.ppt,.pptx,.zip,.rar,.7z"
+                    onChange={handleEmailFileSelect}
+                    className="hidden"
+                  />
+
+                  {emailAttachments.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {emailAttachments.map((f, i) => (
+                        <span key={i} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-700">
+                          <Paperclip className="w-3 h-3 text-slate-500" />
+                          <span className="truncate max-w-[140px] font-medium">{f.name}</span>
+                          <span className="text-[10px] text-slate-400">({(f.size / (1024 * 1024)).toFixed(1)}MB)</span>
+                          <button
+                            type="button"
+                            onClick={() => setEmailAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                            className="text-slate-400 hover:text-rose-600 cursor-pointer ml-0.5"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <label className="flex items-center gap-2 cursor-pointer pt-1">

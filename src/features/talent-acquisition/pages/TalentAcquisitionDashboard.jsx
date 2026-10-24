@@ -266,6 +266,53 @@ const LoadingDashboard = () => (
     </div>
 );
 
+const calculateDateRange = (filterType, customFrom, customTo) => {
+    if (!filterType || filterType === 'all') {
+        return { startDate: '', endDate: '' };
+    }
+    const now = new Date();
+    if (filterType === 'today') {
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        return {
+            startDate: start.toISOString(),
+            endDate: end.toISOString()
+        };
+    }
+    if (filterType === 'last2days') {
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        return {
+            startDate: start.toISOString(),
+            endDate: end.toISOString()
+        };
+    }
+    if (filterType === 'this_week') {
+        const dayOfWeek = now.getDay();
+        const diffToMonday = (dayOfWeek + 6) % 7;
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday, 0, 0, 0, 0);
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        return {
+            startDate: start.toISOString(),
+            endDate: end.toISOString()
+        };
+    }
+    if (filterType === 'custom') {
+        let startDate = '';
+        let endDate = '';
+        if (customFrom) {
+            const start = new Date(`${customFrom}T00:00:00`);
+            if (!isNaN(start.getTime())) startDate = start.toISOString();
+        }
+        if (customTo) {
+            const end = new Date(`${customTo}T23:59:59.999`);
+            if (!isNaN(end.getTime())) endDate = end.toISOString();
+        }
+        return { startDate, endDate };
+    }
+    return { startDate: '', endDate: '' };
+};
+
 const TalentAcquisitionDashboard = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -318,6 +365,9 @@ const TalentAcquisitionDashboard = () => {
     const [maxExpectedCTC, setMaxExpectedCTC] = useState(() => getSavedVal('maxExpectedCTC', ''));
     const [searchInHandOffer, setSearchInHandOffer] = useState(() => getSavedVal('inHandOffer', ''));
     const [searchDecision, setSearchDecision] = useState(() => getSavedVal('decision', ''));
+    const [dateFilter, setDateFilter] = useState(() => getSavedVal('dateFilter', 'all'));
+    const [customFromDate, setCustomFromDate] = useState(() => getSavedVal('customFromDate', ''));
+    const [customToDate, setCustomToDate] = useState(() => getSavedVal('customToDate', ''));
     const [candidateResults, setCandidateResults] = useState([]);
     const [isSearchLoading, setIsSearchLoading] = useState(false);
     const [searchPage, setSearchPage] = useState(() => getSavedVal('searchPage', 1));
@@ -382,7 +432,8 @@ const TalentAcquisitionDashboard = () => {
     const defaultAppliedFilters = useMemo(() => ({
         search: '', sources: [], minExp: '', maxExp: '', skills: [], client: '',
         location: '', maxNoticePeriod: '', minCurrentCTC: '', maxCurrentCTC: '',
-        minExpectedCTC: '', maxExpectedCTC: '', inHandOffer: '', decision: '', publicAppReviewStatus: ''
+        minExpectedCTC: '', maxExpectedCTC: '', inHandOffer: '', decision: '', publicAppReviewStatus: '',
+        dateFilter: 'all', customFromDate: '', customToDate: '', startDate: '', endDate: ''
     }), []);
 
     const [appliedFilters, setAppliedFilters] = useState(() => {
@@ -391,6 +442,10 @@ const TalentAcquisitionDashboard = () => {
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (parsed.appliedFilters !== undefined) return parsed.appliedFilters;
+                const dFilter = parsed.dateFilter ?? 'all';
+                const cFrom = parsed.customFromDate ?? '';
+                const cTo = parsed.customToDate ?? '';
+                const dateRange = calculateDateRange(dFilter, cFrom, cTo);
                 return {
                     search: parsed.search ?? '',
                     sources: parsed.sources ?? [],
@@ -406,7 +461,12 @@ const TalentAcquisitionDashboard = () => {
                     maxExpectedCTC: parsed.maxExpectedCTC ?? '',
                     inHandOffer: parsed.inHandOffer ?? '',
                     decision: parsed.decision ?? '',
-                    publicAppReviewStatus: parsed.publicAppReviewStatus ?? ''
+                    publicAppReviewStatus: parsed.publicAppReviewStatus ?? '',
+                    dateFilter: dFilter,
+                    customFromDate: cFrom,
+                    customToDate: cTo,
+                    startDate: dateRange.startDate,
+                    endDate: dateRange.endDate
                 };
             }
         } catch (e) {
@@ -415,7 +475,8 @@ const TalentAcquisitionDashboard = () => {
         return {
             search: '', sources: [], minExp: '', maxExp: '', skills: [], client: '',
             location: '', maxNoticePeriod: '', minCurrentCTC: '', maxCurrentCTC: '',
-            minExpectedCTC: '', maxExpectedCTC: '', inHandOffer: '', decision: '', publicAppReviewStatus: ''
+            minExpectedCTC: '', maxExpectedCTC: '', inHandOffer: '', decision: '', publicAppReviewStatus: '',
+            dateFilter: 'all', customFromDate: '', customToDate: '', startDate: '', endDate: ''
         };
     });
 
@@ -439,7 +500,10 @@ const TalentAcquisitionDashboard = () => {
             searchPage,
             appliedFilters,
             showPublicApps,
-            publicAppReviewStatus
+            publicAppReviewStatus,
+            dateFilter,
+            customFromDate,
+            customToDate
         };
         sessionStorage.setItem('ta_candidate_filters', JSON.stringify(stateToSave));
     }, [
@@ -461,7 +525,10 @@ const TalentAcquisitionDashboard = () => {
         searchPage,
         appliedFilters,
         showPublicApps,
-        publicAppReviewStatus
+        publicAppReviewStatus,
+        dateFilter,
+        customFromDate,
+        customToDate
     ]);
 
     const canViewAnalytics = useMemo(() => (
@@ -626,6 +693,17 @@ const canShowApplicationsTab = (user) => {
                 params.decision = appliedFilters.decision;
             }
 
+            const hasPublicApp = showPublicApps || (appliedFilters.sources && appliedFilters.sources.some(s => s.toLowerCase() === 'public application'));
+            if (hasPublicApp && appliedFilters.dateFilter && appliedFilters.dateFilter !== 'all') {
+                params.dateFilter = appliedFilters.dateFilter;
+                if (appliedFilters.startDate) {
+                    params.startDate = appliedFilters.startDate;
+                }
+                if (appliedFilters.endDate) {
+                    params.endDate = appliedFilters.endDate;
+                }
+            }
+
             const response = await api.get('/ta/candidates/global/search', { params });
             if (response.data) {
                 setCandidateResults(response.data.candidates || []);
@@ -658,6 +736,8 @@ const canShowApplicationsTab = (user) => {
             if (appliedFilters.minExpectedCTC !== '') params.minExpectedCTC = appliedFilters.minExpectedCTC;
             if (appliedFilters.maxExpectedCTC !== '') params.maxExpectedCTC = appliedFilters.maxExpectedCTC;
             if (appliedFilters.publicAppReviewStatus) params.reviewStatus = appliedFilters.publicAppReviewStatus;
+            if (appliedFilters.startDate) params.startDate = appliedFilters.startDate;
+            if (appliedFilters.endDate) params.endDate = appliedFilters.endDate;
             const response = await api.get('/ta/candidates/global/public-applications/search', { params });
             if (response.data) {
                 setPublicAppResults(response.data.applications || []);
@@ -2519,11 +2599,28 @@ const canShowApplicationsTab = (user) => {
     );
 
     const renderCandidates = () => {
+        const isPublicAppFilterApplied = showPublicApps || selectedSources.some(s => s.toLowerCase() === 'public application');
+
         const applyFilterState = (overrides = {}) => {
+            const nextSources = overrides.sources !== undefined ? overrides.sources : selectedSources;
+            const hasPublicApp = showPublicApps || nextSources.some(s => s.toLowerCase() === 'public application');
+            const nextDateFilter = hasPublicApp
+                ? (overrides.dateFilter !== undefined ? overrides.dateFilter : dateFilter)
+                : 'all';
+            const nextCustomFrom = hasPublicApp
+                ? (overrides.customFromDate !== undefined ? overrides.customFromDate : customFromDate)
+                : '';
+            const nextCustomTo = hasPublicApp
+                ? (overrides.customToDate !== undefined ? overrides.customToDate : customToDate)
+                : '';
+            const dateRange = hasPublicApp
+                ? calculateDateRange(nextDateFilter, nextCustomFrom, nextCustomTo)
+                : { startDate: '', endDate: '' };
+
             setSearchPage(1);
             setAppliedFilters({
                 search: overrides.search !== undefined ? overrides.search : candidateSearchText,
-                sources: overrides.sources !== undefined ? overrides.sources : selectedSources,
+                sources: nextSources,
                 minExp: overrides.minExp !== undefined ? overrides.minExp : minExp,
                 maxExp: overrides.maxExp !== undefined ? overrides.maxExp : maxExp,
                 skills: overrides.skills !== undefined ? overrides.skills : searchSkills,
@@ -2536,7 +2633,12 @@ const canShowApplicationsTab = (user) => {
                 maxExpectedCTC: overrides.maxExpectedCTC !== undefined ? overrides.maxExpectedCTC : maxExpectedCTC,
                 inHandOffer: overrides.inHandOffer !== undefined ? overrides.inHandOffer : searchInHandOffer,
                 decision: overrides.decision !== undefined ? overrides.decision : searchDecision,
-                publicAppReviewStatus: overrides.publicAppReviewStatus !== undefined ? overrides.publicAppReviewStatus : publicAppReviewStatus
+                publicAppReviewStatus: overrides.publicAppReviewStatus !== undefined ? overrides.publicAppReviewStatus : publicAppReviewStatus,
+                dateFilter: nextDateFilter,
+                customFromDate: nextCustomFrom,
+                customToDate: nextCustomTo,
+                startDate: dateRange.startDate,
+                endDate: dateRange.endDate
             });
         };
 
@@ -2569,6 +2671,9 @@ const canShowApplicationsTab = (user) => {
             setSearchDecision('');
             setSkillsFilterText('');
             setPublicAppReviewStatus('');
+            setDateFilter('all');
+            setCustomFromDate('');
+            setCustomToDate('');
             setSearchPage(1);
             setAppliedFilters({
                 search: '',
@@ -2585,7 +2690,12 @@ const canShowApplicationsTab = (user) => {
                 maxExpectedCTC: '',
                 inHandOffer: '',
                 decision: '',
-                publicAppReviewStatus: ''
+                publicAppReviewStatus: '',
+                dateFilter: 'all',
+                customFromDate: '',
+                customToDate: '',
+                startDate: '',
+                endDate: ''
             });
         };
 
@@ -2611,7 +2721,8 @@ const canShowApplicationsTab = (user) => {
             maxExpectedCTC !== '',
             searchInHandOffer !== '',
             searchDecision !== '',
-            publicAppReviewStatus !== ''
+            publicAppReviewStatus !== '',
+            (isPublicAppFilterApplied && dateFilter !== 'all')
         ].filter(Boolean).length;
 
         const isFilterActive = !!(
@@ -2629,7 +2740,8 @@ const canShowApplicationsTab = (user) => {
             appliedFilters.maxExpectedCTC !== '' ||
             appliedFilters.inHandOffer !== '' ||
             appliedFilters.decision !== '' ||
-            appliedFilters.publicAppReviewStatus !== ''
+            appliedFilters.publicAppReviewStatus !== '' ||
+            (isPublicAppFilterApplied && appliedFilters.dateFilter && appliedFilters.dateFilter !== 'all')
         );
 
         return (
@@ -2986,11 +3098,19 @@ const canShowApplicationsTab = (user) => {
                                                         key={sourceName}
                                                         type="button"
                                                         onClick={() => {
+                                                            const isPublicApp = sourceName.toLowerCase() === 'public application';
                                                             const next = isSelected
                                                                 ? selectedSources.filter(s => s !== sourceName)
                                                                 : [...selectedSources, sourceName];
                                                             setSelectedSources(next);
-                                                            applyFilterState({ sources: next });
+                                                            if (isPublicApp && isSelected) {
+                                                                setDateFilter('all');
+                                                                setCustomFromDate('');
+                                                                setCustomToDate('');
+                                                                applyFilterState({ sources: next, dateFilter: 'all', customFromDate: '', customToDate: '' });
+                                                            } else {
+                                                                applyFilterState({ sources: next });
+                                                            }
                                                         }}
                                                         className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition border ${isSelected
                                                             ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
@@ -3006,20 +3126,78 @@ const canShowApplicationsTab = (user) => {
                                 )}
                             </div>
 
-                            <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">
-                                <button
-                                    type="button"
-                                    onClick={handleResetFilters}
-                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                                >
-                                    Reset Filters
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                                >
-                                    Apply Filters
-                                </button>
+                            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-100 pt-3">
+                                {/* Date Filter Dropdown & Custom Range Pickers: Only show when Public Application filter is applied */}
+                                {isPublicAppFilterApplied ? (
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                        <div className="flex items-center gap-2">
+                                            <label htmlFor="dateFilterSelect" className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                                                <CalendarDays size={14} className="text-slate-400" />
+                                                <span>Date Filter:</span>
+                                            </label>
+                                            <select
+                                                id="dateFilterSelect"
+                                                value={dateFilter}
+                                                onChange={(e) => {
+                                                    const nextVal = e.target.value;
+                                                    setDateFilter(nextVal);
+                                                    if (nextVal !== 'custom') {
+                                                        applyFilterState({ dateFilter: nextVal });
+                                                    }
+                                                }}
+                                                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                                            >
+                                                <option value="all">All</option>
+                                                <option value="today">Today</option>
+                                                <option value="last2days">Last 2 Days</option>
+                                                <option value="this_week">This Week</option>
+                                                <option value="custom">Custom Date Range</option>
+                                            </select>
+                                        </div>
+
+                                        {dateFilter === 'custom' && (
+                                            <div className="flex flex-wrap items-center gap-2 animate-in fade-in duration-150">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[11px] font-medium text-slate-500">From Date:</span>
+                                                    <input
+                                                        type="date"
+                                                        value={customFromDate}
+                                                        onChange={(e) => setCustomFromDate(e.target.value)}
+                                                        className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[11px] font-medium text-slate-500">To Date:</span>
+                                                    <input
+                                                        type="date"
+                                                        value={customToDate}
+                                                        onChange={(e) => setCustomToDate(e.target.value)}
+                                                        className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div />
+                                )}
+
+                                {/* Reset and Apply Buttons at the end */}
+                                <div className="flex items-center justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleResetFilters}
+                                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                    >
+                                        Reset Filters
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+                                    >
+                                        Apply Filters
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}

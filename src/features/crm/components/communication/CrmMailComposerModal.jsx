@@ -13,7 +13,13 @@ import {
   Paperclip,
   ChevronDown,
   Layers,
-  AtSign
+  AtSign,
+  Image,
+  FileArchive,
+  FileText,
+  File,
+  Trash2,
+  UploadCloud,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -24,6 +30,49 @@ import {
   resolveTemplate,
   formatTemplateBodyAsHtml
 } from '@/features/email/utils/templatePlaceholders';
+
+const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB limit
+const MAX_ATTACHMENTS_COUNT = 5;
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'ppt', 'pptx', 'zip', 'rar', '7z'];
+const ACCEPT_STRING = '.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.pdf,.doc,.docx,.txt,.rtf,.odt,.ppt,.pptx,.zip,.rar,.7z';
+
+const formatFileSize = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+const getFileCategory = (fileName = '') => {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+    return { type: 'photo', label: 'Photo/Image', bg: 'bg-emerald-50 text-emerald-600 border-emerald-200' };
+  }
+  if (['pdf'].includes(ext)) {
+    return { type: 'pdf', label: 'PDF Document', bg: 'bg-rose-50 text-rose-600 border-rose-200' };
+  }
+  if (['doc', 'docx', 'txt', 'rtf', 'odt'].includes(ext)) {
+    return { type: 'doc', label: 'Word/Doc', bg: 'bg-blue-50 text-blue-600 border-blue-200' };
+  }
+  if (['ppt', 'pptx'].includes(ext)) {
+    return { type: 'ppt', label: 'PowerPoint/PPT', bg: 'bg-amber-50 text-amber-600 border-amber-200' };
+  }
+  if (['zip', 'rar', '7z'].includes(ext)) {
+    return { type: 'zip', label: 'ZIP Archive', bg: 'bg-purple-50 text-purple-600 border-purple-200' };
+  }
+  return { type: 'file', label: 'File', bg: 'bg-slate-50 text-slate-600 border-slate-200' };
+};
+
+const renderFileIcon = (file) => {
+  const cat = getFileCategory(file.name);
+  if (cat.type === 'photo') return <Image size={18} className="text-emerald-600" />;
+  if (cat.type === 'pdf') return <FileText size={18} className="text-rose-600" />;
+  if (cat.type === 'doc') return <FileText size={18} className="text-blue-600" />;
+  if (cat.type === 'ppt') return <FileText size={18} className="text-amber-600" />;
+  if (cat.type === 'zip') return <FileArchive size={18} className="text-purple-600" />;
+  return <File size={18} className="text-slate-600" />;
+};
 
 export const CrmMailComposerModal = ({
   isOpen,
@@ -53,6 +102,11 @@ export const CrmMailComposerModal = ({
   const [activeTab, setActiveTab] = useState('compose'); // 'compose' | 'preview'
   const [isSending, setIsSending] = useState(false);
   const [isLoadingSenders, setIsLoadingSenders] = useState(true);
+
+  // File Attachments State (Photos, PDF, Docs, PPT, ZIP - max 5MB)
+  const [attachments, setAttachments] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
 
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
@@ -259,6 +313,83 @@ export const CrmMailComposerModal = ({
     });
   };
 
+  // Attachment processing & validation
+  const processFiles = (fileList) => {
+    const selectedFiles = Array.from(fileList || []);
+    if (!selectedFiles.length) return;
+
+    const newAttachments = [...attachments];
+    let addedCount = 0;
+
+    for (const file of selectedFiles) {
+      if (newAttachments.length >= MAX_ATTACHMENTS_COUNT) {
+        toast.error(`Maximum of ${MAX_ATTACHMENTS_COUNT} attachments allowed.`);
+        break;
+      }
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        toast.error(`"${file.name}" is not supported. Allowed: Photos, PDF, Docs, PPT, ZIP.`);
+        continue;
+      }
+
+      if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        toast.error(`"${file.name}" exceeds the 5MB maximum file size limit (${formatFileSize(file.size)}).`);
+        continue;
+      }
+
+      const alreadyExists = newAttachments.some((a) => a.name === file.name && a.size === file.size);
+      if (alreadyExists) {
+        toast.error(`"${file.name}" is already attached.`);
+        continue;
+      }
+
+      newAttachments.push(file);
+      addedCount++;
+    }
+
+    if (addedCount > 0) {
+      setAttachments(newAttachments);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    processFiles(e.target.files);
+  };
+
+  const handleRemoveAttachment = (indexToRemove) => {
+    setAttachments((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer?.files?.length) {
+      processFiles(e.dataTransfer.files);
+    }
+  };
+
+  const totalAttachmentBytes = useMemo(() => {
+    return attachments.reduce((sum, f) => sum + (f.size || 0), 0);
+  }, [attachments]);
+
   // Real-time resolved preview
   const previewSubject = useMemo(() => resolveTemplate(subject, mergeContext), [subject, mergeContext]);
   const previewHtml = useMemo(() => renderTemplateBody(htmlBody, mergeContext), [htmlBody, mergeContext]);
@@ -284,23 +415,56 @@ export const CrmMailComposerModal = ({
     try {
       setIsSending(true);
 
-      const payload = {
-        to: toEmail.trim(),
-        recipientName: recipientName.trim() || target.contactPerson || toEmail.trim(),
-        cc: cc.trim() || undefined,
-        bcc: bcc.trim() || undefined,
-        subject: previewSubject.trim() || subject.trim(),
-        htmlBody: previewHtml || formatTemplateBodyAsHtml(htmlBody),
-        emailAccountId: selectedSenderId || 'platform',
-        prospectId: target._id || target.id,
-        leadId: target.leadId || undefined,
-        dealId: target.dealId || undefined,
-        contactId: target.contactId || undefined,
-        templateId: selectedTemplateId || undefined
-      };
+      if (attachments.length > 0) {
+        // Send as multipart FormData
+        const formData = new FormData();
+        formData.append('to', toEmail.trim());
+        formData.append('recipientName', recipientName.trim() || target.contactPerson || toEmail.trim());
+        if (cc.trim()) formData.append('cc', cc.trim());
+        if (bcc.trim()) formData.append('bcc', bcc.trim());
+        formData.append('subject', previewSubject.trim() || subject.trim());
+        formData.append('htmlBody', previewHtml || formatTemplateBodyAsHtml(htmlBody));
+        formData.append('plainBody', htmlBody.trim());
+        formData.append('emailAccountId', selectedSenderId || 'platform');
 
-      await crmEmailTemplateService.sendEmail(payload);
-      toast.success('Sales email sent successfully!');
+        const prospectId = target._id || target.id;
+        if (prospectId) formData.append('prospectId', prospectId);
+        if (target.leadId) formData.append('leadId', target.leadId);
+        if (target.dealId) formData.append('dealId', target.dealId);
+        if (target.contactId) formData.append('contactId', target.contactId);
+        if (selectedTemplateId) formData.append('templateId', selectedTemplateId);
+
+        attachments.forEach((file) => {
+          formData.append('attachments', file);
+        });
+
+        await crmEmailTemplateService.sendEmail(formData);
+      } else {
+        const payload = {
+          to: toEmail.trim(),
+          recipientName: recipientName.trim() || target.contactPerson || toEmail.trim(),
+          cc: cc.trim() || undefined,
+          bcc: bcc.trim() || undefined,
+          subject: previewSubject.trim() || subject.trim(),
+          htmlBody: previewHtml || formatTemplateBodyAsHtml(htmlBody),
+          plainBody: htmlBody.trim(),
+          emailAccountId: selectedSenderId || 'platform',
+          prospectId: target._id || target.id,
+          leadId: target.leadId || undefined,
+          dealId: target.dealId || undefined,
+          contactId: target.contactId || undefined,
+          templateId: selectedTemplateId || undefined
+        };
+
+        await crmEmailTemplateService.sendEmail(payload);
+      }
+
+      toast.success(
+        attachments.length > 0
+          ? `Sales email sent successfully with ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}!`
+          : 'Sales email sent successfully!'
+      );
+      setAttachments([]);
       onSuccess?.();
       onClose();
     } catch (error) {
@@ -575,6 +739,161 @@ export const CrmMailComposerModal = ({
                     placeholder="Write your email body here. Standard paragraphs and blank lines will be preserved."
                   />
                 </div>
+
+                {/* Attachments Section (Max 5MB each • Photos, PDF, Docs, PPT, ZIP) */}
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                        <Paperclip size={15} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                            Attachments
+                          </label>
+                          {attachments.length > 0 && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                              {attachments.length} / {MAX_ATTACHMENTS_COUNT}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          Photos, PDF, Word/Docs, PPT, ZIP (Max 5MB each)
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={attachments.length >= MAX_ATTACHMENTS_COUNT}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
+                      >
+                        <Paperclip size={13} />
+                        <span>Attach File</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Hidden Native File Input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept={ACCEPT_STRING}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+
+                  {/* Dropzone & File Cards */}
+                  {attachments.length === 0 ? (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1.5 ${
+                        isDragging
+                          ? 'border-indigo-500 bg-indigo-50/70'
+                          : 'border-slate-200 hover:border-indigo-400 bg-slate-50/60 hover:bg-indigo-50/30'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 transition shadow-2xs">
+                        <UploadCloud size={20} className="text-indigo-500" />
+                      </div>
+                      <div className="text-xs text-slate-700">
+                        <span className="font-bold text-indigo-600 hover:underline">Click to attach</span> or drag and drop files here
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          Photos (JPG, PNG, GIF, WEBP)
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100">
+                          PDF
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+                          Docs (DOC, DOCX, TXT)
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100">
+                          PPT (PPT, PPTX)
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100">
+                          ZIP (ZIP, RAR, 7Z)
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        className={`grid gap-2 sm:grid-cols-2 rounded-2xl p-1 transition ${
+                          isDragging ? 'bg-indigo-50/80 ring-2 ring-indigo-400' : ''
+                        }`}
+                      >
+                        {attachments.map((file, idx) => {
+                          const cat = getFileCategory(file.name);
+                          return (
+                            <div
+                              key={`${file.name}-${idx}`}
+                              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/90 bg-slate-50/80 hover:bg-white hover:border-slate-300 transition shadow-2xs group"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${cat.bg}`}>
+                                  {renderFileIcon(file)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 truncate" title={file.name}>
+                                    {file.name}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                                    <span className="font-semibold text-slate-700">{formatFileSize(file.size)}</span>
+                                    <span>•</span>
+                                    <span className="text-slate-500">{cat.label}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAttachment(idx)}
+                                title="Remove file"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0 cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px] text-slate-500">
+                        <div className="flex items-center gap-2">
+                          <span>
+                            Total: <strong className="text-slate-800 font-bold">{formatFileSize(totalAttachmentBytes)}</strong>
+                          </span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-emerald-600 font-medium flex items-center gap-1">
+                            <CheckCircle2 size={12} /> Ready to send
+                          </span>
+                        </div>
+
+                        {attachments.length < MAX_ATTACHMENTS_COUNT && (
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                          >
+                            + Attach more
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Right Column: Prospect Summary & Real-time Output (4 cols) */}
@@ -620,7 +939,7 @@ export const CrmMailComposerModal = ({
                   <p className="text-xs font-bold text-slate-900 break-words mb-2">
                     {previewSubject || 'Subject preview...'}
                   </p>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 max-h-48 overflow-y-auto text-[11px] text-slate-700 leading-relaxed">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 max-h-48 overflow-y-auto text-[11px] text-slate-700 leading-relaxed mb-2">
                     <div
                       className="prose prose-sm max-w-none text-[11px] text-slate-700"
                       dangerouslySetInnerHTML={{
@@ -628,6 +947,23 @@ export const CrmMailComposerModal = ({
                       }}
                     />
                   </div>
+
+                  {attachments.length > 0 && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+                        <Paperclip size={11} className="text-indigo-600" />
+                        <span>Attached ({attachments.length})</span>
+                      </p>
+                      <div className="space-y-1 max-h-24 overflow-y-auto">
+                        {attachments.map((f, i) => (
+                          <div key={i} className="flex items-center justify-between text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                            <span className="truncate max-w-[170px] font-medium">{f.name}</span>
+                            <span className="text-[10px] text-slate-400 shrink-0">{formatFileSize(f.size)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -645,7 +981,7 @@ export const CrmMailComposerModal = ({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 min-h-[300px] text-xs text-slate-800 leading-relaxed">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 min-h-[250px] text-xs text-slate-800 leading-relaxed">
                 <div
                   className="prose prose-sm max-w-none text-xs text-slate-800"
                   dangerouslySetInnerHTML={{
@@ -654,8 +990,34 @@ export const CrmMailComposerModal = ({
                 />
               </div>
 
+              {/* Attachments inside Live Preview */}
+              {attachments.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-2">
+                    <Paperclip size={14} className="text-indigo-600" />
+                    <span>Attached Files ({attachments.length})</span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                    {attachments.map((file, i) => {
+                      const cat = getFileCategory(file.name);
+                      return (
+                        <div key={i} className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs">
+                          <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${cat.bg}`}>
+                            {renderFileIcon(file)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-800 truncate text-[11px]">{file.name}</p>
+                            <p className="text-[10px] text-slate-400">{formatFileSize(file.size)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between pt-2 text-[11px] text-slate-500">
-                <span>The prospect will receive this email exactly as shown above.</span>
+                <span>The prospect will receive this email and attachments exactly as shown above.</span>
                 <button
                   type="button"
                   onClick={() => setActiveTab('compose')}
@@ -669,23 +1031,31 @@ export const CrmMailComposerModal = ({
 
           {/* Modal Footer */}
           <div className="flex items-center justify-between border-t border-slate-200 pt-4 mt-4">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <CheckCircle2 size={15} className="text-emerald-500" />
-              <span>Auto-logs outreach event to CRM client timeline</span>
+            <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 size={15} className="text-emerald-500" />
+                <span>Auto-logs outreach event to CRM client timeline</span>
+              </div>
+              {attachments.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-[11px]">
+                  <Paperclip size={12} />
+                  <span>{attachments.length} attachment{attachments.length > 1 ? 's' : ''} ({formatFileSize(totalAttachmentBytes)})</span>
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl border border-slate-300 px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                className="rounded-xl border border-slate-300 px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSending || isLoadingSenders}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60 transition"
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60 transition cursor-pointer"
               >
                 <Send size={15} />
                 <span>{isSending ? 'Sending Mail...' : 'Send Email Now'}</span>

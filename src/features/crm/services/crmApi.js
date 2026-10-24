@@ -198,7 +198,9 @@ export const crmCommunicationService = {
     return res.data;
   },
   sendEmail: async (data) => {
-    const res = await api.post('/crm/communication/send-email', data);
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined;
+    const res = await api.post('/crm/communication/send-email', data, config);
     return res.data;
   },
   getSenderAccounts: async () => {

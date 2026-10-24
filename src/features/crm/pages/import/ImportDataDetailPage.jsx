@@ -46,6 +46,7 @@ import { CrmMailComposerModal } from '../../components/communication/CrmMailComp
 
 const STATUS_OPTIONS = [
   'New',
+  'Connected',
   'Interested',
   'Not Interested',
   'Callback Requested',
@@ -58,6 +59,7 @@ const STATUS_OPTIONS = [
 
 const getStatusBadgeStyle = (val) => {
   const s = String(val || '').toLowerCase().trim();
+  if (s === 'connected') return 'bg-sky-50 text-sky-700 border-sky-300 focus:ring-sky-400';
   if (s === 'interested') return 'bg-emerald-50 text-emerald-700 border-emerald-300 focus:ring-emerald-400';
   if (s === 'not interested' || s === 'notinterested' || s === 'lost') return 'bg-rose-50 text-rose-700 border-rose-300 focus:ring-rose-400';
   if (s.includes('converted')) return 'bg-teal-50 text-teal-700 border-teal-300 focus:ring-teal-400';
@@ -814,6 +816,10 @@ export const ImportDataDetailPage = ({
                 <div>
                   <span className="text-slate-400 block font-medium mb-0.5">GSTIN</span>
                   <p className="font-semibold text-slate-800 font-mono">{record.gstin || '—'}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 block font-medium mb-0.5">Date of Registration</span>
+                  <p className="font-semibold text-slate-800">{record.dateOfRegistration || '—'}</p>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium mb-0.5">Industry / Domain</span>
